@@ -2,6 +2,7 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { app, BrowserWindow, nativeTheme, net, protocol, session, shell } from 'electron';
 import { ASSET_SCHEME } from '@shared/ipc';
+import { DockedPanel, trackerScriptPath } from './dockedPanel';
 import { registerIpc } from './ipc';
 import type { ProjectStore } from './projectStore';
 import { ensureSampleProject } from './sampleProject';
@@ -18,6 +19,19 @@ if (process.env.CS_USER_DATA_DIR) app.setPath('userData', path.resolve(process.e
 if (!app.requestSingleInstanceLock()) app.exit(0);
 
 let mainWindow: BrowserWindow | null = null;
+const panelClosedListeners: Array<() => void> = [];
+const panel = new DockedPanel({
+  preload: path.join(__dirname, '../preload/index.js'),
+  trackerScript: trackerScriptPath(app.getAppPath()),
+  backgroundColor: nativeTheme.shouldUseDarkColors ? '#15171c' : '#ffffff',
+  load: async (win) => {
+    win.webContents.on('will-navigate', (e, url) => { if (!isAppUrl(url)) e.preventDefault(); });
+    win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+    if (devUrl) await win.loadURL(`${devUrl}#panel`);
+    else await win.loadFile(path.join(__dirname, '../renderer/index.html'), { hash: 'panel' });
+  },
+  onClosed: () => { for (const cb of panelClosedListeners) cb(); },
+});
 app.on('second-instance', () => {
   if (!mainWindow) return;
   if (mainWindow.isMinimized()) mainWindow.restore();
@@ -57,7 +71,7 @@ async function createWindow() {
     },
   });
   mainWindow.once('ready-to-show', () => mainWindow?.show());
-  mainWindow.on('closed', () => { mainWindow = null; });
+  mainWindow.on('closed', () => { mainWindow = null; panel.close(); });
 
   // App-only navigation; external links go to the default browser after scheme check.
   mainWindow.webContents.on('will-navigate', (e, url) => { if (!isAppUrl(url)) e.preventDefault(); });
@@ -93,6 +107,12 @@ app.whenReady().then(async () => {
     onAppearanceChanged: (s) => { nativeTheme.themeSource = s.mode; },
     project,
     secretsDir: path.join(app.getPath('userData'), 'secrets'),
+    panel: {
+      open: (pid) => panel.open(pid),
+      close: () => panel.close(),
+      get isOpen() { return panel.isOpen; },
+      onClosed: (cb) => { panelClosedListeners.push(cb); },
+    },
   });
 
   await createWindow();

@@ -1,7 +1,7 @@
 // Narrow IPC surface. Every handler validates its arguments and checks the sender frame.
 
 import path from 'node:path';
-import { dialog, ipcMain, shell, type BrowserWindow, type IpcMainInvokeEvent } from 'electron';
+import { BrowserWindow, dialog, ipcMain, shell, type IpcMainInvokeEvent } from 'electron';
 import { z } from 'zod';
 import { IPC, type ImportResult, type IntegrationSnapshot } from '@shared/ipc';
 import type { AppearanceSettings } from '@shared/types';
@@ -26,6 +26,8 @@ export interface IpcDeps {
   project: () => Promise<ProjectStore>;
   /** Private per-user directory for secrets such as control tokens. Never exposed to the renderer. */
   secretsDir: string;
+  /** Pop-out control panel docked to an external app window. */
+  panel: { open(pid: number): Promise<void>; close(): void; readonly isOpen: boolean; onClosed(cb: () => void): void };
 }
 
 export function registerIpc(d: IpcDeps): void {
@@ -129,6 +131,7 @@ export function registerIpc(d: IpcDeps): void {
 
   // ---- Live PhotoCraft (real app window, token-authenticated bridge, automation roots) ----
   let livePromise: Promise<LiveTaskController> | null = null;
+  let liveApp: LivePhotoCraft | null = null;
   const live = () => (livePromise ??= (async () => {
     const store = await d.project();
     const writeRoot = path.join(store.root, 'work', 'live');
@@ -138,16 +141,34 @@ export function registerIpc(d: IpcDeps): void {
       readRoot: store.root,
       writeRoot,
     });
-    return new LiveTaskController({
+    const ctl = new LiveTaskController({
       connect: async () => { await app.ensureStarted(); return app; },
       store,
-      emit: (s) => d.window()?.webContents.send(IPC.liveEvent, s),
+      emit: (s) => { for (const w of BrowserWindow.getAllWindows()) if (!w.isDestroyed()) w.webContents.send(IPC.liveEvent, s); },
       writeDir: async () => writeRoot,
     });
+    liveApp = app;
+    d.panel.onClosed(() => { ctl.setPoppedOut(false); const w = d.window(); if (w && !w.isDestroyed()) w.show(); });
+    return ctl;
   })());
+  let autoPopOut = true;
+  const popOut = async () => {
+    const ctl = await live();
+    const pid = liveApp?.pid;
+    if (!pid) throw new Error('PhotoCraft is not running.');
+    await d.panel.open(pid);
+    ctl.setPoppedOut(true);
+    return ctl.snapshot();
+  };
   const stepSchema = z.object({ command: z.string().min(1).max(128), params: z.record(z.string().max(64), z.unknown()) });
   handle(IPC.liveState, none, async () => (await live()).snapshot());
-  handle(IPC.liveOpen, z.tuple([z.string().min(1).max(128)]), async (id) => (await live()).open(id));
+  handle(IPC.liveOpen, z.tuple([z.string().min(1).max(128)]), async (id) => {
+    const s = await (await live()).open(id);
+    if (autoPopOut && !d.panel.isOpen) return popOut().catch(() => s);
+    return s;
+  });
+  handle(IPC.livePopOut, none, async () => { autoPopOut = true; return popOut(); });
+  handle(IPC.liveDock, none, async () => { autoPopOut = false; d.panel.close(); const ctl = await live(); ctl.setPoppedOut(false); return ctl.snapshot(); });
   handle(IPC.liveRun, z.tuple([z.array(stepSchema).min(1).max(50)]), async (steps) => (await live()).run(steps));
   handle(IPC.livePause, none, async () => (await live()).pause());
   handle(IPC.liveTakeControl, none, async () => (await live()).takeControl());

@@ -46,6 +46,7 @@ export class LiveTaskController {
   private savedVersionIds: string[] = [];
   private message: string | null = null;
   private looping = false;
+  private poppedOut = false;
 
   constructor(private readonly d: LiveTaskDeps) {}
 
@@ -62,6 +63,7 @@ export class LiveTaskController {
       needsReplanConfirm: this.collab.phase === 'planning' && this.stepIndex < this.steps.length,
       savedVersionIds: this.savedVersionIds,
       message: this.message,
+      poppedOut: this.poppedOut,
     };
   }
 
@@ -263,6 +265,8 @@ export class LiveTaskController {
     this.publish();
     return this.snapshot();
   }
+
+  setPoppedOut(v: boolean) { this.poppedOut = v; this.publish(); }
 
   /** Re-reads the document history (e.g. after you edit by hand). */
   async refresh(): Promise<LiveSnapshot> {

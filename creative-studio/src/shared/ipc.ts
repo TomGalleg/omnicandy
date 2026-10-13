@@ -30,6 +30,8 @@ export const IPC = {
   liveSave: 'live:save',
   liveRefresh: 'live:refresh',
   liveEvent: 'live:event',
+  livePopOut: 'live:pop-out',
+  liveDock: 'live:dock',
   probeApps: 'apps:probe',
   integrationStatus: 'integrations:status',
 } as const;
@@ -76,6 +78,10 @@ export interface StudioApi {
     cancel(): Promise<LiveSnapshot>;
     saveVersion(): Promise<LiveSnapshot>;
     refresh(): Promise<LiveSnapshot>;
+    /** Shows the controls in a panel docked to the left of the PhotoCraft window. */
+    popOut(): Promise<LiveSnapshot>;
+    /** Closes the pop-out panel; controls return to the main window. */
+    dock(): Promise<LiveSnapshot>;
     onChange(cb: (s: LiveSnapshot) => void): () => void;
   };
   probeApps(): Promise<AppProbeResult[]>;

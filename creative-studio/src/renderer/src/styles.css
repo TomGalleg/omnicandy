@@ -272,3 +272,15 @@ h1, h2, h3 { margin: 0; font-weight: 600; }
 .live-step-err { grid-column: 2 / -1; }
 .live-history { margin: 0; padding-left: 22px; font-size: 12px; max-height: 260px; overflow: auto; display: grid; gap: 2px; }
 .live-history li:last-child { font-weight: 600; }
+
+/* ---------- Pop-out panel docked to PhotoCraft ---------- */
+.dock-panel { height: 100%; display: flex; flex-direction: column; background: var(--surface); border-right: 1px solid var(--border-strong); }
+.dock-head { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-bottom: 1px solid var(--border); background: var(--surface-2); }
+.dock-head .brand-mark { flex-shrink: 0; }
+.dock-title { flex: 1; min-width: 0; display: grid; line-height: 1.25; }
+.dock-title .asset-meta { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dock-body { flex: 1; min-height: 0; overflow: auto; padding: 10px; display: grid; gap: 10px; align-content: start; }
+.panel-card.compact { padding: 10px; gap: 8px; }
+.live-step.compact { grid-template-columns: 20px 1fr auto; }
+.live-step.compact input { grid-column: 2 / 3; }
+.live-step.compact .live-step-n { grid-row: span 2; }

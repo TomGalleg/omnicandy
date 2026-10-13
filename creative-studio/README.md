@@ -84,6 +84,12 @@ by copying `fixtures/sample-project`. Appearance settings are stored in `%APPDAT
   re-reads PhotoCraft's history. If you changed the document, the remaining steps wait for your
   go-ahead, and edits made in PhotoCraft mid-task auto-pause the task. *Save as new version* stores
   `.pcraft` + `.png` versions with lineage. SVGs are flattened on open.
+- **Pop-out controls docked to PhotoCraft.** When PhotoCraft opens, the task controls, automation
+  steps and Save move into a slim panel attached to the left edge of the PhotoCraft window. It is
+  made an owned window of PhotoCraft (Win32), so it stays above it and minimizes with it, and it
+  follows the window as you move or resize it (`resources/window-tracker.ps1`, no native modules).
+  If there is no room on the left, PhotoCraft is nudged right once. *Dock* returns the controls to
+  the main window.
 - **Export (real).** Export nodes convert the upstream version into `<project>/exports/`
   (PNG, JPG, WebP, TIFF, PSD or PCRAFT). Deliver lists the exports with "Show in folder".
 - **ArtCraft detection (real).** Main checks each `*-cli.exe` and reads `--version`. The header shows

@@ -25,4 +25,6 @@ export interface LiveSnapshot {
   needsReplanConfirm: boolean;
   savedVersionIds: string[];
   message: string | null;
+  /** Controls are shown in the pop-out panel docked to the app window instead of the main window. */
+  poppedOut: boolean;
 }

@@ -1,8 +1,8 @@
 import { useState } from 'react';
-import { PHASE_LABEL } from '@shared/collaboration';
 import type { IntegrationSnapshot } from '@shared/ipc';
 import type { Asset } from '@shared/types';
 import type { LiveApi } from '../useLive';
+import { TaskControls } from './live/LiveParts';
 
 interface Props {
   selected: Asset | null;
@@ -17,7 +17,7 @@ interface Msg { role: 'user' | 'system'; text: string }
  * automation task running in the live PhotoCraft window (pause, take control, resume after resync).
  */
 export function ClaudePanel({ selected, integrations, liveApi }: Props) {
-  const { live, busy, act } = liveApi;
+  const { live } = liveApi;
   const [messages, setMessages] = useState<Msg[]>([]);
   const [draft, setDraft] = useState('');
 
@@ -28,10 +28,7 @@ export function ClaudePanel({ selected, integrations, liveApi }: Props) {
     setDraft('');
   };
 
-  const p = live?.collab.phase ?? 'idle';
   const open = live?.status === 'ready' && !!live.asset;
-  const total = live?.steps.length ?? 0;
-  const L = window.studio.live;
 
   return (
     <aside className="pane claude" aria-label="Claude Creative Partner">
@@ -45,29 +42,7 @@ export function ClaudePanel({ selected, integrations, liveApi }: Props) {
 
       <div className="claude-section" aria-live="polite">
         <h3>Current task {open && <span className="chip real" style={{ height: 18 }}><span className="dot" />live PhotoCraft</span>}</h3>
-        {!open ? (
-          <div className="asset-meta">No live document. Open an image from <strong>Edit</strong> to run steps in PhotoCraft.</div>
-        ) : (
-          <>
-            <div className="phase"><span className={`phase-dot ${p}`} />{PHASE_LABEL[p]}
-              {live!.collab.activeOperation && <span className="asset-meta"> · {live!.steps[live!.stepIndex]?.label ?? ''}</span>}
-            </div>
-            <div className="asset-meta">
-              Edit lock: {live!.collab.lockOwner === 'user' ? 'you' : live!.collab.lockOwner === 'claude' ? 'automation' : 'free'}
-              {total > 0 && <> · Step {Math.min(live!.stepIndex, total)}/{total}</>}
-            </div>
-            <div className="btn-row">
-              {(p === 'running') && <button className="btn small" disabled={busy} onClick={() => void act('Pause', L.pause)}>Pause</button>}
-              {p !== 'manual' && p !== 'pausing' && <button className="btn small" disabled={busy} onClick={() => void act('Take control', L.takeControl)}>Take Control</button>}
-              {p === 'manual' && <button className="btn small primary" disabled={busy} onClick={() => void act('Hand back control', L.releaseControl)}>I'm done, hand back</button>}
-              {p === 'paused' && <button className="btn small primary" disabled={busy} onClick={() => void act('Resume', L.resume)}>Resume</button>}
-              {live!.needsReplanConfirm && <button className="btn small primary" disabled={busy} onClick={() => void act('Continue', L.confirmReplan)}>Continue on changed document</button>}
-              {['running', 'pausing', 'paused', 'planning', 'ready'].includes(p) && <button className="btn small danger" disabled={busy} onClick={() => void act('Cancel', L.cancel)}>Cancel task</button>}
-            </div>
-            {p === 'manual' && <div className="notice">You have control. Edit freely in the PhotoCraft window; automation won't touch the document until you hand it back.</div>}
-            {live!.message && <div className="asset-meta">{live!.message}</div>}
-          </>
-        )}
+        <TaskControls liveApi={liveApi} />
       </div>
 
       <div className="chat" aria-label="Conversation">

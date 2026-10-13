@@ -75,6 +75,11 @@ export class LivePhotoCraft implements LiveDoc {
 
   constructor(private readonly o: LivePhotoCraftOptions) {}
 
+  /** Process id of the PhotoCraft window this session started (for window docking). */
+  get pid(): number | null {
+    return this.connected ? this.gui!.pid ?? null : null;
+  }
+
   get connected(): boolean {
     return !!this.mcp?.alive && !!this.gui && this.gui.exitCode === null;
   }

@@ -35,6 +35,8 @@ const api: StudioApi = {
     cancel: () => ipcRenderer.invoke(IPC.liveCancel),
     saveVersion: () => ipcRenderer.invoke(IPC.liveSave),
     refresh: () => ipcRenderer.invoke(IPC.liveRefresh),
+    popOut: () => ipcRenderer.invoke(IPC.livePopOut),
+    dock: () => ipcRenderer.invoke(IPC.liveDock),
     onChange: (cb) => {
       const listener = (_e: IpcRendererEvent, s: LiveSnapshot) => cb(s);
       ipcRenderer.on(IPC.liveEvent, listener);
