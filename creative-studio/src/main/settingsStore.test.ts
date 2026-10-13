@@ -15,17 +15,17 @@ describe('SettingsStore (theme persistence)', () => {
   });
 
   it('persists mode and accent across a "restart" (new store instance)', async () => {
-    await new SettingsStore(dir).save({ mode: 'light', accent: '#14b8a6' });
-    expect(await new SettingsStore(dir).load()).toEqual({ mode: 'light', accent: '#14b8a6' });
-    await new SettingsStore(dir).save({ mode: 'system', accent: '#14b8a6' });
+    await new SettingsStore(dir).save({ version: 2, mode: 'artcraft', accent: '#14b8a6', systemDark: 'artcraft', syncApps: false });
+    expect(await new SettingsStore(dir).load()).toEqual({ version: 2, mode: 'artcraft', accent: '#14b8a6', systemDark: 'artcraft', syncApps: false });
+    await new SettingsStore(dir).save({ version: 2, mode: 'system', accent: '#14b8a6' });
     expect((await new SettingsStore(dir).load()).mode).toBe('system');
   });
 
   it('recovers from a corrupt file and never persists invalid values', async () => {
     await fs.writeFile(path.join(dir, 'appearance.json'), '{not json');
     expect(await new SettingsStore(dir).load()).toEqual(DEFAULT_APPEARANCE);
-    const saved = await new SettingsStore(dir).save({ mode: 'dark', accent: 'javascript:alert(1)', extra: 'x' });
-    expect(saved).toEqual({ mode: 'dark', accent: DEFAULT_APPEARANCE.accent });
+    const saved = await new SettingsStore(dir).save({ version: 2, mode: 'studioDark', accent: 'javascript:alert(1)', extra: 'x' });
+    expect(saved).toEqual({ ...DEFAULT_APPEARANCE, mode: 'studioDark' });
     expect(JSON.parse(await fs.readFile(path.join(dir, 'appearance.json'), 'utf8'))).toEqual(saved);
   });
 });

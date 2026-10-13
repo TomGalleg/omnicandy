@@ -23,7 +23,7 @@ async function launch() {
 const shot = (win, name) => win.screenshot({ path: path.join(shots, `${name}.png`) });
 const setMode = async (win, label) => {
   await win.getByRole('button', { name: 'Appearance' }).click();
-  await win.getByRole('radio', { name: label }).click();
+  await win.getByRole('radio', { name: new RegExp(`^${label}`) }).click();
   await win.keyboard.press('Escape');
 };
 
@@ -32,8 +32,8 @@ try {
   const sec = await win.evaluate(() => ({ require: typeof window.require, process: typeof window.process, api: Object.keys(window.studio).sort() }));
   check('renderer has no Node globals', sec.require === 'undefined' && sec.process === 'undefined', JSON.stringify(sec));
 
-  await setMode(win, 'Dark');
-  check('dark theme applied', (await win.evaluate(() => document.documentElement.dataset.theme)) === 'dark');
+  await setMode(win, 'ArtCraft Match');
+  check('ArtCraft Match theme applied', (await win.evaluate(() => document.documentElement.dataset.theme)) === 'artcraft');
   await win.getByRole('option', { name: /dune-poster/ }).click();
   check('still image shows Activity, not a timeline', await win.getByRole('region', { name: 'Activity' }).isVisible());
   await win.waitForTimeout(400);

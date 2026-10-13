@@ -38,6 +38,7 @@ npm run dev
 | `npm run lint` / `npm run typecheck` | ESLint / tsc for main+preload and renderer |
 | `npm run check` | lint + typecheck + test |
 | `npm run smoke` | Build, then drive the real app with Playwright-Electron in an isolated profile; writes `docs/screenshots/` |
+| `node scripts/smoke-theme.mjs` | Theme presets with PhotoCraft embedded, app theme sync, System mode, persistence, artwork unchanged (opens real app windows) |
 | `npm run smoke:live` | Same, through the live PhotoCraft flow (opens a real PhotoCraft window, closes it afterwards) |
 | `CS_LIVE_TESTS=1 npx vitest run src/main/photocraftLive.test.ts` | Integration tests against the live PhotoCraft window |
 
@@ -49,9 +50,20 @@ by copying `fixtures/sample-project`. Appearance settings are stored in `%APPDAT
 - **Shell.** Resizable, collapsible panes, with layout remembered per user: media browser and
   inspector on the left, workspace in the centre, Claude panel on the right, and a context-sensitive
   bottom pane. Eight workspaces: Media, Edit, AI Generate, Workflow, Effects, Color, Audio, Deliver.
-- **Appearance.** Dark, Light, or System (follows Windows live). Seven accent presets plus a custom
-  colour, persisted in main. Accent text is auto-adjusted to reach 4.5:1 contrast. The theme
-  reaches the node editor, and media is never tinted.
+- **Appearance.** Four choices, switched instantly and remembered: **ArtCraft Match** (charcoal,
+  measured from PhotoCraft's own "proMedium" theme so CreateCraft and the embedded app read as one
+  application), **Studio Dark** (the original near-black look), **Light** (coordinated with
+  PhotoCraft's "studioLight") and **System** (follows Windows, with a choice of dark look). New
+  installs default to System with ArtCraft Match; earlier choices are preserved ("Dark" becomes
+  Studio Dark). Palettes live in `src/shared/theme.ts` and are contrast-tested. Accent presets and a
+  custom accent apply to selections and active controls. The canvas, artwork and exports are never
+  recoloured.
+- **ArtCraft theme sync.** With "Match the open ArtCraft app" on (default), the open app's own
+  interface theme follows CreateCraft through its official control: PhotoCraft `ui.set theme`
+  (proMedium / pro / studioLight), VectorCraft `prefs.set uiBrightness` (mediumDark / dark / light),
+  SoundCraft `ui.set theme` (dark / light). These are the apps' own settings, so they also persist in
+  the apps. DesignCraft, FilmCraft and LightCraft have theme settings but aren't opened by CreateCraft
+  yet; EffectCraft has no theme control.
 - **Media library.** Import through a native dialog. Each original is copied into the project,
   hashed (SHA-256) and marked read-only, and the source file is never touched. Exact duplicates are
   detected. Thumbnails, search, a kind filter, ratings, and an inspector showing provenance,

@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
-import { accentForeground, accentOnSurface, DEFAULT_APPEARANCE, resolveTheme, SURFACES } from '@shared/theme';
-import type { AppearanceSettings } from '@shared/types';
+import { accentForeground, accentOnSurface, DEFAULT_APPEARANCE, PALETTES, paletteScheme, resolveTheme, SURFACES } from '@shared/theme';
+import type { AppearanceSettings, ThemePalette } from '@shared/types';
 
 const media = window.matchMedia('(prefers-color-scheme: dark)');
 
-/** Loads persisted appearance from main, applies tokens to <html>, follows Windows in System mode. */
+/** Loads persisted appearance from main, applies the palette to <html>, follows Windows in System mode. */
 export function useAppearance() {
   const [settings, setSettings] = useState<AppearanceSettings>(DEFAULT_APPEARANCE);
   const [systemDark, setSystemDark] = useState(media.matches);
@@ -17,15 +17,19 @@ export function useAppearance() {
     return () => media.removeEventListener('change', onChange);
   }, []);
 
-  const resolved = resolveTheme(settings.mode, systemDark);
+  const palette: ThemePalette = resolveTheme(settings, systemDark);
+  const scheme = paletteScheme(palette);
 
   useEffect(() => {
     const root = document.documentElement;
-    root.dataset.theme = resolved;
+    root.dataset.theme = palette;
+    root.dataset.scheme = scheme;
+    root.style.colorScheme = scheme;
+    for (const [k, v] of Object.entries(PALETTES[palette])) root.style.setProperty(`--${k}`, v);
     root.style.setProperty('--accent', settings.accent);
     root.style.setProperty('--accent-fg', accentForeground(settings.accent));
-    root.style.setProperty('--accent-text', accentOnSurface(settings.accent, SURFACES[resolved], resolved));
-  }, [resolved, settings.accent]);
+    root.style.setProperty('--accent-text', accentOnSurface(settings.accent, SURFACES[palette], scheme));
+  }, [palette, scheme, settings.accent]);
 
   const update = useCallback(async (patch: Partial<AppearanceSettings>) => {
     const next = { ...settings, ...patch };
@@ -33,5 +37,6 @@ export function useAppearance() {
     setSettings(await window.studio.setAppearance(next));
   }, [settings]);
 
-  return { settings, resolved, loaded, update };
+  /** `resolved` is the light/dark scheme (for components like the node editor); `palette` the exact look. */
+  return { settings, resolved: scheme, palette, loaded, update };
 }

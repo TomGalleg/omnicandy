@@ -5,7 +5,7 @@
     "detail": "{\"require\":\"undefined\",\"process\":\"undefined\",\"api\":[\"answerApproval\",\"assetUrl\",\"cancelWorkflow\",\"claude\",\"edit\",\"getAppearance\",\"importAssets\",\"integrationStatus\",\"listExports\",\"live\",\"loadProject\",\"loadWorkflow\",\"onWorkflowEvent\",\"probeApps\",\"revealExport\",\"runWorkflow\",\"saveWorkflow\",\"setAppearance\",\"setAssetRating\"]}"
   },
   {
-    "name": "dark theme applied",
+    "name": "ArtCraft Match theme applied",
     "ok": true,
     "detail": ""
   },

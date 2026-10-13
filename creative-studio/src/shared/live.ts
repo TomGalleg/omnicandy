@@ -29,4 +29,6 @@ export interface LiveSnapshot {
   message: string | null;
   /** Controls are shown in the pop-out panel docked to the app window instead of the main window. */
   poppedOut: boolean;
+  /** The open app's interface theme as last set by CreateCraft (read back from the app). */
+  appTheme: { app: EditorAppId; value: string } | null;
 }

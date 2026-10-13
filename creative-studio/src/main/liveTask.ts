@@ -17,7 +17,9 @@ import path from 'node:path';
 import { collabReducer, initialCollabState, type CollabEvent, type CollabState } from '@shared/collaboration';
 import type { LiveSnapshot, LiveStatus, LiveStep } from '@shared/live';
 import { checkEditValues, EDITOR_APPS, editorFor, type EditorAppId } from '@shared/appEditors';
+import { appThemeValue } from '@shared/appTheme';
 import type { AppOperation } from '@shared/contracts';
+import type { ThemePalette } from '@shared/types';
 import { checkPhotoCraftOp, presetLabel } from '@shared/photocraftOps';
 import { versionOf, type LiveDoc } from './photocraftLive';
 import type { ProjectStore } from './projectStore';
@@ -55,6 +57,7 @@ export class LiveTaskController {
   /** True while Claude (the Creative Partner) holds the automation side of the lock. */
   private claudeActive = false;
   private appId: EditorAppId = 'photocraft';
+  private appTheme: { app: EditorAppId; value: string } | null = null;
   private saveCount = 0;
 
   constructor(private readonly d: LiveTaskDeps) {}
@@ -73,6 +76,7 @@ export class LiveTaskController {
       savedVersionIds: this.savedVersionIds,
       message: this.message,
       poppedOut: this.poppedOut,
+      appTheme: this.appTheme,
     };
   }
 
@@ -427,6 +431,23 @@ export class LiveTaskController {
           : { key: p.key, label: p.label, choices: p.options.map((x) => x.value), default: p.default }),
       })) : [],
     };
+  }
+
+  /**
+   * Matches the open app's interface theme to CreateCraft's (official app control only). Never
+   * touches the document: it changes the app's chrome, not the artwork or its history.
+   */
+  async applyAppTheme(palette: ThemePalette): Promise<void> {
+    const doc = this.doc;
+    const value = appThemeValue(this.appId, palette);
+    if (!doc?.applyTheme || !value || this.status !== 'ready') return;
+    try {
+      const now = await doc.applyTheme(value);
+      this.appTheme = { app: this.appId, value: now ?? value };
+    } catch {
+      this.appTheme = null; // app left as it was
+    }
+    this.publish();
   }
 
   setPoppedOut(v: boolean) { this.poppedOut = v; this.publish(); }

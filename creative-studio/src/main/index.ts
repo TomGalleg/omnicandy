@@ -2,6 +2,7 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { app, BrowserWindow, nativeTheme, net, protocol, session, shell } from 'electron';
 import { ASSET_SCHEME } from '@shared/ipc';
+import { PALETTES, resolveTheme } from '@shared/theme';
 import { DockedPanel, trackerScriptPath } from './dockedPanel';
 import { EmbeddedApp } from './embeddedApp';
 import { registerIpc } from './ipc';
@@ -29,7 +30,7 @@ const panel = new DockedPanel({
   preload: path.join(__dirname, '../preload/index.js'),
   icon: appIcon,
   trackerScript: trackerScriptPath(app.getAppPath()),
-  backgroundColor: nativeTheme.shouldUseDarkColors ? '#15171c' : '#ffffff',
+  backgroundColor: PALETTES.artcraft.surface,
   load: async (win) => {
     win.webContents.on('will-navigate', (e, url) => { if (!isAppUrl(url)) e.preventDefault(); });
     win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
@@ -57,7 +58,7 @@ const isAppUrl = (url: string) =>
 
 async function createWindow() {
   const appearance = await settings.load();
-  nativeTheme.themeSource = appearance.mode;
+  nativeTheme.themeSource = appearance.mode === 'system' ? 'system' : appearance.mode === 'light' ? 'light' : 'dark';
   mainWindow = new BrowserWindow({
     width: 1600,
     height: 980,
@@ -66,7 +67,7 @@ async function createWindow() {
     show: false,
     title: 'CreateCraft',
     icon: appIcon(),
-    backgroundColor: nativeTheme.shouldUseDarkColors ? '#0f1115' : '#f4f5f7',
+    backgroundColor: PALETTES[resolveTheme(appearance, nativeTheme.shouldUseDarkColors)].bg,
     autoHideMenuBar: true,
     webPreferences: {
       preload: path.join(__dirname, '../preload/index.js'),
@@ -115,7 +116,7 @@ app.whenReady().then(async () => {
     window: () => mainWindow,
     isTrustedSender: (e) => !!e.senderFrame && isAppUrl(e.senderFrame.url),
     settings,
-    onAppearanceChanged: (s) => { nativeTheme.themeSource = s.mode; },
+    onAppearanceChanged: (s) => { nativeTheme.themeSource = s.mode === 'system' ? 'system' : s.mode === 'light' ? 'light' : 'dark'; },
     project,
     secretsDir: path.join(app.getPath('userData'), 'secrets'),
     panel: {

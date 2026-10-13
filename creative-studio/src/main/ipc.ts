@@ -2,9 +2,10 @@
 
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { BrowserWindow, dialog, ipcMain, shell, type IpcMainInvokeEvent } from 'electron';
+import { BrowserWindow, dialog, ipcMain, nativeTheme, shell, type IpcMainInvokeEvent } from 'electron';
 import { z } from 'zod';
 import { IPC, type ImportResult, type IntegrationSnapshot } from '@shared/ipc';
+import { resolveTheme } from '@shared/theme';
 import type { AppearanceSettings } from '@shared/types';
 import { MockArtCraftAdapter, MockGenerationProvider } from '@shared/mocks';
 import { validateGraph } from '@shared/workflow';
@@ -72,8 +73,17 @@ export function registerIpc(d: IpcDeps): void {
   handle(IPC.setAppearance, z.tuple([z.unknown()]), async (raw) => {
     const s = await d.settings.save(raw);
     d.onAppearanceChanged(s);
+    void syncAppTheme();
     return s;
   });
+  /** Matches the open ArtCraft app to CreateCraft's current look (if the user allows it). */
+  const syncAppTheme = async () => {
+    if (!livePromise) return;
+    const s = await d.settings.load();
+    if (!s.syncApps) return;
+    await (await live()).applyAppTheme(resolveTheme(s, nativeTheme.shouldUseDarkColors));
+  };
+  nativeTheme.on('updated', () => { void syncAppTheme(); });
 
   handle(IPC.loadProject, none, async () => (await d.project()).loadManifest());
 
@@ -201,6 +211,7 @@ export function registerIpc(d: IpcDeps): void {
   const openLive = async (id: string) => {
     const ctl = await live();
     const s = await ctl.open(id);
+    await syncAppTheme();
     const pid = await currentPid();
     if (pid) {
       d.embedded.attach(pid);

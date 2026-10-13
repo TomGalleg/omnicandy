@@ -34,6 +34,8 @@ export interface LiveDoc {
   screenshot?(maxSide: number): Promise<Buffer | null>;
   /** PNG of the document itself (flattened render), for Claude to look at. */
   preview?(maxSide: number): Promise<Buffer | null>;
+  /** Sets the app's own interface theme through its official control; returns the value now in effect. */
+  applyTheme?(value: string): Promise<string | null>;
 }
 
 export function versionOf(history: string[]): string {
@@ -172,6 +174,13 @@ export class LivePhotoCraft implements LiveDoc {
 
   quickEditSteps(opId: string, values: EditValues): AppOperation[] {
     return [photocraftCommand(opId, values)];
+  }
+
+  async applyTheme(value: string): Promise<string | null> {
+    await this.client().callTool('ui_set', { fields: { theme: value } });
+    const ui = await this.client().callTool('ui_inspect', {});
+    const m = /"theme"\s*:\s*"(\w+)"/.exec(typeof ui === 'string' ? ui : JSON.stringify(ui));
+    return m?.[1] ?? null;
   }
 
   async preview(maxSide: number): Promise<Buffer | null> {

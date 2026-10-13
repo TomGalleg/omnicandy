@@ -9,51 +9,9 @@
   --accent-text: #4f7cff;
 }
 
-:root[data-theme='dark'] {
-  color-scheme: dark;
-  --bg: #0f1115;
-  --surface: #15171c;
-  --surface-2: #1b1e25;
-  --surface-3: #232731;
-  --border: #2a2e38;
-  --border-strong: #3a3f4c;
-  --text: #e8eaef;
-  --text-2: #a9afbd;
-  --text-3: #7d8494;
-  --mock: #e0a33a;
-  --mock-bg: #3a2c12;
-  --ok: #3ccf7a;
-  --ok-bg: #12301f;
-  --warn: #f0b33f;
-  --danger: #ff6b6b;
-  --danger-bg: #3a1618;
-  --checker-a: #1c1f26;
-  --checker-b: #22262f;
-  --shadow: 0 8px 24px rgb(0 0 0 / 0.45);
-}
-
-:root[data-theme='light'] {
-  color-scheme: light;
-  --bg: #eef0f3;
-  --surface: #ffffff;
-  --surface-2: #f6f7f9;
-  --surface-3: #eceef2;
-  --border: #dde0e6;
-  --border-strong: #c4c9d3;
-  --text: #171a21;
-  --text-2: #4c5463;
-  --text-3: #6b7383;
-  --mock: #8a5a00;
-  --mock-bg: #fff1d6;
-  --ok: #157a43;
-  --ok-bg: #ddf5e7;
-  --warn: #8a5a00;
-  --danger: #b42318;
-  --danger-bg: #fde4e1;
-  --checker-a: #f1f2f5;
-  --checker-b: #e6e8ed;
-  --shadow: 0 8px 24px rgb(20 24 33 / 0.14);
-}
+/* Palette tokens (--bg, --surface, --text, …) are set on :root by useAppearance from
+   src/shared/theme.ts (ArtCraft Match / Studio Dark / Light). First-paint fallback: */
+:root { --bg: #282828; --surface: #535353; --text: #f0f0f0; color-scheme: dark; }
 
 * { box-sizing: border-box; }
 html, body, #root { height: 100%; margin: 0; }
@@ -345,3 +303,36 @@ h1, h2, h3 { margin: 0; font-weight: 600; }
 .claude-cost { padding: 0 10px 8px; }
 
 .claude-row input { flex: 1; min-width: 0; height: 28px; padding: 0 8px; background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-sm); }
+
+/* ---------- Appearance menu ---------- */
+.appearance { position: relative; }
+.appearance-menu { position: absolute; right: 0; top: 34px; width: 340px; z-index: 50; box-shadow: var(--shadow); max-height: calc(100vh - 80px); overflow: auto; }
+.menu-label { font-size: 11px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: var(--text-3); }
+.theme-options { display: grid; gap: 4px; }
+.theme-option { display: flex; gap: 10px; align-items: center; text-align: left; padding: 6px 8px; border-radius: var(--radius-sm); border: 1px solid transparent; background: transparent; cursor: pointer; }
+.theme-option:hover { background: var(--surface-2); }
+.theme-option.active { border-color: var(--accent); background: var(--surface-2); }
+.theme-option span:last-child { display: grid; }
+.theme-option small { color: var(--text-3); font-size: 11px; }
+.theme-swatch { width: 30px; height: 22px; border-radius: 5px; flex-shrink: 0; border: 1px solid var(--border-strong); }
+.swatch-artcraft { background: linear-gradient(90deg, #535353 50%, #282828 50%); }
+.swatch-studioDark { background: linear-gradient(90deg, #15171c 50%, #0f1115 50%); }
+.swatch-light { background: linear-gradient(90deg, #f6f6f8 50%, #e2e2e6 50%); }
+.swatch-system { background: linear-gradient(135deg, #535353 50%, #f6f6f8 50%); }
+.menu-row { display: flex; align-items: center; gap: 8px; justify-content: space-between; font-size: 12px; color: var(--text-2); }
+.menu-row.check { justify-content: flex-start; }
+.menu-row select { height: 26px; background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-sm); }
+.accent-row { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.accent-dot { width: 22px; height: 22px; border-radius: 50%; cursor: pointer; border: 2px solid transparent; }
+.accent-custom { display: flex; align-items: center; gap: 4px; font-size: 12px; }
+.accent-custom input { width: 28px; height: 24px; padding: 0; border: 0; background: none; }
+.sync-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.sync-list li { display: grid; grid-template-columns: 10px 90px 1fr; gap: 6px; align-items: baseline; font-size: 12px; }
+.sync-list small { color: var(--text-3); }
+.sync-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-3); }
+.sync-dot.auto { background: var(--ok); }
+.sync-dot.later { background: var(--warn); }
+
+/* ---------- Embedded editor surroundings: blend into the app ---------- */
+.edit-stage { background: var(--editor-bg); }
+.edit-bar { border-bottom-color: var(--border); }

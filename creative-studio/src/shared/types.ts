@@ -49,11 +49,19 @@ export interface ProjectSummary {
   assetCount: number;
 }
 
-export type ThemeMode = 'dark' | 'light' | 'system';
+/** artcraft = ArtCraft Match (charcoal, matches PhotoCraft); studioDark = original near-black; system follows Windows. */
+export type ThemeMode = 'artcraft' | 'studioDark' | 'light' | 'system';
+/** A concrete look after resolving System. */
+export type ThemePalette = 'artcraft' | 'studioDark' | 'light';
 
 export interface AppearanceSettings {
+  version: 2;
   mode: ThemeMode;
   accent: string;
+  /** The dark look System uses when Windows is dark. */
+  systemDark: 'artcraft' | 'studioDark';
+  /** Switch the open ArtCraft app's theme to match (official app settings only). */
+  syncApps: boolean;
 }
 
 export type WorkspaceId = 'media' | 'edit' | 'generate' | 'workflow' | 'effects' | 'color' | 'audio' | 'deliver';

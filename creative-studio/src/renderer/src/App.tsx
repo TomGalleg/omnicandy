@@ -68,6 +68,7 @@ export function App() {
         integrations={integrations}
         appearance={appearance}
         claudeOpen={claudeOpen}
+        appTheme={liveApi.live?.appTheme ?? null}
         onToggleClaude={() => setClaudeOpen((o) => !o)}
       />
       {error && <div className="notice" role="alert">Could not load project: {error}</div>}

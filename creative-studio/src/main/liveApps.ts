@@ -108,6 +108,11 @@ export class LiveVectorCraft extends LiveAppBase {
     return ['Open', ...(Array.isArray(r?.history) ? r.history.map(String) : [])];
   }
   async undo() { await this.client().callTool('undo', {}); }
+  async applyTheme(value: string): Promise<string | null> {
+    await this.client().callTool('run_command', { command: 'prefs.set', params: { key: 'uiBrightness', value } });
+    const r = await this.client().callTool('run_command', { command: 'prefs.get', params: { key: 'uiBrightness' } });
+    return typeof r === 'string' ? r : String(r ?? '');
+  }
   quickEditSteps(opId: string, values: EditValues): AppOperation[] {
     return vectorcraftSteps(opId, values).map((s) => ({ command: s.cmd, params: s.params ?? {} }));
   }
@@ -163,6 +168,12 @@ export class LiveSoundCraft extends LiveAppBase {
     this.applied.push(op.command);
   }
   async history() { return [...this.applied]; }
+  async applyTheme(value: string): Promise<string | null> {
+    await this.client().callTool('ui_set', { state: { theme: value } });
+    const ui = await this.client().callTool('ui_inspect', {});
+    const m = /"theme"\s*:\s*"(\w+)"/.exec(typeof ui === 'string' ? ui : JSON.stringify(ui));
+    return m?.[1] ?? null;
+  }
   async undo() {
     await this.client().callTool('execute', { command: 'edit.undo', params: {} });
     if (this.applied.length > 1) this.applied.pop();
