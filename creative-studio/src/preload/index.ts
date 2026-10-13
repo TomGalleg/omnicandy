@@ -2,6 +2,7 @@
 
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron';
 import { ASSET_SCHEME, IPC, type StudioApi } from '@shared/ipc';
+import type { LiveSnapshot } from '@shared/live';
 import type { WorkflowRunEvent } from '@shared/workflow';
 
 const api: StudioApi = {
@@ -22,6 +23,24 @@ const api: StudioApi = {
   },
   listExports: () => ipcRenderer.invoke(IPC.listExports),
   revealExport: (name) => ipcRenderer.invoke(IPC.revealExport, name),
+  live: {
+    state: () => ipcRenderer.invoke(IPC.liveState),
+    open: (assetId) => ipcRenderer.invoke(IPC.liveOpen, assetId),
+    run: (steps) => ipcRenderer.invoke(IPC.liveRun, steps),
+    pause: () => ipcRenderer.invoke(IPC.livePause),
+    takeControl: () => ipcRenderer.invoke(IPC.liveTakeControl),
+    releaseControl: () => ipcRenderer.invoke(IPC.liveRelease),
+    resume: () => ipcRenderer.invoke(IPC.liveResume),
+    confirmReplan: () => ipcRenderer.invoke(IPC.liveConfirm),
+    cancel: () => ipcRenderer.invoke(IPC.liveCancel),
+    saveVersion: () => ipcRenderer.invoke(IPC.liveSave),
+    refresh: () => ipcRenderer.invoke(IPC.liveRefresh),
+    onChange: (cb) => {
+      const listener = (_e: IpcRendererEvent, s: LiveSnapshot) => cb(s);
+      ipcRenderer.on(IPC.liveEvent, listener);
+      return () => ipcRenderer.removeListener(IPC.liveEvent, listener);
+    },
+  },
   probeApps: () => ipcRenderer.invoke(IPC.probeApps),
   integrationStatus: () => ipcRenderer.invoke(IPC.integrationStatus),
   assetUrl: (assetId) => `${ASSET_SCHEME}://asset/${encodeURIComponent(assetId)}`,

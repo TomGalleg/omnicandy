@@ -1,0 +1,175 @@
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import type { AppOperation } from '@shared/contracts';
+import type { LiveSnapshot } from '@shared/live';
+import { LiveTaskController } from './liveTask';
+import type { LiveDoc } from './photocraftLive';
+import { ProjectStore } from './projectStore';
+
+const FIXTURES = path.resolve(__dirname, '../../fixtures/sample-project');
+
+/** Fake app document: history grows with each op; `userEdit` simulates someone editing in the app window. */
+class FakeDoc implements LiveDoc {
+  hist = ['Open'];
+  ran: string[] = [];
+  gate: Promise<void> | null = null;
+  async open() { this.hist = ['Open']; return { name: 'x' }; }
+  async run(op: AppOperation) {
+    if (op.command === 'filter.blur.boom') throw new Error('engine exploded');
+    if (this.gate) await this.gate;
+    this.ran.push(op.command);
+    this.hist.push(op.command);
+  }
+  async history() { return [...this.hist]; }
+  userEdit(name = 'Brush Tool') { this.hist.push(name); }
+  async saveNative(p: string) { await fs.writeFile(p, `pcraft:${this.hist.join(',')}`); }
+  async exportPng(p: string) { await fs.writeFile(p, Buffer.concat([await fs.readFile(path.join(FIXTURES, 'photocraft-smoke.png')), Buffer.from(this.hist.join(','))])); }
+}
+
+const until = async (c: LiveTaskController, pred: (s: LiveSnapshot) => boolean, ms = 3000) => {
+  const end = Date.now() + ms;
+  while (Date.now() < end) { if (pred(c.snapshot())) return c.snapshot(); await new Promise((r) => setTimeout(r, 5)); }
+  throw new Error(`timeout; last: ${JSON.stringify(c.snapshot().collab)} ${c.snapshot().message}`);
+};
+
+let tmp: string;
+let store: ProjectStore;
+let doc: FakeDoc;
+let ctl: LiveTaskController;
+let assetId: string;
+const STEPS = [
+  { command: 'image.adjustments.invert', params: {} },
+  { command: 'filter.blur.gaussianBlur', params: { radius: 2 } },
+  { command: 'image.autoTone', params: {} },
+];
+
+beforeEach(async () => {
+  tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'cs-live-'));
+  store = new ProjectStore(path.join(tmp, 'p'));
+  await store.create('t');
+  assetId = (await store.importFile(path.join(FIXTURES, 'photocraft-smoke.png'))).asset.id;
+  doc = new FakeDoc();
+  ctl = new LiveTaskController({
+    connect: async () => doc, store, emit: () => {}, stepDelayMs: 30,
+    writeDir: async () => { const d = path.join(store.root, 'work', 'live'); await fs.mkdir(d, { recursive: true }); return d; },
+  });
+  await ctl.open(assetId);
+});
+afterEach(async () => {
+  const walk = async (d: string): Promise<void> => {
+    for (const e of await fs.readdir(d, { withFileTypes: true }).catch(() => [])) {
+      const p = path.join(d, e.name);
+      if (e.isDirectory()) await walk(p); else await fs.chmod(p, 0o666).catch(() => {});
+    }
+  };
+  await walk(tmp);
+  await fs.rm(tmp, { recursive: true, force: true });
+});
+
+describe('LiveTaskController', () => {
+  it('runs all steps in order and completes', async () => {
+    await ctl.run(STEPS);
+    const s = await until(ctl, (x) => x.collab.phase === 'completed');
+    expect(doc.ran).toEqual(STEPS.map((x) => x.command));
+    expect(s.stepIndex).toBe(3);
+    expect(s.collab.lockOwner).toBeNull();
+  });
+
+  it('refuses disallowed steps before touching the app', async () => {
+    await expect(ctl.run([{ command: 'file.saveAs', params: {} }])).rejects.toThrow(/allowed list/);
+    expect(doc.ran).toEqual([]);
+  });
+
+  it('pause lands at the boundary after the current step', async () => {
+    let release!: () => void;
+    doc.gate = new Promise((r) => { release = r; });
+    await ctl.run(STEPS);
+    await until(ctl, (x) => !!x.collab.activeOperation);
+    ctl.pause();
+    expect(ctl.snapshot().collab.phase).toBe('pausing');
+    release();
+    const s = await until(ctl, (x) => x.collab.phase === 'paused');
+    expect(doc.ran).toEqual(['image.adjustments.invert']); // finished the active step, started no other
+    expect(s.stepIndex).toBe(1);
+    doc.gate = null;
+    await ctl.resume();
+    await until(ctl, (x) => x.collab.phase === 'completed');
+    expect(doc.ran).toHaveLength(3);
+  });
+
+  it('take control blocks automation; manual edits force a confirmed replan before continuing', async () => {
+    let release!: () => void;
+    doc.gate = new Promise((r) => { release = r; });
+    await ctl.run(STEPS);
+    await until(ctl, (x) => !!x.collab.activeOperation);
+    ctl.takeControl();
+    release();
+    await until(ctl, (x) => x.collab.phase === 'manual');
+    doc.gate = null;
+    expect(ctl.snapshot().collab.lockOwner).toBe('user');
+    await expect(ctl.run(STEPS)).rejects.toThrow(/already in progress/);
+
+    doc.userEdit('Brush Tool');
+    ctl.releaseControl();
+    const s = await ctl.resume();
+    expect(s.collab.phase).toBe('planning');
+    expect(s.needsReplanConfirm).toBe(true);
+    expect(s.message).toContain('Brush Tool');
+    await new Promise((r) => setTimeout(r, 80));
+    expect(doc.ran).toHaveLength(1); // nothing ran without the go-ahead
+
+    await ctl.confirmReplan();
+    await until(ctl, (x) => x.collab.phase === 'completed');
+    expect(doc.hist).toEqual(['Open', 'image.adjustments.invert', 'Brush Tool', 'filter.blur.gaussianBlur', 'image.autoTone']);
+  });
+
+  it('resuming after take-control without edits continues directly', async () => {
+    await ctl.run(STEPS);
+    await until(ctl, (x) => x.stepIndex === 1 && !x.collab.activeOperation);
+    ctl.takeControl();
+    ctl.releaseControl();
+    expect((await ctl.resume()).collab.phase).toBe('running');
+    await until(ctl, (x) => x.collab.phase === 'completed');
+  });
+
+  it('detects edits made in the app while automation is between steps and pauses instead of editing on top', async () => {
+    await ctl.run(STEPS);
+    await until(ctl, (x) => x.stepIndex === 1 && !x.collab.activeOperation);
+    doc.userEdit('Eraser');
+    const s = await until(ctl, (x) => x.collab.phase === 'paused');
+    expect(s.message).toMatch(/change automation did not make/);
+    expect(doc.ran).toEqual(['image.adjustments.invert']);
+  });
+
+  it('a failing step fails the task and releases the lock', async () => {
+    await ctl.run([{ command: 'image.adjustments.invert', params: {} }, { command: 'filter.blur.boom', params: {} }]);
+    const s = await until(ctl, (x) => x.collab.phase === 'failed');
+    expect(s.message).toMatch(/engine exploded/);
+    expect(s.collab.lockOwner).toBeNull();
+  });
+
+  it('saves the live document as new read-only versions with lineage, never touching the opened asset', async () => {
+    await ctl.run(STEPS.slice(0, 1));
+    await until(ctl, (x) => x.collab.phase === 'completed');
+    const s1 = await ctl.saveVersion();
+    expect(s1.savedVersionIds).toHaveLength(2);
+    const m = await store.loadManifest();
+    const pc = m.assets.find((a) => a.id === s1.savedVersionIds[0])!;
+    expect(pc).toMatchObject({ sourceFormat: 'pcraft', parentId: assetId, name: 'photocraft-smoke-live1.pcraft' });
+    expect(pc.provenance.source).toContain('image.adjustments.invert');
+    expect(m.assets.find((a) => a.id === s1.savedVersionIds[1])).toMatchObject({ kind: 'image', parentId: pc.id });
+
+    doc.userEdit('Crop');
+    const s2 = await ctl.saveVersion();
+    const pc2 = (await store.loadManifest()).assets.find((a) => a.id === s2.savedVersionIds[2])!;
+    expect(pc2).toMatchObject({ name: 'photocraft-smoke-live2.pcraft', parentId: pc.id });
+    expect(await fs.readdir(path.join(store.root, 'work', 'live'))).toEqual([]);
+  });
+
+  it('refuses to open non-image assets', async () => {
+    const wav = (await store.importFile(path.join(FIXTURES, 'tone-a440.wav'))).asset.id;
+    await expect(ctl.open(wav)).rejects.toThrow(/can't open WAV/);
+  });
+});

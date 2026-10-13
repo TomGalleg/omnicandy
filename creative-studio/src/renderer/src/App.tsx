@@ -8,6 +8,7 @@ import { ClaudePanel } from './components/ClaudePanel';
 import { Header } from './components/Header';
 import { WorkspaceView } from './components/Workspaces';
 import { useAppearance } from './useAppearance';
+import { useLive } from './useLive';
 
 const storage = (() => { try { return window.localStorage; } catch { return undefined; } })();
 
@@ -39,6 +40,8 @@ export function App() {
       addLog('artcraft', `Detected ${r.filter((a) => a.installed).length}/${r.length} ArtCraft apps (installed, not connected).`);
     }).catch(() => {});
   }, [addLog]);
+
+  const liveApi = useLive(addLog);
 
   const selected = useMemo(() => manifest?.assets.find((a) => a.id === selectedId) ?? null, [manifest, selectedId]);
 
@@ -81,6 +84,7 @@ export function App() {
                     resolvedTheme={appearance.resolved}
                     log={addLog}
                     onProjectChanged={reloadProject}
+                    liveApi={liveApi}
                   />
                 </div>
               </Panel>
@@ -92,7 +96,7 @@ export function App() {
           </Panel>
           <Separator className="sep" />
           <Panel id="right" defaultSize="22" minSize={260} collapsible>
-            <ClaudePanel selected={selected} integrations={integrations} log={addLog} />
+            <ClaudePanel selected={selected} integrations={integrations} liveApi={liveApi} />
           </Panel>
         </Group>
       </div>

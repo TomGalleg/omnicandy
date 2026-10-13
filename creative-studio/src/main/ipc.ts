@@ -10,7 +10,9 @@ import { validateGraph } from '@shared/workflow';
 import { WorkflowRunner, type RunnerDeps } from '@shared/workflowRunner';
 import { probeAllArtCraftApps } from './artcraftProbe';
 import { IMPORTABLE_EXTENSIONS } from './media';
+import { LiveTaskController } from './liveTask';
 import { PhotoCraftCliAdapter } from './photocraftCli';
+import { LivePhotoCraft } from './photocraftLive';
 import type { ProjectStore } from './projectStore';
 import { parseWorkflow } from './schemas';
 import { NotConfiguredCredentialVault, UnavailableWindowCapture } from './services';
@@ -22,6 +24,8 @@ export interface IpcDeps {
   settings: SettingsStore;
   onAppearanceChanged: (s: AppearanceSettings) => void;
   project: () => Promise<ProjectStore>;
+  /** Private per-user directory for secrets such as control tokens. Never exposed to the renderer. */
+  secretsDir: string;
 }
 
 export function registerIpc(d: IpcDeps): void {
@@ -122,6 +126,37 @@ export function registerIpc(d: IpcDeps): void {
     r(approved);
   });
   handle(IPC.cancelWorkflow, none, () => { running?.abort.abort(); });
+
+  // ---- Live PhotoCraft (real app window, token-authenticated bridge, automation roots) ----
+  let livePromise: Promise<LiveTaskController> | null = null;
+  const live = () => (livePromise ??= (async () => {
+    const store = await d.project();
+    const writeRoot = path.join(store.root, 'work', 'live');
+    const app = new LivePhotoCraft({
+      installDir: path.join(process.env.ProgramFiles ?? 'C:\\Program Files', 'PhotoCraft'),
+      secretsDir: d.secretsDir,
+      readRoot: store.root,
+      writeRoot,
+    });
+    return new LiveTaskController({
+      connect: async () => { await app.ensureStarted(); return app; },
+      store,
+      emit: (s) => d.window()?.webContents.send(IPC.liveEvent, s),
+      writeDir: async () => writeRoot,
+    });
+  })());
+  const stepSchema = z.object({ command: z.string().min(1).max(128), params: z.record(z.string().max(64), z.unknown()) });
+  handle(IPC.liveState, none, async () => (await live()).snapshot());
+  handle(IPC.liveOpen, z.tuple([z.string().min(1).max(128)]), async (id) => (await live()).open(id));
+  handle(IPC.liveRun, z.tuple([z.array(stepSchema).min(1).max(50)]), async (steps) => (await live()).run(steps));
+  handle(IPC.livePause, none, async () => (await live()).pause());
+  handle(IPC.liveTakeControl, none, async () => (await live()).takeControl());
+  handle(IPC.liveRelease, none, async () => (await live()).releaseControl());
+  handle(IPC.liveResume, none, async () => (await live()).resume());
+  handle(IPC.liveConfirm, none, async () => (await live()).confirmReplan());
+  handle(IPC.liveCancel, none, async () => (await live()).cancel());
+  handle(IPC.liveSave, none, async () => (await live()).saveVersion());
+  handle(IPC.liveRefresh, none, async () => (await live()).refresh());
 
   handle(IPC.listExports, none, async () => (await d.project()).listExports());
   handle(IPC.revealExport, z.tuple([z.string().min(1).max(255)]), async (name) => {

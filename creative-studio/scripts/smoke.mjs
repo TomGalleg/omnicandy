@@ -47,7 +47,7 @@ try {
   check('ArtCraft detection reports installed but not connected', /ArtCraft \d+ installed · 0 live/.test(apps ?? ''), apps ?? '');
 
   await win.getByRole('button', { name: 'Edit', exact: true }).click();
-  check('Edit shows honest "not connected" live view', await win.getByText('Live view: not connected').isVisible());
+  check('Edit shows honest "not started" live state', await win.getByText('PhotoCraft live: not started').isVisible());
   await shot(win, '03-edit-not-connected');
 
   await win.getByRole('button', { name: 'Workflow' }).click();
@@ -85,13 +85,7 @@ try {
 
   await setMode(win, 'Light');
   check('light theme applied', (await win.evaluate(() => document.documentElement.dataset.theme)) === 'light');
-  await win.getByRole('button', { name: 'Plan mock task' }).click();
-  await win.locator('.claude').getByRole('button', { name: 'Run', exact: true }).click();
-  await win.waitForTimeout(500);
-  await win.getByRole('button', { name: 'Take Control' }).click();
-  await win.getByText('Manual Control').first().waitFor({ timeout: 5000 });
-  check('take control waits for op then hands lock to user', await win.getByText('Lock: user').isVisible());
-  await shot(win, '08-light-workflow-manual-control');
+  await shot(win, '08-light-workflow');
 
   await win.getByRole('button', { name: 'Media', exact: true }).click();
   await win.getByRole('option', { name: /^harbor-landscape.svg/ }).click();

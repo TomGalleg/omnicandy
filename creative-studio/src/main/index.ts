@@ -92,6 +92,7 @@ app.whenReady().then(async () => {
     settings,
     onAppearanceChanged: (s) => { nativeTheme.themeSource = s.mode; },
     project,
+    secretsDir: path.join(app.getPath('userData'), 'secrets'),
   });
 
   await createWindow();

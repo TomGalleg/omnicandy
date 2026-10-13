@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import type { IntegrationSnapshot } from '@shared/ipc';
 import type { AppProbeResult, Asset, ProjectManifest, WorkspaceId } from '@shared/types';
 import { formatBytes, formatDims } from '../format';
+import type { LiveApi } from '../useLive';
+import { LivePanel } from './LivePanel';
 import { WorkflowEditor } from './WorkflowEditor';
 
 interface Props {
@@ -13,12 +15,13 @@ interface Props {
   resolvedTheme: 'dark' | 'light';
   log: (source: string, msg: string) => void;
   onProjectChanged: () => void;
+  liveApi: LiveApi;
 }
 
 export function WorkspaceView(p: Props) {
   switch (p.workspace) {
     case 'media': return <MediaWorkspace manifest={p.manifest} asset={p.selected} />;
-    case 'edit': return <EditView asset={p.selected} apps={p.apps} integrations={p.integrations} />;
+    case 'edit': return <LivePanel selected={p.selected} liveApi={p.liveApi} onProjectChanged={p.onProjectChanged} />;
     case 'generate': return <GenerateView integrations={p.integrations} />;
     case 'workflow': return <WorkflowEditor manifest={p.manifest} integrations={p.integrations} colorMode={p.resolvedTheme} log={p.log} onProjectChanged={p.onProjectChanged} />;
     case 'effects': return <Bridge title="Effects" appId="effectcraft" apps={p.apps} what="compositions, layers, effects and keyframes" />;
@@ -67,40 +70,6 @@ function MediaPreview({ asset, label }: { asset: Asset | null; label?: string })
     <div className="viewer">
       <div className="stage-label"><span className="chip">{label ?? (asset.parentId ? 'Version · read-only' : 'Original · read-only')}</span><span className="chip">{formatDims(asset)}</span></div>
       <div className="preview-stage"><img src={window.studio.assetUrl(asset.id)} alt={asset.name} /></div>
-    </div>
-  );
-}
-
-function AppRows({ apps }: { apps: AppProbeResult[] }) {
-  return (
-    <div className="app-list">
-      {apps.map((a) => (
-        <div className="app-row" key={a.appId}>
-          <span>{a.displayName} <small>{a.version ?? ''}</small></span>
-          <span className={`chip ${a.connected ? 'ok' : a.installed ? 'warn' : 'off'}`}><span className="dot" />{a.connected ? 'Connected' : a.installed ? 'Installed · not connected' : 'Not installed'}</span>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function EditView({ asset, apps, integrations }: { asset: Asset | null; apps: AppProbeResult[]; integrations: IntegrationSnapshot | null }) {
-  return (
-    <div className="viewer">
-      <div className="stage-label"><span className="chip off"><span className="dot" />Live view: not connected</span></div>
-      <Empty title="Live app view unavailable">
-        <p>{integrations?.windowCapture.reason ?? 'Window capture not available.'}</p>
-        <p>This area will show the real PhotoCraft window (OS window capture) in a later step. It will never show a static screenshot passed off as live.</p>
-        {integrations?.appAdapters.some((a) => a.id === 'photocraft' && !a.isMock) && (
-          <p><span className="chip real"><span className="dot" />PhotoCraft headless edits: real</span><br />Use an <strong>ArtCraft Edit</strong> node in the Workflow workspace to apply PhotoCraft adjustments and filters now.</p>
-        )}
-        {asset && <p>Selected for editing: <strong>{asset.name}</strong></p>}
-        <div className="btn-row" style={{ justifyContent: 'center' }}>
-          <button className="btn" disabled title="Arrives with the PhotoCraft integration">Open in PhotoCraft</button>
-          <button className="btn" disabled title="Arrives with window capture">Pop out view</button>
-        </div>
-        <AppRows apps={apps} />
-      </Empty>
     </div>
   );
 }

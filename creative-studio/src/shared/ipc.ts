@@ -1,6 +1,7 @@
 // The complete renderer ↔ main surface. Every channel here is validated in main (src/main/ipc.ts).
 
 import type { AppearanceSettings, AppProbeResult, Asset, ProjectManifest } from './types';
+import type { LiveSnapshot } from './live';
 import type { WorkflowGraph, WorkflowRunEvent } from './workflow';
 
 export const IPC = {
@@ -17,6 +18,18 @@ export const IPC = {
   workflowEvent: 'workflow:event',
   listExports: 'exports:list',
   revealExport: 'exports:reveal',
+  liveState: 'live:state',
+  liveOpen: 'live:open',
+  liveRun: 'live:run',
+  livePause: 'live:pause',
+  liveTakeControl: 'live:take-control',
+  liveRelease: 'live:release',
+  liveResume: 'live:resume',
+  liveConfirm: 'live:confirm',
+  liveCancel: 'live:cancel',
+  liveSave: 'live:save',
+  liveRefresh: 'live:refresh',
+  liveEvent: 'live:event',
   probeApps: 'apps:probe',
   integrationStatus: 'integrations:status',
 } as const;
@@ -51,6 +64,20 @@ export interface StudioApi {
   onWorkflowEvent(cb: (e: WorkflowRunEvent) => void): () => void;
   listExports(): Promise<Array<{ name: string; bytes: number; modified: string }>>;
   revealExport(name: string): Promise<void>;
+  live: {
+    state(): Promise<LiveSnapshot>;
+    open(assetId: string): Promise<LiveSnapshot>;
+    run(steps: Array<{ command: string; params: Record<string, unknown> }>): Promise<LiveSnapshot>;
+    pause(): Promise<LiveSnapshot>;
+    takeControl(): Promise<LiveSnapshot>;
+    releaseControl(): Promise<LiveSnapshot>;
+    resume(): Promise<LiveSnapshot>;
+    confirmReplan(): Promise<LiveSnapshot>;
+    cancel(): Promise<LiveSnapshot>;
+    saveVersion(): Promise<LiveSnapshot>;
+    refresh(): Promise<LiveSnapshot>;
+    onChange(cb: (s: LiveSnapshot) => void): () => void;
+  };
   probeApps(): Promise<AppProbeResult[]>;
   integrationStatus(): Promise<IntegrationSnapshot>;
   /** URL the renderer can use in <img src>, served read-only by main from the project root. */

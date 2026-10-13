@@ -69,6 +69,8 @@ describe('collaboration state machine', () => {
     expect(failed).toMatchObject({ phase: 'failed', lockOwner: null, activeOperation: null });
     expect(collabReducer(failed, { type: 'start' }).ok).toBe(false);
     expect(collabReducer(failed, { type: 'plan' }).ok).toBe(true);
+    // You can still grab the lock to work by hand after a task ends.
+    expect(collabReducer(failed, { type: 'takeControl' }).state).toMatchObject({ phase: 'manual', lockOwner: 'user' });
   });
 
   it('controller wrapper throws on illegal transitions', async () => {

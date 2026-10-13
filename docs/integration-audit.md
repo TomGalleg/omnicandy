@@ -90,7 +90,7 @@ and others.
 None configured, and no keys requested. All providers are **untested**. Midjourney is limited to
 folder import (spec rule).
 
-## Integration truth table (updated 2026-10-13, Phase 2 step 1)
+## Integration truth table (updated 2026-10-13, Phase 2 steps 1–2)
 
 | Capability | Status | Evidence / note |
 |---|---|---|
@@ -98,7 +98,8 @@ folder import (spec rule).
 | PhotoCraft headless edit → .pcraft + .png versions | **Real, verified in app** | `PhotoCraftCliAdapter` (`src/main/photocraftCli.ts`); integration tests against the installed CLI plus a GUI smoke run |
 | Workflow Export node | **Real** (when PhotoCraft is installed) | `photocraft-cli convert` into `<project>/exports/`; never overwrites earlier exports |
 | MCP handshake, 7 apps | **Real, verified** (audit only) | Probe step 2; app does not yet hold MCP sessions |
-| Live GUI control via `--control` bridge | **Untested** | Phase 2 |
+| Live GUI control via `--control` bridge | **Real, verified** | `photocraft.exe --control <port>` + `PHOTOCRAFT_CONTROL_TOKEN_FILE` + `PHOTOCRAFT_AUTOMATION_READ_ROOT/WRITE_ROOT` (env vars found in the binary); `photocraft-cli mcp --bridge`. Verified: wrong token → "authentication required"; paths outside roots → "automation path rejected"; open/command/inspect/save/export/ui_screenshot work. Bridge-mode `doc_export` takes the format from the extension only |
+| Edit lock / pause / take control / resync on live doc | **Real, verified** | `src/main/liveTask.ts`; unit tests + live integration tests + GUI live smoke (5/5) |
 | Live window capture | **Untested** | `WindowCapture` interface only; UI shows "not connected" |
 | Workflow "ArtCraft Edit" node in the app | **Real** (headless PhotoCraft) | Falls back to a labelled MOCK only if photocraft-cli.exe is missing; commands limited to an allowlist (adjustments, filters, rotations, fill) |
 | AI Generate node | **Mocked** | `MockGenerationProvider`; never calls the network |

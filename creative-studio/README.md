@@ -4,7 +4,7 @@ Creative Studio is a Windows-first desktop app for creative editing. Claude acts
 Partner that coordinates the ArtCraft apps (PhotoCraft, VectorCraft, LightCraft, EffectCraft,
 DesignCraft, SoundCraft, FilmCraft) and optional BYOK generation providers.
 
-**Status: Phase 2, step 1.** The UI, data model, contracts and safety state machines are real and
+**Status: Phase 2, steps 1–2.** The UI, data model, contracts and safety state machines are real and
 tested. **PhotoCraft edits run for real** (headless, through the installed `photocraft-cli`) from
 workflow ArtCraft Edit nodes, and Export nodes write real files. Live control of the open PhotoCraft
 window, window capture, Claude and generation providers are **not connected yet**. The app says so wherever they would appear. See [`../docs/integration-audit.md`](../docs/integration-audit.md)
@@ -38,6 +38,8 @@ npm run dev
 | `npm run lint` / `npm run typecheck` | ESLint / tsc for main+preload and renderer |
 | `npm run check` | lint + typecheck + test |
 | `npm run smoke` | Build, then drive the real app with Playwright-Electron in an isolated profile; writes `docs/screenshots/` |
+| `npm run smoke:live` | Same, through the live PhotoCraft flow (opens a real PhotoCraft window, closes it afterwards) |
+| `CS_LIVE_TESTS=1 npx vitest run src/main/photocraftLive.test.ts` | Integration tests against the live PhotoCraft window |
 
 On first launch the app creates a sample project in `%APPDATA%\creative-studio\projects\sample-project`
 by copying `fixtures/sample-project`. Appearance settings are stored in `%APPDATA%\creative-studio\appearance.json`.
@@ -73,6 +75,15 @@ by copying `fixtures/sample-project`. Appearance settings are stored in `%APPDAT
   never modified. SVG inputs are flattened first, and chained edit nodes continue from the layered
   `.pcraft`. Commands that open, save, run scripts or reference other files are refused, as are
   path-like parameters. PhotoCraft runs with a fixed argument list and no shell.
+- **Live PhotoCraft (real).** Edit → *Open … in PhotoCraft* launches the real PhotoCraft window
+  with a random control token (a file in `%APPDATA%\creative-studio\secrets`, never sent to the UI)
+  and PhotoCraft's own automation roots: it can read only the project and write only
+  `work/live`. PhotoCraft enforces this itself; a wrong token or an outside path is refused.
+  Automation steps run one at a time, visibly, under the **edit lock**: Pause and Take Control
+  land after the current step, automation refuses to run while you hold control, and resuming
+  re-reads PhotoCraft's history. If you changed the document, the remaining steps wait for your
+  go-ahead, and edits made in PhotoCraft mid-task auto-pause the task. *Save as new version* stores
+  `.pcraft` + `.png` versions with lineage. SVGs are flattened on open.
 - **Export (real).** Export nodes convert the upstream version into `<project>/exports/`
   (PNG, JPG, WebP, TIFF, PSD or PCRAFT). Deliver lists the exports with "Show in folder".
 - **ArtCraft detection (real).** Main checks each `*-cli.exe` and reads `--version`. The header shows

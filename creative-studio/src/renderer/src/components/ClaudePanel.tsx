@@ -1,60 +1,25 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { collabReducer, initialCollabState, PHASE_LABEL, type CollabEvent, type CollabState } from '@shared/collaboration';
+import { useState } from 'react';
+import { PHASE_LABEL } from '@shared/collaboration';
 import type { IntegrationSnapshot } from '@shared/ipc';
 import type { Asset } from '@shared/types';
+import type { LiveApi } from '../useLive';
 
 interface Props {
   selected: Asset | null;
   integrations: IntegrationSnapshot | null;
-  log: (source: string, msg: string) => void;
+  liveApi: LiveApi;
 }
 
 interface Msg { role: 'user' | 'system'; text: string }
 
-const MOCK_STEPS = ['Inspect document', 'Adjust exposure', 'Retouch highlights'];
-
-
 /**
- * Creative Partner panel. Claude is not connected in this build, so the lifecycle controls drive a
- * clearly labelled MOCK task through the real collaboration state machine (no app is edited).
+ * Creative Partner panel. Claude itself is not connected yet. The task section controls the REAL
+ * automation task running in the live PhotoCraft window (pause, take control, resume after resync).
  */
-export function ClaudePanel({ selected, integrations, log }: Props) {
-  const [state, setState] = useState<CollabState>(initialCollabState);
-  const current = useRef(state);
-  const dispatch = useCallback((e: CollabEvent) => {
-    const r = collabReducer(current.current, e);
-    if (!r.ok) log('collab', `Refused ${e.type}: ${r.reason}`);
-    else if (r.state.lastMessage) log('collab', r.state.lastMessage);
-    current.current = r.state;
-    setState(r.state);
-  }, [log]);
-  const [step, setStep] = useState(0);
+export function ClaudePanel({ selected, integrations, liveApi }: Props) {
+  const { live, busy, act } = liveApi;
   const [messages, setMessages] = useState<Msg[]>([]);
   const [draft, setDraft] = useState('');
-  const version = useRef(1);
-
-  // Mock agent loop: while Running and between operations, start the next step; each takes ~1.4 s.
-  useEffect(() => {
-    if (state.phase === 'running' && !state.activeOperation) {
-      if (step >= MOCK_STEPS.length) { dispatch({ type: 'complete' }); return; }
-      const t = setTimeout(() => dispatch({ type: 'beginOperation', opId: `op-${step}` }), 300);
-      return () => clearTimeout(t);
-    }
-    if (state.activeOperation) {
-      const op = state.activeOperation;
-      const t = setTimeout(() => {
-        dispatch({ type: 'endOperation', opId: op, ok: true, version: `v${++version.current}` });
-        setStep((s) => s + 1);
-      }, 1400);
-      return () => clearTimeout(t);
-    }
-  }, [state.phase, state.activeOperation, step, dispatch]);
-
-  const startMock = () => {
-    setStep(0);
-    dispatch({ type: 'plan' });
-    dispatch({ type: 'planReady', version: `v${version.current}` });
-  };
 
   const send = () => {
     const text = draft.trim();
@@ -63,7 +28,11 @@ export function ClaudePanel({ selected, integrations, log }: Props) {
     setDraft('');
   };
 
-  const p = state.phase;
+  const p = live?.collab.phase ?? 'idle';
+  const open = live?.status === 'ready' && !!live.asset;
+  const total = live?.steps.length ?? 0;
+  const L = window.studio.live;
+
   return (
     <aside className="pane claude" aria-label="Claude Creative Partner">
       <div className="pane-header">Claude · Creative Partner <span className="chip off"><span className="dot" />{integrations?.claude.connected ? 'Connected' : 'Not connected'}</span></div>
@@ -71,32 +40,39 @@ export function ClaudePanel({ selected, integrations, log }: Props) {
       <div className="claude-section">
         <h3>Context</h3>
         <div style={{ fontSize: 12 }}>{selected ? <>Selected: <strong>{selected.name}</strong> ({selected.kind})</> : 'No asset selected'}</div>
+        {open && <div style={{ fontSize: 12 }}>Open in PhotoCraft: <strong>{live!.asset!.name}</strong></div>}
       </div>
 
       <div className="claude-section" aria-live="polite">
-        <h3>Current task <span className="badge-mock">MOCK</span></h3>
-        <div className="phase"><span className={`phase-dot ${p}`} />{PHASE_LABEL[p]}{state.activeOperation && <span className="asset-meta"> · {MOCK_STEPS[step] ?? ''}</span>}</div>
-        <div className="asset-meta">
-          Lock: {state.lockOwner ?? 'nobody'} · Doc version: {state.knownVersion ?? 'n/a'} · Step {Math.min(step, MOCK_STEPS.length)}/{MOCK_STEPS.length}
-        </div>
-        <div className="btn-row">
-          {(p === 'idle' || p === 'completed' || p === 'cancelled' || p === 'failed') && <button className="btn small" onClick={startMock}>Plan mock task</button>}
-          {p === 'ready' && <button className="btn small primary" onClick={() => dispatch({ type: 'start' })}>Run</button>}
-          {p === 'running' && <button className="btn small" onClick={() => dispatch({ type: 'requestPause' })}>Pause</button>}
-          {(p === 'running' || p === 'paused' || p === 'ready') && <button className="btn small" onClick={() => dispatch({ type: 'takeControl' })}>Take Control</button>}
-          {p === 'manual' && <button className="btn small" onClick={() => { dispatch({ type: 'userEdit' }); version.current++; log('collab', `Manual edit recorded (doc now v${version.current}).`); }}>Simulate my edit</button>}
-          {p === 'manual' && <button className="btn small" onClick={() => dispatch({ type: 'releaseControl' })}>Release control</button>}
-          {p === 'paused' && <button className="btn small primary" onClick={() => dispatch({ type: 'resume', diskVersion: `v${version.current}` })}>Resume</button>}
-          {p === 'planning' && <button className="btn small primary" onClick={() => dispatch({ type: 'planReady', version: `v${version.current}` })}>Accept new plan</button>}
-          {!['idle', 'completed', 'cancelled', 'failed', 'manual'].includes(p) && <button className="btn small danger" onClick={() => dispatch({ type: 'cancel' })}>Cancel</button>}
-        </div>
-        {state.lastMessage && <div className="asset-meta">{state.lastMessage}</div>}
+        <h3>Current task {open && <span className="chip real" style={{ height: 18 }}><span className="dot" />live PhotoCraft</span>}</h3>
+        {!open ? (
+          <div className="asset-meta">No live document. Open an image from <strong>Edit</strong> to run steps in PhotoCraft.</div>
+        ) : (
+          <>
+            <div className="phase"><span className={`phase-dot ${p}`} />{PHASE_LABEL[p]}
+              {live!.collab.activeOperation && <span className="asset-meta"> · {live!.steps[live!.stepIndex]?.label ?? ''}</span>}
+            </div>
+            <div className="asset-meta">
+              Edit lock: {live!.collab.lockOwner === 'user' ? 'you' : live!.collab.lockOwner === 'claude' ? 'automation' : 'free'}
+              {total > 0 && <> · Step {Math.min(live!.stepIndex, total)}/{total}</>}
+            </div>
+            <div className="btn-row">
+              {(p === 'running') && <button className="btn small" disabled={busy} onClick={() => void act('Pause', L.pause)}>Pause</button>}
+              {p !== 'manual' && p !== 'pausing' && <button className="btn small" disabled={busy} onClick={() => void act('Take control', L.takeControl)}>Take Control</button>}
+              {p === 'manual' && <button className="btn small primary" disabled={busy} onClick={() => void act('Hand back control', L.releaseControl)}>I'm done, hand back</button>}
+              {p === 'paused' && <button className="btn small primary" disabled={busy} onClick={() => void act('Resume', L.resume)}>Resume</button>}
+              {live!.needsReplanConfirm && <button className="btn small primary" disabled={busy} onClick={() => void act('Continue', L.confirmReplan)}>Continue on changed document</button>}
+              {['running', 'pausing', 'paused', 'planning', 'ready'].includes(p) && <button className="btn small danger" disabled={busy} onClick={() => void act('Cancel', L.cancel)}>Cancel task</button>}
+            </div>
+            {p === 'manual' && <div className="notice">You have control. Edit freely in the PhotoCraft window; automation won't touch the document until you hand it back.</div>}
+            {live!.message && <div className="asset-meta">{live!.message}</div>}
+          </>
+        )}
       </div>
 
       <div className="chat" aria-label="Conversation">
         <div className="msg system">
-          Claude is not connected. The task controls above drive a <strong>simulated</strong> task through the real
-          pause / take-control / resync state machine so it can be tested. No ArtCraft app is edited.
+          Claude is not connected yet, so chat messages are not sent anywhere. The task controls above are real: they drive the automation running in the PhotoCraft window.
         </div>
         {messages.map((m, i) => <div key={i} className={`msg ${m.role}`}>{m.text}</div>)}
       </div>

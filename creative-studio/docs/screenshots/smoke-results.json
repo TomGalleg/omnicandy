@@ -2,7 +2,7 @@
   {
     "name": "renderer has no Node globals",
     "ok": true,
-    "detail": "{\"require\":\"undefined\",\"process\":\"undefined\",\"api\":[\"answerApproval\",\"assetUrl\",\"cancelWorkflow\",\"getAppearance\",\"importAssets\",\"integrationStatus\",\"listExports\",\"loadProject\",\"loadWorkflow\",\"onWorkflowEvent\",\"probeApps\",\"revealExport\",\"runWorkflow\",\"saveWorkflow\",\"setAppearance\",\"setAssetRating\"]}"
+    "detail": "{\"require\":\"undefined\",\"process\":\"undefined\",\"api\":[\"answerApproval\",\"assetUrl\",\"cancelWorkflow\",\"getAppearance\",\"importAssets\",\"integrationStatus\",\"listExports\",\"live\",\"loadProject\",\"loadWorkflow\",\"onWorkflowEvent\",\"probeApps\",\"revealExport\",\"runWorkflow\",\"saveWorkflow\",\"setAppearance\",\"setAssetRating\"]}"
   },
   {
     "name": "dark theme applied",
@@ -25,7 +25,7 @@
     "detail": "ArtCraft 7 installed · 0 live"
   },
   {
-    "name": "Edit shows honest \"not connected\" live view",
+    "name": "Edit shows honest \"not started\" live state",
     "ok": true,
     "detail": ""
   },
@@ -61,11 +61,6 @@
   },
   {
     "name": "light theme applied",
-    "ok": true,
-    "detail": ""
-  },
-  {
-    "name": "take control waits for op then hands lock to user",
     "ok": true,
     "detail": ""
   },

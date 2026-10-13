@@ -14,7 +14,7 @@ export default tseslint.config(
   },
   {
     // Playwright evaluate() callbacks run in the page.
-    files: ['scripts/smoke.mjs'],
+    files: ['scripts/smoke*.mjs'],
     languageOptions: { globals: { ...globals.node, ...globals.browser } },
   },
   {

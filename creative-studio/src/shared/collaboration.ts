@@ -47,6 +47,8 @@ export type CollabEvent =
   | { type: 'userEdit' }
   | { type: 'releaseControl' }
   | { type: 'resume'; diskVersion: string }
+  /** Record a version change Claude caused outside an operation (e.g. saving). */
+  | { type: 'syncVersion'; version: string }
   | { type: 'requestApproval' }
   | { type: 'approve' }
   | { type: 'reject' }
@@ -88,7 +90,8 @@ export function collabReducer(s: CollabState, e: CollabEvent): CollabResult {
   });
   const no = (reason: string): CollabResult => ({ ok: false, state: s, reason });
 
-  if (TERMINAL.includes(s.phase) && e.type !== 'plan') return no(`Task is ${s.phase}; start a new plan.`);
+  // Finished tasks accept only a new plan, or you grabbing the edit lock to work by hand.
+  if (TERMINAL.includes(s.phase) && e.type !== 'plan' && e.type !== 'takeControl') return no(`Task is ${s.phase}; start a new plan.`);
 
   switch (e.type) {
     case 'plan':
@@ -139,6 +142,9 @@ export function collabReducer(s: CollabState, e: CollabEvent): CollabResult {
         return ok({ phase: 'planning', needsSync: false, knownVersion: e.diskVersion }, 'Document changed on disk; replanning.');
       }
       return ok({ phase: 'running', lockOwner: 'claude', needsSync: false }, 'Resumed.');
+    case 'syncVersion':
+      if (s.activeOperation || s.needsSync || s.phase === 'manual') return no('Cannot sync while an operation or manual edit is pending.');
+      return { ok: true, state: { ...s, knownVersion: e.version } };
     case 'requestApproval':
       if (s.phase !== 'running' || s.activeOperation) return no('Approval can be requested between operations only.');
       return ok({ phase: 'awaiting_approval' });
