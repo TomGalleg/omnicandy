@@ -85,9 +85,10 @@ try {
   const pcPid = await waitPid('photocraft.exe');
   const pcProbe = await embeddedCheck('PhotoCraft', pcPid);
 
-  await win.locator('.tool-btn', { hasText: 'Black & white' }).click();
-  await win.getByText('Black & white applied in PhotoCraft', { exact: false }).first().waitFor({ timeout: 20000 });
-  check('quick edit applied live in PhotoCraft', true);
+  check('Claude panel starts minimized', !(await win.locator('.claude').isVisible()));
+  check('no edit list beside the app (you edit in the app itself)', (await win.locator('.edit-tools').count()) === 0);
+  await win.evaluate(() => window.studio.live.quickEdit('blackWhite', {}));
+  check('an edit in PhotoCraft shows up (history updated)', /Black/i.test(JSON.stringify((await win.evaluate(() => window.studio.live.state())).history)));
   await desktopShot('20-edit-photocraft-embedded');
   await win.getByRole('button', { name: 'Undo', exact: true }).click();
   await win.getByText('Undone.').first().waitFor({ timeout: 15000 });
@@ -110,8 +111,7 @@ try {
   await sleep(1500);
   check('"Put back in CreateCraft" returns it to the Edit area', near(await toDip(pcProbe.state()), await stageRect()) && !app.windows().some((p) => p.url().endsWith('#panel')));
 
-  await win.locator('.tool-btn', { hasText: 'Black & white' }).click();
-  await win.getByText('Black & white applied in PhotoCraft', { exact: false }).first().waitFor({ timeout: 20000 });
+  await win.evaluate(() => window.studio.live.quickEdit('blackWhite', {}));
   let before = (await win.evaluate(() => window.studio.loadProject())).assets.length;
   await win.getByRole('button', { name: 'Save as new version' }).click();
   await win.getByText(/Saved photocraft-smoke-live1\.pcraft/).first().waitFor({ timeout: 30000 });
@@ -125,10 +125,8 @@ try {
   await embeddedCheck('VectorCraft', vcPid);
   const pcAfter = pcProbe.state();
   check('PhotoCraft steps aside (minimized) when another file opens', pcAfter?.minimized === true || pcAfter?.visible === false, JSON.stringify(pcAfter));
-  await win.locator('.tool-btn', { hasText: 'Rotate artwork' }).click();
-  await win.locator('.tool-params button', { hasText: 'Apply' }).click();
-  await win.getByText('Rotate artwork applied in VectorCraft', { exact: false }).first().waitFor({ timeout: 20000 });
-  check('quick edit applied live in VectorCraft', true);
+  await win.evaluate(() => window.studio.live.quickEdit('rotate', { angle: 15 }));
+  check('an edit in VectorCraft shows up', (await win.evaluate(() => window.studio.live.state())).history.length > 1);
   await desktopShot('21-edit-vectorcraft-embedded');
   before = (await win.evaluate(() => window.studio.loadProject())).assets.length;
   await win.getByRole('button', { name: 'Save as new version' }).click();
@@ -142,16 +140,22 @@ try {
   check('SoundCraft opened automatically for the WAV', true);
   const scPid = await waitPid('soundcraft.exe');
   await embeddedCheck('SoundCraft', scPid);
-  await win.locator('.tool-btn', { hasText: 'Fade in / out' }).click();
-  await win.locator('.tool-params button', { hasText: 'Apply' }).click();
-  await win.getByText('Fade in / out applied in SoundCraft', { exact: false }).first().waitFor({ timeout: 20000 });
-  check('quick edit applied live in SoundCraft', true);
+  await win.evaluate(() => window.studio.live.quickEdit('fades', {}));
+  check('an edit in SoundCraft shows up', (await win.evaluate(() => window.studio.live.state())).history.length > 1);
   await desktopShot('22-edit-soundcraft-embedded');
   before = (await win.evaluate(() => window.studio.loadProject())).assets.length;
   await win.getByRole('button', { name: 'Save as new version' }).click();
   await win.getByText(/Saved tone-a440-live1\.wav/).first().waitFor({ timeout: 40000 });
   const wav = (await win.evaluate(() => window.studio.loadProject())).assets.find((a) => a.name === 'tone-a440-live1.wav');
   check('Save as new version (SoundCraft) adds the mixed .wav', !!wav && Math.abs((wav.durationSec ?? 0) - 2) < 0.1, wav ? `${wav.durationSec}s` : 'missing');
+
+  // ---- Claude panel toggles from the header ----
+  await win.locator('.header-status .chip-btn', { hasText: 'Claude' }).click();
+  await win.locator('.claude').waitFor({ timeout: 5000 });
+  await sleep(800);
+  const scP = probes[probes.length - 1].state();
+  check('Claude button opens the panel and the app shrinks to fit', scP?.found && near(await toDip(scP), await stageRect()), JSON.stringify(await toDip(scP)));
+  await win.locator('.header-status .chip-btn', { hasText: 'Claude' }).click();
 
   // ---- leaving the Edit tab hides the app ----
   const scProbe = probes[probes.length - 1];

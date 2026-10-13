@@ -23,9 +23,11 @@ interface Props {
   apps: AppProbeResult[];
   integrations: IntegrationSnapshot | null;
   appearance: ReturnType<typeof useAppearance>;
+  claudeOpen: boolean;
+  onToggleClaude: () => void;
 }
 
-export function Header({ projectName, workspace, onWorkspace, apps, integrations, appearance }: Props) {
+export function Header({ projectName, workspace, onWorkspace, apps, integrations, appearance, claudeOpen, onToggleClaude }: Props) {
   const installed = apps.filter((a) => a.installed).length;
   const connected = apps.filter((a) => a.connected).length;
   return (
@@ -46,7 +48,10 @@ export function Header({ projectName, workspace, onWorkspace, apps, integrations
         {integrations?.appAdapters.some((a) => a.id === 'photocraft' && !a.isMock) && (
           <span className="chip real" title="Workflow ArtCraft Edit nodes run the installed photocraft-cli for real (headless). Live window control is not connected yet."><span className="dot" /><span>PhotoCraft<span className="chip-extra">: headless edits</span></span></span>
         )}
-        <span className="chip off" title={integrations?.claude.reason}><span className="dot" /><span>Claude<span className="chip-extra">: not connected</span></span></span>
+        <button className={`chip chip-btn ${claudeOpen ? 'on' : 'off'}`} aria-pressed={claudeOpen} onClick={onToggleClaude}
+          title={`${claudeOpen ? 'Hide' : 'Show'} the Claude panel. ${integrations?.claude.reason ?? ''}`}>
+          <span className="dot" /><span>Claude<span className="chip-extra">{claudeOpen ? ' · hide' : ' · show'}</span></span>
+        </button>
         <span className="chip off" title="No provider keys are configured. Costs: $0."><span className="dot" /><span>$0.00<span className="chip-extra"> · no providers</span></span></span>
         <AppearanceMenu appearance={appearance} />
       </div>

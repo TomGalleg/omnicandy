@@ -128,6 +128,7 @@ app.whenReady().then(async () => {
   });
 
   await createWindow();
+  embedded.prewarm();
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) void createWindow(); });
 });
 

@@ -73,6 +73,8 @@ export interface LivePhotoCraftOptions {
   secretsDir: string;
   readRoot: string;
   writeRoot: string;
+  /** Called with the app's process id right after launch (before its window appears). */
+  onSpawn?: (pid: number) => void;
 }
 
 export class LivePhotoCraft implements LiveDoc {
@@ -117,6 +119,7 @@ export class LivePhotoCraft implements LiveDoc {
       windowsHide: false,
     });
     this.gui = gui;
+    if (gui.pid) this.o.onSpawn?.(gui.pid);
     gui.on('exit', () => { if (this.gui === gui) { this.gui = null; this.mcp?.close(); this.mcp = null; } });
 
     await waitForPort(port, 30_000, () => gui.exitCode !== null);

@@ -19,12 +19,31 @@ export class EmbeddedApp {
   private embeddedOnce = false;
   private viewport: Viewport | null = null;
   mode: EmbedMode = 'embedded';
+  /** A tracker already compiled and waiting, so a new app window can be caught the instant it appears. */
+  private spare: WindowTracker | null = null;
 
   constructor(
     private readonly host: () => BrowserWindow | null,
     private readonly script: string,
     private readonly onGone: () => void,
   ) {}
+
+  /** Starts a waiting tracker (call once the app is up; again after each use). */
+  prewarm() {
+    if (!this.spare) this.spare = new WindowTracker(this.script, 0, 0n, true);
+  }
+
+  /**
+   * Call right after launching an app: its window is moved off-screen the moment it appears and
+   * only revealed once it is placed inside the Edit area (no flash of the app on its own).
+   */
+  prepare(pid: number) {
+    const t = this.spare ?? new WindowTracker(this.script, 0, 0n, true);
+    this.spare = null;
+    t.target(pid);
+    this.adopt(pid, t);
+    setTimeout(() => this.prewarm(), 2000);
+  }
 
   get attachedPid(): number | null { return this.pid; }
 
@@ -38,11 +57,14 @@ export class EmbeddedApp {
   /** Follows the app window of `pid`. A previously attached app is handed back as a normal, minimized window. */
   attach(pid: number) {
     if (this.pid === pid && this.tracker) { this.apply(); return; }
+    this.adopt(pid, new WindowTracker(this.script, pid, 0n));
+  }
+
+  private adopt(pid: number, t: WindowTracker) {
     this.release(true);
     this.pid = pid;
     this.found = false;
     this.embeddedOnce = false;
-    const t = new WindowTracker(this.script, pid, 0n);
     this.tracker = t;
     t.on('state', (s: TrackedWindowState) => {
       if (this.tracker !== t) return;
@@ -70,6 +92,7 @@ export class EmbeddedApp {
     const content = host.getContentBounds();
     const dip = { x: content.x + v.x, y: content.y + v.y, width: v.width, height: v.height };
     t.move(screen.dipToScreenRect(host, dip));
+    t.uncloak();
     t.show();
   }
 
@@ -79,6 +102,7 @@ export class EmbeddedApp {
     const t = this.tracker;
     if (!t) return;
     t.unembed();
+    t.uncloak();
     this.embeddedOnce = false;
     const host = this.host();
     if (host && this.viewport) {
@@ -103,6 +127,7 @@ export class EmbeddedApp {
     this.found = false;
     if (!t) return;
     t.unembed();
+    t.uncloak();
     if (minimize) t.minimize(); else t.show();
     setTimeout(() => t.stop(), 300);
   }

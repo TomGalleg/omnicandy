@@ -19,11 +19,12 @@ export class WindowTracker extends EventEmitter<{ state: [TrackedWindowState]; e
   private buf = '';
   last: TrackedWindowState | null = null;
 
-  constructor(scriptPath: string, targetPid: number, panelHwnd: bigint) {
+  /** targetPid 0 = pre-started: call target(pid) later. cloak = hide the window the instant it appears. */
+  constructor(scriptPath: string, targetPid: number, panelHwnd: bigint, cloak = false) {
     super();
     this.proc = spawn('powershell.exe', [
       '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', scriptPath,
-      '-TargetPid', String(targetPid), '-PanelHwnd', panelHwnd.toString(),
+      '-TargetPid', String(targetPid), '-PanelHwnd', panelHwnd.toString(), ...(cloak ? ['-Cloak'] : []),
     ], { windowsHide: true });
     this.proc.stdout.setEncoding('utf8');
     this.proc.stdout.on('data', (d: string) => {
@@ -48,6 +49,8 @@ export class WindowTracker extends EventEmitter<{ state: [TrackedWindowState]; e
     if (this.proc.exitCode === null && this.proc.stdin.writable) this.proc.stdin.write(cmd + '\n');
   }
 
+  target(pid: number) { this.send(`target ${pid}`); }
+  uncloak() { this.send('uncloak'); }
   own() { this.send('own'); }
   /** Borderless target owned by `host` (stays above it, hides/minimizes with it). */
   embed(host: bigint) { this.send(`embed ${host.toString()}`); }

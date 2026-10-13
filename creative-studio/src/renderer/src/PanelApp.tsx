@@ -2,7 +2,6 @@ import { useCallback, useEffect, useState } from 'react';
 import { editorFor } from '@shared/appEditors';
 import type { ProjectManifest } from '@shared/types';
 import logo from './assets/logo.png';
-import { EditTools } from './components/live/EditTools';
 import { TaskControls } from './components/live/LiveParts';
 import { useAppearance } from './useAppearance';
 import { useLive } from './useLive';
@@ -41,10 +40,6 @@ export function PanelApp() {
             <h2 style={{ fontSize: 14 }}>Task</h2>
             <TaskControls liveApi={liveApi} />
           </section>
-        )}
-        {app && asset && (
-          <EditTools app={app} asset={asset} manifest={manifest} liveApi={liveApi} enabled={live?.status === 'ready'}
-            onProjectChanged={reload} onSelectAsset={() => {}} log={log} />
         )}
       </div>
     </div>

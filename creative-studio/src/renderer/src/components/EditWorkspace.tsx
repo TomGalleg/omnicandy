@@ -2,7 +2,6 @@ import { useEffect, useLayoutEffect, useRef } from 'react';
 import { editorFor, type EditorApp } from '@shared/appEditors';
 import type { Asset, ProjectManifest } from '@shared/types';
 import type { LiveApi } from '../useLive';
-import { EditTools } from './live/EditTools';
 import { isTaskActive } from './live/LiveParts';
 
 interface Props {
@@ -18,9 +17,9 @@ const LIVE = new Set(['photocraft', 'vectorcraft', 'soundcraft']);
 
 /**
  * Edit tab: the selected file opens automatically in its ArtCraft app, shown right here in the
- * big area. Edits on the right apply in the app; "Open in its own window" pops the app out.
+ * big area, where you edit with the app's own tools. "Open in its own window" pops the app out.
  */
-export function EditWorkspace({ manifest, selected, liveApi, onProjectChanged, onSelectAsset, log }: Props) {
+export function EditWorkspace({ selected, liveApi, onProjectChanged }: Props) {
   const { live, busy, act } = liveApi;
   const app = selected ? editorFor(selected.sourceFormat) : null;
   const canLive = !!app && LIVE.has(app.id);
@@ -86,11 +85,6 @@ export function EditWorkspace({ manifest, selected, liveApi, onProjectChanged, o
         <div className="edit-stage" ref={stageRef}>
           <Stage asset={selected} app={app} live={liveApi.live} showingThis={!!showingThis} />
         </div>
-        <aside className="edit-tools" aria-label="Edits">
-          {app && canLive
-            ? <EditTools app={app} asset={selected} manifest={manifest} liveApi={liveApi} enabled={!!showingThis} onProjectChanged={onProjectChanged} onSelectAsset={onSelectAsset} log={log} />
-            : <div className="edit-tools-empty"><h3>Edits</h3><p className="asset-meta">{app?.note ?? `No ArtCraft app edits ${selected.sourceFormat.toUpperCase()} files yet.`}</p></div>}
-        </aside>
       </div>
     </div>
   );
@@ -103,6 +97,7 @@ function Stage({ asset, app, live, showingThis }: { asset: Asset; app: EditorApp
   if (live?.status === 'starting') status = `Opening in ${app?.name ?? 'the app'}…`;
   else if (live?.status === 'error' && !showingThis) status = live.error ?? 'The app could not be opened.';
   else if (showingThis && live?.poppedOut) status = `${app?.name} is open in its own window.`;
+  else if (!app || app.open === 'none') status = app?.note ?? `No ArtCraft app edits ${asset.sourceFormat.toUpperCase()} files yet.`;
   return (
     <div className="stage-art">
       {viewable && <img src={window.studio.assetUrl(asset.id)} alt={asset.name} />}

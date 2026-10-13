@@ -150,11 +150,13 @@ export function registerIpc(d: IpcDeps): void {
       vectorcraft: path.join(store.root, 'work', 'vectorcraft-live'),
       soundcraft: path.join(store.root, 'work', 'soundcraft-live'),
     };
+    // Catch each app's window the moment it appears so it never flashes up on its own.
+    const onSpawn = (pid: number) => d.embedded.prepare(pid);
     const driver = (app: EditorAppId) => {
       if (drivers[app]) return drivers[app]!;
-      if (app === 'photocraft') drivers[app] = new LivePhotoCraft({ installDir: PFdir('PhotoCraft'), secretsDir: d.secretsDir, readRoot: store.root, writeRoot: roots.photocraft });
-      else if (app === 'vectorcraft') drivers[app] = new LiveVectorCraft({ installDir: PFdir('VectorCraft'), readRoot: store.root, writeRoot: roots.vectorcraft });
-      else if (app === 'soundcraft') drivers[app] = new LiveSoundCraft({ installDir: PFdir('SoundCraft'), readRoot: store.root, writeRoot: roots.soundcraft });
+      if (app === 'photocraft') drivers[app] = new LivePhotoCraft({ installDir: PFdir('PhotoCraft'), secretsDir: d.secretsDir, readRoot: store.root, writeRoot: roots.photocraft, onSpawn });
+      else if (app === 'vectorcraft') drivers[app] = new LiveVectorCraft({ installDir: PFdir('VectorCraft'), readRoot: store.root, writeRoot: roots.vectorcraft, onSpawn });
+      else if (app === 'soundcraft') drivers[app] = new LiveSoundCraft({ installDir: PFdir('SoundCraft'), readRoot: store.root, writeRoot: roots.soundcraft, onSpawn });
       else throw new Error(`${app} can't be opened live.`);
       return drivers[app]!;
     };
@@ -200,7 +202,7 @@ export function registerIpc(d: IpcDeps): void {
     const pid = await currentPid();
     if (pid) {
       d.embedded.attach(pid);
-      if (d.embedded.mode === 'window') { d.panel.close(); await d.panel.open(pid); ctl.setPoppedOut(true); return ctl.snapshot(); }
+      if (d.embedded.mode === 'window') { d.embedded.popOut(); d.panel.close(); await d.panel.open(pid); ctl.setPoppedOut(true); return ctl.snapshot(); }
     }
     return s;
   });

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Group, Panel, Separator, useDefaultLayout } from 'react-resizable-panels';
+import { Group, Panel, Separator, useDefaultLayout, usePanelRef } from 'react-resizable-panels';
 import type { IntegrationSnapshot } from '@shared/ipc';
 import type { AppProbeResult, ProjectManifest, WorkspaceId } from '@shared/types';
 import { AssetBrowser } from './components/AssetBrowser';
@@ -46,6 +46,16 @@ export function App() {
   const selected = useMemo(() => manifest?.assets.find((a) => a.id === selectedId) ?? null, [manifest, selectedId]);
 
   const outer = useDefaultLayout({ id: 'cs-outer', storage });
+  // Claude panel starts minimized; the header's Claude button opens/closes it (remembered).
+  const claudeRef = usePanelRef();
+  const [claudeOpen, setClaudeOpen] = useState(() => { try { return storage?.getItem('cs-claude-open') === '1'; } catch { return false; } });
+  useEffect(() => {
+    const p = claudeRef.current;
+    if (!p) return;
+    if (claudeOpen && p.isCollapsed()) p.expand();
+    if (!claudeOpen && !p.isCollapsed()) p.collapse();
+    try { storage?.setItem('cs-claude-open', claudeOpen ? '1' : '0'); } catch { /* storage unavailable */ }
+  }, [claudeOpen, claudeRef]);
   const center = useDefaultLayout({ id: 'cs-center', storage });
 
   return (
@@ -57,6 +67,8 @@ export function App() {
         apps={apps}
         integrations={integrations}
         appearance={appearance}
+        claudeOpen={claudeOpen}
+        onToggleClaude={() => setClaudeOpen((o) => !o)}
       />
       {error && <div className="notice" role="alert">Could not load project: {error}</div>}
       <div className="main">
@@ -96,7 +108,8 @@ export function App() {
             </Group>
           </Panel>
           <Separator className="sep" />
-          <Panel id="right" defaultSize="22" minSize={260} collapsible>
+          <Panel id="right" defaultSize="22" minSize={260} collapsible collapsedSize={0} panelRef={claudeRef}
+            onResize={() => { const c = claudeRef.current?.isCollapsed() ?? false; if (c === claudeOpen) setClaudeOpen(!c); }}>
             <ClaudePanel selected={selected} integrations={integrations} liveApi={liveApi} />
           </Panel>
         </Group>

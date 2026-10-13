@@ -20,6 +20,8 @@ export interface LiveAppOptions {
   installDir: string;
   readRoot: string;
   writeRoot: string;
+  /** Called with the app's process id right after launch (before its window appears). */
+  onSpawn?: (pid: number) => void;
 }
 
 abstract class LiveAppBase implements LiveDoc {
@@ -51,6 +53,7 @@ abstract class LiveAppBase implements LiveDoc {
       env: { ...process.env, ...this.guiEnv() }, stdio: 'ignore', windowsHide: false,
     });
     this.gui = gui;
+    if (gui.pid) this.o.onSpawn?.(gui.pid);
     gui.on('exit', () => { if (this.gui === gui) { this.gui = null; this.mcp?.close(); this.mcp = null; } });
     await waitForPort(port, 30_000, () => gui.exitCode !== null);
     this.mcp = await McpClient.start(path.join(this.o.installDir, `${this.exeName}-cli.exe`), this.bridgeArgs(port));
