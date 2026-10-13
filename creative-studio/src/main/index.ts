@@ -14,7 +14,15 @@ protocol.registerSchemesAsPrivileged([
 // Isolated profile for automated smoke tests; never set in normal use.
 if (process.env.CS_USER_DATA_DIR) app.setPath('userData', path.resolve(process.env.CS_USER_DATA_DIR));
 
+// One instance per profile: two processes seeding/writing the same project would race.
+if (!app.requestSingleInstanceLock()) app.exit(0);
+
 let mainWindow: BrowserWindow | null = null;
+app.on('second-instance', () => {
+  if (!mainWindow) return;
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.focus();
+});
 const settings = new SettingsStore(app.getPath('userData'));
 let projectPromise: Promise<ProjectStore> | null = null;
 const project = () =>
