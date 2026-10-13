@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { LiveSnapshot } from '@shared/live';
 
 /** Live PhotoCraft session state pushed from main, plus a helper that surfaces action errors. */
 export function useLive(log: (source: string, msg: string) => void) {
   const [live, setLive] = useState<LiveSnapshot | null>(null);
   const [busy, setBusy] = useState(false);
+  const lastLogged = useRef<string | null>(null);
 
   useEffect(() => {
     void window.studio.live.state().then(setLive);
@@ -24,7 +25,7 @@ export function useLive(log: (source: string, msg: string) => void) {
     try {
       const s = await fn();
       setLive(s);
-      if (s.message) log('photocraft', s.message);
+      if (s.message && s.message !== lastLogged.current) { lastLogged.current = s.message; log(s.appId, s.message); }
     } catch (e) {
       const msg = e instanceof Error ? e.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '') : String(e);
       log('photocraft', `${label} failed: ${msg}`);

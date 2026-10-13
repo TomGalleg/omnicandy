@@ -1,5 +1,6 @@
 // State of the live (windowed) ArtCraft session, pushed from main to the renderer.
 
+import type { EditorAppId } from './appEditors';
 import type { CollabState } from './collaboration';
 
 export type LiveStatus = 'stopped' | 'starting' | 'ready' | 'error';
@@ -11,7 +12,8 @@ export interface LiveStep {
 }
 
 export interface LiveSnapshot {
-  appId: 'photocraft';
+  /** App the live document is open in. */
+  appId: EditorAppId;
   status: LiveStatus;
   error: string | null;
   /** Library asset currently open in the app window. */

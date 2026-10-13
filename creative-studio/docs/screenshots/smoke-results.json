@@ -25,26 +25,6 @@
     "detail": "ArtCraft 7 installed · 0 live"
   },
   {
-    "name": "Edit picks SoundCraft for audio",
-    "ok": true,
-    "detail": ""
-  },
-  {
-    "name": "Edit picks VectorCraft for SVG",
-    "ok": true,
-    "detail": ""
-  },
-  {
-    "name": "VectorCraft quick edit ran for real and shows the result",
-    "ok": true,
-    "detail": ""
-  },
-  {
-    "name": "Edit picks PhotoCraft for PNG (with live option)",
-    "ok": true,
-    "detail": ""
-  },
-  {
     "name": "workflow graph loaded (5 nodes)",
     "ok": true,
     "detail": ""

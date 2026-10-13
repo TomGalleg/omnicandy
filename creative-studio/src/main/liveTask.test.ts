@@ -24,8 +24,19 @@ class FakeDoc implements LiveDoc {
   }
   async history() { return [...this.hist]; }
   userEdit(name = 'Brush Tool') { this.hist.push(name); }
-  async saveNative(p: string) { await fs.writeFile(p, `pcraft:${this.hist.join(',')}`); }
-  async exportPng(p: string) { await fs.writeFile(p, Buffer.concat([await fs.readFile(path.join(FIXTURES, 'photocraft-smoke.png')), Buffer.from(this.hist.join(','))])); }
+  async writeVersion(dir: string, base: string) {
+    const main = path.join(dir, `${base}.pcraft`);
+    const preview = path.join(dir, `${base}.png`);
+    await fs.writeFile(main, `pcraft:${this.hist.join(',')}`);
+    await fs.writeFile(preview, Buffer.concat([await fs.readFile(path.join(FIXTURES, 'photocraft-smoke.png')), Buffer.from(this.hist.join(','))]));
+    return { main, preview };
+  }
+  async undo() { if (this.hist.length > 1) this.hist.pop(); }
+  quickEditSteps(opId: string) {
+    if (opId === 'blackWhite') return [{ command: 'image.adjustments.blackWhite', params: {} }];
+    if (opId === 'sharpen') return [{ command: 'file.saveAs', params: {} }]; // simulate a driver returning something disallowed
+    return [];
+  }
 }
 
 const until = async (c: LiveTaskController, pred: (s: LiveSnapshot) => boolean, ms = 3000) => {
@@ -168,8 +179,30 @@ describe('LiveTaskController', () => {
     expect(await fs.readdir(path.join(store.root, 'work', 'live'))).toEqual([]);
   });
 
-  it('refuses to open non-image assets', async () => {
+  it('quick edits run in the open document, respect the allowlist and the task lock; undo reverts', async () => {
+    const s = await ctl.quickEdit('blackWhite', {});
+    expect(doc.ran).toEqual(['image.adjustments.blackWhite']);
+    expect(s.message).toMatch(/applied in PhotoCraft/);
+    await expect(ctl.quickEdit('sharpen', {})).rejects.toThrow(/allowed list/);
+    await expect(ctl.quickEdit('blur', { radius: 9999 })).rejects.toThrow(/between/);
+    await expect(ctl.quickEdit('nope', {})).rejects.toThrow(/no quick edit/);
+    await ctl.undo();
+    expect(doc.hist).toEqual(['Open']);
+    let release!: () => void;
+    doc.gate = new Promise((r) => { release = r; });
+    await ctl.run(STEPS);
+    await until(ctl, (x) => !!x.collab.activeOperation);
+    await expect(ctl.quickEdit('blackWhite', {})).rejects.toThrow(/task is running/);
+    release();
+  });
+
+  it('opens each file type in its own app; multi-step automation stays PhotoCraft-only', async () => {
     const wav = (await store.importFile(path.join(FIXTURES, 'tone-a440.wav'))).asset.id;
-    await expect(ctl.open(wav)).rejects.toThrow(/can't open WAV/);
+    const s = await ctl.open(wav);
+    expect(s.appId).toBe('soundcraft');
+    expect(s.message).toMatch(/open in SoundCraft/);
+    await expect(ctl.run(STEPS)).rejects.toThrow(/PhotoCraft only/);
+    const svg = (await store.importFile(path.join(FIXTURES, 'harbor-landscape.svg'))).asset.id;
+    expect((await ctl.open(svg)).appId).toBe('vectorcraft');
   });
 });

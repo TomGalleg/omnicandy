@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useState } from 'react';
-import { EDITOR_APPS, editorFor, type EditorApp, type QuickEdit } from '@shared/appEditors';
-import type { EditResultDto, ExternalEditDto } from '@shared/ipc';
+import { useEffect, useLayoutEffect, useRef } from 'react';
+import { editorFor, type EditorApp } from '@shared/appEditors';
 import type { Asset, ProjectManifest } from '@shared/types';
 import type { LiveApi } from '../useLive';
-import { isTaskActive, LiveDocument, LiveSteps } from './live/LiveParts';
+import { EditTools } from './live/EditTools';
+import { isTaskActive } from './live/LiveParts';
 
 interface Props {
   manifest: ProjectManifest | null;
@@ -14,37 +14,101 @@ interface Props {
   log: (source: string, msg: string) => void;
 }
 
-const errText = (e: unknown) => (e instanceof Error ? e.message : String(e)).replace(/^Error invoking remote method '[^']+': (Error: )?/, '');
+const LIVE = new Set(['photocraft', 'vectorcraft', 'soundcraft']);
 
-/** Edit tab: edits the selected file with the ArtCraft app that owns its type. */
+/**
+ * Edit tab: the selected file opens automatically in its ArtCraft app, shown right here in the
+ * big area. Edits on the right apply in the app; "Open in its own window" pops the app out.
+ */
 export function EditWorkspace({ manifest, selected, liveApi, onProjectChanged, onSelectAsset, log }: Props) {
+  const { live, busy, act } = liveApi;
   const app = selected ? editorFor(selected.sourceFormat) : null;
+  const canLive = !!app && LIVE.has(app.id);
+  const isOpen = live?.status === 'ready' && !!live.asset;
+  const showingThis = isOpen && live!.asset!.id === selected?.id;
+  const taskActive = isTaskActive(live?.collab.phase ?? 'idle');
+  const stageRef = useRef<HTMLDivElement>(null);
+  const tried = useRef<string | null>(null);
+
+  // Open the selected file in its app automatically (unless an automation task is mid-way).
+  useEffect(() => {
+    if (!selected || !canLive || showingThis || busy || taskActive || live?.status === 'starting') return;
+    if (tried.current === selected.id) return;
+    tried.current = selected.id;
+    void act(`Open in ${app!.name}`, () => window.studio.live.open(selected.id));
+  }, [selected, canLive, showingThis, busy, taskActive, live?.status, act, app]);
+
+  // Tell main where the app should sit; hide it when we leave the Edit tab or it shows another file.
+  const embedVisible = showingThis && !live!.poppedOut;
+  useLayoutEffect(() => {
+    const el = stageRef.current;
+    if (!el) return;
+    const report = () => {
+      const r = el.getBoundingClientRect();
+      void window.studio.live.setViewport({ x: r.left, y: r.top, width: r.width, height: r.height, visible: embedVisible });
+    };
+    report();
+    const ro = new ResizeObserver(report);
+    ro.observe(el);
+    window.addEventListener('resize', report);
+    return () => { ro.disconnect(); window.removeEventListener('resize', report); };
+  }, [embedVisible]);
+  useEffect(() => () => { void window.studio.live.setViewport(null); }, []);
 
   if (!selected) {
-    return <Empty title="Choose something to edit"><p>Select a file in the media browser. CreateCraft picks the right ArtCraft app for it: photos go to PhotoCraft, vectors to VectorCraft, audio to SoundCraft, video to FilmCraft.</p></Empty>;
+    return <Empty title="Pick something to edit"><p>Choose a file on the left. It opens here in the right app: photos in PhotoCraft, vector art in VectorCraft, audio in SoundCraft.</p></Empty>;
   }
-  if (!app) {
-    return <Empty title={`No editor for ${selected.sourceFormat.toUpperCase()} files`}><p>None of the installed ArtCraft apps is set up to edit this file type yet.</p></Empty>;
-  }
+
+  const appName = app?.name ?? 'No app';
   return (
-    <div className="live">
-      <div className="live-bar">
-        <span className="chip real"><span className="dot" />Editing with {app.name}</span>
-        <span className="asset-meta">{selected.name} · {app.blurb}</span>
+    <div className="edit">
+      <div className="edit-bar">
+        <span className={`chip ${showingThis ? 'real' : 'off'}`}><span className="dot" />{appName}</span>
+        <strong className="edit-title" title={selected.name}>{selected.name}</strong>
         <span className="spacer" />
-        <span className="asset-meta">Your file is never changed: every edit is saved as a new version.</span>
-      </div>
-      <div className="live-grid">
-        <QuickEdits key={`${selected.id}-${app.id}`} app={app} asset={selected} manifest={manifest} onProjectChanged={onProjectChanged} onSelectAsset={onSelectAsset} log={log} />
-        {app.open === 'live' && <PhotoCraftLive selected={selected} liveApi={liveApi} onProjectChanged={onProjectChanged} />}
-        {app.open === 'working-copy' && <WorkingCopy app={app} asset={selected} onProjectChanged={onProjectChanged} onSelectAsset={onSelectAsset} log={log} />}
-        {app.open === 'none' && (
-          <section className="panel-card">
-            <h2 style={{ fontSize: 14 }}>Open in {app.name}</h2>
-            <p className="asset-meta">{app.note}</p>
-          </section>
+        {canLive && showingThis && (
+          <>
+            <button className="btn" disabled={busy || taskActive} onClick={() => void act('Undo', window.studio.live.undo)}>Undo</button>
+            <button className="btn primary" disabled={busy || !!live!.collab.activeOperation}
+              onClick={() => void act('Save', async () => { const s = await window.studio.live.saveVersion(); onProjectChanged(); return s; })}>Save as new version</button>
+            {live!.poppedOut
+              ? <button className="btn" disabled={busy} onClick={() => void act('Put back', window.studio.live.dock)}>Put back in CreateCraft</button>
+              : <button className="btn" disabled={busy} onClick={() => void act('Open in its own window', window.studio.live.popOut)}>Open in its own window</button>}
+          </>
+        )}
+        {canLive && !showingThis && !busy && live?.status !== 'starting' && (
+          <button className="btn primary" disabled={taskActive} onClick={() => { tried.current = selected.id; void act(`Open in ${appName}`, () => window.studio.live.open(selected.id)); }}>
+            Open in {appName}
+          </button>
         )}
       </div>
+      <div className="edit-body">
+        <div className="edit-stage" ref={stageRef}>
+          <Stage asset={selected} app={app} live={liveApi.live} showingThis={!!showingThis} />
+        </div>
+        <aside className="edit-tools" aria-label="Edits">
+          {app && canLive
+            ? <EditTools app={app} asset={selected} manifest={manifest} liveApi={liveApi} enabled={!!showingThis} onProjectChanged={onProjectChanged} onSelectAsset={onSelectAsset} log={log} />
+            : <div className="edit-tools-empty"><h3>Edits</h3><p className="asset-meta">{app?.note ?? `No ArtCraft app edits ${selected.sourceFormat.toUpperCase()} files yet.`}</p></div>}
+        </aside>
+      </div>
+    </div>
+  );
+}
+
+/** What sits under the app window: the art itself, with a status line while the app starts or when it's popped out. */
+function Stage({ asset, app, live, showingThis }: { asset: Asset; app: EditorApp | null; live: LiveApi['live']; showingThis: boolean }) {
+  const viewable = asset.kind === 'image' || asset.kind === 'vector';
+  let status: string | null = null;
+  if (live?.status === 'starting') status = `Opening in ${app?.name ?? 'the app'}…`;
+  else if (live?.status === 'error' && !showingThis) status = live.error ?? 'The app could not be opened.';
+  else if (showingThis && live?.poppedOut) status = `${app?.name} is open in its own window.`;
+  return (
+    <div className="stage-art">
+      {viewable && <img src={window.studio.assetUrl(asset.id)} alt={asset.name} />}
+      {asset.kind === 'audio' && <div className="stage-audio"><span className="stage-audio-icon" aria-hidden>♪</span><audio controls src={window.studio.assetUrl(asset.id)} /></div>}
+      {!viewable && asset.kind !== 'audio' && <div className="stage-format">{asset.sourceFormat.toUpperCase()}</div>}
+      {status && <div className="stage-status" role="status">{status}</div>}
     </div>
   );
 }
@@ -53,160 +117,3 @@ function Empty({ title, children }: { title: string; children: React.ReactNode }
   return <div className="empty-state"><div className="empty-card"><h2>{title}</h2>{children}</div></div>;
 }
 
-function defaults(op: QuickEdit) {
-  return Object.fromEntries(op.params.map((p) => [p.key, p.default])) as Record<string, number | string>;
-}
-
-function QuickEdits({ app, asset, manifest, onProjectChanged, onSelectAsset, log }: {
-  app: EditorApp; asset: Asset; manifest: ProjectManifest | null; onProjectChanged: () => void; onSelectAsset: (id: string) => void; log: Props['log'];
-}) {
-  const [opId, setOpId] = useState(app.quickEdits[0]?.id ?? '');
-  const op = app.quickEdits.find((o) => o.id === opId);
-  const [values, setValues] = useState<Record<string, number | string>>(op ? defaults(op) : {});
-  const [busy, setBusy] = useState(false);
-  const [result, setResult] = useState<EditResultDto | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  if (!app.quickEdits.length) {
-    return <section className="panel-card"><h2 style={{ fontSize: 14 }}>Quick edits</h2><p className="asset-meta">{app.note ?? `No quick edits for ${app.name} yet.`}</p></section>;
-  }
-
-  const apply = async () => {
-    setBusy(true); setError(null); setResult(null);
-    try {
-      const r = await window.studio.edit.apply(asset.id, opId, values);
-      setResult(r);
-      log(app.id, `${r.message} (${asset.name})`);
-      onProjectChanged();
-    } catch (e) {
-      setError(errText(e));
-      log(app.id, `${op?.label} failed: ${errText(e)}`);
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const created = result ? result.assetIds.map((id) => manifest?.assets.find((a) => a.id === id)).filter((a): a is Asset => !!a) : [];
-  const preview = created.find((a) => a.kind === 'image') ?? created.find((a) => a.kind === 'vector');
-  const audio = created.find((a) => a.kind === 'audio');
-
-  return (
-    <section className="panel-card">
-      <h2 style={{ fontSize: 14 }}>Quick edits · {app.name}</h2>
-      <div className="op-list" role="radiogroup" aria-label="Edit">
-        {app.quickEdits.map((o) => (
-          <button key={o.id} role="radio" aria-checked={o.id === opId} className={`op${o.id === opId ? ' active' : ''}`} disabled={busy}
-            onClick={() => { setOpId(o.id); setValues(defaults(o)); setResult(null); setError(null); }}>{o.label}</button>
-        ))}
-      </div>
-      {op && op.params.length > 0 && (
-        <div className="op-params">
-          {op.params.map((p) => (
-            <label className="field" key={p.key}>
-              <span>{p.label}{p.type === 'number' && <strong> {values[p.key]}{p.unit ? ` ${p.unit}` : ''}</strong>}</span>
-              {p.type === 'number'
-                ? <input type="range" min={p.min} max={p.max} step={p.step} value={Number(values[p.key])} disabled={busy}
-                    onChange={(e) => setValues((v) => ({ ...v, [p.key]: Number(e.target.value) }))} />
-                : <select value={String(values[p.key])} disabled={busy} onChange={(e) => setValues((v) => ({ ...v, [p.key]: e.target.value }))}>
-                    {p.options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-                  </select>}
-            </label>
-          ))}
-        </div>
-      )}
-      <div className="btn-row">
-        <span className="spacer" />
-        <button className="btn primary" disabled={busy || !op} onClick={() => void apply()}>{busy ? `${app.name} is working…` : `Apply ${op?.label ?? ''}`}</button>
-      </div>
-      {error && <div className="wf-msg error" role="alert">{error}</div>}
-      {result && (
-        <div className="op-result">
-          {preview && <img src={window.studio.assetUrl(preview.id)} alt={`Result: ${preview.name}`} />}
-          {audio && <audio controls src={window.studio.assetUrl(audio.id)} />}
-          <div className="asset-meta">{result.message} New: {created.map((a) => a.name).join(', ')}</div>
-          <div className="btn-row">
-            {created[0] && <button className="btn small" onClick={() => onSelectAsset(created[0]!.id)}>Select the new version</button>}
-          </div>
-        </div>
-      )}
-    </section>
-  );
-}
-
-function WorkingCopy({ app, asset, onProjectChanged, onSelectAsset, log }: {
-  app: EditorApp; asset: Asset; onProjectChanged: () => void; onSelectAsset: (id: string) => void; log: Props['log'];
-}) {
-  const [copies, setCopies] = useState<ExternalEditDto[]>([]);
-  const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState<{ text: string; error?: boolean } | null>(null);
-  useEffect(() => { void window.studio.edit.list().then(setCopies); }, []);
-  const mine = useMemo(() => copies.filter((c) => c.assetId === asset.id), [copies, asset.id]);
-
-  const wrap = async (fn: () => Promise<string>) => {
-    setBusy(true); setMsg(null);
-    try { const text = await fn(); setMsg({ text }); log(app.id, text); } catch (e) { setMsg({ text: errText(e), error: true }); } finally { setBusy(false); }
-  };
-
-  return (
-    <section className="panel-card">
-      <h2 style={{ fontSize: 14 }}>Open in {app.name}</h2>
-      <p className="asset-meta">
-        Opens a working copy in the {app.name} window so you can edit by hand with all its tools.
-        {app.id === 'soundcraft' && ' Audio opens as a SoundCraft session with your file imported.'}
-        {' '}Save in {app.name} (Ctrl+S), then press <strong>Bring back</strong> to add it to the library as a new version.
-      </p>
-      <div className="btn-row">
-        <button className="btn primary" disabled={busy} onClick={() => void wrap(async () => {
-          const c = await window.studio.edit.openWorkingCopy(asset.id);
-          setCopies(await window.studio.edit.list());
-          return `Opened a working copy of ${c.assetName} in ${app.name}.`;
-        })}>Open {asset.name} in {app.name}</button>
-      </div>
-      {mine.map((c) => (
-        <div className="export-row" key={c.id}>
-          <span>Working copy opened {new Date(c.openedAt).toLocaleTimeString()}</span>
-          <button className="btn small" disabled={busy} onClick={() => void wrap(async () => {
-            const r = await window.studio.edit.bringBack(c.id);
-            onProjectChanged();
-            if (r.assetIds[0]) onSelectAsset(r.assetIds[0]);
-            return r.message;
-          })}>Bring back as new version</button>
-        </div>
-      ))}
-      {msg && <div className={msg.error ? 'wf-msg error' : 'asset-meta'}>{msg.text}</div>}
-    </section>
-  );
-}
-
-const OPENABLE = new Set(EDITOR_APPS.photocraft.formats);
-
-function PhotoCraftLive({ selected, liveApi, onProjectChanged }: { selected: Asset; liveApi: LiveApi; onProjectChanged: () => void }) {
-  const { live, busy, act } = liveApi;
-  const isOpen = live?.status === 'ready' && !!live.asset;
-  const taskActive = isTaskActive(live?.collab.phase ?? 'idle');
-  return (
-    <>
-      <section className="panel-card">
-        <h2 style={{ fontSize: 14 }}>Open in PhotoCraft (live)</h2>
-        <p className="asset-meta">Opens the real PhotoCraft window with the controls docked to its left edge: run automation steps, take control to edit by hand, then save a new version.</p>
-        {live?.status === 'error' && <div className="notice" role="alert">{live.error}</div>}
-        <div className="btn-row">
-          <button className="btn primary" disabled={!OPENABLE.has(selected.sourceFormat) || busy || taskActive}
-            onClick={() => void act('Open in PhotoCraft', () => window.studio.live.open(selected.id))}>
-            {live?.status === 'starting' ? 'Starting PhotoCraft…' : isOpen && live!.asset!.id === selected.id ? 'Re-open in PhotoCraft' : `Open ${selected.name} in PhotoCraft`}
-          </button>
-          {isOpen && (live!.poppedOut
-            ? <button className="btn" disabled={busy} onClick={() => void act('Dock controls', window.studio.live.dock)}>Dock controls here</button>
-            : <button className="btn" disabled={busy} onClick={() => void act('Pop out controls', window.studio.live.popOut)}>Pop out next to PhotoCraft</button>)}
-        </div>
-        {isOpen && <div className="asset-meta">Live: {live!.asset!.name}{live!.poppedOut ? ' · controls are next to the PhotoCraft window' : ''}</div>}
-      </section>
-      {isOpen && !live!.poppedOut && (
-        <>
-          <LiveSteps liveApi={liveApi} />
-          <LiveDocument liveApi={liveApi} onSaved={onProjectChanged} />
-        </>
-      )}
-    </>
-  );
-}

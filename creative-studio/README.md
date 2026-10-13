@@ -75,6 +75,14 @@ by copying `fixtures/sample-project`. Appearance settings are stored in `%APPDAT
   never modified. SVG inputs are flattened first, and chained edit nodes continue from the layered
   `.pcraft`. Commands that open, save, run scripts or reference other files are refused, as are
   path-like parameters. PhotoCraft runs with a fixed argument list and no shell.
+- **Edit tab: the app opens right inside CreateCraft (real).** Pick a file and go to Edit: it opens
+  automatically in its app (PhotoCraft for photos, VectorCraft for vector art, SoundCraft for audio),
+  shown in the big Edit area. The app's real window is made borderless and owned by CreateCraft,
+  then kept exactly over the Edit area as CreateCraft moves or resizes (`src/main/embeddedApp.ts`,
+  `resources/window-tracker.ps1`); input works natively because it is still the app's own window.
+  On the right, a short list of edits grouped by intent applies live in the app; Undo, Save as new
+  version, and **Open in its own window** / **Put back in CreateCraft** sit in the top bar. Leaving
+  the Edit tab hides the app; switching files minimizes the previous app.
 - **Edit tab: the right app for each file type (real).** Photos and PhotoCraft/PSD documents go to
   PhotoCraft, SVG/AI/EPS/PDF to VectorCraft, audio to SoundCraft, and video to FilmCraft (no quick
   edits yet: there's no video to verify against). Each app offers quick edits with sliders and

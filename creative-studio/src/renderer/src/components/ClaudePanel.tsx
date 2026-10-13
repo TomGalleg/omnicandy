@@ -2,6 +2,7 @@ import { useState } from 'react';
 import type { IntegrationSnapshot } from '@shared/ipc';
 import type { Asset } from '@shared/types';
 import type { LiveApi } from '../useLive';
+import { EDITOR_APPS } from '@shared/appEditors';
 import { TaskControls } from './live/LiveParts';
 
 interface Props {
@@ -29,6 +30,7 @@ export function ClaudePanel({ selected, integrations, liveApi }: Props) {
   };
 
   const open = live?.status === 'ready' && !!live.asset;
+  const appName = live ? EDITOR_APPS[live.appId].name : '';
 
   return (
     <aside className="pane claude" aria-label="Claude Creative Partner">
@@ -37,17 +39,17 @@ export function ClaudePanel({ selected, integrations, liveApi }: Props) {
       <div className="claude-section">
         <h3>Context</h3>
         <div style={{ fontSize: 12 }}>{selected ? <>Selected: <strong>{selected.name}</strong> ({selected.kind})</> : 'No asset selected'}</div>
-        {open && <div style={{ fontSize: 12 }}>Open in PhotoCraft: <strong>{live!.asset!.name}</strong></div>}
+        {open && <div style={{ fontSize: 12 }}>Open in {appName}: <strong>{live!.asset!.name}</strong></div>}
       </div>
 
       <div className="claude-section" aria-live="polite">
-        <h3>Current task {open && <span className="chip real" style={{ height: 18 }}><span className="dot" />live PhotoCraft</span>}</h3>
+        <h3>Current task {open && <span className="chip real" style={{ height: 18 }}><span className="dot" />live {appName}</span>}</h3>
         <TaskControls liveApi={liveApi} />
       </div>
 
       <div className="chat" aria-label="Conversation">
         <div className="msg system">
-          Claude is not connected yet, so chat messages are not sent anywhere. The task controls above are real: they drive the automation running in the PhotoCraft window.
+          Claude is not connected yet, so chat messages are not sent anywhere. The task controls above are real: they act on the app open in the Edit tab.
         </div>
         {messages.map((m, i) => <div key={i} className={`msg ${m.role}`}>{m.text}</div>)}
       </div>

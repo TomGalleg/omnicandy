@@ -52,7 +52,7 @@ describe.skipIf(!enabled)('Live PhotoCraft (real window)', () => {
   });
 
   it('opens a library asset in the live window, runs steps, detects a hand edit, and saves versions', async () => {
-    const opened = await ctl.open(harbor);
+    const opened = await ctl.open(harbor, 'photocraft');
     expect(opened.status).toBe('ready');
     expect(opened.history[0]).toMatch(/open/i);
 

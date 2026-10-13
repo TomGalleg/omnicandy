@@ -3,6 +3,7 @@ import { pathToFileURL } from 'node:url';
 import { app, BrowserWindow, nativeTheme, net, protocol, session, shell } from 'electron';
 import { ASSET_SCHEME } from '@shared/ipc';
 import { DockedPanel, trackerScriptPath } from './dockedPanel';
+import { EmbeddedApp } from './embeddedApp';
 import { registerIpc } from './ipc';
 import type { ProjectStore } from './projectStore';
 import { ensureSampleProject } from './sampleProject';
@@ -23,6 +24,7 @@ if (!app.requestSingleInstanceLock()) app.exit(0);
 const appIcon = () => path.join(app.getAppPath(), 'resources', 'icon.ico');
 let mainWindow: BrowserWindow | null = null;
 const panelClosedListeners: Array<() => void> = [];
+const embedded = new EmbeddedApp(() => mainWindow, trackerScriptPath(app.getAppPath()), () => { /* app window closed */ });
 const panel = new DockedPanel({
   preload: path.join(__dirname, '../preload/index.js'),
   icon: appIcon,
@@ -76,7 +78,10 @@ async function createWindow() {
     },
   });
   mainWindow.once('ready-to-show', () => mainWindow?.show());
-  mainWindow.on('closed', () => { mainWindow = null; panel.close(); });
+  mainWindow.on('closed', () => { mainWindow = null; panel.close(); embedded.release(false); });
+  for (const ev of ['move', 'resize', 'maximize', 'unmaximize', 'restore', 'enter-full-screen', 'leave-full-screen'] as const) {
+    mainWindow.on(ev as 'move', () => embedded.apply());
+  }
 
   // App-only navigation; external links go to the default browser after scheme check.
   mainWindow.webContents.on('will-navigate', (e, url) => { if (!isAppUrl(url)) e.preventDefault(); });
@@ -119,6 +124,7 @@ app.whenReady().then(async () => {
       get isOpen() { return panel.isOpen; },
       onClosed: (cb) => { panelClosedListeners.push(cb); },
     },
+    embedded,
   });
 
   await createWindow();

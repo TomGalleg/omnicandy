@@ -12,6 +12,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import fs from 'node:fs/promises';
 import net from 'node:net';
 import path from 'node:path';
+import { photocraftCommand, type EditValues } from '@shared/appEditors';
 import type { AppOperation } from '@shared/contracts';
 import { McpClient } from './mcpClient';
 
@@ -21,9 +22,15 @@ export interface LiveDoc {
   run(op: AppOperation): Promise<void>;
   /** Undo-history step names of the active document (changes whenever anyone edits it). */
   history(): Promise<string[]>;
-  saveNative(absPath: string): Promise<void>;
-  exportPng(absPath: string): Promise<void>;
-  /** PNG of the live app window, from PhotoCraft's own screenshot tool. */
+  /**
+   * Writes the open document for a new library version into `dir` (the app's write root):
+   * the editable/main file first, plus an optional PNG preview. Paths returned are inside `dir`.
+   */
+  writeVersion(dir: string, base: string): Promise<{ main: string; preview?: string }>;
+  undo?(): Promise<void>;
+  /** Engine commands for a quick edit from src/shared/appEditors.ts. */
+  quickEditSteps?(opId: string, values: EditValues): AppOperation[];
+  /** PNG of the live app window, from the app's own screenshot tool. */
   screenshot?(maxSide: number): Promise<Buffer | null>;
 }
 
@@ -31,7 +38,7 @@ export function versionOf(history: string[]): string {
   return `${history.length}:${createHash('sha1').update(history.join('\u0000')).digest('hex').slice(0, 12)}`;
 }
 
-function freePort(): Promise<number> {
+export function freePort(): Promise<number> {
   return new Promise((resolve, reject) => {
     const s = net.createServer();
     s.unref();
@@ -43,7 +50,7 @@ function freePort(): Promise<number> {
   });
 }
 
-function waitForPort(port: number, timeoutMs: number, isDead: () => boolean): Promise<void> {
+export function waitForPort(port: number, timeoutMs: number, isDead: () => boolean): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   return new Promise((resolve, reject) => {
     const attempt = () => {
@@ -144,6 +151,22 @@ export class LivePhotoCraft implements LiveDoc {
   async exportPng(absPath: string): Promise<void> {
     // Bridge mode picks the format from the extension (an explicit `format` is headless-only).
     await this.client().callTool('doc_export', { path: absPath }, 300_000);
+  }
+
+  async writeVersion(dir: string, base: string): Promise<{ main: string; preview?: string }> {
+    const main = path.join(dir, `${base}.pcraft`);
+    const preview = path.join(dir, `${base}.png`);
+    await this.saveNative(main);
+    await this.exportPng(preview);
+    return { main, preview };
+  }
+
+  async undo(): Promise<void> {
+    await this.client().callTool('command_run', { id: 'edit.undo', params: {}, wait: true });
+  }
+
+  quickEditSteps(opId: string, values: EditValues): AppOperation[] {
+    return [photocraftCommand(opId, values)];
   }
 
   async screenshot(maxSide: number): Promise<Buffer | null> {

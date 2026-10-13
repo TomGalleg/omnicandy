@@ -37,6 +37,9 @@ const api: StudioApi = {
     refresh: () => ipcRenderer.invoke(IPC.liveRefresh),
     popOut: () => ipcRenderer.invoke(IPC.livePopOut),
     dock: () => ipcRenderer.invoke(IPC.liveDock),
+    setViewport: (v) => ipcRenderer.invoke(IPC.liveViewport, v),
+    quickEdit: (opId, values) => ipcRenderer.invoke(IPC.liveQuickEdit, opId, values),
+    undo: () => ipcRenderer.invoke(IPC.liveUndo),
     onChange: (cb) => {
       const listener = (_e: IpcRendererEvent, s: LiveSnapshot) => cb(s);
       ipcRenderer.on(IPC.liveEvent, listener);

@@ -6,29 +6,33 @@
 //    last saw. If someone else changed it, automation pauses instead of editing on top.
 //  - While you hold control, automation refuses to run. When you hand control back, resuming
 //    re-reads the document; if it changed, the remaining steps wait for your explicit go-ahead.
-//  - Saving writes a .pcraft + .png into work/live (PhotoCraft's only write root) and registers
-//    them as new read-only versions; the opened asset is never overwritten.
+//  - Quick edits (one click, from src/shared/appEditors.ts) run straight in the open app window.
+//  - Saving writes the app's files (PhotoCraft .pcraft + .png, VectorCraft .svg + .png, SoundCraft
+//    .wav mix) into the app's work folder and registers them as new read-only versions; the opened
+//    asset is never overwritten.
+//  Works with PhotoCraft, VectorCraft and SoundCraft; multi-step automation is PhotoCraft-only.
 
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { collabReducer, initialCollabState, type CollabEvent, type CollabState } from '@shared/collaboration';
 import type { LiveSnapshot, LiveStatus, LiveStep } from '@shared/live';
+import { checkEditValues, EDITOR_APPS, editorFor, type EditorAppId } from '@shared/appEditors';
 import { checkPhotoCraftOp, presetLabel } from '@shared/photocraftOps';
 import { versionOf, type LiveDoc } from './photocraftLive';
 import type { ProjectStore } from './projectStore';
 
-const OPENABLE = new Set(['pcraft', 'psd', 'psb', 'png', 'jpg', 'jpeg', 'tif', 'tiff', 'webp', 'bmp', 'gif', 'exr', 'tga', 'svg']);
+const LIVE_APPS: EditorAppId[] = ['photocraft', 'vectorcraft', 'soundcraft'];
 /** Opened as shape layers; flattened on open so pixel adjustments and filters apply. */
 const VECTOR = new Set(['svg']);
 
 export interface LiveTaskDeps {
   /** Starts/reuses the app and returns the document API. */
-  connect: () => Promise<LiveDoc>;
+  connect: (app: EditorAppId) => Promise<LiveDoc>;
   store: ProjectStore;
   emit: (s: LiveSnapshot) => void;
   /** Pause between steps so you can see each change and intervene. */
   stepDelayMs?: number;
-  writeDir: () => Promise<string>;
+  writeDir: (app: EditorAppId) => Promise<string>;
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -47,12 +51,14 @@ export class LiveTaskController {
   private message: string | null = null;
   private looping = false;
   private poppedOut = false;
+  private appId: EditorAppId = 'photocraft';
+  private saveCount = 0;
 
   constructor(private readonly d: LiveTaskDeps) {}
 
   snapshot(): LiveSnapshot {
     return {
-      appId: 'photocraft',
+      appId: this.appId,
       status: this.status,
       error: this.error,
       asset: this.asset,
@@ -79,7 +85,7 @@ export class LiveTaskController {
   }
 
   private requireDoc(): LiveDoc {
-    if (!this.doc || !this.asset) throw new Error('Open an asset in PhotoCraft first.');
+    if (!this.doc || !this.asset) throw new Error('Open a file in the Edit tab first.');
     return this.doc;
   }
 
@@ -93,24 +99,27 @@ export class LiveTaskController {
     this.publish();
   }
 
-  /** Launches PhotoCraft if needed and opens a library asset in its window (read-only source). */
-  async open(assetId: string): Promise<LiveSnapshot> {
+  /** Launches the matching app if needed and opens a library asset in its window (read-only source). */
+  async open(assetId: string, appOverride?: EditorAppId): Promise<LiveSnapshot> {
     if (this.collab.activeOperation || this.collab.phase === 'running' || this.collab.phase === 'pausing') {
       throw new Error('Pause or cancel the running task before opening another document.');
     }
     const a = (await this.d.store.loadManifest()).assets.find((x) => x.id === assetId);
     if (!a) throw new Error('Unknown asset.');
-    if (!OPENABLE.has(a.sourceFormat)) throw new Error(`PhotoCraft can't open ${a.sourceFormat.toUpperCase()} files.`);
+    const appId = appOverride ?? editorFor(a.sourceFormat)?.id;
+    if (!appId || !LIVE_APPS.includes(appId)) throw new Error(`No app can open ${a.sourceFormat.toUpperCase()} files live yet.`);
+    const appName = EDITOR_APPS[appId].name;
     const abs = await this.d.store.resolveAssetPath(a.id);
 
     this.status = 'starting';
     this.error = null;
-    this.message = 'Starting PhotoCraft…';
+    this.appId = appId;
+    this.message = `Starting ${appName}…`;
     this.publish();
     try {
-      this.doc = await this.d.connect();
+      this.doc = await this.d.connect(appId);
       await this.doc.open(abs);
-      if (VECTOR.has(a.sourceFormat)) await this.doc.run({ command: 'layer.flattenImage', params: {} });
+      if (appId === 'photocraft' && VECTOR.has(a.sourceFormat)) await this.doc.run({ command: 'layer.flattenImage', params: {} });
       this.status = 'ready';
     } catch (err) {
       this.status = 'error';
@@ -124,9 +133,10 @@ export class LiveTaskController {
     this.steps = [];
     this.stepIndex = 0;
     this.savedVersionIds = [];
+    this.saveCount = 0;
     this.collab = initialCollabState;
     this.collab = { ...this.collab, knownVersion: await this.currentVersion() };
-    this.message = `${a.name} is open in PhotoCraft${VECTOR.has(a.sourceFormat) ? ' (vector shapes flattened to pixels so adjustments apply)' : ''}. Your library file is read-only; save to create a new version.`;
+    this.message = `${a.name} is open in ${appName}${appId === 'photocraft' && VECTOR.has(a.sourceFormat) ? ' (vector shapes flattened to pixels so adjustments apply)' : ''}. Your library file stays as it is; save to create a new version.`;
     this.publish();
     return this.snapshot();
   }
@@ -134,6 +144,7 @@ export class LiveTaskController {
   /** Plans and starts running `steps` live. */
   async run(steps: Array<{ command: string; params: Record<string, unknown> }>): Promise<LiveSnapshot> {
     this.requireDoc();
+    if (this.appId !== 'photocraft') throw new Error('Multi-step automation is available for PhotoCraft only.');
     if (!steps.length) throw new Error('Add at least one step.');
     if (!['idle', 'completed', 'cancelled', 'failed'].includes(this.collab.phase)) {
       throw new Error('A task is already in progress. Cancel it first.');
@@ -238,30 +249,70 @@ export class LiveTaskController {
   async saveVersion(): Promise<LiveSnapshot> {
     const doc = this.requireDoc();
     if (this.collab.activeOperation) throw new Error('Wait for the current step to finish.');
-    const dir = await this.d.writeDir();
-    const tmp = randomUUID().slice(0, 8);
-    const docPath = path.join(dir, `${tmp}.pcraft`);
-    const pngPath = path.join(dir, `${tmp}.png`);
-    await doc.saveNative(docPath);
-    await doc.exportPng(pngPath);
+    const dir = await this.d.writeDir(this.appId);
+    const files = await doc.writeVersion(dir, randomUUID().slice(0, 8));
+    const appName = EDITOR_APPS[this.appId].name;
     const base = this.asset!.name.replace(/\.[^.]+$/, '').replace(/-live\d*$/, '');
-    const n = this.savedVersionIds.length / 2 + 1;
+    const n = this.saveCount + 1;
     const steps = this.history.slice(1).join(' → ') || 'no edits';
-    const pcraft = await this.d.store.addDerivedFile(docPath, {
-      name: `${base}-live${n}.pcraft`,
+    const mainExt = path.extname(files.main).slice(1);
+    const main = await this.d.store.addDerivedFile(files.main, {
+      name: `${base}-live${n}.${mainExt}`,
       parentId: this.parentForNextSave ?? this.asset!.id,
-      provenance: { origin: 'generated', source: `Saved from the live PhotoCraft window. History: ${steps}` },
+      provenance: { origin: 'generated', source: `Saved from the live ${appName} window. History: ${steps}` },
     });
-    const png = await this.d.store.addDerivedFile(pngPath, {
-      name: `${base}-live${n}.png`,
-      parentId: pcraft.id,
-      provenance: { origin: 'generated', source: `PNG export of ${pcraft.name} from the live PhotoCraft window` },
-    });
-    this.parentForNextSave = pcraft.id;
-    this.savedVersionIds = [...this.savedVersionIds, pcraft.id, png.id];
+    const saved = [main.id];
+    if (files.preview) {
+      const png = await this.d.store.addDerivedFile(files.preview, {
+        name: `${base}-live${n}.png`,
+        parentId: main.id,
+        provenance: { origin: 'generated', source: `PNG export of ${main.name} from the live ${appName} window` },
+      });
+      saved.push(png.id);
+    }
+    this.saveCount = n;
+    this.parentForNextSave = main.id;
+    this.savedVersionIds = [...this.savedVersionIds, ...saved];
     const v = await this.currentVersion();
     this.dispatch({ type: 'syncVersion', version: v }); // refused (harmlessly) if a manual edit is pending
-    this.message = `Saved ${pcraft.name} and ${png.name} to the library.`;
+    this.message = `Saved ${main.name}${saved.length > 1 ? ' (+ PNG preview)' : ''} to the library.`;
+    this.publish();
+    return this.snapshot();
+  }
+
+  /** One-click edit from the Edit tab, applied straight in the open app window. */
+  async quickEdit(opId: string, rawValues: Record<string, unknown>): Promise<LiveSnapshot> {
+    const doc = this.requireDoc();
+    if (this.collab.activeOperation || ['running', 'pausing'].includes(this.collab.phase)) {
+      throw new Error('An automation task is running. Pause or cancel it first.');
+    }
+    const app = EDITOR_APPS[this.appId];
+    const op = app.quickEdits.find((o) => o.id === opId);
+    if (!op) throw new Error(`${app.name} has no quick edit "${opId}".`);
+    if (op.copyOnly) throw new Error(`${op.label} makes a new file; use it from "Make a copy".`);
+    const check = checkEditValues(op, rawValues);
+    if (!check.ok) throw new Error(check.reason);
+    if (!doc.quickEditSteps) throw new Error(`${app.name} can't apply quick edits live.`);
+    const steps = doc.quickEditSteps(op.id, check.values);
+    if (this.appId === 'photocraft') {
+      for (const s of steps) { const c = checkPhotoCraftOp(s.command, s.params); if (!c.ok) throw new Error(c.reason); }
+    }
+    for (const s of steps) await doc.run(s);
+    const v = await this.currentVersion();
+    if (this.collab.phase !== 'manual' && !this.collab.needsSync) this.dispatch({ type: 'syncVersion', version: v });
+    this.message = `${op.label} applied in ${app.name}. Save to keep it as a new version.`;
+    this.publish();
+    return this.snapshot();
+  }
+
+  async undo(): Promise<LiveSnapshot> {
+    const doc = this.requireDoc();
+    if (this.collab.activeOperation || ['running', 'pausing'].includes(this.collab.phase)) throw new Error('Wait for the running task to pause first.');
+    if (!doc.undo) throw new Error('Undo is not available.');
+    await doc.undo();
+    const v = await this.currentVersion();
+    if (this.collab.phase !== 'manual' && !this.collab.needsSync) this.dispatch({ type: 'syncVersion', version: v });
+    this.message = 'Undone.';
     this.publish();
     return this.snapshot();
   }

@@ -1,5 +1,6 @@
 // Narrow IPC surface. Every handler validates its arguments and checks the sender frame.
 
+import fs from 'node:fs/promises';
 import path from 'node:path';
 import { BrowserWindow, dialog, ipcMain, shell, type IpcMainInvokeEvent } from 'electron';
 import { z } from 'zod';
@@ -13,6 +14,9 @@ import { IMPORTABLE_EXTENSIONS } from './media';
 import { AppEditors } from './appEditors';
 import { LiveTaskController } from './liveTask';
 import { PhotoCraftCliAdapter } from './photocraftCli';
+import type { EditorAppId } from '@shared/appEditors';
+import type { EmbeddedApp } from './embeddedApp';
+import { LiveSoundCraft, LiveVectorCraft } from './liveApps';
 import { LivePhotoCraft } from './photocraftLive';
 import type { ProjectStore } from './projectStore';
 import { parseWorkflow } from './schemas';
@@ -29,6 +33,8 @@ export interface IpcDeps {
   secretsDir: string;
   /** Pop-out control panel docked to an external app window. */
   panel: { open(pid: number): Promise<void>; close(): void; readonly isOpen: boolean; onClosed(cb: () => void): void };
+  /** The live app window shown inside the Edit area. */
+  embedded: EmbeddedApp;
 }
 
 const strip = (e: { id: string; app: string; assetId: string; assetName: string; workPath: string; openedAt: string }) =>
@@ -133,46 +139,79 @@ export function registerIpc(d: IpcDeps): void {
   });
   handle(IPC.cancelWorkflow, none, () => { running?.abort.abort(); });
 
-  // ---- Live PhotoCraft (real app window, token-authenticated bridge, automation roots) ----
+  // ---- Live apps (PhotoCraft: token + roots; VectorCraft: roots; SoundCraft: loopback port) ----
+  const PFdir = (name: string) => path.join(process.env.ProgramFiles ?? 'C:\\Program Files', name);
   let livePromise: Promise<LiveTaskController> | null = null;
-  let liveApp: LivePhotoCraft | null = null;
+  const drivers: Partial<Record<EditorAppId, LivePhotoCraft | LiveVectorCraft | LiveSoundCraft>> = {};
   const live = () => (livePromise ??= (async () => {
     const store = await d.project();
-    const writeRoot = path.join(store.root, 'work', 'live');
-    const app = new LivePhotoCraft({
-      installDir: path.join(process.env.ProgramFiles ?? 'C:\\Program Files', 'PhotoCraft'),
-      secretsDir: d.secretsDir,
-      readRoot: store.root,
-      writeRoot,
-    });
+    const roots: Record<'photocraft' | 'vectorcraft' | 'soundcraft', string> = {
+      photocraft: path.join(store.root, 'work', 'live'),
+      vectorcraft: path.join(store.root, 'work', 'vectorcraft-live'),
+      soundcraft: path.join(store.root, 'work', 'soundcraft-live'),
+    };
+    const driver = (app: EditorAppId) => {
+      if (drivers[app]) return drivers[app]!;
+      if (app === 'photocraft') drivers[app] = new LivePhotoCraft({ installDir: PFdir('PhotoCraft'), secretsDir: d.secretsDir, readRoot: store.root, writeRoot: roots.photocraft });
+      else if (app === 'vectorcraft') drivers[app] = new LiveVectorCraft({ installDir: PFdir('VectorCraft'), readRoot: store.root, writeRoot: roots.vectorcraft });
+      else if (app === 'soundcraft') drivers[app] = new LiveSoundCraft({ installDir: PFdir('SoundCraft'), readRoot: store.root, writeRoot: roots.soundcraft });
+      else throw new Error(`${app} can't be opened live.`);
+      return drivers[app]!;
+    };
     const ctl = new LiveTaskController({
-      connect: async () => { await app.ensureStarted(); return app; },
+      connect: async (app) => { const drv = driver(app); await drv.ensureStarted(); return drv; },
       store,
       emit: (s) => { for (const w of BrowserWindow.getAllWindows()) if (!w.isDestroyed()) w.webContents.send(IPC.liveEvent, s); },
-      writeDir: async () => writeRoot,
+      writeDir: async (app) => { const dir = roots[app as keyof typeof roots]; if (!dir) throw new Error('No write folder.'); await fs.mkdir(dir, { recursive: true }); return dir; },
     });
-    liveApp = app;
-    d.panel.onClosed(() => { ctl.setPoppedOut(false); const w = d.window(); if (w && !w.isDestroyed()) w.show(); });
+    d.panel.onClosed(() => {
+      if (d.embedded.mode === 'window') { d.embedded.popIn(); }
+      ctl.setPoppedOut(false);
+      const w = d.window(); if (w && !w.isDestroyed()) w.show();
+    });
     return ctl;
   })());
-  let autoPopOut = true;
+  const currentPid = async () => {
+    const ctl = await live();
+    return drivers[ctl.snapshot().appId]?.pid ?? null;
+  };
+  /** Shows the app in its own window with the controls panel docked beside it. */
   const popOut = async () => {
     const ctl = await live();
-    const pid = liveApp?.pid;
-    if (!pid) throw new Error('PhotoCraft is not running.');
+    const pid = await currentPid();
+    if (!pid) throw new Error('The app is not running.');
+    d.embedded.popOut();
     await d.panel.open(pid);
     ctl.setPoppedOut(true);
     return ctl.snapshot();
   };
-  const stepSchema = z.object({ command: z.string().min(1).max(128), params: z.record(z.string().max(64), z.unknown()) });
+  /** Puts the app back inside CreateCraft's Edit area. */
+  const popIn = async () => {
+    const ctl = await live();
+    d.panel.close();
+    d.embedded.popIn();
+    ctl.setPoppedOut(false);
+    return ctl.snapshot();
+  };
   handle(IPC.liveState, none, async () => (await live()).snapshot());
   handle(IPC.liveOpen, z.tuple([z.string().min(1).max(128)]), async (id) => {
-    const s = await (await live()).open(id);
-    if (autoPopOut && !d.panel.isOpen) return popOut().catch(() => s);
+    const ctl = await live();
+    const s = await ctl.open(id);
+    const pid = await currentPid();
+    if (pid) {
+      d.embedded.attach(pid);
+      if (d.embedded.mode === 'window') { d.panel.close(); await d.panel.open(pid); ctl.setPoppedOut(true); return ctl.snapshot(); }
+    }
     return s;
   });
-  handle(IPC.livePopOut, none, async () => { autoPopOut = true; return popOut(); });
-  handle(IPC.liveDock, none, async () => { autoPopOut = false; d.panel.close(); const ctl = await live(); ctl.setPoppedOut(false); return ctl.snapshot(); });
+  handle(IPC.livePopOut, none, () => popOut());
+  handle(IPC.liveDock, none, () => popIn());
+  handle(IPC.liveViewport, z.tuple([z.object({ x: z.number().finite(), y: z.number().finite(), width: z.number().finite().min(0), height: z.number().finite().min(0), visible: z.boolean() }).nullable()]),
+    (v) => { d.embedded.setViewport(v); });
+  handle(IPC.liveQuickEdit, z.tuple([z.string().min(1).max(64), z.record(z.string().max(64), z.union([z.number(), z.string().max(64)]))]),
+    async (opId, values) => (await live()).quickEdit(opId, values));
+  handle(IPC.liveUndo, none, async () => (await live()).undo());
+  const stepSchema = z.object({ command: z.string().min(1).max(128), params: z.record(z.string().max(64), z.unknown()) });
   handle(IPC.liveRun, z.tuple([z.array(stepSchema).min(1).max(50)]), async (steps) => (await live()).run(steps));
   handle(IPC.livePause, none, async () => (await live()).pause());
   handle(IPC.liveTakeControl, none, async () => (await live()).takeControl());

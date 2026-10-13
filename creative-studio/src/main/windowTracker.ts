@@ -49,6 +49,12 @@ export class WindowTracker extends EventEmitter<{ state: [TrackedWindowState]; e
   }
 
   own() { this.send('own'); }
+  /** Borderless target owned by `host` (stays above it, hides/minimizes with it). */
+  embed(host: bigint) { this.send(`embed ${host.toString()}`); }
+  unembed() { this.send('unembed'); }
+  show() { this.send('show'); }
+  hide() { this.send('hide'); }
+  minimize() { this.send('minimize'); }
   disown() { this.send('disown'); }
   /** Restores and moves the tracked window (physical pixels). */
   move(r: { x: number; y: number; width: number; height: number }) {

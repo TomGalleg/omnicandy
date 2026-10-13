@@ -6,6 +6,9 @@
 #   move <x> <y> <w> <h>    restore + move/resize the target window (physical pixels)
 #   own                     make the panel an owned window of the target (stays above it, minimizes with it)
 #   disown                  undo "own"
+#   embed <hostHwnd>        borderless target owned by host (stays above it, hides/minimizes with it)
+#   unembed                 restore the target's frame and ownership
+#   show | hide | minimize  show (without activating) / hide / minimize the target window
 # Exits when the target process ends or stdin closes. Only touches the given pid's window and our panel.
 param([Parameter(Mandatory)][int]$TargetPid, [Parameter(Mandatory)][long]$PanelHwnd)
 
@@ -34,12 +37,14 @@ public static class CsWindowTracker {
   [DllImport("user32.dll")] static extern bool ShowWindow(IntPtr h, int cmd);
   [DllImport("user32.dll")] static extern bool IsZoomed(IntPtr h);
   [DllImport("user32.dll")] static extern bool SetProcessDpiAwarenessContext(IntPtr ctx);
+  [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW")] static extern IntPtr GetWindowLongPtr(IntPtr h, int idx);
+  const long FRAME = 0x00C00000L | 0x00040000L | 0x00020000L | 0x00010000L; // CAPTION | THICKFRAME | MINIMIZEBOX | MAXIMIZEBOX
 
   static IntPtr FindMain(int pid) {
     IntPtr best = IntPtr.Zero; long bestArea = 0;
     EnumWindows((h, l) => {
       uint p; GetWindowThreadProcessId(h, out p);
-      if (p != (uint)pid || !IsWindowVisible(h) || GetWindow(h, 4) != IntPtr.Zero || GetWindowTextLength(h) == 0) return true;
+      if (p != (uint)pid || !IsWindowVisible(h) || GetWindowTextLength(h) == 0) return true; // owned allowed: embedded windows are owned by CreateCraft
       RECT r; GetWindowRect(h, out r);
       long area = (long)(r.R - r.L) * (r.B - r.T);
       if (area > bestArea) { bestArea = area; best = h; }
@@ -65,7 +70,7 @@ public static class CsWindowTracker {
     });
     reader.IsBackground = true; reader.Start();
 
-    IntPtr target = IntPtr.Zero; string last = null; bool owned = false;
+    IntPtr target = IntPtr.Zero; string last = null; bool owned = false; bool embedded = false; long savedStyle = 0;
     while (true) {
       Process proc = null;
       try { proc = Process.GetProcessById(pid); } catch { }
@@ -79,6 +84,25 @@ public static class CsWindowTracker {
         if (target == IntPtr.Zero) continue;
         if (a[0] == "own") { SetWindowLongPtr(new IntPtr(panel), -8, target); owned = true; }
         else if (a[0] == "disown") { SetWindowLongPtr(new IntPtr(panel), -8, IntPtr.Zero); owned = false; }
+        else if (a[0] == "embed" && a.Length == 2) {
+          if (!embedded) savedStyle = GetWindowLongPtr(target, -16).ToInt64();
+          if (IsZoomed(target) || IsIconic(target)) ShowWindow(target, 9);
+          SetWindowLongPtr(target, -16, new IntPtr(savedStyle & ~FRAME));
+          SetWindowLongPtr(target, -8, new IntPtr(long.Parse(a[1])));
+          SetWindowPos(target, IntPtr.Zero, 0, 0, 0, 0, 0x0027); // NOSIZE|NOMOVE|NOZORDER|FRAMECHANGED
+          embedded = true;
+        }
+        else if (a[0] == "unembed") {
+          if (embedded) {
+            SetWindowLongPtr(target, -16, new IntPtr(savedStyle));
+            SetWindowLongPtr(target, -8, IntPtr.Zero);
+            SetWindowPos(target, IntPtr.Zero, 0, 0, 0, 0, 0x0027);
+            embedded = false;
+          }
+        }
+        else if (a[0] == "hide") ShowWindow(target, 0);
+        else if (a[0] == "minimize") ShowWindow(target, 7); // SW_SHOWMINNOACTIVE
+        else if (a[0] == "show") ShowWindow(target, 8); // SW_SHOWNA
         else if (a[0] == "move" && a.Length == 5) {
           if (IsZoomed(target) || IsIconic(target)) ShowWindow(target, 9); // SW_RESTORE
           SetWindowPos(target, IntPtr.Zero, int.Parse(a[1]), int.Parse(a[2]), int.Parse(a[3]), int.Parse(a[4]), 0x0014); // NOZORDER|NOACTIVATE
@@ -91,7 +115,8 @@ public static class CsWindowTracker {
         var r = Bounds(target);
         state = "{\"alive\":true,\"found\":true,\"x\":" + r.L + ",\"y\":" + r.T + ",\"w\":" + (r.R - r.L) + ",\"h\":" + (r.B - r.T)
           + ",\"minimized\":" + (IsIconic(target) ? "true" : "false") + ",\"maximized\":" + (IsZoomed(target) ? "true" : "false")
-          + ",\"owned\":" + (owned ? "true" : "false") + "}";
+          + ",\"owned\":" + (owned ? "true" : "false") + ",\"embedded\":" + (embedded ? "true" : "false")
+          + ",\"visible\":" + (IsWindowVisible(target) ? "true" : "false") + "}";
       }
       if (state != last) { Console.WriteLine(state); Console.Out.Flush(); last = state; }
       Thread.Sleep(80);

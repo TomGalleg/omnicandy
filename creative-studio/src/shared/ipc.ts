@@ -31,6 +31,9 @@ export const IPC = {
   liveRefresh: 'live:refresh',
   liveEvent: 'live:event',
   livePopOut: 'live:pop-out',
+  liveViewport: 'live:viewport',
+  liveQuickEdit: 'live:quick-edit',
+  liveUndo: 'live:undo',
   liveDock: 'live:dock',
   editApply: 'edit:apply',
   editOpenCopy: 'edit:open-copy',
@@ -97,10 +100,15 @@ export interface StudioApi {
     cancel(): Promise<LiveSnapshot>;
     saveVersion(): Promise<LiveSnapshot>;
     refresh(): Promise<LiveSnapshot>;
-    /** Shows the controls in a panel docked to the left of the PhotoCraft window. */
+    /** Opens the app in its own window, with the controls docked beside it. */
     popOut(): Promise<LiveSnapshot>;
-    /** Closes the pop-out panel; controls return to the main window. */
+    /** Puts the app back inside CreateCraft's Edit area. */
     dock(): Promise<LiveSnapshot>;
+    /** Where the Edit area's app viewport is (CSS px relative to the window content); null/invisible hides the app. */
+    setViewport(v: { x: number; y: number; width: number; height: number; visible: boolean } | null): Promise<void>;
+    /** One-click edit applied in the open app window. */
+    quickEdit(opId: string, values: Record<string, number | string>): Promise<LiveSnapshot>;
+    undo(): Promise<LiveSnapshot>;
     onChange(cb: (s: LiveSnapshot) => void): () => void;
   };
   edit: {
