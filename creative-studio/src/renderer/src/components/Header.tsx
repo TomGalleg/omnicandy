@@ -8,6 +8,7 @@ import logo from '../assets/logo.png';
 import type { useAppearance } from '../useAppearance';
 
 export const WORKSPACES: Array<{ id: WorkspaceId; label: string }> = [
+  { id: 'home', label: 'Home' },
   { id: 'media', label: 'Media' },
   { id: 'edit', label: 'Edit' },
   { id: 'generate', label: 'AI Generate' },
@@ -20,6 +21,7 @@ export const WORKSPACES: Array<{ id: WorkspaceId; label: string }> = [
 
 interface Props {
   projectName: string;
+  onProjectHome: () => void;
   workspace: WorkspaceId;
   onWorkspace: (w: WorkspaceId) => void;
   apps: AppProbeResult[];
@@ -30,13 +32,13 @@ interface Props {
   appTheme: LiveSnapshot['appTheme'] | null;
 }
 
-export function Header({ projectName, workspace, onWorkspace, apps, integrations, appearance, claudeOpen, onToggleClaude, appTheme }: Props) {
+export function Header({ projectName, onProjectHome, workspace, onWorkspace, apps, integrations, appearance, claudeOpen, onToggleClaude, appTheme }: Props) {
   const installed = apps.filter((a) => a.installed).length;
   const connected = apps.filter((a) => a.connected).length;
   return (
     <header className="header">
       <div className="brand"><img className="brand-logo" src={logo} alt="" /> CreateCraft</div>
-      <div className="project-name">Project: <strong>{projectName}</strong></div>
+      <button className="project-name" title="Projects" onClick={onProjectHome}>Project: <strong>{projectName}</strong> <span aria-hidden>▾</span></button>
       <nav className="workspaces" aria-label="Workspaces">
         {WORKSPACES.map((w) => (
           <button key={w.id} aria-current={workspace === w.id ? 'page' : undefined} onClick={() => onWorkspace(w.id)}>

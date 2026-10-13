@@ -35,7 +35,10 @@ export function useLive(log: (source: string, msg: string) => void) {
     }
   }, [log]);
 
-  return { live, busy, act };
+  /** Re-reads the live state (e.g. after switching projects). */
+  const resync = useCallback(async () => { setLive(await window.studio.live.state()); }, []);
+
+  return { live, busy, act, resync };
 }
 
 export type LiveApi = ReturnType<typeof useLive>;

@@ -1,6 +1,6 @@
 // The complete renderer ↔ main surface. Every channel here is validated in main (src/main/ipc.ts).
 
-import type { AppearanceSettings, AppProbeResult, Asset, ProjectManifest } from './types';
+import type { AppearanceSettings, AppProbeResult, Asset, ProjectManifest, ProjectSummary } from './types';
 import type { ClaudeState } from './claude';
 import type { LiveSnapshot } from './live';
 import type { WorkflowGraph, WorkflowRunEvent } from './workflow';
@@ -49,6 +49,13 @@ export const IPC = {
   editOpenCopy: 'edit:open-copy',
   editList: 'edit:list',
   editBringBack: 'edit:bring-back',
+  projectsList: 'projects:list',
+  projectsCurrent: 'projects:current',
+  projectsCreate: 'projects:create',
+  projectsOpen: 'projects:open',
+  projectsRename: 'projects:rename',
+  projectsRemove: 'projects:remove',
+  projectsReveal: 'projects:reveal',
   probeApps: 'apps:probe',
   integrationStatus: 'integrations:status',
 } as const;
@@ -142,6 +149,20 @@ export interface StudioApi {
     openWorkingCopy(assetId: string): Promise<ExternalEditDto>;
     list(): Promise<ExternalEditDto[]>;
     bringBack(editId: string): Promise<EditResultDto>;
+  };
+  projects: {
+    list(): Promise<ProjectSummary[]>;
+    current(): Promise<string>;
+    /** Creates an empty project; returns its key (does not open it). */
+    create(name: string): Promise<string>;
+    /** Switches the open project (refused while a task, workflow or Claude is busy). */
+    open(key: string): Promise<void>;
+    rename(key: string, name: string): Promise<void>;
+    /** Moves the project folder to the Recycle Bin. */
+    remove(key: string): Promise<void>;
+    reveal(key: string): Promise<void>;
+    /** Thumbnail URL for an asset of any project. */
+    assetUrl(key: string, assetId: string): string;
   };
   probeApps(): Promise<AppProbeResult[]>;
   integrationStatus(): Promise<IntegrationSnapshot>;

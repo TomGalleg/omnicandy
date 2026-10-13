@@ -4,6 +4,7 @@ import type { AppProbeResult, Asset, ProjectManifest, WorkspaceId } from '@share
 import { formatBytes, formatDims } from '../format';
 import type { LiveApi } from '../useLive';
 import { EditWorkspace } from './EditWorkspace';
+import { HomeWorkspace } from './HomeWorkspace';
 import { WorkflowEditor } from './WorkflowEditor';
 
 interface Props {
@@ -17,10 +18,14 @@ interface Props {
   onProjectChanged: () => void;
   liveApi: LiveApi;
   onSelectAsset: (id: string) => void;
+  projectKey: string | null;
+  onSwitched: (key: string) => void;
+  onGoto: (w: WorkspaceId, assetId?: string) => void;
 }
 
 export function WorkspaceView(p: Props) {
   switch (p.workspace) {
+    case 'home': return <HomeWorkspace manifest={p.manifest} projectKey={p.projectKey} onSwitched={p.onSwitched} onGoto={p.onGoto} log={p.log} />;
     case 'media': return <MediaWorkspace manifest={p.manifest} asset={p.selected} />;
     case 'edit': return <EditWorkspace manifest={p.manifest} selected={p.selected} liveApi={p.liveApi} onProjectChanged={p.onProjectChanged} onSelectAsset={p.onSelectAsset} log={p.log} />;
     case 'generate': return <GenerateView integrations={p.integrations} />;

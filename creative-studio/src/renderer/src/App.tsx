@@ -21,6 +21,7 @@ export function App() {
   const [integrations, setIntegrations] = useState<IntegrationSnapshot | null>(null);
   const [log, setLog] = useState<LogEntry[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [projectKey, setProjectKey] = useState<string | null>(null);
 
   const addLog = useCallback((source: string, message: string) => {
     setLog((l) => [...l.slice(-299), { at: new Date(), source, message }]);
@@ -30,18 +31,31 @@ export function App() {
     window.studio.loadProject().then(setManifest).catch((e: unknown) => setError(String(e)));
   }, []);
 
-  useEffect(() => {
+  const loadCurrent = useCallback(() => {
+    window.studio.projects.current().then(setProjectKey).catch(() => {});
     window.studio.loadProject()
-      .then((m) => { setManifest(m); setSelectedId(m.assets[0]?.id ?? null); addLog('project', `Loaded "${m.name}" (${m.assets.length} assets).`); })
+      .then((m) => { setManifest(m); setSelectedId(m.assets[0]?.id ?? null); setError(null); addLog('project', `Loaded "${m.name}" (${m.assets.length} assets).`); })
       .catch((e: unknown) => setError(String(e)));
+  }, [addLog]);
+
+  useEffect(() => {
+    loadCurrent();
     window.studio.integrationStatus().then(setIntegrations).catch(() => {});
     window.studio.probeApps().then((r) => {
       setApps(r);
       addLog('artcraft', `Detected ${r.filter((a) => a.installed).length}/${r.length} ArtCraft apps (installed, not connected).`);
     }).catch(() => {});
-  }, [addLog]);
+  }, [addLog, loadCurrent]);
 
   const liveApi = useLive(addLog);
+
+  /** After switching projects: reload everything tied to the old one. */
+  const onSwitched = useCallback((key: string) => {
+    setProjectKey(key);
+    loadCurrent();
+    void liveApi.resync();
+  }, [loadCurrent, liveApi]);
+  const goto = useCallback((w: WorkspaceId, assetId?: string) => { if (assetId) setSelectedId(assetId); setWorkspace(w); }, []);
 
   const selected = useMemo(() => manifest?.assets.find((a) => a.id === selectedId) ?? null, [manifest, selectedId]);
 
@@ -62,6 +76,7 @@ export function App() {
     <div className="app">
       <Header
         projectName={manifest?.name ?? '…'}
+        onProjectHome={() => setWorkspace('home')}
         workspace={workspace}
         onWorkspace={setWorkspace}
         apps={apps}
@@ -89,6 +104,10 @@ export function App() {
               <Panel id="viewer" minSize="30">
                 <div className="center">
                   <WorkspaceView
+                    key={projectKey ?? 'none'}
+                    projectKey={projectKey}
+                    onSwitched={onSwitched}
+                    onGoto={goto}
                     workspace={workspace}
                     manifest={manifest}
                     selected={selected}
@@ -111,7 +130,7 @@ export function App() {
           <Separator className="sep" />
           <Panel id="right" defaultSize="22" minSize={260} collapsible collapsedSize={0} panelRef={claudeRef}
             onResize={() => { const c = claudeRef.current?.isCollapsed() ?? false; if (c === claudeOpen) setClaudeOpen(!c); }}>
-            <ClaudePanel selected={selected} integrations={integrations} liveApi={liveApi} />
+            <ClaudePanel key={projectKey ?? 'none'} selected={selected} integrations={integrations} liveApi={liveApi} />
           </Panel>
         </Group>
       </div>

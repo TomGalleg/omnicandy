@@ -16,6 +16,7 @@ import { AppEditors } from './appEditors';
 import { ClaudePartner, defaultClaudeCli } from './claudePartner';
 import { LiveTaskController } from './liveTask';
 import { PhotoCraftCliAdapter } from './photocraftCli';
+import type { ProjectManager } from './projects';
 import type { EditorAppId } from '@shared/appEditors';
 import type { EmbeddedApp } from './embeddedApp';
 import { LiveSoundCraft, LiveVectorCraft } from './liveApps';
@@ -31,6 +32,7 @@ export interface IpcDeps {
   settings: SettingsStore;
   onAppearanceChanged: (s: AppearanceSettings) => void;
   project: () => Promise<ProjectStore>;
+  projects: ProjectManager;
   /** Private per-user directory for secrets such as control tokens. Never exposed to the renderer. */
   secretsDir: string;
   /** Pop-out control panel docked to an external app window. */
@@ -50,12 +52,15 @@ export function registerIpc(d: IpcDeps): void {
     });
   };
   const none = z.tuple([]);
+  /** Per-project singletons register here; switching projects clears them. */
+  const resetters: Array<() => void> = [];
 
   const capture = new UnavailableWindowCapture();
   const vault = new NotConfiguredCredentialVault();
   const mockProvider = new MockGenerationProvider();
   // PhotoCraft is REAL when photocraft-cli.exe is installed; otherwise a labelled mock stands in.
   let depsPromise: Promise<RunnerDeps> | null = null;
+  resetters.push(() => { depsPromise = null; });
   const runnerDeps = () => (depsPromise ??= (async () => {
     const store = await d.project();
     const photocraft = await PhotoCraftCliAdapter.create(store);
@@ -154,6 +159,11 @@ export function registerIpc(d: IpcDeps): void {
   const PFdir = (name: string) => path.join(process.env.ProgramFiles ?? 'C:\\Program Files', name);
   let livePromise: Promise<LiveTaskController> | null = null;
   const drivers: Partial<Record<EditorAppId, LivePhotoCraft | LiveVectorCraft | LiveSoundCraft>> = {};
+  resetters.push(() => {
+    // App windows stay open (no unsaved work is lost); they are just no longer controlled.
+    for (const k of Object.keys(drivers) as EditorAppId[]) { drivers[k]?.stop(); delete drivers[k]; }
+    livePromise = null;
+  });
   const live = () => (livePromise ??= (async () => {
     const store = await d.project();
     const roots: Record<'photocraft' | 'vectorcraft' | 'soundcraft', string> = {
@@ -223,6 +233,7 @@ export function registerIpc(d: IpcDeps): void {
 
   // ---- Claude Creative Partner (Claude Agent SDK, this PC's Claude Code sign-in) ----
   let partner: ClaudePartner | null = null;
+  resetters.push(() => { partner = null; });
   const claude = () => (partner ??= new ClaudePartner({
     live,
     store: d.project,
@@ -259,6 +270,7 @@ export function registerIpc(d: IpcDeps): void {
 
   // ---- Per-file-type editing with the matching ArtCraft app ----
   let editorsPromise: Promise<AppEditors> | null = null;
+  resetters.push(() => { editorsPromise = null; });
   const editors = () => (editorsPromise ??= d.project().then((s) => new AppEditors(s)));
   const id = z.string().min(1).max(128);
   handle(IPC.editApply, z.tuple([id, z.string().min(1).max(64), z.record(z.string().max(64), z.union([z.number(), z.string().max(64)]))]),
@@ -272,6 +284,28 @@ export function registerIpc(d: IpcDeps): void {
     if (name !== path.basename(name)) throw new Error('Invalid export name.');
     const file = path.join(await (await d.project()).exportsDir(), name);
     shell.showItemInFolder(file);
+  });
+
+  // ---- Projects ----
+  const projectKey = z.string().regex(/^[A-Za-z0-9_-]{1,64}$/);
+  handle(IPC.projectsList, none, () => d.projects.list());
+  handle(IPC.projectsCurrent, none, () => d.projects.currentKey());
+  handle(IPC.projectsCreate, z.tuple([z.string().max(80)]), (name) => d.projects.create(name));
+  handle(IPC.projectsRename, z.tuple([projectKey, z.string().min(1).max(80)]), (key, name) => d.projects.rename(key, name));
+  handle(IPC.projectsRemove, z.tuple([projectKey]), (key) => d.projects.remove(key));
+  handle(IPC.projectsReveal, z.tuple([projectKey]), (key) => { shell.openPath(d.projects.folder(key)); });
+  handle(IPC.projectsOpen, z.tuple([projectKey]), async (key) => {
+    if (key === (await d.projects.currentKey())) return;
+    if (running) throw new Error('A workflow is running. Cancel it before switching projects.');
+    if (livePromise) {
+      const st = (await livePromise).snapshot().collab;
+      if (st.activeOperation || ['running', 'pausing', 'manual'].includes(st.phase)) throw new Error('Finish or cancel the current editing task before switching projects.');
+    }
+    if (partner?.state().status === 'working') throw new Error('Claude is still working. Stop it before switching projects.');
+    d.panel.close();
+    d.embedded.release(true);
+    for (const r of resetters) r();
+    await d.projects.open(key);
   });
 
   handle(IPC.probeApps, none, () => probeAllArtCraftApps());

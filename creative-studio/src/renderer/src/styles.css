@@ -336,3 +336,31 @@ h1, h2, h3 { margin: 0; font-weight: 600; }
 /* ---------- Embedded editor surroundings: blend into the app ---------- */
 .edit-stage { background: var(--editor-bg); }
 .edit-bar { border-bottom-color: var(--border); }
+
+/* ---------- Project Home & Overview ---------- */
+.project-name { border: 0; background: transparent; cursor: pointer; padding: 4px 6px; border-radius: var(--radius-sm); }
+.project-name:hover { background: var(--surface-2); color: var(--text); }
+.home { height: 100%; overflow: auto; padding: 18px; display: grid; gap: 22px; align-content: start; }
+.home-section { display: grid; gap: 12px; }
+.home-head { display: flex; align-items: center; gap: 12px; justify-content: space-between; flex-wrap: wrap; }
+.home-head h2 { font-size: 17px; }
+.new-project { display: flex; gap: 6px; }
+.new-project input { width: 240px; height: 30px; padding: 0 10px; background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-sm); }
+.project-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; }
+.project-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; display: flex; flex-direction: column; }
+.project-card.open { border-color: var(--accent); }
+.project-thumb { aspect-ratio: 16 / 9; border: 0; padding: 0; cursor: pointer; display: grid; place-items: center; color: var(--text-3);
+  background: repeating-conic-gradient(var(--checker-a) 0 25%, var(--checker-b) 0 50%) 0 0 / 14px 14px; }
+.project-thumb img { width: 100%; height: 100%; object-fit: contain; }
+.project-body { padding: 10px 12px 12px; display: grid; gap: 6px; }
+.project-name-line { display: flex; gap: 6px; align-items: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.project-body input { height: 28px; width: 100%; padding: 0 8px; background: var(--surface-2); border: 1px solid var(--accent); border-radius: var(--radius-sm); }
+.overview-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
+.overview-grid h3 { font-size: 13px; }
+.stat-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.stat { display: grid; background: var(--surface-2); border-radius: var(--radius-sm); padding: 8px; }
+.stat strong { font-size: 18px; }
+.stat span { font-size: 11px; color: var(--text-3); }
+.recent-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.recent { display: grid; gap: 3px; border: 1px solid transparent; background: transparent; padding: 3px; border-radius: var(--radius-sm); cursor: pointer; text-align: left; }
+.recent:hover { background: var(--surface-2); }

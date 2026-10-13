@@ -7,7 +7,7 @@ import { DockedPanel, trackerScriptPath } from './dockedPanel';
 import { EmbeddedApp } from './embeddedApp';
 import { registerIpc } from './ipc';
 import type { ProjectStore } from './projectStore';
-import { ensureSampleProject } from './sampleProject';
+import { ProjectManager } from './projects';
 import { SettingsStore } from './settingsStore';
 
 protocol.registerSchemesAsPrivileged([
@@ -45,12 +45,13 @@ app.on('second-instance', () => {
   mainWindow.focus();
 });
 const settings = new SettingsStore(app.getPath('userData'));
-let projectPromise: Promise<ProjectStore> | null = null;
-const project = () =>
-  (projectPromise ??= ensureSampleProject(
-    path.join(app.getPath('userData'), 'projects', 'sample-project'),
-    path.join(app.getAppPath(), 'fixtures', 'sample-project'),
-  ));
+const projects = new ProjectManager(
+  path.join(app.getPath('userData'), 'projects'),
+  path.join(app.getAppPath(), 'fixtures', 'sample-project'),
+  path.join(app.getPath('userData'), 'projects.json'),
+  (dir) => shell.trashItem(dir),
+);
+const project = (): Promise<ProjectStore> => projects.current();
 
 const devUrl = process.env.ELECTRON_RENDERER_URL;
 const isAppUrl = (url: string) =>
@@ -99,13 +100,15 @@ app.whenReady().then(async () => {
   app.setAppUserModelId('ClaudeCraft.CreateCraft');
   session.defaultSession.setPermissionRequestHandler((_wc, _perm, cb) => cb(false));
 
-  // studio-asset://asset/<assetId> → read-only file inside the project root.
+  // studio-asset://asset/<assetId>[?p=<projectKey>] → read-only file inside that project's root.
   protocol.handle(ASSET_SCHEME, async (req) => {
     try {
       const url = new URL(req.url);
       const assetId = decodeURIComponent(url.pathname.replace(/^\//, ''));
       if (url.host !== 'asset' || !/^[\w-]{1,128}$/.test(assetId)) return new Response('Bad request', { status: 400 });
-      const file = await (await project()).resolveAssetPath(assetId);
+      const key = url.searchParams.get('p');
+      const store = key ? await projects.storeFor(key) : await project();
+      const file = await store.resolveAssetPath(assetId);
       return net.fetch(pathToFileURL(file).href);
     } catch {
       return new Response('Not found', { status: 404 });
@@ -118,6 +121,7 @@ app.whenReady().then(async () => {
     settings,
     onAppearanceChanged: (s) => { nativeTheme.themeSource = s.mode === 'system' ? 'system' : s.mode === 'light' ? 'light' : 'dark'; },
     project,
+    projects,
     secretsDir: path.join(app.getPath('userData'), 'secrets'),
     panel: {
       open: (pid) => panel.open(pid),

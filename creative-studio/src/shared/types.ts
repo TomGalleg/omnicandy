@@ -44,9 +44,17 @@ export interface ProjectManifest {
 }
 
 export interface ProjectSummary {
+  /** Folder key under <userData>/projects. */
   id: string;
   name: string;
   assetCount: number;
+  originals: number;
+  versions: number;
+  createdAt: string;
+  updatedAt: string;
+  thumbAssetId: string | null;
+  isOpen: boolean;
+  isSample: boolean;
 }
 
 /** artcraft = ArtCraft Match (charcoal, matches PhotoCraft); studioDark = original near-black; system follows Windows. */
@@ -64,7 +72,7 @@ export interface AppearanceSettings {
   syncApps: boolean;
 }
 
-export type WorkspaceId = 'media' | 'edit' | 'generate' | 'workflow' | 'effects' | 'color' | 'audio' | 'deliver';
+export type WorkspaceId = 'home' | 'media' | 'edit' | 'generate' | 'workflow' | 'effects' | 'color' | 'audio' | 'deliver';
 
 export type IntegrationStatus = 'real-verified' | 'mocked' | 'blocked' | 'untested' | 'not-installed';
 

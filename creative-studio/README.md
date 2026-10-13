@@ -38,6 +38,7 @@ npm run dev
 | `npm run lint` / `npm run typecheck` | ESLint / tsc for main+preload and renderer |
 | `npm run check` | lint + typecheck + test |
 | `npm run smoke` | Build, then drive the real app with Playwright-Electron in an isolated profile; writes `docs/screenshots/` |
+| `node scripts/smoke-projects.mjs` | Project Home / Overview: create, open, switch, rename, remove, remembered after restart |
 | `node scripts/smoke-theme.mjs` | Theme presets with PhotoCraft embedded, app theme sync, System mode, persistence, artwork unchanged (opens real app windows) |
 | `npm run smoke:live` | Same, through the live PhotoCraft flow (opens a real PhotoCraft window, closes it afterwards) |
 | `CS_LIVE_TESTS=1 npx vitest run src/main/photocraftLive.test.ts` | Integration tests against the live PhotoCraft window |
@@ -47,6 +48,13 @@ by copying `fixtures/sample-project`. Appearance settings are stored in `%APPDAT
 
 ## What works (Phase 1)
 
+- **Projects.** The **Home** tab (or the project name in the header) shows Project Home: every
+  project as a card with a thumbnail, file/version counts and last change; create, open, rename,
+  show folder, and remove (to the Recycle Bin; never the open project or the Sample Project). Below
+  it, the open project's Overview: files by kind, versions, exports, storage, recent versions and
+  the workflow. Each project is its own folder under `%APPDATA%\creative-studio\projects` with its
+  own originals, versions, workflow and exports; the open project is remembered. Switching is
+  refused while an edit task, workflow or Claude is busy, and app windows left open are not closed.
 - **Shell.** Resizable, collapsible panes, with layout remembered per user: media browser and
   inspector on the left, workspace in the centre, Claude panel on the right, and a context-sensitive
   bottom pane. Eight workspaces: Media, Edit, AI Generate, Workflow, Effects, Color, Audio, Deliver.

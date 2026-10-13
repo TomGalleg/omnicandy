@@ -2,7 +2,7 @@
   {
     "name": "renderer has no Node globals",
     "ok": true,
-    "detail": "{\"require\":\"undefined\",\"process\":\"undefined\",\"api\":[\"answerApproval\",\"assetUrl\",\"cancelWorkflow\",\"claude\",\"edit\",\"getAppearance\",\"importAssets\",\"integrationStatus\",\"listExports\",\"live\",\"loadProject\",\"loadWorkflow\",\"onWorkflowEvent\",\"probeApps\",\"revealExport\",\"runWorkflow\",\"saveWorkflow\",\"setAppearance\",\"setAssetRating\"]}"
+    "detail": "{\"require\":\"undefined\",\"process\":\"undefined\",\"api\":[\"answerApproval\",\"assetUrl\",\"cancelWorkflow\",\"claude\",\"edit\",\"getAppearance\",\"importAssets\",\"integrationStatus\",\"listExports\",\"live\",\"loadProject\",\"loadWorkflow\",\"onWorkflowEvent\",\"probeApps\",\"projects\",\"revealExport\",\"runWorkflow\",\"saveWorkflow\",\"setAppearance\",\"setAssetRating\"]}"
   },
   {
     "name": "ArtCraft Match theme applied",

@@ -155,6 +155,12 @@ export class ProjectStore implements AssetRepository {
     return out.sort((a, b) => b.modified.localeCompare(a.modified));
   }
 
+  async rename(name: string): Promise<void> {
+    await this.loadManifest();
+    this.manifest!.name = name;
+    await this.persist();
+  }
+
   async setRating(assetId: string, rating: number): Promise<ProjectManifest> {
     await this.loadManifest();
     const a = this.manifest!.assets.find((x) => x.id === assetId);
