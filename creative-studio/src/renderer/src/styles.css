@@ -284,3 +284,5 @@ h1, h2, h3 { margin: 0; font-weight: 600; }
 .live-step.compact { grid-template-columns: 20px 1fr auto; }
 .live-step.compact input { grid-column: 2 / 3; }
 .live-step.compact .live-step-n { grid-row: span 2; }
+
+.brand-logo { width: 26px; height: 26px; object-fit: contain; flex-shrink: 0; }

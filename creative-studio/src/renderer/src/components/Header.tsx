@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { IntegrationSnapshot } from '@shared/ipc';
 import { ACCENT_PRESETS } from '@shared/theme';
 import type { AppProbeResult, ThemeMode, WorkspaceId } from '@shared/types';
+import logo from '../assets/logo.png';
 import type { useAppearance } from '../useAppearance';
 
 export const WORKSPACES: Array<{ id: WorkspaceId; label: string }> = [
@@ -29,7 +30,7 @@ export function Header({ projectName, workspace, onWorkspace, apps, integrations
   const connected = apps.filter((a) => a.connected).length;
   return (
     <header className="header">
-      <div className="brand"><span className="brand-mark" aria-hidden /> Creative Studio</div>
+      <div className="brand"><img className="brand-logo" src={logo} alt="" /> Creative Studio</div>
       <div className="project-name">Project: <strong>{projectName}</strong></div>
       <nav className="workspaces" aria-label="Workspaces">
         {WORKSPACES.map((w) => (

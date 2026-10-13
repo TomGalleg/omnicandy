@@ -18,10 +18,12 @@ if (process.env.CS_USER_DATA_DIR) app.setPath('userData', path.resolve(process.e
 // One instance per profile: two processes seeding/writing the same project would race.
 if (!app.requestSingleInstanceLock()) app.exit(0);
 
+const appIcon = () => path.join(app.getAppPath(), 'resources', 'icon.ico');
 let mainWindow: BrowserWindow | null = null;
 const panelClosedListeners: Array<() => void> = [];
 const panel = new DockedPanel({
   preload: path.join(__dirname, '../preload/index.js'),
+  icon: appIcon,
   trackerScript: trackerScriptPath(app.getAppPath()),
   backgroundColor: nativeTheme.shouldUseDarkColors ? '#15171c' : '#ffffff',
   load: async (win) => {
@@ -59,6 +61,7 @@ async function createWindow() {
     minHeight: 700,
     show: false,
     title: 'Creative Studio',
+    icon: appIcon(),
     backgroundColor: nativeTheme.shouldUseDarkColors ? '#0f1115' : '#f4f5f7',
     autoHideMenuBar: true,
     webPreferences: {
@@ -85,6 +88,7 @@ async function createWindow() {
 }
 
 app.whenReady().then(async () => {
+  app.setAppUserModelId('ClaudeCraft.CreativeStudio');
   session.defaultSession.setPermissionRequestHandler((_wc, _perm, cb) => cb(false));
 
   // studio-asset://asset/<assetId> → read-only file inside the project root.

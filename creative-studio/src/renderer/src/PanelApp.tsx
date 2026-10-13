@@ -1,4 +1,5 @@
 import { useCallback } from 'react';
+import logo from './assets/logo.png';
 import { LiveDocument, LiveSteps, TaskControls } from './components/live/LiveParts';
 import { useAppearance } from './useAppearance';
 import { useLive } from './useLive';
@@ -13,7 +14,7 @@ export function PanelApp() {
   return (
     <div className="dock-panel">
       <header className="dock-head">
-        <span className="brand-mark" aria-hidden />
+        <img className="brand-logo" src={logo} alt="" />
         <div className="dock-title">
           <strong>Creative Studio</strong>
           <span className="asset-meta">{live?.asset ? `PhotoCraft · ${live.asset.name}` : 'PhotoCraft'}</span>

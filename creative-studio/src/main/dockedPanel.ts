@@ -13,6 +13,7 @@ export const PANEL_WIDTH = 340;
 
 export interface DockedPanelOptions {
   preload: string;
+  icon: () => string;
   load: (win: BrowserWindow) => Promise<void>;
   trackerScript: string;
   backgroundColor: string;
@@ -41,6 +42,7 @@ export class DockedPanel {
       fullscreenable: false,
       skipTaskbar: true,
       title: 'Creative Studio · PhotoCraft controls',
+      icon: this.o.icon(),
       backgroundColor: this.o.backgroundColor,
       webPreferences: { preload: this.o.preload, contextIsolation: true, nodeIntegration: false, sandbox: true, spellcheck: false },
     });
