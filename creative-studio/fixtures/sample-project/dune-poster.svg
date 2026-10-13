@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="1200" viewBox="0 0 800 1200">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1b1640"/>
+      <stop offset="0.55" stop-color="#d9566b"/>
+      <stop offset="1" stop-color="#f6b26b"/>
+    </linearGradient>
+  </defs>
+  <rect width="800" height="1200" fill="url(#sky)"/>
+  <circle cx="560" cy="520" r="120" fill="#ffe3a3" opacity="0.9"/>
+  <path d="M0 820 C200 720 360 760 520 820 S760 880 800 840 V1200 H0Z" fill="#a8443f"/>
+  <path d="M0 920 C220 860 420 900 600 960 S780 1000 800 990 V1200 H0Z" fill="#6e2a35"/>
+  <path d="M0 1040 C260 990 520 1060 800 1030 V1200 H0Z" fill="#3a1630"/>
+  <text x="60" y="140" font-family="Segoe UI, sans-serif" font-size="84" font-weight="700" fill="#fff4e6" letter-spacing="10">DUNES</text>
+  <text x="64" y="190" font-family="Segoe UI, sans-serif" font-size="26" fill="#fff4e6" opacity="0.8" letter-spacing="6">A SAMPLE POSTER</text>
+</svg>
