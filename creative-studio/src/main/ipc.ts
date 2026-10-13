@@ -227,6 +227,7 @@ export function registerIpc(d: IpcDeps): void {
   handle(IPC.claudeModel, z.tuple([z.string().max(64)]), (m) => { claude().setModel(m); return claude().state(); });
   handle(IPC.claudeAuth, none, () => claude().checkAuth());
   handle(IPC.claudeSignIn, none, () => claude().signIn());
+  handle(IPC.claudeCancelSignIn, none, () => claude().cancelSignIn());
   handle(IPC.livePopOut, none, () => popOut());
   handle(IPC.liveDock, none, () => popIn());
   handle(IPC.liveViewport, z.tuple([z.object({ x: z.number().finite(), y: z.number().finite(), width: z.number().finite().min(0), height: z.number().finite().min(0), visible: z.boolean() }).nullable()]),

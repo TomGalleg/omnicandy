@@ -24,6 +24,7 @@ export function ClaudePanel({ liveApi }: Props) {
   const [st, setSt] = useState<ClaudeState | null>(null);
   const [draft, setDraft] = useState('');
   const [error, setError] = useState<string | null>(null);
+
   const chatRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -69,14 +70,31 @@ export function ClaudePanel({ liveApi }: Props) {
 
       {signedOut && (
         <div className="claude-section">
-          <div className="notice">
-            Claude uses the Claude Code sign-in on this PC, and it isn't signed in yet.
-            Click below, finish signing in with your Claude account in the browser, then come back.
-          </div>
-          <div className="btn-row">
-            <button className="btn primary" onClick={() => window.studio.claude.signIn().catch((e) => setError(errText(e)))}>Sign in to Claude</button>
-            <button className="btn" onClick={() => void window.studio.claude.checkAuth()}>I've signed in</button>
-          </div>
+          {st?.login.stage === 'waiting-code' || st?.login.stage === 'checking' ? (
+            <>
+              <div className="notice">
+                A <strong>Sign in to Claude</strong> window opened, and your browser shows the Claude sign-in page.<br />
+                1. Sign in and click <strong>Authorize</strong> in the browser.<br />
+                2. If the browser then shows a code, copy it, click into the black sign-in window, paste it (right-click) and press Enter.<br />
+                CreateCraft notices automatically when you're signed in.
+              </div>
+              <div className="btn-row">
+                <span className="asset-meta">Waiting for sign-in…</span>
+                <button className="btn small ghost" onClick={() => void window.studio.claude.cancelSignIn()}>Cancel</button>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="notice">
+                Claude uses the Claude Code sign-in on this PC, and it isn't signed in yet. Sign in once with your Claude account.
+              </div>
+              {st?.login.stage === 'failed' && <div className="wf-msg error">{st.login.message}</div>}
+              <div className="btn-row">
+                <button className="btn primary" onClick={() => window.studio.claude.signIn().catch((e) => setError(errText(e)))}>Sign in to Claude</button>
+                <button className="btn" onClick={() => void window.studio.claude.checkAuth()}>Check again</button>
+              </div>
+            </>
+          )}
         </div>
       )}
 

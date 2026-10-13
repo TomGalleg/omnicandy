@@ -45,11 +45,13 @@ export class ClaudePartner {
   private costUsd = 0;
   private sessionId: string | null = null;
   private abort: AbortController | null = null;
+  private login: ClaudeState['login'] = { stage: 'idle', url: null, message: null };
+  private loginPoll: ReturnType<typeof setInterval> | null = null;
 
   constructor(private readonly d: ClaudePartnerDeps) {}
 
   state(): ClaudeState {
-    return { status: this.status, model: this.model, items: this.items, signedIn: this.signedIn, costUsd: this.costUsd };
+    return { status: this.status, model: this.model, items: this.items, signedIn: this.signedIn, costUsd: this.costUsd, login: this.login };
   }
 
   private publish() { this.d.emit(this.state()); }
@@ -87,10 +89,41 @@ export class ClaudePartner {
     return this.signedIn;
   }
 
-  /** Opens Claude Code's own sign-in in a console window; the user completes it in their browser. */
+  /**
+   * Opens Claude Code's own sign-in (`claude auth login`) in a console window. It opens the browser;
+   * if the page shows a code, the user pastes it into that window (Claude Code reads it from its own
+   * console, so CreateCraft never sees it). CreateCraft polls `claude auth status` until signed in.
+   */
   signIn() {
     if (!fs.existsSync(this.d.cliPath)) throw new Error('Claude Code is not installed on this PC.');
-    spawn('cmd.exe', ['/c', 'start', '"Sign in to Claude"', this.d.cliPath, 'auth', 'login'], { detached: true, stdio: 'ignore', windowsHide: false, windowsVerbatimArguments: true }).unref();
+    if (/["&|<>^%]/.test(this.d.cliPath)) throw new Error('Unexpected characters in the Claude Code path.');
+    spawn('cmd.exe', ['/c', 'start', '"Sign in to Claude"', `"${this.d.cliPath}"`, 'auth', 'login'], {
+      detached: true, stdio: 'ignore', windowsHide: false, windowsVerbatimArguments: true,
+    }).unref();
+    this.login = { stage: 'waiting-code', url: null, message: null };
+    this.publish();
+    if (this.loginPoll) clearInterval(this.loginPoll);
+    const deadline = Date.now() + 15 * 60_000;
+    this.loginPoll = setInterval(() => {
+      void this.checkAuth().then((ok) => {
+        if (ok) {
+          clearInterval(this.loginPoll!); this.loginPoll = null;
+          this.login = { stage: 'idle', url: null, message: null };
+          this.add('activity', 'Signed in to Claude. You can start chatting.');
+        } else if (Date.now() > deadline) {
+          clearInterval(this.loginPoll!); this.loginPoll = null;
+          this.login = { stage: 'failed', url: null, message: 'Sign-in did not finish. Try again.' };
+          this.publish();
+        }
+      });
+    }, 3000);
+  }
+
+  cancelSignIn() {
+    if (this.loginPoll) clearInterval(this.loginPoll);
+    this.loginPoll = null;
+    this.login = { stage: 'idle', url: null, message: null };
+    this.publish();
   }
 
   stop() {

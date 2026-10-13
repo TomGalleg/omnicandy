@@ -22,4 +22,6 @@ export interface ClaudeState {
   signedIn: boolean | null;
   /** Reported by Claude Code for this session (may be 0 on subscription plans). */
   costUsd: number;
+  /** Sign-in in progress: the browser opened; paste the code it shows. */
+  login: { stage: 'idle' | 'waiting-code' | 'checking' | 'failed'; url: string | null; message: string | null };
 }

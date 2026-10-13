@@ -343,3 +343,5 @@ h1, h2, h3 { margin: 0; font-weight: 600; }
 .msg.activity::before { content: '• '; }
 .msg.error { background: var(--danger-bg); color: var(--danger); }
 .claude-cost { padding: 0 10px 8px; }
+
+.claude-row input { flex: 1; min-width: 0; height: 28px; padding: 0 8px; background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-sm); }

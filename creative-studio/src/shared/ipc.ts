@@ -43,6 +43,7 @@ export const IPC = {
   claudeModel: 'claude:model',
   claudeAuth: 'claude:auth',
   claudeSignIn: 'claude:sign-in',
+  claudeCancelSignIn: 'claude:cancel-sign-in',
   claudeEvent: 'claude:event',
   editApply: 'edit:apply',
   editOpenCopy: 'edit:open-copy',
@@ -129,8 +130,9 @@ export interface StudioApi {
     setModel(model: string): Promise<ClaudeState>;
     /** Re-checks whether Claude Code on this PC is signed in. */
     checkAuth(): Promise<boolean | null>;
-    /** Opens Claude Code's own sign-in window. */
+    /** Starts Claude Code's own sign-in (opens the browser). */
     signIn(): Promise<void>;
+    cancelSignIn(): Promise<void>;
     onChange(cb: (s: ClaudeState) => void): () => void;
   };
   edit: {

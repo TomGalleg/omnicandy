@@ -55,6 +55,7 @@ const api: StudioApi = {
     setModel: (model) => ipcRenderer.invoke(IPC.claudeModel, model),
     checkAuth: () => ipcRenderer.invoke(IPC.claudeAuth),
     signIn: () => ipcRenderer.invoke(IPC.claudeSignIn),
+    cancelSignIn: () => ipcRenderer.invoke(IPC.claudeCancelSignIn),
     onChange: (cb) => {
       const listener = (_e: IpcRendererEvent, s: ClaudeState) => cb(s);
       ipcRenderer.on(IPC.claudeEvent, listener);
