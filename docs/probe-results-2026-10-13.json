@@ -1,0 +1,240 @@
+{
+  "photocraft_run": {
+    "status": 0,
+    "stdout": "{\"command\":\"edit.fill\",\"result\":{\"contents\":\"color\"}}\n",
+    "stderr": ""
+  },
+  "photocraft_png_bytes": 747,
+  "photocraft_convert": {
+    "status": 0,
+    "stdout": "",
+    "stderr": ""
+  },
+  "photocraft_info": {
+    "status": 0,
+    "stdout": "{\"activeLayer\":2,\"channels\":{\"alpha\":[],\"colors\":[{\"name\":\"Red\",\"visible\":true},{\"name\":\"Green\",\"visible\":true},{\"name\":\"Blue\",\"visible\":true}],\"composite\":\"RGB\",\"compositeVisible\":true,\"layerMaskView\":null,\"quickMask\":null,\"target\":{\"kind\":\"composite\"}},\"depth\":8,\"file\":\"<scratch>\\\\audit\\\\smoke.pcraft\",\"hasSelection\":false,\"height\":256,\"isolatedLayers\":[],\"lastAppliedComp\":null,\"layerComps\":[],\"layerMaskView\":null,\"layers\":[{\"blend\":\"Normal\",\"bounds\":[0,0,256,256],\"clipped\":false,\"fill\":1.0,\"hasMask\":false,\"hasVectorMask\":false,\"id\":2,\"kind\":\"Pixel\",\"labelColor\":\"none\",\"linkGroup\":null,\"name\":\"Background\",\"opacity\":1.0,\"selected\":true,\"vectorMaskEnabled\":null,\"visible\":true}],\"measurement\":{\"count\":0,\"countGroups\":0,\"ruler\":null,\"scale\":\"1 pixels = 1.0000 pixels\"},\"mode\":\"Rgb\",\"name\":\"smoke.pcraft\",\"notes\":[],\"path\":\"<scratch>\\\\audit\\\\smoke.pcraft\",\"quickMask\":false,\"resolution\":72.00900268554688,\"selectedLayers\":[2],\"selectionBounds\":null,\"snapshots\":[],\"symmetry\":null,\"timeline\":null,\"variables\":null,\"warnings\":[],\"width\":256}\n",
+    "stderr": ""
+  },
+  "mcp": {
+    "photocraft": {
+      "serverInfo": {
+        "name": "photocraft",
+        "version": "0.8.2"
+      },
+      "protocolVersion": "2025-06-18",
+      "toolCount": 25,
+      "sampleTools": [
+        "command_batch",
+        "command_list",
+        "command_run",
+        "control_call",
+        "doc_close",
+        "doc_export",
+        "doc_export_data_sets",
+        "doc_export_layers",
+        "doc_import_data_sets",
+        "doc_inspect",
+        "doc_new",
+        "doc_open",
+        "doc_place",
+        "doc_render_preview",
+        "doc_save",
+        "doc_select",
+        "jobs_cancel",
+        "jobs_list",
+        "render_preview",
+        "session_list"
+      ],
+      "stderr": ""
+    },
+    "vectorcraft": {
+      "serverInfo": {
+        "name": "vectorcraft",
+        "title": "VectorCraft",
+        "version": "0.10.0"
+      },
+      "protocolVersion": "2025-06-18",
+      "toolCount": 32,
+      "sampleTools": [
+        "command_list",
+        "command_run",
+        "command_batch",
+        "doc_inspect",
+        "render_preview",
+        "ui_inspect",
+        "ui_screenshot",
+        "list_commands",
+        "run_command",
+        "inspect_document",
+        "inspect_ui",
+        "select_tool",
+        "pointer_gesture",
+        "draw_path",
+        "draw_shape",
+        "set_paint",
+        "press_key",
+        "type_text",
+        "invoke_menu",
+        "open_panel"
+      ],
+      "stderr": "vectorcraft-cli: files confined: read root <scratch>\\audit, write root <scratch>\\audit\nvectorcraft-cli: MCP server on stdio (headless)\n"
+    },
+    "lightcraft": {
+      "serverInfo": {
+        "name": "lightcraft",
+        "title": "LightCraft",
+        "version": "0.7.1"
+      },
+      "protocolVersion": "2025-06-18",
+      "toolCount": 17,
+      "sampleTools": [
+        "command_list",
+        "command_run",
+        "command_batch",
+        "doc_inspect",
+        "render_preview",
+        "list_commands",
+        "run_command",
+        "import",
+        "query_photos",
+        "select_photos",
+        "list_controls",
+        "get_develop",
+        "set_develop",
+        "apply_preset",
+        "crop",
+        "render_photo",
+        "export"
+      ],
+      "stderr": "lightcraft-cli mcp: serving MCP on stdio (headless)\n"
+    },
+    "effectcraft": {
+      "serverInfo": {
+        "name": "effectcraft",
+        "title": "EffectCraft (headless)",
+        "version": "0.9.2"
+      },
+      "protocolVersion": "2025-06-18",
+      "toolCount": 27,
+      "sampleTools": [
+        "list_commands",
+        "describe_command",
+        "execute_command",
+        "run_script",
+        "get_project",
+        "get_comp",
+        "get_layer",
+        "get_property",
+        "set_property",
+        "add_keyframe",
+        "add_effect",
+        "list_effects",
+        "list_fonts",
+        "get_state",
+        "render_frame",
+        "open_project",
+        "save_project",
+        "undo",
+        "redo",
+        "history"
+      ],
+      "stderr": ""
+    },
+    "designcraft": {
+      "serverInfo": {
+        "name": "designcraft",
+        "title": "DesignCraft",
+        "version": "0.7.1",
+        "websiteUrl": "https://getartcraft.com/apps/designcraft"
+      },
+      "protocolVersion": "2025-06-18",
+      "toolCount": 25,
+      "sampleTools": [
+        "list_commands",
+        "execute",
+        "batch",
+        "inspect_document",
+        "get_story",
+        "set_story_text",
+        "new_document",
+        "open_document",
+        "save_document",
+        "place_image",
+        "render_page",
+        "export_png",
+        "screenshot",
+        "select_tool",
+        "pointer",
+        "key",
+        "type_text",
+        "click",
+        "drag",
+        "menu_list"
+      ],
+      "stderr": "designcraft-cli: MCP server on stdio (headless (in-process engine, no window))\n"
+    },
+    "soundcraft": {
+      "serverInfo": {
+        "name": "soundcraft",
+        "version": "0.6.1"
+      },
+      "protocolVersion": "2025-06-18",
+      "toolCount": 17,
+      "sampleTools": [
+        "list_commands",
+        "execute",
+        "batch",
+        "inspect_session",
+        "new_session",
+        "open_session",
+        "save_session",
+        "import_audio",
+        "bounce_mix",
+        "parity",
+        "screenshot",
+        "ui_inspect",
+        "ui_set",
+        "menu_invoke",
+        "click",
+        "drag",
+        "key"
+      ],
+      "stderr": ""
+    },
+    "filmcraft": {
+      "serverInfo": {
+        "name": "filmcraft",
+        "version": "0.7.2"
+      },
+      "protocolVersion": "2025-06-18",
+      "toolCount": 17,
+      "sampleTools": [
+        "command_batch",
+        "command_list",
+        "command_run",
+        "doc_inspect",
+        "media_import",
+        "project_inspect",
+        "render_frame",
+        "render_preview",
+        "sequence_inspect",
+        "ui_click",
+        "ui_control",
+        "ui_drag",
+        "ui_elements",
+        "ui_inspect",
+        "ui_key",
+        "ui_screenshot",
+        "ui_type"
+      ],
+      "stderr": ""
+    }
+  },
+  "photocraft_version": "photocraft-cli 0.8.2 (d43db3e15, 2026-10-12)",
+  "vectorcraft_version": "vectorcraft-cli 0.10.0",
+  "lightcraft_version": "lightcraft-cli 0.7.1",
+  "effectcraft_version": "effectcraft-cli 0.9.2",
+  "designcraft_version": "designcraft-cli 0.7.1",
+  "soundcraft_version": "SoundCraft CLI 0.6.1",
+  "filmcraft_version": "filmcraft-cli 0.7.2"
+}

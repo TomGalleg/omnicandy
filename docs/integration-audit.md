@@ -1,0 +1,106 @@
+# Integration audit — Phase 0
+
+Audited 2026-10-13 on the target workstation. Everything marked **verified** was executed on this
+machine. The probe script is [`phase0-probe.mjs`](phase0-probe.mjs); its raw output (scratch paths
+redacted) is [`probe-results-2026-10-13.json`](probe-results-2026-10-13.json). All probes ran
+headless and wrote only into a scratch directory. No GUI app was launched and no user documents
+were opened.
+
+## Environment
+
+| Item | Found |
+|---|---|
+| OS | Windows 11 Pro 10.0.26200, 64-bit |
+| CPU / RAM | Intel i5-12600K, 31.8 GB |
+| GPU | AMD Radeon RX 6650 XT + Intel UHD 770 |
+| Node / npm | v22.15.1 / 11.12.1 |
+| Git | 2.52.0.windows.1 |
+| Python | 3.13.5 |
+| Shells | Windows PowerShell 5.1, Git Bash |
+| Other creative software (not in scope) | Blender 4.0.2, DaVinci Resolve 21, Adobe Creative Cloud 6.10 |
+
+Missing dependencies: none blocking Phase 1. The project's own npm dependencies are installed
+locally, and nothing was installed globally.
+
+## Installed ArtCraft apps (publisher: Learning Machines LLC)
+
+All of them install per machine under `C:\Program Files\<App>\` with two binaries: the GUI
+`<app>.exe` and a headless `<app>-cli.exe`. The **ArtCraft Launcher** 0.4.0 lives in
+`%LOCALAPPDATA%\Programs\ArtCraft Launcher\` and was running during the audit.
+
+| App | Version | CLI headless ops | MCP server (stdio) | Live-app bridge |
+|---|---|---|---|---|
+| PhotoCraft | 0.8.2 (build d43db3e15, 2026-10-12) | convert, info, run, batch, droplet, commands (892), serve | `photocraft-cli mcp` — 25 tools | `photocraft --control <port>` + `mcp --bridge`; token-protected |
+| VectorCraft | 0.10.0 | run, convert, info, commands | `vectorcraft-cli mcp --headless` — 32 tools | `vectorcraft --control 7979` (default) |
+| LightCraft | 0.7.1 | run, render, snapshot, merge, commands, controls | `lightcraft-cli mcp` — 17 tools (compact) | `lightcraft --control 7980` |
+| EffectCraft | 0.9.2 | info, exec, run, props/get/set, render-frame, render, script (JSX) | `effectcraft-cli mcp` — 27 tools | `--bridge PORT` |
+| DesignCraft | 0.7.1 | run, script, commands, describe | `designcraft-cli mcp` — 25 tools | `--connect PORT` |
+| SoundCraft | 0.6.1 | info, convert, run, script, commands | `soundcraft-cli mcp` — 17 tools | `app --port P`, `mcp --connect PORT` |
+| FilmCraft | 0.7.2 | exec, run, inspect, import, export, render, probe | `filmcraft-cli mcp` — 17 tools | `filmcraft --control PORT` + `--bridge` |
+
+Also installed, but outside the spec's scope for now: CADCraft 0.6.2, DeckCraft 0.6.1, GridCraft
+0.6.1, PdfCraft 0.7.1, WordCraft 0.6.1.
+
+File associations are registered for PhotoCraft (`.pcraft`, PSD, images), SoundCraft (`.scraft`)
+and others.
+
+### Security-relevant features found in the CLIs
+
+- PhotoCraft, VectorCraft and EffectCraft MCP servers take `--automation-read-root` /
+  `--automation-write-root`. These confine the agent's file access, and **a root left out grants no
+  access**. Creative Studio must always pass the project root here.
+- PhotoCraft's live bridge takes `--control-token` / `--control-token-file` (64 hex characters).
+  The main process should generate this token and pass it by file, never through the renderer.
+- LightCraft's `denoise-serve` opens a TCP listener. We must never start it.
+- EffectCraft `script` runs arbitrary JSX. Treat it as privileged and never route agent text into
+  it without review.
+- Several MCP servers expose UI-automation tools (`pointer_gesture`, `click`, `type_text`,
+  `press_key`). These make **visible edits without cursor movement possible** (the spec's
+  principle), but they need the collaboration lock before use.
+
+## Verified end-to-end (headless)
+
+1. **PhotoCraft headless edit pipeline: verified.**
+   `photocraft-cli run --new {256×256 white} --cmd edit.fill --params {color #3366ff, 50%} --out smoke.png`
+   exited 0 and printed `{"command":"edit.fill","result":{"contents":"color"}}`, writing a 747-byte
+   PNG. `convert smoke.png smoke.pcraft` exited 0. `info smoke.pcraft --compact` returned full
+   document JSON (size, mode, depth, layer tree, channels).
+2. **MCP handshake for all seven in-scope apps: verified.** `initialize` (protocol 2025-06-18)
+   followed by `tools/list` succeeded headless for PhotoCraft, VectorCraft, LightCraft, EffectCraft,
+   DesignCraft, SoundCraft and FilmCraft. Server names and versions match the installed builds.
+3. **Command registry introspection: verified** for PhotoCraft (`commands --json`: 892 commands,
+   each with id, menu path, typed param schema string, enabled flag and disabled reason).
+
+## Not yet verified
+
+- **Live GUI control** (`<app> --control <port>` + `mcp --bridge`). This needs the GUI launched
+  with a control port, so it is not yet tested. It is the core of Phase 2.
+- **Window capture** of a running ArtCraft window (Electron `desktopCapturer`). Not yet tested.
+- **`doc_render_preview` / `ui_screenshot` tools.** These exist and could give in-app previews.
+  They were not called. They are snapshots, not a live view, and must not be presented as live.
+- The `docs/control-protocol.md` that the CLI help references is **not shipped** in the install
+  directories. The protocol must be learned from `--help`, `commands --json` and MCP tool schemas.
+  The DesignCraft help links to `github.com/storytold/designcraft` and `getartcraft.com`, which
+  were not fetched in this audit.
+- Licences and EULAs were not inspected. Check before redistributing or bundling anything.
+- No ArtCraft MCP server is configured in Claude Desktop or Claude Code on this machine.
+
+## AI generation providers
+
+None configured, and no keys requested. All providers are **untested**. Midjourney is limited to
+folder import (spec rule).
+
+## Integration truth table (end of Phase 0/1)
+
+| Capability | Status | Evidence / note |
+|---|---|---|
+| ArtCraft app detection (exe present + `--version`) | **Real, verified** | Implemented in the app's main process (`ArtCraftCliProbe`) |
+| PhotoCraft headless open/edit/save/info via CLI | **Real, verified** (audit only) | Probe step 1; not yet wired into a workflow node |
+| MCP handshake, 7 apps | **Real, verified** (audit only) | Probe step 2; app does not yet hold MCP sessions |
+| Live GUI control via `--control` bridge | **Untested** | Phase 2 |
+| Live window capture | **Untested** | `WindowCapture` interface only; UI shows "not connected" |
+| Workflow "ArtCraft Edit" node in the app | **Mocked** | `MockArtCraftAdapter`, labelled MOCK in the UI |
+| AI Generate node | **Mocked** | `MockGenerationProvider`; never calls the network |
+| Credential vault | **Untested / stub** | Interface only; planned on Electron `safeStorage` (DPAPI) in main |
+| Midjourney automation | **Blocked by policy** | Import from a user-chosen folder only |
+| SQLite asset index | **Deferred** | Phase 1 uses a JSON manifest; see `creative-studio/docs/architecture.md` |
