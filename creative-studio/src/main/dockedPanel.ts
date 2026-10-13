@@ -41,7 +41,7 @@ export class DockedPanel {
       maximizable: false,
       fullscreenable: false,
       skipTaskbar: true,
-      title: 'Creative Studio · PhotoCraft controls',
+      title: 'CreateCraft · PhotoCraft controls',
       icon: this.o.icon(),
       backgroundColor: this.o.backgroundColor,
       webPreferences: { preload: this.o.preload, contextIsolation: true, nodeIntegration: false, sandbox: true, spellcheck: false },

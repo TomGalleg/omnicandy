@@ -1,4 +1,4 @@
-# Window tracker for docking Creative Studio's control panel to another app's window (e.g. PhotoCraft).
+# Window tracker for docking CreateCraft's control panel to another app's window (e.g. PhotoCraft).
 #   powershell -NoProfile -ExecutionPolicy Bypass -File window-tracker.ps1 -TargetPid <pid> -PanelHwnd <hwnd>
 # Prints one JSON line whenever the target window's bounds/state change:
 #   {"found":true,"x":..,"y":..,"w":..,"h":..,"minimized":false,"alive":true}   (physical pixels)

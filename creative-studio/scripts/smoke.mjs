@@ -16,7 +16,7 @@ async function launch() {
   const app = await electron.launch({ args: [root], cwd: root, env: { ...process.env, CS_USER_DATA_DIR: profile } });
   const win = await app.firstWindow();
   await win.setViewportSize({ width: 1600, height: 960 }).catch(() => {});
-  await win.getByText('Creative Studio').first().waitFor();
+  await win.getByText('CreateCraft').first().waitFor();
   await win.locator('.asset').first().waitFor({ timeout: 20000 });
   return { app, win };
 }
@@ -47,7 +47,17 @@ try {
   check('ArtCraft detection reports installed but not connected', /ArtCraft \d+ installed · 0 live/.test(apps ?? ''), apps ?? '');
 
   await win.getByRole('button', { name: 'Edit', exact: true }).click();
-  check('Edit shows honest "not started" live state', await win.getByText('PhotoCraft live: not started').isVisible());
+  check('Edit picks SoundCraft for audio', await win.getByText('Editing with SoundCraft').isVisible());
+  await win.getByRole('option', { name: /^harbor-landscape\.svg/ }).click();
+  check('Edit picks VectorCraft for SVG', await win.getByText('Editing with VectorCraft').isVisible());
+  await win.getByRole('radio', { name: 'Rotate artwork' }).click();
+  await win.getByRole('button', { name: /^Apply Rotate artwork/ }).click();
+  await win.locator('.op-result img').waitFor({ timeout: 30000 });
+  check('VectorCraft quick edit ran for real and shows the result', /applied by VectorCraft/.test(await win.locator('.op-result').textContent()));
+  await win.waitForTimeout(400);
+  await shot(win, '03-edit-vectorcraft');
+  await win.getByRole('option', { name: /^photocraft-smoke\.png/ }).click();
+  check('Edit picks PhotoCraft for PNG (with live option)', await win.getByText('Editing with PhotoCraft').isVisible() && await win.getByText('Open in PhotoCraft (live)').isVisible());
   await shot(win, '03-edit-not-connected');
 
   await win.getByRole('button', { name: 'Workflow' }).click();

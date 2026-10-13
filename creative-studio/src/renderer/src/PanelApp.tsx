@@ -16,7 +16,7 @@ export function PanelApp() {
       <header className="dock-head">
         <img className="brand-logo" src={logo} alt="" />
         <div className="dock-title">
-          <strong>Creative Studio</strong>
+          <strong>CreateCraft</strong>
           <span className="asset-meta">{live?.asset ? `PhotoCraft · ${live.asset.name}` : 'PhotoCraft'}</span>
         </div>
         <button className="btn small" disabled={busy} title="Close this panel and show the controls in the main window" onClick={() => void act('Dock', window.studio.live.dock)}>Dock</button>

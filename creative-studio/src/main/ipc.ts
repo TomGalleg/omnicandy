@@ -10,6 +10,7 @@ import { validateGraph } from '@shared/workflow';
 import { WorkflowRunner, type RunnerDeps } from '@shared/workflowRunner';
 import { probeAllArtCraftApps } from './artcraftProbe';
 import { IMPORTABLE_EXTENSIONS } from './media';
+import { AppEditors } from './appEditors';
 import { LiveTaskController } from './liveTask';
 import { PhotoCraftCliAdapter } from './photocraftCli';
 import { LivePhotoCraft } from './photocraftLive';
@@ -29,6 +30,9 @@ export interface IpcDeps {
   /** Pop-out control panel docked to an external app window. */
   panel: { open(pid: number): Promise<void>; close(): void; readonly isOpen: boolean; onClosed(cb: () => void): void };
 }
+
+const strip = (e: { id: string; app: string; assetId: string; assetName: string; workPath: string; openedAt: string }) =>
+  ({ id: e.id, app: e.app, assetId: e.assetId, assetName: e.assetName, workPath: e.workPath, openedAt: e.openedAt });
 
 export function registerIpc(d: IpcDeps): void {
   const handle = <A extends unknown[]>(channel: string, schema: z.ZodType<A>, fn: (...args: A) => unknown) => {
@@ -178,6 +182,16 @@ export function registerIpc(d: IpcDeps): void {
   handle(IPC.liveCancel, none, async () => (await live()).cancel());
   handle(IPC.liveSave, none, async () => (await live()).saveVersion());
   handle(IPC.liveRefresh, none, async () => (await live()).refresh());
+
+  // ---- Per-file-type editing with the matching ArtCraft app ----
+  let editorsPromise: Promise<AppEditors> | null = null;
+  const editors = () => (editorsPromise ??= d.project().then((s) => new AppEditors(s)));
+  const id = z.string().min(1).max(128);
+  handle(IPC.editApply, z.tuple([id, z.string().min(1).max(64), z.record(z.string().max(64), z.union([z.number(), z.string().max(64)]))]),
+    async (assetId, opId, values) => (await editors()).apply(assetId, opId, values));
+  handle(IPC.editOpenCopy, z.tuple([id]), async (assetId) => strip(await (await editors()).openWorkingCopy(assetId)));
+  handle(IPC.editList, none, async () => (await editors()).list().map(strip));
+  handle(IPC.editBringBack, z.tuple([id]), async (editId) => (await editors()).bringBack(editId));
 
   handle(IPC.listExports, none, async () => (await d.project()).listExports());
   handle(IPC.revealExport, z.tuple([z.string().min(1).max(255)]), async (name) => {

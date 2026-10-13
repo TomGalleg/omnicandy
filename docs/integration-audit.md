@@ -48,7 +48,7 @@ and others.
 
 - PhotoCraft, VectorCraft and EffectCraft MCP servers take `--automation-read-root` /
   `--automation-write-root`. These confine the agent's file access, and **a root left out grants no
-  access**. Creative Studio must always pass the project root here.
+  access**. CreateCraft must always pass the project root here.
 - PhotoCraft's live bridge takes `--control-token` / `--control-token-file` (64 hex characters).
   The main process should generate this token and pass it by file, never through the renderer.
 - LightCraft's `denoise-serve` opens a TCP listener. We must never start it.

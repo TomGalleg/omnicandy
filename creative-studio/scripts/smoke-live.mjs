@@ -1,4 +1,4 @@
-// End-to-end smoke of LIVE PhotoCraft control through the real Creative Studio UI, including the
+// End-to-end smoke of LIVE PhotoCraft control through the real CreateCraft UI, including the
 // pop-out control panel docked to the PhotoCraft window. Opens a real PhotoCraft window (closed after).
 // Run after `npm run build`: node scripts/smoke-live.mjs
 import { execFileSync, spawn } from 'node:child_process';
@@ -42,14 +42,14 @@ const windows = () => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWi
 let probe = null;
 try {
   await win.locator('.asset').first().waitFor({ timeout: 20000 });
-  await win.getByRole('option', { name: /^harbor-landscape\.svg/ }).click();
+  await win.getByRole('option', { name: /^photocraft-smoke.png/ }).click();
   await win.getByRole('button', { name: 'Edit', exact: true }).click();
-  await win.getByRole('button', { name: /Open harbor-landscape\.svg in PhotoCraft/ }).click();
-  await win.getByText(/PhotoCraft live · harbor-landscape\.svg/).waitFor({ timeout: 40000 });
+  await win.getByRole('button', { name: /Open photocraft-smoke.png in PhotoCraft/ }).click();
+  await win.getByText(/Live: photocraft-smoke.png/).waitFor({ timeout: 40000 });
   check('PhotoCraft window launched and document opened over the token-protected bridge', true);
 
   // ---- pop-out panel docked to PhotoCraft ----
-  await win.getByText('Controls are next to PhotoCraft').waitFor({ timeout: 15000 });
+  await win.getByText(/controls are next to the PhotoCraft window/).waitFor({ timeout: 15000 });
   let panel = null;
   for (let i = 0; i < 50 && !panel; i++) { panel = app.windows().find((p) => p.url().endsWith('#panel')) ?? null; if (!panel) await sleep(200); }
   check('control panel popped out automatically', !!panel);
@@ -91,10 +91,10 @@ try {
 
   const before = (await win.evaluate(() => window.studio.loadProject())).assets.length;
   await panel.getByRole('button', { name: 'Save as new version' }).click();
-  await panel.getByText(/Saved harbor-landscape-live1\.pcraft/).first().waitFor({ timeout: 30000 });
+  await panel.getByText(/Saved photocraft-smoke-live1\.pcraft/).first().waitFor({ timeout: 30000 });
   const assets = (await win.evaluate(() => window.studio.loadProject())).assets;
-  const png = assets.find((a) => a.name === 'harbor-landscape-live1.png');
-  check('saved .pcraft + .png versions into the library from the panel', assets.length === before + 2 && png?.width === 1600, png ? `${png.width}x${png.height}` : 'missing');
+  const png = assets.find((a) => a.name === 'photocraft-smoke-live1.png');
+  check('saved .pcraft + .png versions into the library from the panel', assets.length === before + 2 && png?.width === 256, png ? `${png.width}x${png.height}` : 'missing');
 
   // ---- dock back into the main window ----
   await panel.getByRole('button', { name: 'Dock', exact: true }).click().catch(() => {}); // the panel closes during the click

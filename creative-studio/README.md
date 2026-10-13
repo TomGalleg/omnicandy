@@ -1,6 +1,6 @@
-# Creative Studio
+# CreateCraft
 
-Creative Studio is a Windows-first desktop app for creative editing. Claude acts as a Creative
+CreateCraft is a Windows-first desktop app for creative editing. Claude acts as a Creative
 Partner that coordinates the ArtCraft apps (PhotoCraft, VectorCraft, LightCraft, EffectCraft,
 DesignCraft, SoundCraft, FilmCraft) and optional BYOK generation providers.
 
@@ -75,6 +75,15 @@ by copying `fixtures/sample-project`. Appearance settings are stored in `%APPDAT
   never modified. SVG inputs are flattened first, and chained edit nodes continue from the layered
   `.pcraft`. Commands that open, save, run scripts or reference other files are refused, as are
   path-like parameters. PhotoCraft runs with a fixed argument list and no shell.
+- **Edit tab: the right app for each file type (real).** Photos and PhotoCraft/PSD documents go to
+  PhotoCraft, SVG/AI/EPS/PDF to VectorCraft, audio to SoundCraft, and video to FilmCraft (no quick
+  edits yet: there's no video to verify against). Each app offers quick edits with sliders and
+  choices: PhotoCraft has 10, VectorCraft 5 (invert colours, rotate, flip, scale, fit artboard),
+  and SoundCraft 4 (normalize, volume, fades, sample rate). They run headless through the app's CLI,
+  are validated against `src/shared/appEditors.ts`, and are saved as new versions with a preview.
+  *Open in VectorCraft/SoundCraft* opens a writable working copy in the app's window (audio as a
+  SoundCraft session); after saving there, *Bring back* adds it as a new version (SoundCraft: the
+  bounced mix).
 - **Live PhotoCraft (real).** Edit → *Open … in PhotoCraft* launches the real PhotoCraft window
   with a random control token (a file in `%APPDATA%\creative-studio\secrets`, never sent to the UI)
   and PhotoCraft's own automation roots: it can read only the project and write only

@@ -30,7 +30,7 @@ export function Header({ projectName, workspace, onWorkspace, apps, integrations
   const connected = apps.filter((a) => a.connected).length;
   return (
     <header className="header">
-      <div className="brand"><img className="brand-logo" src={logo} alt="" /> Creative Studio</div>
+      <div className="brand"><img className="brand-logo" src={logo} alt="" /> CreateCraft</div>
       <div className="project-name">Project: <strong>{projectName}</strong></div>
       <nav className="workspaces" aria-label="Workspaces">
         {WORKSPACES.map((w) => (

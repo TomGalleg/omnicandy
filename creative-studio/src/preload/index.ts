@@ -43,6 +43,12 @@ const api: StudioApi = {
       return () => ipcRenderer.removeListener(IPC.liveEvent, listener);
     },
   },
+  edit: {
+    apply: (assetId, opId, values) => ipcRenderer.invoke(IPC.editApply, assetId, opId, values),
+    openWorkingCopy: (assetId) => ipcRenderer.invoke(IPC.editOpenCopy, assetId),
+    list: () => ipcRenderer.invoke(IPC.editList),
+    bringBack: (id) => ipcRenderer.invoke(IPC.editBringBack, id),
+  },
   probeApps: () => ipcRenderer.invoke(IPC.probeApps),
   integrationStatus: () => ipcRenderer.invoke(IPC.integrationStatus),
   assetUrl: (assetId) => `${ASSET_SCHEME}://asset/${encodeURIComponent(assetId)}`,

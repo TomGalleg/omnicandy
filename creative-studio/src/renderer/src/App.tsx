@@ -85,6 +85,7 @@ export function App() {
                     log={addLog}
                     onProjectChanged={reloadProject}
                     liveApi={liveApi}
+                    onSelectAsset={setSelectedId}
                   />
                 </div>
               </Panel>

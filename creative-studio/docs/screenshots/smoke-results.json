@@ -2,7 +2,7 @@
   {
     "name": "renderer has no Node globals",
     "ok": true,
-    "detail": "{\"require\":\"undefined\",\"process\":\"undefined\",\"api\":[\"answerApproval\",\"assetUrl\",\"cancelWorkflow\",\"getAppearance\",\"importAssets\",\"integrationStatus\",\"listExports\",\"live\",\"loadProject\",\"loadWorkflow\",\"onWorkflowEvent\",\"probeApps\",\"revealExport\",\"runWorkflow\",\"saveWorkflow\",\"setAppearance\",\"setAssetRating\"]}"
+    "detail": "{\"require\":\"undefined\",\"process\":\"undefined\",\"api\":[\"answerApproval\",\"assetUrl\",\"cancelWorkflow\",\"edit\",\"getAppearance\",\"importAssets\",\"integrationStatus\",\"listExports\",\"live\",\"loadProject\",\"loadWorkflow\",\"onWorkflowEvent\",\"probeApps\",\"revealExport\",\"runWorkflow\",\"saveWorkflow\",\"setAppearance\",\"setAssetRating\"]}"
   },
   {
     "name": "dark theme applied",
@@ -25,7 +25,22 @@
     "detail": "ArtCraft 7 installed · 0 live"
   },
   {
-    "name": "Edit shows honest \"not started\" live state",
+    "name": "Edit picks SoundCraft for audio",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "Edit picks VectorCraft for SVG",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "VectorCraft quick edit ran for real and shows the result",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "Edit picks PhotoCraft for PNG (with live option)",
     "ok": true,
     "detail": ""
   },

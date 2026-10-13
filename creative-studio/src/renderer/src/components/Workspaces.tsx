@@ -3,7 +3,7 @@ import type { IntegrationSnapshot } from '@shared/ipc';
 import type { AppProbeResult, Asset, ProjectManifest, WorkspaceId } from '@shared/types';
 import { formatBytes, formatDims } from '../format';
 import type { LiveApi } from '../useLive';
-import { LivePanel } from './LivePanel';
+import { EditWorkspace } from './EditWorkspace';
 import { WorkflowEditor } from './WorkflowEditor';
 
 interface Props {
@@ -16,12 +16,13 @@ interface Props {
   log: (source: string, msg: string) => void;
   onProjectChanged: () => void;
   liveApi: LiveApi;
+  onSelectAsset: (id: string) => void;
 }
 
 export function WorkspaceView(p: Props) {
   switch (p.workspace) {
     case 'media': return <MediaWorkspace manifest={p.manifest} asset={p.selected} />;
-    case 'edit': return <LivePanel selected={p.selected} liveApi={p.liveApi} onProjectChanged={p.onProjectChanged} />;
+    case 'edit': return <EditWorkspace manifest={p.manifest} selected={p.selected} liveApi={p.liveApi} onProjectChanged={p.onProjectChanged} onSelectAsset={p.onSelectAsset} log={p.log} />;
     case 'generate': return <GenerateView integrations={p.integrations} />;
     case 'workflow': return <WorkflowEditor manifest={p.manifest} integrations={p.integrations} colorMode={p.resolvedTheme} log={p.log} onProjectChanged={p.onProjectChanged} />;
     case 'effects': return <Bridge title="Effects" appId="effectcraft" apps={p.apps} what="compositions, layers, effects and keyframes" />;

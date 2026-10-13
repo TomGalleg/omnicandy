@@ -32,6 +32,10 @@ export const IPC = {
   liveEvent: 'live:event',
   livePopOut: 'live:pop-out',
   liveDock: 'live:dock',
+  editApply: 'edit:apply',
+  editOpenCopy: 'edit:open-copy',
+  editList: 'edit:list',
+  editBringBack: 'edit:bring-back',
   probeApps: 'apps:probe',
   integrationStatus: 'integrations:status',
 } as const;
@@ -43,6 +47,21 @@ export interface IntegrationSnapshot {
   credentialVault: { available: boolean };
   claude: { connected: boolean; reason: string };
   providers: Array<{ id: string; label: string; isMock: boolean; billable: boolean }>;
+}
+
+export interface EditResultDto {
+  app: string;
+  assetIds: string[];
+  message: string;
+}
+
+export interface ExternalEditDto {
+  id: string;
+  app: string;
+  assetId: string;
+  assetName: string;
+  workPath: string;
+  openedAt: string;
 }
 
 export interface ImportResult {
@@ -83,6 +102,14 @@ export interface StudioApi {
     /** Closes the pop-out panel; controls return to the main window. */
     dock(): Promise<LiveSnapshot>;
     onChange(cb: (s: LiveSnapshot) => void): () => void;
+  };
+  edit: {
+    /** Runs a quick edit with the app that owns this file type; returns the new version ids. */
+    apply(assetId: string, opId: string, values: Record<string, number | string>): Promise<EditResultDto>;
+    /** Opens a writable working copy in the app's own window. */
+    openWorkingCopy(assetId: string): Promise<ExternalEditDto>;
+    list(): Promise<ExternalEditDto[]>;
+    bringBack(editId: string): Promise<EditResultDto>;
   };
   probeApps(): Promise<AppProbeResult[]>;
   integrationStatus(): Promise<IntegrationSnapshot>;

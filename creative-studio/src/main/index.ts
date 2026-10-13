@@ -12,8 +12,10 @@ protocol.registerSchemesAsPrivileged([
   { scheme: ASSET_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true } },
 ]);
 
-// Isolated profile for automated smoke tests; never set in normal use.
-if (process.env.CS_USER_DATA_DIR) app.setPath('userData', path.resolve(process.env.CS_USER_DATA_DIR));
+app.setName('CreateCraft');
+// Data stays where it has always been (%APPDATA%\creative-studio) despite the rename.
+// CS_USER_DATA_DIR gives automated smoke tests an isolated profile; never set in normal use.
+app.setPath('userData', process.env.CS_USER_DATA_DIR ? path.resolve(process.env.CS_USER_DATA_DIR) : path.join(app.getPath('appData'), 'creative-studio'));
 
 // One instance per profile: two processes seeding/writing the same project would race.
 if (!app.requestSingleInstanceLock()) app.exit(0);
@@ -60,7 +62,7 @@ async function createWindow() {
     minWidth: 1100,
     minHeight: 700,
     show: false,
-    title: 'Creative Studio',
+    title: 'CreateCraft',
     icon: appIcon(),
     backgroundColor: nativeTheme.shouldUseDarkColors ? '#0f1115' : '#f4f5f7',
     autoHideMenuBar: true,
@@ -88,7 +90,7 @@ async function createWindow() {
 }
 
 app.whenReady().then(async () => {
-  app.setAppUserModelId('ClaudeCraft.CreativeStudio');
+  app.setAppUserModelId('ClaudeCraft.CreateCraft');
   session.defaultSession.setPermissionRequestHandler((_wc, _perm, cb) => cb(false));
 
   // studio-asset://asset/<assetId> → read-only file inside the project root.
