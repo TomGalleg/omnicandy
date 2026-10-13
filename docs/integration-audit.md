@@ -94,7 +94,7 @@ folder import (spec rule).
 
 | Capability | Status | Evidence / note |
 |---|---|---|
-| ArtCraft app detection (exe present + `--version`) | **Real, verified** | Implemented in the app's main process (`ArtCraftCliProbe`) |
+| ArtCraft app detection (exe present + `--version`) | **Real, verified** | Implemented in the app's main process (`creative-studio/src/main/artcraftProbe.ts`) |
 | PhotoCraft headless open/edit/save/info via CLI | **Real, verified** (audit only) | Probe step 1; not yet wired into a workflow node |
 | MCP handshake, 7 apps | **Real, verified** (audit only) | Probe step 2; app does not yet hold MCP sessions |
 | Live GUI control via `--control` bridge | **Untested** | Phase 2 |

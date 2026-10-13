@@ -106,7 +106,9 @@ export function WorkflowEditor({ manifest, colorMode, log }: Props) {
   useEffect(() => window.studio.onWorkflowEvent((ev) => {
     if (ev.kind === 'run-started') log('workflow', `Run ${ev.runId} started${ev.mock ? ' (MOCK executor)' : ''}.`);
     if (ev.kind === 'run-finished') {
-      log('workflow', `Run ${ev.runId} ${ev.cancelled ? 'cancelled' : ev.ok ? 'completed' : 'stopped'}.`);
+      const outcome = ev.cancelled ? 'cancelled' : ev.ok ? 'completed' : 'stopped';
+      log('workflow', `Run ${ev.runId} ${outcome}.`);
+      setMessage({ text: `MOCK run ${outcome}. No paid calls were made and no files were written.`, error: !ev.ok && !ev.cancelled });
       setRunning(false);
     }
     if (ev.kind === 'node-status') {

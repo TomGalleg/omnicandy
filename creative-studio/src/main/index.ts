@@ -11,6 +11,9 @@ protocol.registerSchemesAsPrivileged([
   { scheme: ASSET_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true } },
 ]);
 
+// Isolated profile for automated smoke tests; never set in normal use.
+if (process.env.CS_USER_DATA_DIR) app.setPath('userData', path.resolve(process.env.CS_USER_DATA_DIR));
+
 let mainWindow: BrowserWindow | null = null;
 const settings = new SettingsStore(app.getPath('userData'));
 let projectPromise: Promise<ProjectStore> | null = null;

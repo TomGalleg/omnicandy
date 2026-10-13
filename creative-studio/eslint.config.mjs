@@ -13,6 +13,11 @@ export default tseslint.config(
     languageOptions: { globals: globals.node },
   },
   {
+    // Playwright evaluate() callbacks run in the page.
+    files: ['scripts/smoke.mjs'],
+    languageOptions: { globals: { ...globals.node, ...globals.browser } },
+  },
+  {
     files: ['src/renderer/**/*.{ts,tsx}'],
     languageOptions: { globals: globals.browser },
     plugins: { 'react-hooks': reactHooks },

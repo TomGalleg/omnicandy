@@ -1,0 +1,67 @@
+[
+  {
+    "name": "renderer has no Node globals",
+    "ok": true,
+    "detail": "{\"require\":\"undefined\",\"process\":\"undefined\",\"api\":[\"answerApproval\",\"assetUrl\",\"cancelWorkflow\",\"getAppearance\",\"importAssets\",\"integrationStatus\",\"loadProject\",\"loadWorkflow\",\"onWorkflowEvent\",\"probeApps\",\"runWorkflow\",\"saveWorkflow\",\"setAppearance\",\"setAssetRating\"]}"
+  },
+  {
+    "name": "dark theme applied",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "still image shows Activity, not a timeline",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "audio asset shows the timeline",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "ArtCraft detection reports installed but not connected",
+    "ok": true,
+    "detail": " ArtCraft 7 installed · 0 connected"
+  },
+  {
+    "name": "Edit shows honest \"not connected\" live view",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "workflow graph loaded (5 nodes)",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "mock run completes after approval",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "light theme applied",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "take control waits for op then hands lock to user",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "theme persists across restart",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "workflow persists across restart",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "main rejects malformed workflow over IPC",
+    "ok": true,
+    "detail": ""
+  }
+]
