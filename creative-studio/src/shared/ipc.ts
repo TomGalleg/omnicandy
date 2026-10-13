@@ -2,6 +2,7 @@
 
 import type { AppearanceSettings, AppProbeResult, Asset, ProjectManifest, ProjectSummary } from './types';
 import type { ClaudeState } from './claude';
+import type { CostEstimate, ImageJob, ProviderId } from './generation';
 import type { LiveSnapshot } from './live';
 import type { WorkflowGraph, WorkflowRunEvent } from './workflow';
 
@@ -56,6 +57,13 @@ export const IPC = {
   projectsRename: 'projects:rename',
   projectsRemove: 'projects:remove',
   projectsReveal: 'projects:reveal',
+  genProviders: 'generate:providers',
+  genPasteKey: 'generate:paste-key',
+  genRemoveKey: 'generate:remove-key',
+  genTest: 'generate:test',
+  genRun: 'generate:run',
+  genKeyPage: 'generate:key-page',
+  genEvent: 'generate:event',
   probeApps: 'apps:probe',
   integrationStatus: 'integrations:status',
 } as const;
@@ -67,6 +75,26 @@ export interface IntegrationSnapshot {
   credentialVault: { available: boolean };
   claude: { connected: boolean; reason: string };
   providers: Array<{ id: string; label: string; isMock: boolean; billable: boolean }>;
+}
+
+/** What the renderer may know about a provider key: never the key itself. */
+export interface ProviderStatusDto {
+  id: ProviderId;
+  label: string;
+  billable: boolean;
+  configured: boolean;
+  savedAt: string | null;
+  lastTest: { ok: boolean; at: string; message: string; models?: string[] } | null;
+  /** False when Windows protected storage is unavailable (keys can't be saved). */
+  encryptionAvailable: boolean;
+  keyHint: string;
+}
+
+export interface GenerateResultDto {
+  assetIds: string[];
+  message: string;
+  estimate: CostEstimate;
+  requestedBy: 'user' | 'claude';
 }
 
 export interface EditResultDto {
@@ -163,6 +191,19 @@ export interface StudioApi {
     reveal(key: string): Promise<void>;
     /** Thumbnail URL for an asset of any project. */
     assetUrl(key: string, assetId: string): string;
+  };
+  generate: {
+    providers(): Promise<ProviderStatusDto[]>;
+    /** Main reads the key from the clipboard, encrypts it and clears the clipboard. The key never passes through the renderer. */
+    pasteKey(providerId: ProviderId): Promise<ProviderStatusDto[]>;
+    removeKey(providerId: ProviderId): Promise<ProviderStatusDto[]>;
+    /** Lists the provider's models with the saved key (free). */
+    test(providerId: ProviderId): Promise<ProviderStatusDto[]>;
+    /** Asks for approval in a native dialog (billable providers), then generates. */
+    run(job: ImageJob): Promise<GenerateResultDto>;
+    openKeyPage(providerId: ProviderId): Promise<void>;
+    /** New generated images (from the Generate tab or Claude). */
+    onResult(cb: (r: GenerateResultDto) => void): () => void;
   };
   probeApps(): Promise<AppProbeResult[]>;
   integrationStatus(): Promise<IntegrationSnapshot>;

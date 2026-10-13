@@ -2,9 +2,10 @@
 
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { BrowserWindow, dialog, ipcMain, nativeTheme, shell, type IpcMainInvokeEvent } from 'electron';
+import { BrowserWindow, clipboard, dialog, ipcMain, nativeTheme, safeStorage, shell, type IpcMainInvokeEvent } from 'electron';
 import { z } from 'zod';
-import { IPC, type ImportResult, type IntegrationSnapshot } from '@shared/ipc';
+import { IPC, type GenerateResultDto, type ImportResult, type IntegrationSnapshot, type ProviderStatusDto } from '@shared/ipc';
+import { formatUsd, MAX_PROMPT, PROVIDERS } from '@shared/generation';
 import { resolveTheme } from '@shared/theme';
 import type { AppearanceSettings } from '@shared/types';
 import { MockArtCraftAdapter, MockGenerationProvider } from '@shared/mocks';
@@ -23,7 +24,9 @@ import { LiveSoundCraft, LiveVectorCraft } from './liveApps';
 import { LivePhotoCraft } from './photocraftLive';
 import type { ProjectStore } from './projectStore';
 import { parseWorkflow } from './schemas';
-import { NotConfiguredCredentialVault, UnavailableWindowCapture } from './services';
+import { UnavailableWindowCapture } from './services';
+import { SafeStorageVault } from './credentialVault';
+import { GenerationService, type ApprovalRequest } from './generation';
 import type { SettingsStore } from './settingsStore';
 
 export interface IpcDeps {
@@ -56,7 +59,7 @@ export function registerIpc(d: IpcDeps): void {
   const resetters: Array<() => void> = [];
 
   const capture = new UnavailableWindowCapture();
-  const vault = new NotConfiguredCredentialVault();
+  const vault = new SafeStorageVault(path.join(d.secretsDir, 'providers'), safeStorage);
   const mockProvider = new MockGenerationProvider();
   // PhotoCraft is REAL when photocraft-cli.exe is installed; otherwise a labelled mock stands in.
   let depsPromise: Promise<RunnerDeps> | null = null;
@@ -231,6 +234,80 @@ export function registerIpc(d: IpcDeps): void {
   };
   handle(IPC.liveOpen, z.tuple([z.string().min(1).max(128)]), (id) => openLive(id));
 
+  // ---- AI Generate (BYOK: keys in Windows protected storage, approval before every paid call) ----
+  /** Native dialog in main: neither the renderer nor Claude can answer it. Cancel is the default. */
+  const approveGeneration = async (r: ApprovalRequest): Promise<boolean> => {
+    const win = d.window();
+    const many = r.count === 1 ? 'image' : 'images';
+    const prompt = r.prompt.length > 300 ? `${r.prompt.slice(0, 300)}…` : r.prompt;
+    const options: Electron.MessageBoxOptions = {
+      type: 'question',
+      title: 'Approve paid image generation',
+      message: `${r.requestedBy === 'claude' ? 'Claude is asking to generate' : 'Generate'} ${r.count} ${many} with ${r.provider} · ${r.model}?`,
+      detail: [
+        `Estimated cost: ${r.estimate.approximate ? 'about ' : ''}${formatUsd(r.estimate.amount)} USD, charged to your ${r.provider} account.`,
+        r.estimate.basis,
+        '',
+        `Prompt: "${prompt}"`,
+        `Settings: ${Object.entries(r.settings).map(([k, v]) => `${k} ${v}`).join(', ')}`,
+        r.references.length ? `Reference images sent to ${r.provider}: ${r.references.join(', ')}` : '',
+        '',
+        'Nothing is sent until you click Generate.',
+      ].filter((l, i, a) => l !== '' || a[i - 1] !== '').join('\n'),
+      buttons: ['Cancel', `Generate (${r.estimate.approximate ? '~' : ''}${formatUsd(r.estimate.amount)})`],
+      defaultId: 0,
+      cancelId: 0,
+      noLink: true,
+    };
+    const res = win && !win.isDestroyed() ? await dialog.showMessageBox(win, options) : await dialog.showMessageBox(options);
+    return res.response === 1;
+  };
+  const generation = new GenerationService({ vault, store: d.project, approve: approveGeneration, fetch: globalThis.fetch.bind(globalThis) });
+  const emitGenerated = (r: GenerateResultDto) => { for (const w of BrowserWindow.getAllWindows()) if (!w.isDestroyed()) w.webContents.send(IPC.genEvent, r); };
+  const providerStatus = async (): Promise<ProviderStatusDto[]> => {
+    const st = await generation.providerStatus();
+    return PROVIDERS.map((p) => {
+      const s = st.find((x) => x.id === p.id);
+      return {
+        id: p.id, label: p.label, billable: p.billable,
+        configured: p.id === 'mock' ? true : !!s?.configured,
+        savedAt: s?.meta?.savedAt ?? null,
+        lastTest: s?.meta?.lastTest ?? null,
+        encryptionAvailable: vault.available,
+        keyHint: p.keyHint,
+      };
+    });
+  };
+  const keyProvider = z.enum(['openai', 'gemini']);
+  handle(IPC.genProviders, none, () => providerStatus());
+  handle(IPC.genPasteKey, z.tuple([keyProvider]), async (providerId) => {
+    const copied = await clipboard.readText();
+    await vault.save(providerId, copied);
+    if ((await clipboard.readText()) === copied) await clipboard.clear(); // don't leave the key on the clipboard
+    await generation.testConnection(providerId); // free: lists models only
+    return providerStatus();
+  });
+  handle(IPC.genRemoveKey, z.tuple([keyProvider]), async (providerId) => { await vault.remove(providerId); return providerStatus(); });
+  handle(IPC.genTest, z.tuple([keyProvider]), async (providerId) => { await generation.testConnection(providerId); return providerStatus(); });
+  handle(IPC.genKeyPage, z.tuple([keyProvider]), async (providerId) => {
+    const url = PROVIDERS.find((p) => p.id === providerId)?.keyUrl;
+    if (url) await shell.openExternal(url);
+  });
+  const jobSchema = z.object({
+    modelId: z.string().min(1).max(64),
+    prompt: z.string().min(1).max(MAX_PROMPT),
+    referenceAssetIds: z.array(z.string().min(1).max(128)).max(4),
+    settings: z.record(z.string().max(64), z.string().max(64)),
+    count: z.number().int().min(1).max(4),
+  });
+  const runGeneration = async (job: z.infer<typeof jobSchema>, requestedBy: 'user' | 'claude'): Promise<GenerateResultDto> => {
+    const r = await generation.generate(job, requestedBy);
+    const dto = { assetIds: r.assets.map((a) => a.id), message: r.message, estimate: r.estimate, requestedBy };
+    emitGenerated(dto);
+    return dto;
+  };
+  handle(IPC.genRun, z.tuple([jobSchema]), (job) => runGeneration(job, 'user'));
+
   // ---- Claude Creative Partner (Claude Agent SDK, this PC's Claude Code sign-in) ----
   let partner: ClaudePartner | null = null;
   resetters.push(() => { partner = null; });
@@ -240,6 +317,8 @@ export function registerIpc(d: IpcDeps): void {
     openAsset: async (id) => { await openLive(id); },
     emit: (st) => { for (const w of BrowserWindow.getAllWindows()) if (!w.isDestroyed()) w.webContents.send(IPC.claudeEvent, st); },
     cliPath: defaultClaudeCli(),
+    generate: (job) => runGeneration(job, 'claude'),
+    imageModels: async () => (await providerStatus()).filter((p) => p.configured),
     workDir: async () => { const dir = path.join((await d.project()).root, 'work', 'claude'); await fs.mkdir(dir, { recursive: true }); return dir; },
   }));
   handle(IPC.claudeState, none, () => claude().state());
@@ -302,6 +381,7 @@ export function registerIpc(d: IpcDeps): void {
       if (st.activeOperation || ['running', 'pausing', 'manual'].includes(st.phase)) throw new Error('Finish or cancel the current editing task before switching projects.');
     }
     if (partner?.state().status === 'working') throw new Error('Claude is still working. Stop it before switching projects.');
+    if (generation.isBusy) throw new Error('An image is being generated. Wait for it to finish before switching projects.');
     d.panel.close();
     d.embedded.release(true);
     for (const r of resetters) r();
@@ -315,6 +395,6 @@ export function registerIpc(d: IpcDeps): void {
     windowCapture: { available: capture.available, reason: capture.unavailableReason() },
     credentialVault: { available: vault.available },
     claude: { connected: false, reason: 'Claude integration is not configured in this build.' },
-    providers: [{ id: mockProvider.id, label: 'Mock provider', isMock: true, billable: mockProvider.billable }],
+    providers: PROVIDERS.map((p) => ({ id: p.id, label: p.label, isMock: p.id === 'mock', billable: p.billable })),
   }));
 }

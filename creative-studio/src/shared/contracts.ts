@@ -86,7 +86,7 @@ export interface CredentialStatus {
 export interface CredentialVault {
   readonly available: boolean;
   status(providerId: string): Promise<CredentialStatus>;
-  // set/revoke are added in Phase 4 via a main-process-only dialog; the renderer never sends secrets.
+  // Saving/removing keys happens in main only (SafeStorageVault); the renderer never sends secrets.
 }
 
 export interface CollaborationController {

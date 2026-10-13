@@ -364,3 +364,24 @@ h1, h2, h3 { margin: 0; font-weight: 600; }
 .recent-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
 .recent { display: grid; gap: 3px; border: 1px solid transparent; background: transparent; padding: 3px; border-radius: var(--radius-sm); cursor: pointer; text-align: left; }
 .recent:hover { background: var(--surface-2); }
+
+/* ---------- AI Generate ---------- */
+.generate { overflow: auto; align-items: start; }
+.gen-side { display: grid; gap: 14px; align-content: start; }
+.gen-side h3, .gen-results h3 { font-size: 13px; }
+.provider-row { display: grid; gap: 6px; padding: 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-2); }
+.provider-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.asset-meta.err { color: var(--danger); }
+.gen-settings { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.gen-settings select, .generate .field select { height: 28px; }
+.estimate { display: grid; gap: 2px; padding: 8px 10px; border-radius: var(--radius-sm); background: var(--surface-2); }
+.estimate strong { font-size: 16px; }
+.ref-pick { display: flex; align-items: center; gap: 8px; }
+.ref-pick .thumb { width: 44px; height: 44px; flex: none; }
+.gen-results { display: grid; gap: 12px; align-content: start; min-width: 0; }
+.gen-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
+.gen-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; display: flex; flex-direction: column; }
+.gen-thumb { aspect-ratio: 1; border: 0; padding: 0; cursor: pointer; background: repeating-conic-gradient(var(--checker-a) 0 25%, var(--checker-b) 0 50%) 0 0 / 14px 14px; }
+.gen-thumb img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.gen-body { padding: 10px; display: grid; gap: 5px; }
+.gen-prompt { font-size: 12.5px; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }

@@ -3,6 +3,7 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron';
 import { ASSET_SCHEME, IPC, type StudioApi } from '@shared/ipc';
 import type { ClaudeState } from '@shared/claude';
+import type { GenerateResultDto } from '@shared/ipc';
 import type { LiveSnapshot } from '@shared/live';
 import type { WorkflowRunEvent } from '@shared/workflow';
 
@@ -77,6 +78,19 @@ const api: StudioApi = {
     remove: (key) => ipcRenderer.invoke(IPC.projectsRemove, key),
     reveal: (key) => ipcRenderer.invoke(IPC.projectsReveal, key),
     assetUrl: (key, assetId) => `${ASSET_SCHEME}://asset/${encodeURIComponent(assetId)}?p=${encodeURIComponent(key)}`,
+  },
+  generate: {
+    providers: () => ipcRenderer.invoke(IPC.genProviders),
+    pasteKey: (id) => ipcRenderer.invoke(IPC.genPasteKey, id),
+    removeKey: (id) => ipcRenderer.invoke(IPC.genRemoveKey, id),
+    test: (id) => ipcRenderer.invoke(IPC.genTest, id),
+    run: (job) => ipcRenderer.invoke(IPC.genRun, job),
+    openKeyPage: (id) => ipcRenderer.invoke(IPC.genKeyPage, id),
+    onResult: (cb) => {
+      const listener = (_e: IpcRendererEvent, r: GenerateResultDto) => cb(r);
+      ipcRenderer.on(IPC.genEvent, listener);
+      return () => ipcRenderer.removeListener(IPC.genEvent, listener);
+    },
   },
   probeApps: () => ipcRenderer.invoke(IPC.probeApps),
   integrationStatus: () => ipcRenderer.invoke(IPC.integrationStatus),

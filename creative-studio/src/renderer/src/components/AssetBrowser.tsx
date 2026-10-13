@@ -114,6 +114,10 @@ export function AssetBrowser({ manifest, selectedId, onSelect, onManifest, log }
                     return <><dt>Derived from</dt><dd>{parent ? <button className="btn small ghost" style={{ padding: 0, height: 'auto' }} onClick={() => onSelect(parent.id)}>{parent.name}</button> : 'missing'}</dd></>;
                   })()}
                   <dt>Source</dt><dd>{selected.provenance.source}</dd>
+                  {selected.provenance.prompt && <><dt>Prompt</dt><dd>{selected.provenance.prompt}</dd></>}
+                  {selected.provenance.settings && <><dt>Settings</dt><dd>{Object.entries(selected.provenance.settings).map(([k, v]) => `${k}: ${v}`).join(', ')}</dd></>}
+                  {selected.provenance.estimatedCostUsd !== undefined && selected.provenance.estimatedCostUsd > 0 && <><dt>Est. cost</dt><dd>${selected.provenance.estimatedCostUsd.toFixed(4)} for the request (approved{selected.provenance.requestedBy === 'claude' ? ', asked by Claude' : ''})</dd></>}
+                  {selected.provenance.referenceAssetIds?.length ? <><dt>References</dt><dd>{selected.provenance.referenceAssetIds.map((id) => manifest?.assets.find((a) => a.id === id)?.name ?? 'missing').join(', ')}</dd></> : null}
                   {selected.provenance.licensingNotes && <><dt>Licensing</dt><dd>{selected.provenance.licensingNotes}</dd></>}
                   <dt>Added</dt><dd>{new Date(selected.provenance.createdAt).toLocaleString()}</dd>
                   <dt>Stored at</dt><dd className="mono">{selected.relPath}</dd>

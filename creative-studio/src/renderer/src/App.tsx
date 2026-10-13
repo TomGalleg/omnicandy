@@ -49,6 +49,12 @@ export function App() {
 
   const liveApi = useLive(addLog);
 
+  // New AI images (from the Generate tab or Claude) appear in the library right away.
+  useEffect(() => window.studio.generate.onResult((r) => {
+    reloadProject();
+    if (r.requestedBy === 'claude') addLog('generate', `Claude: ${r.message}`);
+  }), [reloadProject, addLog]);
+
   /** After switching projects: reload everything tied to the old one. */
   const onSwitched = useCallback((key: string) => {
     setProjectKey(key);

@@ -80,6 +80,15 @@ export class ProjectStore implements AssetRepository {
     return r.asset;
   }
 
+  /**
+   * Registers an AI-generated image (written into the work folder) as a new ORIGINAL with its
+   * provenance (prompt, provider, model, settings). Moved into originals/ and marked read-only.
+   */
+  async addGeneratedFile(producedPath: string, meta: { name: string; provenance: Omit<AssetProvenance, 'createdAt' | 'origin'> }): Promise<{ asset: Asset; duplicateOf?: string }> {
+    this.resolveInsideRoot(path.relative(this.root, producedPath).split(path.sep).join('/'));
+    return this.storeFile(producedPath, { folder: 'originals', name: meta.name, move: true, provenance: { ...meta.provenance, origin: 'generated' } });
+  }
+
   private async storeFile(
     sourcePath: string,
     o: { folder: 'originals' | 'versions'; name: string; move: boolean; parentId?: string; provenance: Partial<AssetProvenance> & Pick<AssetProvenance, 'origin' | 'source'> },

@@ -47,6 +47,10 @@ const assetSchema = z.object({
     model: z.string().max(128).optional(),
     createdAt: z.string(),
     licensingNotes: z.string().max(2000).optional(),
+    settings: z.record(z.string().max(64), z.string().max(256)).optional(),
+    estimatedCostUsd: z.number().nonnegative().optional(),
+    requestedBy: z.enum(['user', 'claude']).optional(),
+    referenceAssetIds: z.array(id).max(8).optional(),
   }),
   parentId: id.optional(),
 });

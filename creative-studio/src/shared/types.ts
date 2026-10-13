@@ -13,6 +13,13 @@ export interface AssetProvenance {
   model?: string;
   createdAt: string;
   licensingNotes?: string;
+  /** Generation settings (size, quality, aspect, …) as sent to the provider. */
+  settings?: Record<string, string>;
+  /** Estimate shown to the user when they approved the call (USD, whole request). */
+  estimatedCostUsd?: number;
+  requestedBy?: 'user' | 'claude';
+  /** Library assets used as reference images. */
+  referenceAssetIds?: string[];
 }
 
 export interface Asset {

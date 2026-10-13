@@ -4,6 +4,7 @@ import type { AppProbeResult, Asset, ProjectManifest, WorkspaceId } from '@share
 import { formatBytes, formatDims } from '../format';
 import type { LiveApi } from '../useLive';
 import { EditWorkspace } from './EditWorkspace';
+import { GenerateWorkspace } from './GenerateWorkspace';
 import { HomeWorkspace } from './HomeWorkspace';
 import { WorkflowEditor } from './WorkflowEditor';
 
@@ -28,7 +29,7 @@ export function WorkspaceView(p: Props) {
     case 'home': return <HomeWorkspace manifest={p.manifest} projectKey={p.projectKey} onSwitched={p.onSwitched} onGoto={p.onGoto} log={p.log} />;
     case 'media': return <MediaWorkspace manifest={p.manifest} asset={p.selected} />;
     case 'edit': return <EditWorkspace manifest={p.manifest} selected={p.selected} liveApi={p.liveApi} onProjectChanged={p.onProjectChanged} onSelectAsset={p.onSelectAsset} log={p.log} />;
-    case 'generate': return <GenerateView integrations={p.integrations} />;
+    case 'generate': return <GenerateWorkspace manifest={p.manifest} selected={p.selected} onGoto={p.onGoto} log={p.log} />;
     case 'workflow': return <WorkflowEditor manifest={p.manifest} integrations={p.integrations} colorMode={p.resolvedTheme} log={p.log} onProjectChanged={p.onProjectChanged} />;
     case 'effects': return <Bridge title="Effects" appId="effectcraft" apps={p.apps} what="compositions, layers, effects and keyframes" />;
     case 'color': return <Bridge title="Color" appId="lightcraft" apps={p.apps} what="develop controls, presets and raw processing" />;
@@ -76,27 +77,6 @@ function MediaPreview({ asset, label }: { asset: Asset | null; label?: string })
     <div className="viewer">
       <div className="stage-label"><span className="chip">{label ?? (asset.parentId ? 'Version · read-only' : 'Original · read-only')}</span><span className="chip">{formatDims(asset)}</span></div>
       <div className="preview-stage"><img src={window.studio.assetUrl(asset.id)} alt={asset.name} /></div>
-    </div>
-  );
-}
-
-function GenerateView({ integrations }: { integrations: IntegrationSnapshot | null }) {
-  return (
-    <div className="generate">
-      <div className="panel-card">
-        <div className="notice">No providers are configured. Only the <strong>MOCK</strong> provider is available. It makes no network calls and costs nothing.</div>
-        <label className="field">Provider
-          <select disabled>{integrations?.providers.map((p) => <option key={p.id}>{p.label}{p.isMock ? ' (MOCK)' : ''}</option>)}</select>
-        </label>
-        <label className="field">Prompt<textarea disabled placeholder="Prompt (generation available after a provider is connected)" /></label>
-        <label className="field">Aspect<select disabled><option>1:1</option></select></label>
-        <div className="asset-meta">Estimated cost: $0.00 (mock). Billable calls will always ask for consent first.</div>
-        <button className="btn primary" disabled>Generate</button>
-      </div>
-      <Empty title="Results">
-        <p>Generated variants will appear here for side-by-side comparison and "send to editor".</p>
-        <p className="asset-meta">Midjourney: import from a folder you choose only. No automation of unofficial APIs.</p>
-      </Empty>
     </div>
   );
 }

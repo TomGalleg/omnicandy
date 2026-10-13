@@ -34,6 +34,10 @@ interface Props {
 
 export function Header({ projectName, onProjectHome, workspace, onWorkspace, apps, integrations, appearance, claudeOpen, onToggleClaude, appTheme }: Props) {
   const installed = apps.filter((a) => a.installed).length;
+  const [keys, setKeys] = useState<string[]>([]);
+  useEffect(() => {
+    void window.studio.generate.providers().then((ps) => setKeys(ps.filter((p) => p.billable && p.configured).map((p) => p.label)));
+  }, [workspace]);
   const connected = apps.filter((a) => a.connected).length;
   return (
     <header className="header">
@@ -57,7 +61,10 @@ export function Header({ projectName, onProjectHome, workspace, onWorkspace, app
           title={`${claudeOpen ? 'Hide' : 'Show'} the Claude panel. ${integrations?.claude.reason ?? ''}`}>
           <span className="dot" /><span>Claude<span className="chip-extra">{claudeOpen ? ' · hide' : ' · show'}</span></span>
         </button>
-        <span className="chip off" title="No provider keys are configured. Costs: $0."><span className="dot" /><span>$0.00<span className="chip-extra"> · no providers</span></span></span>
+        <button className={`chip chip-btn ${keys.length ? 'ok' : 'off'}`} onClick={() => onWorkspace('generate')}
+          title={keys.length ? `AI image providers with a saved key: ${keys.join(', ')}. Every paid call asks for your approval first.` : 'No AI image provider keys saved. Click to set one up in AI Generate.'}>
+          <span className="dot" /><span>AI images<span className="chip-extra"> · {keys.length ? keys.join(', ') : 'no keys'}</span></span>
+        </button>
         <AppearanceMenu appearance={appearance} appTheme={appTheme} />
       </div>
     </header>

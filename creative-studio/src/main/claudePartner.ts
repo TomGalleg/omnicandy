@@ -13,6 +13,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
 import { CLAUDE_MODELS, type ClaudeChatItem, type ClaudeModelId, type ClaudeState } from '@shared/claude';
+import { estimateCost, formatUsd, IMAGE_MODELS, modelById, providerById, type ImageJob } from '@shared/generation';
+import type { GenerateResultDto, ProviderStatusDto } from '@shared/ipc';
 import type { LiveTaskController } from './liveTask';
 import type { ProjectStore } from './projectStore';
 
@@ -22,9 +24,11 @@ You can only act through the createcraft tools. Start by calling get_status. For
 
 Follow the user's direction. You may suggest improvements, but ask before big creative reinterpretations. Work in small steps and say briefly what you changed. If a tool says the user paused you or took control, stop at once and tell them you are waiting. Never claim a change you did not make.
 
-Saving creates a new version in the library; the user's original file is never changed. Save only when the user asks or agrees. Keep replies short and plain.`;
+Saving creates a new version in the library; the user's original file is never changed. Save only when the user asks or agrees. Keep replies short and plain.
 
-const TOOL_NAMES = ['get_status', 'look_at_document', 'apply_edit', 'photocraft_command', 'undo', 'save_version', 'list_files', 'open_file'];
+You can also create new pictures with generate_image (OpenAI or Google Gemini, using the user's own account). It costs the user money: only generate when they ask for it, keep the count low, and say which model you will use. CreateCraft shows the user the price and asks them to approve every call; if they cancel, accept it and do not ask again unless they bring it up. New images are added to the library as new files; open one with open_file to edit it.`;
+
+const TOOL_NAMES = ['get_status', 'look_at_document', 'apply_edit', 'photocraft_command', 'undo', 'save_version', 'list_files', 'open_file', 'list_image_models', 'generate_image'];
 
 export interface ClaudePartnerDeps {
   live: () => Promise<LiveTaskController>;
@@ -35,6 +39,10 @@ export interface ClaudePartnerDeps {
   /** Claude Code CLI on this PC, used only for `auth status` / `auth login`. */
   cliPath: string;
   workDir: () => Promise<string>;
+  /** Same path as the Generate tab: approval dialog in main, then the provider call. */
+  generate: (job: ImageJob) => Promise<GenerateResultDto>;
+  /** Providers with a saved key (status only, never the key). */
+  imageModels: () => Promise<ProviderStatusDto[]>;
 }
 
 export class ClaudePartner {
@@ -180,6 +188,48 @@ export class ClaudePartner {
             const m = await (await this.d.store()).loadManifest();
             return text(JSON.stringify(m.assets.map((a) => ({ name: a.name, kind: a.kind, format: a.sourceFormat, size: a.width ? `${a.width}x${a.height}` : a.durationSec ? `${a.durationSec}s` : undefined, version: !!a.parentId })), null, 2));
           } catch (e) { return fail(e); }
+        }),
+        tool('list_image_models', 'Image generation models the user has set up (their own OpenAI / Google Gemini account), with settings and the estimated price per image at default settings.', {}, async () => {
+          try {
+            const ready = await this.d.imageModels();
+            const models = IMAGE_MODELS.filter((m) => ready.some((p) => p.id === m.provider && p.billable)).filter((m) => {
+              const listed = ready.find((p) => p.id === m.provider)?.lastTest?.models;
+              return !listed?.length || listed.includes(m.id);
+            });
+            if (!models.length) return text('No image provider is set up. Ask the user to add an API key in Generate → Providers.');
+            return text(JSON.stringify(models.map((m) => ({
+              model_id: m.id, name: m.label, note: m.note, can_use_reference_images: m.capabilities.includes('image-edit'), max_count: m.maxCount,
+              settings: Object.fromEntries(m.settings.map((s) => [s.key, { default: s.default, options: s.options.map((o) => o.value) }])),
+              price_per_image_at_defaults: formatUsd(estimateCost({ modelId: m.id, prompt: 'x', referenceAssetIds: [], settings: {}, count: 1 }).perImage),
+            })), null, 2));
+          } catch (e) { return fail(e); }
+        }),
+        tool('generate_image', 'Generates new pictures with one of list_image_models. The user sees the price and must approve before anything is sent; results are added to the library as new files (returned by name).', {
+          prompt: z.string().min(1).max(4000),
+          model_id: z.string().max(64),
+          settings: z.record(z.string().max(64), z.string().max(64)).optional(),
+          count: z.number().int().min(1).max(4).optional(),
+          reference_file_names: z.array(z.string().max(512)).max(4).optional().describe('Library pictures (exact names from list_files) to use as references/input.'),
+        }, async ({ prompt, model_id, settings, count, reference_file_names }) => {
+          try {
+            const m = await (await this.d.store()).loadManifest();
+            const refs = (reference_file_names ?? []).map((n) => {
+              const a = m.assets.find((x) => x.name === n);
+              if (!a) throw new Error(`No file named "${n}". Use list_files.`);
+              return a.id;
+            });
+            const paid = providerById(modelById(model_id)?.provider ?? '')?.billable ?? true;
+            activity(`Asked to generate ${count ?? 1} image${(count ?? 1) === 1 ? '' : 's'} with ${model_id}${paid ? ' (waiting for your approval)' : ''}`);
+            const r = await this.d.generate({ modelId: model_id, prompt, referenceAssetIds: refs, settings: settings ?? {}, count: count ?? 1 });
+            const names = (await (await this.d.store()).loadManifest()).assets.filter((a) => r.assetIds.includes(a.id)).map((a) => a.name);
+            activity(r.message);
+            return text(`${r.message}
+New files: ${names.join(', ') || '(none)'}`);
+          } catch (e) {
+            const msg = e instanceof Error ? e.message : String(e);
+            activity(/cancelled/i.test(msg) ? 'You cancelled the generation' : `Generation failed: ${msg}`);
+            return fail(/cancelled/i.test(msg) ? new Error('The user cancelled this generation. Nothing was charged. Do not retry unless they ask.') : e);
+          }
         }),
         tool('open_file', 'Opens a library file (exact name from list_files) in its app in the Edit tab. Ask the user first if the current document has unsaved changes.', {
           name: z.string().max(512),

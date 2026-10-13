@@ -87,8 +87,30 @@ and others.
 
 ## AI generation providers
 
-None configured, and no keys requested. All providers are **untested**. Midjourney is limited to
-folder import (spec rule).
+Bring-your-own-key, checked against the official docs on 2026-10-13. No real key was used and **no
+paid call has been made**. Everything below is verified with mocked responses (unit tests) and in
+the built app with the offline Mock model and a fake key (smoke tests).
+
+| Provider | Endpoint (official) | Models offered | Price used for the estimate |
+|---|---|---|---|
+| OpenAI | `POST /v1/images/generations` (JSON), `POST /v1/images/edits` (multipart, with reference pictures); `Authorization: Bearer`; result `data[].b64_json` | `gpt-image-2.5-flare`, `gpt-image-2.5-sunburst` | $30 / 1M image output tokens. Tokens per image use OpenAI's own calculator formula (e.g. 1024² medium = 439 tokens ≈ $0.013), plus prompt and reference-image input |
+| Google Gemini | Interactions API `POST /v1beta/interactions`; `x-goog-api-key`; `response_format {type:"image", aspect_ratio, image_size}`; image in `steps[].content[]`. One image per call | `gemini-nano-banana-2.1`, `gemini-3.1-flash-lite-image`, `gemini-3.1-flash-image`, `gemini-3-pro-image` | Google's Standard per-image price (e.g. Nano Banana 2.1: $0.0336 at 1K, $0.0504 at 2K, $0.113 at 4K) |
+
+- **Connection test:** lists models only (`GET /v1/models`, `GET /v1beta/models`), which is free.
+  The picker then shows only the image models listed for that key. Verified with a fake OpenAI key:
+  OpenAI answered 401 and the app showed "the key was rejected".
+- **Keys:** encrypted with Electron `safeStorage` (Windows DPAPI) in `%APPDATA%\creative-studio\secrets\providers\`
+  by the main process, which reads them straight from the clipboard and then clears it. Keys never
+  reach the renderer, logs, project files or Claude. Errors are redacted, including OpenAI's masked
+  `sk-abcd****1234` echo.
+- **Approval:** every paid call shows a native dialog in main with the provider, model, prompt,
+  settings, references and estimated price. Cancel is the default button. The Generate tab and
+  Claude's `generate_image` tool use the same path. Verified with the dialog stubbed to Cancel:
+  nothing was sent or added.
+- Not verified: a real generation with either provider. That needs Tomas's key and his OK.
+- Gemini's older `generateContent` route still works, but Google now recommends Interactions. Imagen
+  is shut down. `gemini-2.5-flash-image` shut down on 2026-10-02, so it is not offered.
+- Midjourney is limited to folder import (spec rule).
 
 ## Integration truth table (updated 2026-10-13, Phase 2 steps 1–2)
 
@@ -106,8 +128,10 @@ folder import (spec rule).
 | Edit lock / pause / take control / resync on live doc | **Real, verified** | `src/main/liveTask.ts`; unit tests + live integration tests + GUI live smoke (5/5) |
 | Live window capture | **Untested** | `WindowCapture` interface only; UI shows "not connected" |
 | Workflow "ArtCraft Edit" node in the app | **Real** (headless PhotoCraft) | Falls back to a labelled MOCK only if photocraft-cli.exe is missing; commands limited to an allowlist (adjustments, filters, rotations, fill) |
-| AI Generate node | **Mocked** | `MockGenerationProvider`; never calls the network |
+| AI Generate tab (OpenAI, Gemini, Mock) | **Real code, mock-verified**; no paid call made yet | `src/main/generation.ts`, `src/main/imageApis.ts`, `src/shared/generation.ts`; unit tests with mocked HTTP; smoke 16/16 (Mock generation, key entry, approval gate, Open in Edit) |
+| Claude `generate_image` / `list_image_models` tools | **Verified** with Mock + cancelled OpenAI request (5/5) | Same approval dialog; Claude never sees keys |
+| Workflow AI Generate node | **Mocked** | Still `MockGenerationProvider`; not yet wired to the real providers |
 | Claude Creative Partner (chat panel) | **Real, verified** (signed in with claude.ai, 2026-10-13: Claude looked at the document, applied Black & white in PhotoCraft, replied, lock released; usage reported $0.083) | Claude Agent SDK 0.3.296 (`@anthropic-ai/claude-agent-sdk`) runs Claude Code with this PC's Claude Code sign-in (no API key stored by CreateCraft). No built-in tools (`tools: []`), no user settings (`settingSources: []`), only CreateCraft's in-process tools (get_status, look_at_document, apply_edit, photocraft_command, undo, save_version, list_files, open_file) under the shared edit lock. Verified end-to-end up to authentication: the standalone Claude Code CLI on this PC reports `loggedIn: false`, so a real edit by Claude is untested until the user signs in |
-| Credential vault | **Untested / stub** | Interface only; planned on Electron `safeStorage` (DPAPI) in main |
+| Credential vault | **Real, verified** | `SafeStorageVault` (`src/main/credentialVault.ts`): DPAPI-encrypted files, main process only; smoke checks that the file on disk does not contain the key and the renderer never receives it |
 | Midjourney automation | **Blocked by policy** | Import from a user-chosen folder only |
 | SQLite asset index | **Deferred** | Phase 1 uses a JSON manifest; see `creative-studio/docs/architecture.md` |

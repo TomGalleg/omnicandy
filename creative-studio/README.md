@@ -6,8 +6,9 @@ DesignCraft, SoundCraft, FilmCraft) and optional BYOK generation providers.
 
 **Status: Phase 2, steps 1–2.** The UI, data model, contracts and safety state machines are real and
 tested. **PhotoCraft edits run for real** (headless, through the installed `photocraft-cli`) from
-workflow ArtCraft Edit nodes, and Export nodes write real files. Live control of the open PhotoCraft
-window, window capture, Claude and generation providers are **not connected yet**. The app says so wherever they would appear. See [`../docs/integration-audit.md`](../docs/integration-audit.md)
+workflow ArtCraft Edit nodes, and Export nodes write real files. Live control of PhotoCraft, VectorCraft
+and SoundCraft, the Claude Creative Partner and BYOK AI image generation (OpenAI, Google Gemini,
+approval before every paid call) are connected. Window capture is **not connected yet**. The app says so wherever they would appear. See [`../docs/integration-audit.md`](../docs/integration-audit.md)
 for what was verified on this machine.
 
 ## Run it
@@ -38,6 +39,8 @@ npm run dev
 | `npm run lint` / `npm run typecheck` | ESLint / tsc for main+preload and renderer |
 | `npm run check` | lint + typecheck + test |
 | `npm run smoke` | Build, then drive the real app with Playwright-Electron in an isolated profile; writes `docs/screenshots/` |
+| `npm run smoke:generate` | AI Generate: Mock generation, key entry (fake key), approval gate stubbed to Cancel, Open in Edit. No paid calls |
+| `node scripts/smoke-claude-generate.mjs` | Claude's `generate_image` tool (needs Claude Code signed in): one Mock image plus one cancelled OpenAI request |
 | `node scripts/smoke-projects.mjs` | Project Home / Overview: create, open, switch, rename, remove, remembered after restart |
 | `node scripts/smoke-theme.mjs` | Theme presets with PhotoCraft embedded, app theme sync, System mode, persistence, artwork unchanged (opens real app windows) |
 | `npm run smoke:live` | Same, through the live PhotoCraft flow (opens a real PhotoCraft window, closes it afterwards) |
@@ -142,8 +145,12 @@ by copying `fixtures/sample-project`. Appearance settings are stored in `%APPDAT
 - CSP is `default-src 'self'`. Images load only from `self`, `data:` or the read-only
   `studio-asset:` protocol, which resolves asset IDs through the manifest. Navigation is
   restricted to the app, `window.open` is denied, and permission requests are denied.
-- No secrets anywhere. `CredentialVault` is an interface plus a "not configured" stub. Billable
-  providers are refused by the executor unless an explicit consent callback approves, and Phase 1
-  provides none.
+- Provider API keys (OpenAI, Google Gemini) are BYOK. The main process reads them from the
+  clipboard, encrypts them with Windows DPAPI (`safeStorage`) and clears the clipboard. They never
+  reach the renderer, logs, project files or Claude.
+- Every paid generation shows a native approval dialog in main with the price estimate (Cancel is
+  the default). The Generate tab and Claude's `generate_image` tool share this path. Results become
+  new read-only originals with provenance: prompt, provider, model, settings, estimate and who asked.
+  The workflow executor still refuses billable providers.
 
 See [`docs/architecture.md`](docs/architecture.md) for structure, decisions and risks.
