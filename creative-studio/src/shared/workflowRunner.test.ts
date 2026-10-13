@@ -1,13 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import type { GenerationProvider } from './contracts';
-import { MockWorkflowExecutor } from './mockExecutor';
+import { WorkflowRunner } from './workflowRunner';
 import { MockArtCraftAdapter, MockGenerationProvider } from './mocks';
 import { demoGraph, type WorkflowGraph, type WorkflowRunEvent } from './workflow';
 
 function setup(extraProviders: Record<string, GenerationProvider> = {}) {
   const photocraft = new MockArtCraftAdapter('photocraft', 'PhotoCraft');
   const mock = new MockGenerationProvider();
-  const ex = new MockWorkflowExecutor({ apps: { photocraft }, providers: { mock, ...extraProviders }, newRunId: () => 'r1' });
+  const ex = new WorkflowRunner({ apps: { photocraft }, providers: { mock, ...extraProviders }, newRunId: () => 'r1' });
   return { ex, photocraft, mock };
 }
 
@@ -17,7 +17,7 @@ const finalStatus = (events: WorkflowRunEvent[]) => {
   return out;
 };
 
-describe('MockWorkflowExecutor', () => {
+describe('WorkflowRunner', () => {
   it('runs the demo graph through approval to completion, reporting itself as mock', async () => {
     const { ex, photocraft } = setup();
     const events: WorkflowRunEvent[] = [];

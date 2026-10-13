@@ -4,9 +4,10 @@ Creative Studio is a Windows-first desktop app for creative editing. Claude acts
 Partner that coordinates the ArtCraft apps (PhotoCraft, VectorCraft, LightCraft, EffectCraft,
 DesignCraft, SoundCraft, FilmCraft) and optional BYOK generation providers.
 
-**Status: Phase 1 shell.** The UI, data model, contracts and safety state machines are real and
-tested. ArtCraft editing, live window capture, Claude and generation providers are **not connected
-yet**. The app says so wherever they would appear. See [`../docs/integration-audit.md`](../docs/integration-audit.md)
+**Status: Phase 2, step 1.** The UI, data model, contracts and safety state machines are real and
+tested. **PhotoCraft edits run for real** (headless, through the installed `photocraft-cli`) from
+workflow ArtCraft Edit nodes, and Export nodes write real files. Live control of the open PhotoCraft
+window, window capture, Claude and generation providers are **not connected yet**. The app says so wherever they would appear. See [`../docs/integration-audit.md`](../docs/integration-audit.md)
 for what was verified on this machine.
 
 ## Run it
@@ -65,6 +66,15 @@ by copying `fixtures/sample-project`. Appearance settings are stored in `%APPDAT
   Awaiting Approval, then Completed, Failed or Cancelled. There is a single edit lock. Pause and
   Take Control wait for the active operation to finish. Resume compares the document version and
   replans if it changed. The Claude panel drives a labelled mock task through it.
+- **PhotoCraft edits (real, headless).** An ArtCraft Edit node runs one allowlisted PhotoCraft
+  command (17 presets such as Hue/Saturation, Levels, Photo Filter, Gaussian Blur and Oil Paint, or
+  any other adjustment, filter or rotation id) with JSON parameters. Each run adds an editable
+  `.pcraft` and a flattened `.png` as new read-only versions linked to their parent. The input is
+  never modified. SVG inputs are flattened first, and chained edit nodes continue from the layered
+  `.pcraft`. Commands that open, save, run scripts or reference other files are refused, as are
+  path-like parameters. PhotoCraft runs with a fixed argument list and no shell.
+- **Export (real).** Export nodes convert the upstream version into `<project>/exports/`
+  (PNG, JPG, WebP, TIFF, PSD or PCRAFT). Deliver lists the exports with "Show in folder".
 - **ArtCraft detection (real).** Main checks each `*-cli.exe` and reads `--version`. The header shows
   "N installed · 0 connected".
 

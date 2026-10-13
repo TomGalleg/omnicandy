@@ -103,13 +103,13 @@ h1, h2, h3 { margin: 0; font-weight: 600; }
 /* ---------- Shell ---------- */
 .app { display: flex; flex-direction: column; height: 100%; }
 .header {
-  display: flex; align-items: center; gap: 16px;
+  display: flex; align-items: center; gap: 12px; white-space: nowrap;
   height: 46px; padding: 0 12px;
   background: var(--surface); border-bottom: 1px solid var(--border);
 }
 .brand { display: flex; align-items: center; gap: 8px; font-weight: 600; }
 .brand-mark { width: 18px; height: 18px; border-radius: 5px; background: conic-gradient(from 200deg, var(--accent), #f4615a, #22c55e, var(--accent)); }
-.project-name { color: var(--text-2); }
+.project-name { color: var(--text-2); min-width: 0; max-width: 220px; overflow: hidden; text-overflow: ellipsis; }
 .project-name strong { color: var(--text); font-weight: 600; }
 .workspaces { display: flex; gap: 2px; margin: 0 auto; padding: 3px; background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius); }
 .workspaces button {
@@ -118,7 +118,8 @@ h1, h2, h3 { margin: 0; font-weight: 600; }
 }
 .workspaces button:hover { color: var(--text); }
 .workspaces button[aria-current='page'] { background: var(--surface); color: var(--text); box-shadow: inset 0 -2px 0 var(--accent); }
-.header-status { display: flex; gap: 6px; align-items: center; }
+.header-status { display: flex; gap: 6px; align-items: center; min-width: 0; }
+@media (max-width: 1500px) { .chip .chip-extra { display: none; } }
 
 .main { flex: 1; min-height: 0; }
 .pane { display: flex; flex-direction: column; height: 100%; min-width: 0; background: var(--surface); }
@@ -246,3 +247,15 @@ h1, h2, h3 { margin: 0; font-weight: 600; }
 .track { display: grid; grid-template-columns: 90px 1fr; gap: 8px; align-items: center; font-size: 12px; }
 .clip { height: 30px; border-radius: 5px; background: color-mix(in srgb, var(--accent) 35%, var(--surface-2)); border: 1px solid var(--accent); display: flex; align-items: center; padding: 0 8px; font-size: 11px; overflow: hidden; }
 .wave { width: 100%; height: 20px; }
+
+/* ---------- Workflow inspector & previews ---------- */
+.wf-body { flex: 1; min-height: 0; display: flex; }
+.wf-body .wf-canvas { flex: 1; min-width: 0; }
+.wf-inspector { width: 300px; flex-shrink: 0; border-left: 1px solid var(--border); background: var(--surface); display: flex; flex-direction: column; }
+.wf-inspector-body { padding: 10px; display: grid; gap: 10px; overflow: auto; align-content: start; }
+.wf-inspector textarea { height: 96px; padding: 6px 8px; font-size: 11.5px; }
+.wf-inspector .field select, .wf-inspector .field input { height: 28px; }
+.node-preview { display: block; max-width: 168px; max-height: 110px; margin-top: 4px; border-radius: 4px; border: 1px solid var(--border); background: repeating-conic-gradient(var(--checker-a) 0 25%, var(--checker-b) 0 50%) 0 0 / 10px 10px; }
+.chip.real { border-color: color-mix(in srgb, var(--ok) 45%, var(--border)); }
+.chip.real .dot { background: var(--ok); }
+.export-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 6px 0; border-top: 1px solid var(--border); font-size: 12px; }

@@ -1,7 +1,7 @@
 [
   { "file": "photocraft-smoke.png", "source": "Rendered by `photocraft-cli run --new … --cmd edit.fill` during the Phase 0 audit (real PhotoCraft 0.8.2 headless output).", "licensingNotes": "Generated locally; no third-party content." },
   { "file": "dune-poster.svg", "source": "Hand-authored SVG fixture for Creative Studio.", "licensingNotes": "Project fixture." },
-  { "file": "harbor-landscape.svg", "source": "Hand-authored SVG fixture for Creative Studio.", "licensingNotes": "Project fixture." },
+  { "file": "harbor-landscape.svg", "workflowInput": true, "source": "Hand-authored SVG fixture for Creative Studio.", "licensingNotes": "Project fixture." },
   { "file": "studio-mark.svg", "source": "Hand-authored SVG fixture for Creative Studio.", "licensingNotes": "Project fixture." },
   { "file": "photocraft-smoke.pcraft", "source": "Native PhotoCraft document written by `photocraft-cli convert` during the Phase 0 audit.", "licensingNotes": "Generated locally." },
   { "file": "tone-a440.wav", "source": "Synthesised by scripts/make-wav-fixture.mjs (2 s A440 tone).", "licensingNotes": "Project fixture." }

@@ -25,6 +25,10 @@ export function App() {
     setLog((l) => [...l.slice(-299), { at: new Date(), source, message }]);
   }, []);
 
+  const reloadProject = useCallback(() => {
+    window.studio.loadProject().then(setManifest).catch((e: unknown) => setError(String(e)));
+  }, []);
+
   useEffect(() => {
     window.studio.loadProject()
       .then((m) => { setManifest(m); setSelectedId(m.assets[0]?.id ?? null); addLog('project', `Loaded "${m.name}" (${m.assets.length} assets).`); })
@@ -76,6 +80,7 @@ export function App() {
                     integrations={integrations}
                     resolvedTheme={appearance.resolved}
                     log={addLog}
+                    onProjectChanged={reloadProject}
                   />
                 </div>
               </Panel>

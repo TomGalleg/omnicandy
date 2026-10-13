@@ -20,6 +20,8 @@ const api: StudioApi = {
     ipcRenderer.on(IPC.workflowEvent, listener);
     return () => ipcRenderer.removeListener(IPC.workflowEvent, listener);
   },
+  listExports: () => ipcRenderer.invoke(IPC.listExports),
+  revealExport: (name) => ipcRenderer.invoke(IPC.revealExport, name),
   probeApps: () => ipcRenderer.invoke(IPC.probeApps),
   integrationStatus: () => ipcRenderer.invoke(IPC.integrationStatus),
   assetUrl: (assetId) => `${ASSET_SCHEME}://asset/${encodeURIComponent(assetId)}`,

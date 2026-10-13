@@ -1,13 +1,15 @@
-// MOCK workflow executor. Walks the graph in topological order and reports node states.
-// It never touches the network or the filesystem; ArtCraft and provider calls go to injected
-// adapters, which in Phase 1 are mocks. Billable providers are refused without explicit consent.
+// Workflow runner. Walks the graph in topological order and reports node states. All side
+// effects go through injected adapters: real ones (PhotoCraft CLI) or explicitly labelled mocks.
+// Billable providers are refused without explicit consent.
 
 import type { AppAdapter, GenerationProvider, WorkflowExecutor, WorkflowRunOptions } from './contracts';
 import { topologicalOrder, validateGraph, type NodeRunStatus, type WorkflowGraph } from './workflow';
 
-export interface MockExecutorDeps {
+export interface RunnerDeps {
   apps: Record<string, AppAdapter>;
   providers: Record<string, GenerationProvider>;
+  /** Writes a deliverable for an asset; returns a display name. Absent → export is simulated. */
+  exportAsset?: (assetId: string, format: string) => Promise<string>;
   /** Delay per node so the UI can show progress; 0 in tests. */
   stepMs?: number;
   newRunId?: () => string;
@@ -20,9 +22,17 @@ const sleep = (ms: number, signal?: AbortSignal) =>
     signal?.addEventListener('abort', () => { clearTimeout(t); resolve(); }, { once: true });
   });
 
-export class MockWorkflowExecutor implements WorkflowExecutor {
-  readonly isMock = true;
-  constructor(private readonly deps: MockExecutorDeps) {}
+/** True when any node in the graph would run against a mock adapter/provider or simulated export. */
+export function graphUsesMocks(graph: WorkflowGraph, deps: RunnerDeps): boolean {
+  return graph.nodes.some((n) =>
+    (n.type === 'aiGenerate' && (deps.providers[n.params.providerId ?? '']?.isMock ?? true)) ||
+    (n.type === 'artcraftEdit' && (deps.apps[n.params.appId ?? '']?.isMock ?? true)) ||
+    (n.type === 'export' && !deps.exportAsset));
+}
+
+export class WorkflowRunner implements WorkflowExecutor {
+  readonly isMock = false;
+  constructor(private readonly deps: RunnerDeps) {}
 
   async run(graph: WorkflowGraph, o: WorkflowRunOptions): Promise<{ ok: boolean; cancelled: boolean }> {
     const runId = this.deps.newRunId?.() ?? `run-${Date.now()}`;
@@ -33,7 +43,7 @@ export class MockWorkflowExecutor implements WorkflowExecutor {
       return { ok, cancelled };
     };
 
-    o.onEvent({ kind: 'run-started', runId, mock: true });
+    o.onEvent({ kind: 'run-started', runId, mock: graphUsesMocks(graph, this.deps) });
     const issues = validateGraph(graph);
     if (issues.length) {
       for (const i of issues) if (i.nodeId) emit(i.nodeId, 'failed', i.message);
@@ -86,10 +96,15 @@ export class MockWorkflowExecutor implements WorkflowExecutor {
           case 'artcraftEdit': {
             const app = this.deps.apps[node.params.appId ?? ''];
             if (!app) throw new Error(`App adapter "${node.params.appId}" is not available.`);
+            let params: Record<string, unknown> = {};
+            try { params = JSON.parse(node.params.commandParams || '{}'); } catch { throw new Error('Command parameters are not valid JSON.'); }
             const { documentId } = await app.open(input ?? '');
-            const r = await app.execute(documentId, { command: node.params.command ?? '', params: {} });
-            outputs.set(id, r.checkpointId);
-            emit(id, 'completed', app.isMock ? `MOCK ${node.params.appId}: no real app was driven.` : 'Edited.', r.checkpointId);
+            const r = await app.execute(documentId, { command: node.params.command ?? '', params });
+            const out = r.outputAssetIds[0] ? `asset:${r.outputAssetIds[0]}` : r.checkpointId;
+            outputs.set(id, out);
+            emit(id, 'completed', app.isMock
+              ? `MOCK ${node.params.appId}: no real app was driven.`
+              : `${node.params.command} applied by PhotoCraft; ${r.outputAssetIds.length} new version(s) added to the library.`, out);
             break;
           }
           case 'approval': {
@@ -108,9 +123,17 @@ export class MockWorkflowExecutor implements WorkflowExecutor {
             emit(id, 'completed', 'Approved.', input);
             break;
           }
-          case 'export':
-            emit(id, 'completed', `MOCK export (${node.params.format}): no file written.`);
+          case 'export': {
+            const format = node.params.format || 'png';
+            if (!this.deps.exportAsset) {
+              emit(id, 'completed', `MOCK export (${format}): no file written.`);
+              break;
+            }
+            if (!input?.startsWith('asset:')) throw new Error('Nothing real to export: the upstream node produced no file.');
+            const name = await this.deps.exportAsset(input.slice('asset:'.length), format);
+            emit(id, 'completed', `Exported exports/${name}`, `export:${name}`);
             break;
+          }
         }
       } catch (err) {
         halted.add(id);

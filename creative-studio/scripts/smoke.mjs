@@ -44,7 +44,7 @@ try {
   await shot(win, '02-audio-timeline');
 
   const apps = await win.locator('.header-status .chip').first().textContent();
-  check('ArtCraft detection reports installed but not connected', /ArtCraft \d+ installed · 0 connected/.test(apps ?? ''), apps ?? '');
+  check('ArtCraft detection reports installed but not connected', /ArtCraft \d+ installed · 0 live/.test(apps ?? ''), apps ?? '');
 
   await win.getByRole('button', { name: 'Edit', exact: true }).click();
   check('Edit shows honest "not connected" live view', await win.getByText('Live view: not connected').isVisible());
@@ -53,28 +53,50 @@ try {
   await win.getByRole('button', { name: 'Workflow' }).click();
   await win.locator('.react-flow__node').first().waitFor();
   check('workflow graph loaded (5 nodes)', (await win.locator('.react-flow__node').count()) === 5);
-  await win.getByRole('button', { name: /Run demo/ }).click();
-  await win.getByRole('button', { name: 'Approve' }).waitFor({ timeout: 15000 });
+  check('PhotoCraft edit node is real (no MOCK badge)', (await win.locator('.react-flow__node', { hasText: 'ArtCraft Edit' }).locator('.badge-mock').count()) === 0);
+  const assetsBefore = (await win.evaluate(() => window.studio.loadProject())).assets.length;
+  await win.locator('.wf-toolbar').getByRole('button', { name: /^Run/ }).click();
+  await win.getByRole('button', { name: 'Approve' }).waitFor({ timeout: 30000 });
   await shot(win, '04-workflow-awaiting-approval');
   await win.getByRole('button', { name: 'Approve' }).click();
-  await win.locator('.react-flow__node', { hasText: 'Export' }).locator('.node-status.completed').waitFor({ timeout: 15000 });
-  check('mock run completes after approval', true);
-  await shot(win, '05-workflow-completed');
+  const exportNode = win.locator('.react-flow__node', { hasText: 'Export' });
+  await exportNode.locator('.node-status.completed').waitFor({ timeout: 30000 });
+  const exportMsg = await exportNode.locator('small').textContent();
+  check('real run: PhotoCraft edit + export completed after approval', /^Exported exports\/.+\.png$/.test(exportMsg ?? ''), exportMsg ?? '');
+  const after = (await win.evaluate(() => window.studio.loadProject())).assets;
+  check('two new versions (.pcraft + .png) added to the library', after.length === assetsBefore + 2);
+  await win.locator('.react-flow__node', { hasText: 'ArtCraft Edit' }).click();
+  await win.locator('.wf-inspector').waitFor();
+  await win.locator('.react-flow__node', { hasText: 'ArtCraft Edit' }).locator('.node-preview').waitFor({ timeout: 10000 });
+  await shot(win, '05-workflow-real-photocraft');
+
+  await win.getByRole('button', { name: 'Deliver' }).click();
+  await win.getByRole('button', { name: 'Show in folder' }).first().waitFor({ timeout: 10000 });
+  check('Deliver lists the exported file', true);
+  await shot(win, '06-deliver-exports');
+
+  await win.getByRole('button', { name: 'Media', exact: true }).click();
+  const version = after.find((a) => a.sourceFormat === 'png' && a.parentId);
+  await win.getByRole('option', { name: version.name }).click();
+  check('inspector shows lineage', await win.getByText('Derived from').isVisible());
+  await win.waitForTimeout(400);
+  await shot(win, '07-media-photocraft-version');
+  await win.getByRole('button', { name: 'Workflow' }).click();
 
   await setMode(win, 'Light');
   check('light theme applied', (await win.evaluate(() => document.documentElement.dataset.theme)) === 'light');
   await win.getByRole('button', { name: 'Plan mock task' }).click();
-  await win.getByRole('button', { name: 'Run', exact: true }).click();
+  await win.locator('.claude').getByRole('button', { name: 'Run', exact: true }).click();
   await win.waitForTimeout(500);
   await win.getByRole('button', { name: 'Take Control' }).click();
   await win.getByText('Manual Control').first().waitFor({ timeout: 5000 });
   check('take control waits for op then hands lock to user', await win.getByText('Lock: user').isVisible());
-  await shot(win, '06-light-workflow-manual-control');
+  await shot(win, '08-light-workflow-manual-control');
 
   await win.getByRole('button', { name: 'Media', exact: true }).click();
-  await win.getByRole('option', { name: /harbor/ }).click();
+  await win.getByRole('option', { name: /^harbor-landscape.svg/ }).click();
   await win.waitForTimeout(400);
-  await shot(win, '07-media-light');
+  await shot(win, '09-media-light');
 } finally {
   await app.close();
 }

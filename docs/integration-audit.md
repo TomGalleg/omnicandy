@@ -90,16 +90,17 @@ and others.
 None configured, and no keys requested. All providers are **untested**. Midjourney is limited to
 folder import (spec rule).
 
-## Integration truth table (end of Phase 0/1)
+## Integration truth table (updated 2026-10-13, Phase 2 step 1)
 
 | Capability | Status | Evidence / note |
 |---|---|---|
 | ArtCraft app detection (exe present + `--version`) | **Real, verified** | Implemented in the app's main process (`creative-studio/src/main/artcraftProbe.ts`) |
-| PhotoCraft headless open/edit/save/info via CLI | **Real, verified** (audit only) | Probe step 1; not yet wired into a workflow node |
+| PhotoCraft headless edit → .pcraft + .png versions | **Real, verified in app** | `PhotoCraftCliAdapter` (`src/main/photocraftCli.ts`); integration tests against the installed CLI plus a GUI smoke run |
+| Workflow Export node | **Real** (when PhotoCraft is installed) | `photocraft-cli convert` into `<project>/exports/`; never overwrites earlier exports |
 | MCP handshake, 7 apps | **Real, verified** (audit only) | Probe step 2; app does not yet hold MCP sessions |
 | Live GUI control via `--control` bridge | **Untested** | Phase 2 |
 | Live window capture | **Untested** | `WindowCapture` interface only; UI shows "not connected" |
-| Workflow "ArtCraft Edit" node in the app | **Mocked** | `MockArtCraftAdapter`, labelled MOCK in the UI |
+| Workflow "ArtCraft Edit" node in the app | **Real** (headless PhotoCraft) | Falls back to a labelled MOCK only if photocraft-cli.exe is missing; commands limited to an allowlist (adjustments, filters, rotations, fill) |
 | AI Generate node | **Mocked** | `MockGenerationProvider`; never calls the network |
 | Credential vault | **Untested / stub** | Interface only; planned on Electron `safeStorage` (DPAPI) in main |
 | Midjourney automation | **Blocked by policy** | Import from a user-chosen folder only |

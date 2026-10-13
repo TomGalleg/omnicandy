@@ -103,7 +103,7 @@ describe('ProjectStore', () => {
     expect(m.assets.map((a) => a.kind).sort()).toEqual(['audio', 'image', 'project', 'vector', 'vector', 'vector']);
     expect(m.assets.every((a) => a.provenance.origin === 'fixture')).toBe(true);
     const wf = await s.loadWorkflow();
-    expect(wf.nodes.find((n) => n.type === 'import')?.params.assetId).toBe(m.assets.find((a) => a.kind === 'image')!.id);
+    expect(wf.nodes.find((n) => n.type === 'import')?.params.assetId).toBe(m.assets.find((a) => a.name === 'harbor-landscape.svg')!.id);
     const again = await ensureSampleProject(root, FIXTURES);
     expect((await again.loadManifest()).assets).toHaveLength(m.assets.length);
   });

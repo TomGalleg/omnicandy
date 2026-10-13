@@ -53,7 +53,7 @@ export const NODE_SPECS: Record<WorkflowNodeType, NodeSpec> = {
       { id: 'image', label: 'Image', type: 'image' },
       { id: 'document', label: 'Editable doc', type: 'document' },
     ],
-    defaultParams: { appId: 'photocraft', command: 'edit.fill' },
+    defaultParams: { appId: 'photocraft', command: 'image.adjustments.hueSaturation', commandParams: '{"hue":30,"saturation":15,"lightness":0}' },
   },
   approval: {
     type: 'approval',
@@ -234,8 +234,8 @@ export function demoGraph(assetId: string): WorkflowGraph {
     schemaVersion: 1,
     nodes: [
       { id: 'n-import', type: 'import', position: { x: 0, y: 80 }, params: { assetId } },
-      { id: 'n-gen', type: 'aiGenerate', position: { x: 0, y: 260 }, params: { providerId: 'mock', prompt: 'Warm sunset variation' } },
-      { id: 'n-edit', type: 'artcraftEdit', position: { x: 280, y: 80 }, params: { appId: 'photocraft', command: 'edit.fill' } },
+      { id: 'n-gen', type: 'aiGenerate', position: { x: 0, y: 340 }, params: { providerId: 'mock', prompt: 'Warm sunset variation' } },
+      { id: 'n-edit', type: 'artcraftEdit', position: { x: 280, y: 80 }, params: { appId: 'photocraft', command: 'image.adjustments.photoFilter', commandParams: '{"filter":"warming85","density":40}' } },
       { id: 'n-approve', type: 'approval', position: { x: 560, y: 80 }, params: { note: 'Check colour balance' } },
       { id: 'n-export', type: 'export', position: { x: 840, y: 80 }, params: { format: 'png' } },
     ],

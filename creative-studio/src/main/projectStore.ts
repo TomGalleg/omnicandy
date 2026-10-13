@@ -60,8 +60,32 @@ export class ProjectStore implements AssetRepository {
    * are not copied again; the existing asset is returned with `duplicateOf` set.
    */
   async importFile(sourcePath: string, provenance?: Partial<AssetProvenance>): Promise<{ asset: Asset; duplicateOf?: string }> {
+    return this.storeFile(sourcePath, {
+      folder: 'originals',
+      name: path.basename(sourcePath),
+      move: false,
+      provenance: { origin: 'imported', source: 'Imported by user', ...provenance },
+    });
+  }
+
+  /**
+   * Registers a file produced by a tool (e.g. PhotoCraft) as a new immutable version derived from
+   * `parentId`. The file is moved from the work folder into versions/ and marked read-only.
+   */
+  async addDerivedFile(producedPath: string, meta: { name: string; parentId: string; provenance: Omit<AssetProvenance, 'createdAt'> }): Promise<Asset> {
+    this.resolveInsideRoot(path.relative(this.root, producedPath).split(path.sep).join('/'));
+    const m = await this.loadManifest();
+    if (!m.assets.some((a) => a.id === meta.parentId)) throw new Error('Unknown parent asset.');
+    const r = await this.storeFile(producedPath, { folder: 'versions', name: meta.name, move: true, parentId: meta.parentId, provenance: meta.provenance });
+    return r.asset;
+  }
+
+  private async storeFile(
+    sourcePath: string,
+    o: { folder: 'originals' | 'versions'; name: string; move: boolean; parentId?: string; provenance: Partial<AssetProvenance> & Pick<AssetProvenance, 'origin' | 'source'> },
+  ): Promise<{ asset: Asset; duplicateOf?: string }> {
     const m = await this.loadManifest().then(() => this.manifest!);
-    const ext = path.extname(sourcePath).slice(1).toLowerCase();
+    const ext = path.extname(o.name).slice(1).toLowerCase();
     const kind = kindForExtension(ext);
     if (!kind) throw new Error(`Unsupported file type ".${ext}".`);
     const stat = await fs.stat(sourcePath);
@@ -69,14 +93,19 @@ export class ProjectStore implements AssetRepository {
 
     const hash = await sha256File(sourcePath);
     const existing = m.assets.find((a) => a.sha256 === hash);
-    if (existing) return { asset: structuredClone(existing), duplicateOf: existing.id };
+    if (existing) {
+      if (o.move) await fs.rm(sourcePath, { force: true });
+      return { asset: structuredClone(existing), duplicateOf: existing.id };
+    }
 
     const id = randomUUID();
-    const safeBase = path.basename(sourcePath).replace(/[^\w.\- ]+/g, '_');
-    const relPath = `originals/${id.slice(0, 8)}-${safeBase}`;
+    const safeBase = o.name.replace(/[^\w.\- ]+/g, '_');
+    const relPath = `${o.folder}/${id.slice(0, 8)}-${safeBase}`;
     const dest = path.join(this.root, ...relPath.split('/'));
-    await fs.copyFile(sourcePath, dest, fsc.COPYFILE_EXCL);
-    await fs.chmod(dest, 0o444); // read-only: originals are immutable
+    await fs.mkdir(path.dirname(dest), { recursive: true });
+    if (o.move) await fs.rename(sourcePath, dest);
+    else await fs.copyFile(sourcePath, dest, fsc.COPYFILE_EXCL);
+    await fs.chmod(dest, 0o444); // read-only: stored files are immutable; edits create new versions
 
     const fh = await fs.open(dest, 'r');
     const head = Buffer.alloc(Math.min(stat.size, 256 * 1024));
@@ -85,7 +114,7 @@ export class ProjectStore implements AssetRepository {
 
     const asset: Asset = {
       id,
-      name: path.basename(sourcePath),
+      name: o.name,
       kind,
       relPath,
       sha256: hash,
@@ -93,16 +122,37 @@ export class ProjectStore implements AssetRepository {
       sourceFormat: ext,
       ...sniffMedia(ext, head),
       approval: 'none',
-      provenance: {
-        origin: 'imported',
-        source: 'Imported by user',
-        createdAt: new Date().toISOString(),
-        ...provenance,
-      },
+      provenance: { createdAt: new Date().toISOString(), ...o.provenance },
+      ...(o.parentId ? { parentId: o.parentId } : {}),
     };
     m.assets.push(asset);
     await this.persist();
     return { asset: structuredClone(asset) };
+  }
+
+  /** Scratch folder for tool output before it is registered. Inside the project root. */
+  async workDir(): Promise<string> {
+    const d = path.join(this.root, 'work');
+    await fs.mkdir(d, { recursive: true });
+    return d;
+  }
+
+  /** Deliverables folder (mutable; exports may be overwritten by later runs). */
+  async exportsDir(): Promise<string> {
+    const d = path.join(this.root, 'exports');
+    await fs.mkdir(d, { recursive: true });
+    return d;
+  }
+
+  async listExports(): Promise<Array<{ name: string; bytes: number; modified: string }>> {
+    const d = await this.exportsDir();
+    const out = [];
+    for (const e of await fs.readdir(d, { withFileTypes: true })) {
+      if (!e.isFile()) continue;
+      const st = await fs.stat(path.join(d, e.name));
+      out.push({ name: e.name, bytes: st.size, modified: st.mtime.toISOString() });
+    }
+    return out.sort((a, b) => b.modified.localeCompare(a.modified));
   }
 
   async setRating(assetId: string, rating: number): Promise<ProjectManifest> {

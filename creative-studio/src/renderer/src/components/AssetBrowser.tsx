@@ -13,11 +13,12 @@ interface Props {
 
 const VIEWABLE: AssetKind[] = ['image', 'vector'];
 
-export function AssetThumb({ asset }: { asset: Asset }) {
+export function AssetThumb({ asset, rendition }: { asset: Asset; rendition?: Asset }) {
+  const shown = VIEWABLE.includes(asset.kind) ? asset : rendition;
   return (
     <div className="thumb">
-      {VIEWABLE.includes(asset.kind)
-        ? <img src={window.studio.assetUrl(asset.id)} alt="" loading="lazy" draggable={false} />
+      {shown
+        ? <img src={window.studio.assetUrl(shown.id)} alt="" loading="lazy" draggable={false} />
         : <span>{asset.sourceFormat.toUpperCase()}</span>}
     </div>
   );
@@ -79,7 +80,7 @@ export function AssetBrowser({ manifest, selectedId, onSelect, onManifest, log }
             <div className="asset-grid" role="listbox" aria-label="Assets">
               {assets.map((a) => (
                 <button key={a.id} role="option" className="asset" aria-selected={a.id === selectedId} onClick={() => onSelect(a.id)}>
-                  <AssetThumb asset={a} />
+                  <AssetThumb asset={a} rendition={a.sourceFormat === 'pcraft' ? manifest?.assets.find((x) => x.parentId === a.id && x.kind === 'image') : undefined} />
                   <span className="asset-name" title={a.name}>{a.name}</span>
                   <span className="asset-meta">{a.kind} · {formatDims(a) || formatBytes(a.bytes)}</span>
                 </button>
@@ -108,12 +109,16 @@ export function AssetBrowser({ manifest, selectedId, onSelect, onManifest, log }
                   {formatDims(selected) && <><dt>Size</dt><dd>{formatDims(selected)}</dd></>}
                   <dt>Bytes</dt><dd>{formatBytes(selected.bytes)}</dd>
                   <dt>Origin</dt><dd>{selected.provenance.origin}</dd>
+                  {selected.parentId && (() => {
+                    const parent = manifest?.assets.find((a) => a.id === selected.parentId);
+                    return <><dt>Derived from</dt><dd>{parent ? <button className="btn small ghost" style={{ padding: 0, height: 'auto' }} onClick={() => onSelect(parent.id)}>{parent.name}</button> : 'missing'}</dd></>;
+                  })()}
                   <dt>Source</dt><dd>{selected.provenance.source}</dd>
                   {selected.provenance.licensingNotes && <><dt>Licensing</dt><dd>{selected.provenance.licensingNotes}</dd></>}
                   <dt>Added</dt><dd>{new Date(selected.provenance.createdAt).toLocaleString()}</dd>
                   <dt>Stored at</dt><dd className="mono">{selected.relPath}</dd>
                   <dt>SHA-256</dt><dd className="mono">{selected.sha256}</dd>
-                  <dt>Original</dt><dd>Immutable (read-only copy)</dd>
+                  <dt>{selected.parentId ? 'Version' : 'Original'}</dt><dd>Immutable (read-only); edits create new versions</dd>
                 </dl>
               </div>
             ) : <p className="inspector asset-meta">Select an asset to inspect it.</p>}

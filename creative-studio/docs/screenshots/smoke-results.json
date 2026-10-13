@@ -2,7 +2,7 @@
   {
     "name": "renderer has no Node globals",
     "ok": true,
-    "detail": "{\"require\":\"undefined\",\"process\":\"undefined\",\"api\":[\"answerApproval\",\"assetUrl\",\"cancelWorkflow\",\"getAppearance\",\"importAssets\",\"integrationStatus\",\"loadProject\",\"loadWorkflow\",\"onWorkflowEvent\",\"probeApps\",\"runWorkflow\",\"saveWorkflow\",\"setAppearance\",\"setAssetRating\"]}"
+    "detail": "{\"require\":\"undefined\",\"process\":\"undefined\",\"api\":[\"answerApproval\",\"assetUrl\",\"cancelWorkflow\",\"getAppearance\",\"importAssets\",\"integrationStatus\",\"listExports\",\"loadProject\",\"loadWorkflow\",\"onWorkflowEvent\",\"probeApps\",\"revealExport\",\"runWorkflow\",\"saveWorkflow\",\"setAppearance\",\"setAssetRating\"]}"
   },
   {
     "name": "dark theme applied",
@@ -22,7 +22,7 @@
   {
     "name": "ArtCraft detection reports installed but not connected",
     "ok": true,
-    "detail": " ArtCraft 7 installed · 0 connected"
+    "detail": "ArtCraft 7 installed · 0 live"
   },
   {
     "name": "Edit shows honest \"not connected\" live view",
@@ -35,7 +35,27 @@
     "detail": ""
   },
   {
-    "name": "mock run completes after approval",
+    "name": "PhotoCraft edit node is real (no MOCK badge)",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "real run: PhotoCraft edit + export completed after approval",
+    "ok": true,
+    "detail": "Exported exports/harbor-landscape-photo-filter-warming.png"
+  },
+  {
+    "name": "two new versions (.pcraft + .png) added to the library",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "Deliver lists the exported file",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "inspector shows lineage",
     "ok": true,
     "detail": ""
   },

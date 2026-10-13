@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import type { IntegrationSnapshot } from '@shared/ipc';
 import type { AppProbeResult, Asset, ProjectManifest, WorkspaceId } from '@shared/types';
 import { formatBytes, formatDims } from '../format';
@@ -11,19 +12,33 @@ interface Props {
   integrations: IntegrationSnapshot | null;
   resolvedTheme: 'dark' | 'light';
   log: (source: string, msg: string) => void;
+  onProjectChanged: () => void;
 }
 
 export function WorkspaceView(p: Props) {
   switch (p.workspace) {
-    case 'media': return <MediaPreview asset={p.selected} />;
+    case 'media': return <MediaWorkspace manifest={p.manifest} asset={p.selected} />;
     case 'edit': return <EditView asset={p.selected} apps={p.apps} integrations={p.integrations} />;
     case 'generate': return <GenerateView integrations={p.integrations} />;
-    case 'workflow': return <WorkflowEditor manifest={p.manifest} colorMode={p.resolvedTheme} log={p.log} />;
+    case 'workflow': return <WorkflowEditor manifest={p.manifest} integrations={p.integrations} colorMode={p.resolvedTheme} log={p.log} onProjectChanged={p.onProjectChanged} />;
     case 'effects': return <Bridge title="Effects" appId="effectcraft" apps={p.apps} what="compositions, layers, effects and keyframes" />;
     case 'color': return <Bridge title="Color" appId="lightcraft" apps={p.apps} what="develop controls, presets and raw processing" />;
     case 'audio': return <Bridge title="Audio" appId="soundcraft" apps={p.apps} what="sessions, tracks, mixing and bounce" />;
     case 'deliver': return <DeliverView manifest={p.manifest} />;
   }
+}
+
+/** PNG rendition PhotoCraft wrote next to a .pcraft version, if any. */
+function renditionOf(manifest: ProjectManifest | null, asset: Asset): Asset | undefined {
+  return manifest?.assets.find((x) => x.parentId === asset.id && x.kind === 'image');
+}
+
+function MediaWorkspace({ manifest, asset }: { manifest: ProjectManifest | null; asset: Asset | null }) {
+  if (asset?.sourceFormat === 'pcraft') {
+    const r = manifest && renditionOf(manifest, asset);
+    if (r) return <MediaPreview asset={r} label={`${asset.name} · flattened preview`} />;
+  }
+  return <MediaPreview asset={asset} />;
 }
 
 function Empty({ title, children }: { title: string; children: React.ReactNode }) {
@@ -34,7 +49,7 @@ function Empty({ title, children }: { title: string; children: React.ReactNode }
   );
 }
 
-function MediaPreview({ asset }: { asset: Asset | null }) {
+function MediaPreview({ asset, label }: { asset: Asset | null; label?: string }) {
   if (!asset) return <Empty title="No asset selected"><p>Pick something from the media browser, or import files.</p></Empty>;
   const viewable = asset.kind === 'image' || asset.kind === 'vector';
   if (asset.kind === 'audio') {
@@ -50,7 +65,7 @@ function MediaPreview({ asset }: { asset: Asset | null }) {
   }
   return (
     <div className="viewer">
-      <div className="stage-label"><span className="chip">Original · read-only</span><span className="chip">{formatDims(asset)}</span></div>
+      <div className="stage-label"><span className="chip">{label ?? (asset.parentId ? 'Version · read-only' : 'Original · read-only')}</span><span className="chip">{formatDims(asset)}</span></div>
       <div className="preview-stage"><img src={window.studio.assetUrl(asset.id)} alt={asset.name} /></div>
     </div>
   );
@@ -75,7 +90,10 @@ function EditView({ asset, apps, integrations }: { asset: Asset | null; apps: Ap
       <div className="stage-label"><span className="chip off"><span className="dot" />Live view: not connected</span></div>
       <Empty title="Live app view unavailable">
         <p>{integrations?.windowCapture.reason ?? 'Window capture not available.'}</p>
-        <p>This area will show the real PhotoCraft window (OS window capture) once the PhotoCraft vertical slice is built. It will never show a static screenshot passed off as live.</p>
+        <p>This area will show the real PhotoCraft window (OS window capture) in a later step. It will never show a static screenshot passed off as live.</p>
+        {integrations?.appAdapters.some((a) => a.id === 'photocraft' && !a.isMock) && (
+          <p><span className="chip real"><span className="dot" />PhotoCraft headless edits: real</span><br />Use an <strong>ArtCraft Edit</strong> node in the Workflow workspace to apply PhotoCraft adjustments and filters now.</p>
+        )}
         {asset && <p>Selected for editing: <strong>{asset.name}</strong></p>}
         <div className="btn-row" style={{ justifyContent: 'center' }}>
           <button className="btn" disabled title="Arrives with the PhotoCraft integration">Open in PhotoCraft</button>
@@ -136,7 +154,25 @@ function DeliverView({ manifest }: { manifest: ProjectManifest | null }) {
           </tbody>
         </table>
       </div>
-      <div className="panel-card"><h2 style={{ fontSize: 15 }}>Outputs</h2><p className="asset-meta">No outputs yet. Mock workflow runs do not write files.</p></div>
+      <ExportsCard />
+    </div>
+  );
+}
+
+function ExportsCard() {
+  const [files, setFiles] = useState<Array<{ name: string; bytes: number; modified: string }> | null>(null);
+  useEffect(() => { void window.studio.listExports().then(setFiles); }, []);
+  return (
+    <div className="panel-card">
+      <h2 style={{ fontSize: 15 }}>Exports</h2>
+      <p className="asset-meta">Files written by Export nodes into the project's exports folder.</p>
+      {files?.length === 0 && <p className="asset-meta">No exports yet. Add an Export node after an ArtCraft Edit and run the workflow.</p>}
+      {files?.map((f) => (
+        <div className="export-row" key={f.name}>
+          <span>{f.name} <span className="asset-meta">· {formatBytes(f.bytes)} · {new Date(f.modified).toLocaleString()}</span></span>
+          <button className="btn small" onClick={() => void window.studio.revealExport(f.name)}>Show in folder</button>
+        </div>
+      ))}
     </div>
   );
 }

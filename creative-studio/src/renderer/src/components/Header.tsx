@@ -40,10 +40,13 @@ export function Header({ projectName, workspace, onWorkspace, apps, integrations
       </nav>
       <div className="header-status">
         <span className={`chip ${connected ? 'ok' : installed ? 'warn' : 'off'}`} title={apps.map((a) => `${a.displayName}: ${a.installed ? `installed ${a.version ?? ''}` : 'not installed'}${a.connected ? ', connected' : ', not connected'}`).join('\n')}>
-          <span className="dot" /> ArtCraft {installed} installed · {connected} connected
+          <span className="dot" /><span>ArtCraft {installed} installed<span className="chip-extra"> · {connected} live</span></span>
         </span>
-        <span className="chip off" title={integrations?.claude.reason}><span className="dot" /> Claude: not connected</span>
-        <span className="chip off" title="No provider keys are configured. Costs: $0."><span className="dot" /> Providers: none · $0.00</span>
+        {integrations?.appAdapters.some((a) => a.id === 'photocraft' && !a.isMock) && (
+          <span className="chip real" title="Workflow ArtCraft Edit nodes run the installed photocraft-cli for real (headless). Live window control is not connected yet."><span className="dot" /><span>PhotoCraft<span className="chip-extra">: headless edits</span></span></span>
+        )}
+        <span className="chip off" title={integrations?.claude.reason}><span className="dot" /><span>Claude<span className="chip-extra">: not connected</span></span></span>
+        <span className="chip off" title="No provider keys are configured. Costs: $0."><span className="dot" /><span>$0.00<span className="chip-extra"> · no providers</span></span></span>
         <AppearanceMenu appearance={appearance} />
       </div>
     </header>

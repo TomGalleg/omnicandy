@@ -15,11 +15,15 @@ export const IPC = {
   answerApproval: 'workflow:approval',
   cancelWorkflow: 'workflow:cancel',
   workflowEvent: 'workflow:event',
+  listExports: 'exports:list',
+  revealExport: 'exports:reveal',
   probeApps: 'apps:probe',
   integrationStatus: 'integrations:status',
 } as const;
 
 export interface IntegrationSnapshot {
+  appAdapters: Array<{ id: string; isMock: boolean }>;
+  realExport: boolean;
   windowCapture: { available: boolean; reason: string | null };
   credentialVault: { available: boolean };
   claude: { connected: boolean; reason: string };
@@ -45,6 +49,8 @@ export interface StudioApi {
   answerApproval(nodeId: string, approved: boolean): Promise<void>;
   cancelWorkflow(): Promise<void>;
   onWorkflowEvent(cb: (e: WorkflowRunEvent) => void): () => void;
+  listExports(): Promise<Array<{ name: string; bytes: number; modified: string }>>;
+  revealExport(name: string): Promise<void>;
   probeApps(): Promise<AppProbeResult[]>;
   integrationStatus(): Promise<IntegrationSnapshot>;
   /** URL the renderer can use in <img src>, served read-only by main from the project root. */
