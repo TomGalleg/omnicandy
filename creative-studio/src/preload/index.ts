@@ -2,6 +2,7 @@
 
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron';
 import { ASSET_SCHEME, IPC, type StudioApi } from '@shared/ipc';
+import type { ClaudeState } from '@shared/claude';
 import type { LiveSnapshot } from '@shared/live';
 import type { WorkflowRunEvent } from '@shared/workflow';
 
@@ -44,6 +45,20 @@ const api: StudioApi = {
       const listener = (_e: IpcRendererEvent, s: LiveSnapshot) => cb(s);
       ipcRenderer.on(IPC.liveEvent, listener);
       return () => ipcRenderer.removeListener(IPC.liveEvent, listener);
+    },
+  },
+  claude: {
+    state: () => ipcRenderer.invoke(IPC.claudeState),
+    send: (message) => ipcRenderer.invoke(IPC.claudeSend, message),
+    stop: () => ipcRenderer.invoke(IPC.claudeStop),
+    reset: () => ipcRenderer.invoke(IPC.claudeReset),
+    setModel: (model) => ipcRenderer.invoke(IPC.claudeModel, model),
+    checkAuth: () => ipcRenderer.invoke(IPC.claudeAuth),
+    signIn: () => ipcRenderer.invoke(IPC.claudeSignIn),
+    onChange: (cb) => {
+      const listener = (_e: IpcRendererEvent, s: ClaudeState) => cb(s);
+      ipcRenderer.on(IPC.claudeEvent, listener);
+      return () => ipcRenderer.removeListener(IPC.claudeEvent, listener);
     },
   },
   edit: {

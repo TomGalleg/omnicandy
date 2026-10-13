@@ -32,6 +32,8 @@ export interface LiveDoc {
   quickEditSteps?(opId: string, values: EditValues): AppOperation[];
   /** PNG of the live app window, from the app's own screenshot tool. */
   screenshot?(maxSide: number): Promise<Buffer | null>;
+  /** PNG of the document itself (flattened render), for Claude to look at. */
+  preview?(maxSide: number): Promise<Buffer | null>;
 }
 
 export function versionOf(history: string[]): string {
@@ -170,6 +172,12 @@ export class LivePhotoCraft implements LiveDoc {
 
   quickEditSteps(opId: string, values: EditValues): AppOperation[] {
     return [photocraftCommand(opId, values)];
+  }
+
+  async preview(maxSide: number): Promise<Buffer | null> {
+    const r = (await this.client().request('tools/call', { name: 'doc_render_preview', arguments: { max_side: maxSide } })) as { content?: Array<{ type: string; data?: string }> };
+    const img = r.content?.find((c) => c.type === 'image');
+    return img?.data ? Buffer.from(img.data, 'base64') : null;
   }
 
   async screenshot(maxSide: number): Promise<Buffer | null> {

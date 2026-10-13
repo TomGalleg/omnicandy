@@ -1,6 +1,7 @@
 // The complete renderer ↔ main surface. Every channel here is validated in main (src/main/ipc.ts).
 
 import type { AppearanceSettings, AppProbeResult, Asset, ProjectManifest } from './types';
+import type { ClaudeState } from './claude';
 import type { LiveSnapshot } from './live';
 import type { WorkflowGraph, WorkflowRunEvent } from './workflow';
 
@@ -35,6 +36,14 @@ export const IPC = {
   liveQuickEdit: 'live:quick-edit',
   liveUndo: 'live:undo',
   liveDock: 'live:dock',
+  claudeState: 'claude:state',
+  claudeSend: 'claude:send',
+  claudeStop: 'claude:stop',
+  claudeReset: 'claude:reset',
+  claudeModel: 'claude:model',
+  claudeAuth: 'claude:auth',
+  claudeSignIn: 'claude:sign-in',
+  claudeEvent: 'claude:event',
   editApply: 'edit:apply',
   editOpenCopy: 'edit:open-copy',
   editList: 'edit:list',
@@ -110,6 +119,19 @@ export interface StudioApi {
     quickEdit(opId: string, values: Record<string, number | string>): Promise<LiveSnapshot>;
     undo(): Promise<LiveSnapshot>;
     onChange(cb: (s: LiveSnapshot) => void): () => void;
+  };
+  claude: {
+    state(): Promise<ClaudeState>;
+    /** Sends a message; resolves when Claude has finished its turn. */
+    send(message: string): Promise<void>;
+    stop(): Promise<void>;
+    reset(): Promise<ClaudeState>;
+    setModel(model: string): Promise<ClaudeState>;
+    /** Re-checks whether Claude Code on this PC is signed in. */
+    checkAuth(): Promise<boolean | null>;
+    /** Opens Claude Code's own sign-in window. */
+    signIn(): Promise<void>;
+    onChange(cb: (s: ClaudeState) => void): () => void;
   };
   edit: {
     /** Runs a quick edit with the app that owns this file type; returns the new version ids. */

@@ -124,6 +124,11 @@ export class LiveVectorCraft extends LiveAppBase {
     const img = r.content?.find((c) => c.type === 'image');
     return img?.data ? Buffer.from(img.data, 'base64') : null;
   }
+  async preview(maxSide: number): Promise<Buffer | null> {
+    const r = (await this.client().request('tools/call', { name: 'render_preview', arguments: { max_side: maxSide } })) as { content?: Array<{ type: string; data?: string }> };
+    const img = r.content?.find((c) => c.type === 'image');
+    return img?.data ? Buffer.from(img.data, 'base64') : null;
+  }
 }
 
 export class LiveSoundCraft extends LiveAppBase {

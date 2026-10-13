@@ -196,6 +196,30 @@ describe('LiveTaskController', () => {
     release();
   });
 
+  it('Claude edits through the lock: allowed when free, refused when the user paused or took control', async () => {
+    expect(await ctl.claudeQuickEdit('blackWhite', {})).toMatch(/applied/);
+    expect(ctl.snapshot().collab).toMatchObject({ phase: 'running', lockOwner: 'claude' });
+    await expect(ctl.claudePhotoCraftCommand('file.saveAs', {})).rejects.toThrow(/allowed list/);
+    ctl.pause();
+    await expect(ctl.claudeQuickEdit('blackWhite', {})).rejects.toThrow(/paused you/);
+    ctl.takeControl();
+    await expect(ctl.claudeQuickEdit('blackWhite', {})).rejects.toThrow(/taken control/);
+    doc.userEdit('Brush Tool');
+    ctl.releaseControl();
+    await ctl.resume(); // document changed by hand: Claude's task waits for a go-ahead
+    expect(ctl.snapshot().collab.phase).toMatch(/planning|running|completed/);
+    ctl.claudeDone();
+    expect(ctl.snapshot().collab.lockOwner).not.toBe('claude');
+    expect(doc.ran.filter((c) => c === 'image.adjustments.blackWhite')).toHaveLength(1);
+  });
+
+  it('Claude pauses instead of editing on top of a hand edit made without taking control', async () => {
+    await ctl.claudeQuickEdit('blackWhite', {});
+    doc.userEdit('Eraser');
+    await expect(ctl.claudeQuickEdit('blackWhite', {})).rejects.toThrow(/changed the document by hand/);
+    expect(ctl.snapshot().collab.phase).toBe('paused');
+  });
+
   it('opens each file type in its own app; multi-step automation stays PhotoCraft-only', async () => {
     const wav = (await store.importFile(path.join(FIXTURES, 'tone-a440.wav'))).asset.id;
     const s = await ctl.open(wav);

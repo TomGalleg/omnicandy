@@ -12,6 +12,7 @@ import { WorkflowRunner, type RunnerDeps } from '@shared/workflowRunner';
 import { probeAllArtCraftApps } from './artcraftProbe';
 import { IMPORTABLE_EXTENSIONS } from './media';
 import { AppEditors } from './appEditors';
+import { ClaudePartner, defaultClaudeCli } from './claudePartner';
 import { LiveTaskController } from './liveTask';
 import { PhotoCraftCliAdapter } from './photocraftCli';
 import type { EditorAppId } from '@shared/appEditors';
@@ -196,7 +197,8 @@ export function registerIpc(d: IpcDeps): void {
     return ctl.snapshot();
   };
   handle(IPC.liveState, none, async () => (await live()).snapshot());
-  handle(IPC.liveOpen, z.tuple([z.string().min(1).max(128)]), async (id) => {
+  /** Opens a library file in its app and shows it in the Edit area (or its own window). */
+  const openLive = async (id: string) => {
     const ctl = await live();
     const s = await ctl.open(id);
     const pid = await currentPid();
@@ -205,7 +207,26 @@ export function registerIpc(d: IpcDeps): void {
       if (d.embedded.mode === 'window') { d.embedded.popOut(); d.panel.close(); await d.panel.open(pid); ctl.setPoppedOut(true); return ctl.snapshot(); }
     }
     return s;
-  });
+  };
+  handle(IPC.liveOpen, z.tuple([z.string().min(1).max(128)]), (id) => openLive(id));
+
+  // ---- Claude Creative Partner (Claude Agent SDK, this PC's Claude Code sign-in) ----
+  let partner: ClaudePartner | null = null;
+  const claude = () => (partner ??= new ClaudePartner({
+    live,
+    store: d.project,
+    openAsset: async (id) => { await openLive(id); },
+    emit: (st) => { for (const w of BrowserWindow.getAllWindows()) if (!w.isDestroyed()) w.webContents.send(IPC.claudeEvent, st); },
+    cliPath: defaultClaudeCli(),
+    workDir: async () => { const dir = path.join((await d.project()).root, 'work', 'claude'); await fs.mkdir(dir, { recursive: true }); return dir; },
+  }));
+  handle(IPC.claudeState, none, () => claude().state());
+  handle(IPC.claudeSend, z.tuple([z.string().min(1).max(4000)]), (msg) => claude().send(msg));
+  handle(IPC.claudeStop, none, () => claude().stop());
+  handle(IPC.claudeReset, none, () => { claude().reset(); return claude().state(); });
+  handle(IPC.claudeModel, z.tuple([z.string().max(64)]), (m) => { claude().setModel(m); return claude().state(); });
+  handle(IPC.claudeAuth, none, () => claude().checkAuth());
+  handle(IPC.claudeSignIn, none, () => claude().signIn());
   handle(IPC.livePopOut, none, () => popOut());
   handle(IPC.liveDock, none, () => popIn());
   handle(IPC.liveViewport, z.tuple([z.object({ x: z.number().finite(), y: z.number().finite(), width: z.number().finite().min(0), height: z.number().finite().min(0), visible: z.boolean() }).nullable()]),

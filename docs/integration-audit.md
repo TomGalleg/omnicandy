@@ -106,6 +106,7 @@ folder import (spec rule).
 | Live window capture | **Untested** | `WindowCapture` interface only; UI shows "not connected" |
 | Workflow "ArtCraft Edit" node in the app | **Real** (headless PhotoCraft) | Falls back to a labelled MOCK only if photocraft-cli.exe is missing; commands limited to an allowlist (adjustments, filters, rotations, fill) |
 | AI Generate node | **Mocked** | `MockGenerationProvider`; never calls the network |
+| Claude Creative Partner (chat panel) | **Real; waiting on sign-in** | Claude Agent SDK 0.3.296 (`@anthropic-ai/claude-agent-sdk`) runs Claude Code with this PC's Claude Code sign-in (no API key stored by CreateCraft). No built-in tools (`tools: []`), no user settings (`settingSources: []`), only CreateCraft's in-process tools (get_status, look_at_document, apply_edit, photocraft_command, undo, save_version, list_files, open_file) under the shared edit lock. Verified end-to-end up to authentication: the standalone Claude Code CLI on this PC reports `loggedIn: false`, so a real edit by Claude is untested until the user signs in |
 | Credential vault | **Untested / stub** | Interface only; planned on Electron `safeStorage` (DPAPI) in main |
 | Midjourney automation | **Blocked by policy** | Import from a user-chosen folder only |
 | SQLite asset index | **Deferred** | Phase 1 uses a JSON manifest; see `creative-studio/docs/architecture.md` |

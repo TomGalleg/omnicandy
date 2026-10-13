@@ -17,6 +17,7 @@ import path from 'node:path';
 import { collabReducer, initialCollabState, type CollabEvent, type CollabState } from '@shared/collaboration';
 import type { LiveSnapshot, LiveStatus, LiveStep } from '@shared/live';
 import { checkEditValues, EDITOR_APPS, editorFor, type EditorAppId } from '@shared/appEditors';
+import type { AppOperation } from '@shared/contracts';
 import { checkPhotoCraftOp, presetLabel } from '@shared/photocraftOps';
 import { versionOf, type LiveDoc } from './photocraftLive';
 import type { ProjectStore } from './projectStore';
@@ -51,6 +52,8 @@ export class LiveTaskController {
   private message: string | null = null;
   private looping = false;
   private poppedOut = false;
+  /** True while Claude (the Creative Partner) holds the automation side of the lock. */
+  private claudeActive = false;
   private appId: EditorAppId = 'photocraft';
   private saveCount = 0;
 
@@ -315,6 +318,115 @@ export class LiveTaskController {
     this.message = 'Undone.';
     this.publish();
     return this.snapshot();
+  }
+
+  // ---- Claude (Creative Partner) actions: same lock, allowlist and versioning as everything else ----
+
+  /** Called before each Claude tool call that changes the document. Throws a plain reason when Claude must not act. */
+  private async claudeGate(): Promise<LiveDoc> {
+    const doc = this.requireDoc();
+    const p = this.collab.phase;
+    if (p === 'manual') throw new Error('The user has taken control of the document. Stop and wait; do not retry.');
+    if (p === 'pausing' || p === 'paused') throw new Error('The user paused you. Stop and wait for them to resume; do not retry.');
+    if (this.looping || (p === 'running' && !this.claudeActive)) throw new Error('An automation task is running in the app. Wait for it to finish.');
+    if (p === 'awaiting_approval') throw new Error('Waiting for the user to approve.');
+    if (p !== 'running') {
+      // Start a Claude task: plan -> ready -> running with the lock held by automation.
+      this.dispatch({ type: 'plan' });
+      this.dispatch({ type: 'planReady', version: await this.currentVersion() });
+      if (!this.dispatch({ type: 'start' })) throw new Error(this.message ?? 'Could not start.');
+      this.claudeActive = true;
+      this.steps = [];
+      this.stepIndex = 0;
+    }
+    // Someone edited by hand without taking control: don't edit on top of it.
+    const v = await this.currentVersion();
+    if (v !== this.collab.knownVersion) {
+      this.dispatch({ type: 'requestPause' });
+      this.message = 'The document changed in the app outside of Claude, so Claude paused. Resume when ready.';
+      this.publish();
+      throw new Error('The user changed the document by hand, so you were paused. Stop and wait.');
+    }
+    return doc;
+  }
+
+  private async claudeRun(label: string, steps: AppOperation[]): Promise<string> {
+    const doc = await this.claudeGate();
+    const opId = `claude-${randomUUID().slice(0, 6)}`;
+    if (!this.dispatch({ type: 'beginOperation', opId })) throw new Error(this.message ?? 'Could not start the edit.');
+    try {
+      for (const s of steps) await doc.run(s);
+    } catch (err) {
+      this.dispatch({ type: 'endOperation', opId, ok: false });
+      this.claudeActive = false;
+      throw err;
+    }
+    this.dispatch({ type: 'endOperation', opId, ok: true, version: await this.currentVersion() });
+    this.message = `Claude: ${label}`;
+    this.publish();
+    const p = this.collab.phase;
+    return p === 'running' ? `${label} applied.` : `${label} applied. The user has now ${p === 'manual' ? 'taken control' : 'paused you'}; stop and wait.`;
+  }
+
+  /** Claude applies one of the app's quick edits (src/shared/appEditors.ts). */
+  async claudeQuickEdit(opId: string, rawValues: Record<string, unknown>): Promise<string> {
+    const doc = this.requireDoc();
+    const app = EDITOR_APPS[this.appId];
+    const op = app.quickEdits.find((o) => o.id === opId);
+    if (!op || op.copyOnly) throw new Error(`${app.name} has no live edit "${opId}". Use get_status to see the available edits.`);
+    const check = checkEditValues(op, rawValues);
+    if (!check.ok) throw new Error(check.reason);
+    if (!doc.quickEditSteps) throw new Error(`${app.name} can't apply edits live.`);
+    const steps = doc.quickEditSteps(op.id, check.values);
+    if (this.appId === 'photocraft') for (const s of steps) { const c = checkPhotoCraftOp(s.command, s.params); if (!c.ok) throw new Error(c.reason); }
+    return this.claudeRun(`${op.label} (${app.name})`, steps);
+  }
+
+  /** Claude runs one allowlisted PhotoCraft engine command (adjustments, filters, rotations, fill). */
+  async claudePhotoCraftCommand(command: string, params: Record<string, unknown>): Promise<string> {
+    if (this.appId !== 'photocraft') throw new Error('Engine commands are only available while PhotoCraft is open.');
+    const c = checkPhotoCraftOp(command, params);
+    if (!c.ok) throw new Error(c.reason);
+    return this.claudeRun(`${presetLabel(command)} (PhotoCraft)`, [{ command, params: c.params }]);
+  }
+
+  async claudeUndo(): Promise<string> {
+    const doc = await this.claudeGate();
+    if (!doc.undo) throw new Error('Undo is not available.');
+    const opId = `claude-undo-${randomUUID().slice(0, 6)}`;
+    this.dispatch({ type: 'beginOperation', opId });
+    await doc.undo();
+    this.dispatch({ type: 'endOperation', opId, ok: true, version: await this.currentVersion() });
+    return 'Undone.';
+  }
+
+  /** A picture of the open document, for Claude to look at. */
+  async preview(maxSide: number): Promise<Buffer | null> {
+    const doc = this.requireDoc();
+    return doc.preview ? doc.preview(maxSide) : doc.screenshot ? doc.screenshot(maxSide) : null;
+  }
+
+  /** Claude's turn is over: finish its task (unless the user paused or took control). */
+  claudeDone() {
+    if (!this.claudeActive) return;
+    this.claudeActive = false;
+    if (this.collab.phase === 'running' && !this.collab.activeOperation) this.dispatch({ type: 'complete' });
+  }
+
+  /** What Claude needs to know about the current state. */
+  statusForClaude() {
+    const app = EDITOR_APPS[this.appId];
+    return {
+      open: this.asset ? { file: this.asset.name, app: app.name } : null,
+      history: this.history,
+      lock: this.collab.lockOwner === 'user' ? 'the user has control (do not edit)' : this.collab.phase === 'paused' || this.collab.phase === 'pausing' ? 'paused by the user (do not edit)' : 'free',
+      edits: this.asset ? app.quickEdits.filter((o) => !o.copyOnly).map((o) => ({
+        id: o.id, label: o.label, group: o.group,
+        settings: o.params.map((p) => p.type === 'number'
+          ? { key: p.key, label: p.label, min: p.min, max: p.max, default: p.default, unit: p.unit }
+          : { key: p.key, label: p.label, choices: p.options.map((x) => x.value), default: p.default }),
+      })) : [],
+    };
   }
 
   setPoppedOut(v: boolean) { this.poppedOut = v; this.publish(); }
