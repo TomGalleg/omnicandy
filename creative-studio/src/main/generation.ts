@@ -72,14 +72,15 @@ export class GenerationService {
 
   async providerStatus() {
     const out: Array<{ id: ProviderId; configured: boolean; meta: KeyMeta | null }> = [];
-    for (const p of ['openai', 'gemini'] as const) {
+    for (const p of ['openai', 'gemini', 'runway'] as const) {
       out.push({ id: p, configured: (await this.d.vault.status(p)).configured, meta: await this.d.vault.meta(p) });
     }
     return out;
   }
 
   /** Lists models with the saved key (free; no image is generated). */
-  async testConnection(provider: 'openai' | 'gemini'): Promise<KeyTest> {
+  async testConnection(provider: 'openai' | 'gemini' | 'runway'): Promise<KeyTest> {
+    if (provider === 'runway') return this.testRunway();
     const at = new Date().toISOString();
     let test: KeyTest;
     try {
@@ -100,6 +101,25 @@ export class GenerationService {
       test = { ok: false, at, message: e instanceof Error ? e.message : String(e) };
     }
     await this.d.vault.setLastTest(provider, test);
+    return test;
+  }
+
+  /** Free: reads the organisation record (credit balance). No video is made. */
+  private async testRunway(): Promise<KeyTest> {
+    const at = new Date().toISOString();
+    let test: KeyTest;
+    try {
+      const credits = await this.d.vault.withKey('runway', async (key) => {
+        const res = await this.d.fetch('https://api.dev.runwayml.com/v1/organization', { headers: { Authorization: `Bearer ${key}`, 'X-Runway-Version': '2024-11-06' }, signal: AbortSignal.timeout(30_000) });
+        if (!res.ok) throw await failure(res, 'Runway');
+        const j = (await res.json()) as { creditBalance?: number };
+        return typeof j.creditBalance === 'number' ? j.creditBalance : null;
+      });
+      test = { ok: true, at, models: [], message: credits === null ? 'Connected to Runway.' : `Connected. Runway credit balance: ${credits} credits (about $${(credits / 100).toFixed(2)}).` };
+    } catch (e) {
+      test = { ok: false, at, message: e instanceof Error ? e.message : String(e) };
+    }
+    await this.d.vault.setLastTest('runway', test);
     return test;
   }
 

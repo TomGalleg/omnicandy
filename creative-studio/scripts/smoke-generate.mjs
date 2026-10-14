@@ -32,7 +32,7 @@ try {
   await win.locator('nav.workspaces button', { hasText: 'AI Generate' }).click();
   await win.locator('.provider-row').first().waitFor({ timeout: 10000 });
 
-  check('providers start unconfigured', (await win.locator('.provider-row .chip', { hasText: 'Not set up' }).count()) === 2);
+  check('providers start unconfigured', (await win.locator('.provider-row .chip', { hasText: 'Not set up' }).count()) === 3);
   const opts = await win.locator('.generate select').first().locator('option').allTextContents();
   check('without keys only the free Mock model is offered', opts.length === 1 && /Mock/.test(opts[0]), opts.join(', '));
 

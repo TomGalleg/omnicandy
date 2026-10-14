@@ -15,6 +15,7 @@ import { z } from 'zod';
 import { CLAUDE_MODELS, type ClaudeChatItem, type ClaudeModelId, type ClaudeState } from '@shared/claude';
 import { estimateCost, formatUsd, IMAGE_MODELS, modelById, providerById, type ImageJob } from '@shared/generation';
 import type { GenerateResultDto, ProviderStatusDto } from '@shared/ipc';
+import { estimateVideoCost, VIDEO_MODELS, videoModelById, type VideoJob, type VideoJobRecord } from '@shared/video';
 import { EDITOR_APPS, type EditorAppId } from '@shared/appEditors';
 import { presetsFor } from '@shared/deliver';
 import { buildWorkflowPlan, workflowCatalog, type PlanContext, type StepChange, type WorkflowPlan } from '@shared/workflowPlan';
@@ -37,7 +38,7 @@ Saving creates a new version in the library; the user's original file is never c
 
 To deliver finished files (JPEG for the web, PDF, MP4, WAV, GIF and so on), use list_export_formats and export_file. Exports go to the project's exports folder (the Deliver tab) and are made from saved library files, never from unsaved changes in the open app. Keep replies short and plain.
 
-You can also create new pictures with generate_image (OpenAI or Google Gemini, using the user's own account). It costs the user money: only generate when they ask for it, keep the count low, and say which model you will use. CreateCraft shows the user the price and asks them to approve every call; if they cancel, accept it and do not ask again unless they bring it up. New images are added to the library as new files; open one with open_file to edit it.
+You can also create new pictures with generate_image (OpenAI or Google Gemini, using the user's own account). It costs the user money: only generate when they ask for it, keep the count low, and say which model you will use. CreateCraft shows the user the price and asks them to approve every call; if they cancel, accept it and do not ask again unless they bring it up. New images are added to the library as new files; open one with open_file to edit it. For video use list_video_models and generate_video (Google Veo or Runway): it costs more, takes minutes, the user approves the price, and the clip lands in the library later, so tell the user rather than waiting.
 
 When the user wants a repeatable multi-step process (for example edit many photos and export them), build a workflow with plan_workflow instead of editing files yourself: read list_files, list_image_models and workflow_catalog, then propose it. The user decides whether to use it. Explain the plan in plain words, say what it costs and what they will be asked to approve, and be honest about warnings.
 
@@ -54,7 +55,7 @@ const PLAN_PROMPT = `You are Claude, the Creative Partner inside CreateCraft. Th
 "questions": at most 2 essential questions you still need answered (usually none).
 Do not start any work and do not mention software internals, node graphs or file formats unless the user did. Write in the user's language.`;
 
-const TOOL_NAMES = ['get_status', 'look_at_document', 'apply_edit', 'photocraft_command', 'undo', 'save_version', 'list_files', 'open_file', 'list_image_models', 'generate_image', 'list_export_formats', 'export_file', 'timeline_add', 'timeline_move_clip', 'timeline_remove_clip', 'workflow_catalog', 'plan_workflow', 'workflow_status', 'run_workflow', 'rerun_workflow', 'pause_workflow', 'resume_workflow', 'cancel_workflow', 'change_workflow_step', 'list_workflow_versions', 'restore_workflow_version', 'save_workflow_template'];
+const TOOL_NAMES = ['get_status', 'look_at_document', 'apply_edit', 'photocraft_command', 'undo', 'save_version', 'list_files', 'open_file', 'list_image_models', 'generate_image', 'list_video_models', 'generate_video', 'list_export_formats', 'export_file', 'timeline_add', 'timeline_move_clip', 'timeline_remove_clip', 'workflow_catalog', 'plan_workflow', 'workflow_status', 'run_workflow', 'rerun_workflow', 'pause_workflow', 'resume_workflow', 'cancel_workflow', 'change_workflow_step', 'list_workflow_versions', 'restore_workflow_version', 'save_workflow_template'];
 
 export interface WorkflowControlApi {
   /** Snapshot of the run (waits up to `waitSeconds` for it to finish, pause or need the user). */
@@ -81,6 +82,8 @@ export interface ClaudePartnerDeps {
   workDir: () => Promise<string>;
   /** Same path as the Generate tab: approval dialog in main, then the provider call. */
   generate: (job: ImageJob) => Promise<GenerateResultDto>;
+  /** Same approval dialog and spending limit as the Generate tab; resolves when the job is submitted, not when the video is ready. */
+  generateVideo: (job: VideoJob) => Promise<VideoJobRecord>;
   /** Providers with a saved key (status only, never the key). */
   imageModels: () => Promise<ProviderStatusDto[]>;
   /** The Deliver tab's export queue (same queue, presets and manifest as the UI). */
@@ -413,6 +416,45 @@ Now explain the plan to the user in plain language, including cost and what they
               settings: Object.fromEntries(m.settings.map((s) => [s.key, { default: s.default, options: s.options.map((o) => o.value) }])),
               price_per_image_at_defaults: formatUsd(estimateCost({ modelId: m.id, prompt: 'x', referenceAssetIds: [], settings: {}, count: 1 }).perImage),
             })), null, 2));
+          } catch (e) { return fail(e); }
+        }),
+        tool('list_video_models', 'Video generation models the user has set up (Google Veo with their Gemini key, Runway with their Runway key), with allowed settings and the estimated price at the default settings.', {}, async () => {
+          try {
+            const ready = await this.d.imageModels();
+            const models = VIDEO_MODELS.filter((m) => ready.some((p) => p.id === m.provider && p.billable));
+            if (!models.length) return text('No video provider is set up. Ask the user to add a Gemini (Google Veo) or Runway API key in AI Generate → Providers.');
+            return text(JSON.stringify(models.map((m) => ({
+              model_id: m.id, name: m.label, note: m.note, needs_starting_picture: !m.capabilities.includes('text-to-video'),
+              aspect_ratios: m.aspectRatios, durations_seconds: m.durations, resolutions: m.resolutions,
+              note_on_resolution: m.eightSecondOnly.length ? `${m.eightSecondOnly.join(' and ')} only for 8 second clips` : undefined,
+              price_at_720p_4s: formatUsd(estimateVideoCost({ modelId: m.id, prompt: 'x', referenceAssetId: null, aspectRatio: '16:9', durationSeconds: m.durations.includes(4) ? 4 : m.durations[0]!, resolution: '720p' }).amount),
+            })), null, 2));
+          } catch (e) { return fail(e); }
+        }),
+        tool('generate_video', 'Starts a video with one of list_video_models. Costs the user money: only when they ask, keep clips short, say which model. The user sees the price and must approve before anything is sent. Returns as soon as the job is submitted; the video takes minutes and is added to the library when ready (the user sees it under Video jobs). Optionally start from a library picture.', {
+          prompt: z.string().min(1).max(2000),
+          model_id: z.string().max(64),
+          aspect_ratio: z.string().max(16).optional(),
+          duration_seconds: z.number().int().min(1).max(60).optional(),
+          resolution: z.string().max(16).optional(),
+          start_picture_file_name: z.string().max(512).optional().describe('Library picture (exact name from list_files) to start from.'),
+        }, async ({ prompt, model_id, aspect_ratio, duration_seconds, resolution, start_picture_file_name }) => {
+          try {
+            const vm = videoModelById(model_id);
+            if (!vm) throw new Error(`Unknown video model "${model_id}". Use list_video_models.`);
+            let ref: string | null = null;
+            if (start_picture_file_name) {
+              const a = (await (await this.d.store()).loadManifest()).assets.find((x) => x.name === start_picture_file_name);
+              if (!a) throw new Error(`No file named "${start_picture_file_name}". Use list_files.`);
+              ref = a.id;
+            }
+            activity(`Asked to make a video with ${vm.label} (waiting for your approval)`);
+            const r = await this.d.generateVideo({
+              modelId: model_id, prompt, referenceAssetId: ref,
+              aspectRatio: aspect_ratio ?? '16:9', durationSeconds: duration_seconds ?? (vm.durations.includes(4) ? 4 : vm.durations[0]!), resolution: resolution ?? vm.resolutions[0]!,
+            });
+            activity('Video job started');
+            return text(`Video job started (${vm.label}, about $${r.estimateUsd.toFixed(2)}). It takes a few minutes; it will appear in the library and under Video jobs in AI Generate when it is ready. Do not wait for it; tell the user.`);
           } catch (e) { return fail(e); }
         }),
         tool('generate_image', 'Generates new pictures with one of list_image_models. The user sees the price and must approve before anything is sent; results are added to the library as new files (returned by name).', {

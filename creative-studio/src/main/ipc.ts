@@ -433,7 +433,7 @@ export function registerIpc(d: IpcDeps): void {
       };
     });
   };
-  const keyProvider = z.enum(['openai', 'gemini']);
+  const keyProvider = z.enum(['openai', 'gemini', 'runway']);
   handle(IPC.genProviders, none, () => providerStatus());
   handle(IPC.genPasteKey, z.tuple([keyProvider]), async (providerId) => {
     const copied = await clipboard.readText();
@@ -513,6 +513,7 @@ export function registerIpc(d: IpcDeps): void {
     emit: (st) => { for (const w of BrowserWindow.getAllWindows()) if (!w.isDestroyed()) w.webContents.send(IPC.claudeEvent, st); },
     cliPath: defaultClaudeCli(),
     generate: (job) => runGeneration(job, 'claude'),
+    generateVideo: (job) => video.submit(job, 'claude'),
     deliver: async () => deliver(),
     imageModels: async () => (await providerStatus()).filter((p) => p.configured),
     workDir: async () => (await d.project()).workDir('claude'),

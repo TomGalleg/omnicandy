@@ -45,7 +45,7 @@ typecheck 0, Vitest 135 passed / 14 skipped (opt-in live tests).
 | 4 | Simplified / Advanced navigation | **WORKING** | 1, 3 | `navigation.test.ts`, `smoke-nav.mjs` 7/7 |
 | 5 | Claude builds and runs workflows (shared engine) | **WORKING** (paid AI Generate steps stay blocked until Phase 6) | 1.4 | `workflowPlan.test.ts`, `workflowControl.test.ts`, `workflowVersions.test.ts`, `smoke-claude-workflow.mjs` 9/9, `smoke-workflow-control.mjs` 32/32 (real Claude + real PhotoCraft) |
 | 6 | Real Gemini / OpenAI image generation; spending limits; Workflow AI node | **WORKING / VERIFIED** (2026-10-14): one approved real image from each provider (OpenAI `gpt-image-2.5-flare`, Gemini `gemini-nano-banana-2.1`), 1024x1024, in the library with prompt/model/estimate; spending limit + ledger; Workflow AI step on the real path. Costs are estimates, not confirmed charges. | user's keys + OK | done |
-| 7 | AI video providers (Veo, Runway, Luma) | **WORKING / VERIFIED (Veo)** 2026-10-14: one approved real clip (Veo 3.1 Lite, 16:9, 4 s, 720p, est. $0.20) came back as a 1280x720 4 s mp4 in the library with provenance and ledger entry. Runway and Luma not built. | 6 | one approved real Veo clip |
+| 7 | AI video providers (Veo, Runway, Luma) | **WORKING / VERIFIED (Veo)** 2026-10-14: one approved real clip (Veo 3.1 Lite, 16:9, 4 s, 720p, est. $0.20) came back as a 1280x720 4 s mp4 in the library with provenance and ledger entry. Runway built but not live-tested; Luma not built. | 6 | one approved real Veo clip |
 | 8 | Templates | NOT IMPLEMENTED | 5 | smoke |
 | 9 | README / docs refresh, status vocabulary | PARTIAL (README out of date) | any | review |
 | 10 | Installer, first run, backup, recovery | NOT IMPLEMENTED | 2 | manual |
@@ -268,6 +268,15 @@ Phase 7 (2026-10-14):
 * **Honest limits:** Veo has no documented cancel call, so "Stop waiting" only stops CreateCraft and warns that Google may still
   bill it. Verified live: text-to-video, polling, download, import. Not live-tested: image-to-video. Request fields for image-to-video (`instances[0].image.bytesBase64Encoded/mimeType`) and the response path
   (`response.generateVideoResponse.generatedSamples[0].video.uri`) follow Google's docs but image-to-video is **unverified against the live API**. Claude has no video tool yet; Workflow AI step is images only; no resume of a job whose app was closed beyond 2 days.
+* **Finish-up (same day):** (1) Media list now refreshes when a video job finishes (bug found in the real run). (2) **Runway built**
+  (`gen4.5` text or picture, `gen4_turbo` picture only; header `X-Runway-Version 2024-11-06`; poll `/v1/tasks/{id}`; DELETE cancels;
+  1 credit = $0.01, 12 and 5 credits/s; output link downloaded without the key; key test reads `/v1/organization` for the credit
+  balance). **Unverified with a real Runway key and clip**; the base64 data-URI picture upload and `/v1/organization` are
+  assumptions from the docs. (3) **Claude tools** `list_video_models` and `generate_video` (same approval dialog, spending limit;
+  returns when submitted, the clip arrives later). (4) **Luma not built**: its docs give no price and its image-to-video needs
+  an already-hosted image URL (no upload API). Veo image-to-video still not live-tested.
+* Tests after finish-up: lint 0, types 0, **183 passed / 14 skipped** (+2 Runway); `smoke-generate` 16/16 (provider count 3),
+  `smoke-claude-generate` 5/5.
 * Tests: lint 0, types 0, **181 passed / 14 skipped** (+7 `videoGeneration.test.ts`: price and rules, request mapping, decline sends
   nothing, spending limit, full job to library asset + ledger, restart resume, failure and stop-waiting); `smoke-generate` 16/16,
   `smoke-generate-workflow` 7/7, `smoke-docks` 15/15. No paid call was made.

@@ -132,3 +132,46 @@ describe('VideoService', () => {
     expect((await store.loadManifest()).assets.filter((a) => a.kind === 'video' && a.provenance.origin === 'generated')).toHaveLength(0);
   });
 });
+
+describe('Runway', () => {
+  const rjob = (o: Partial<VideoJob> = {}): VideoJob => ({ modelId: 'gen4.5', prompt: 'A paper boat', referenceAssetId: null, aspectRatio: '16:9', durationSeconds: 5, resolution: '720p', ...o });
+
+  it('prices credits per second and needs a picture for Gen-4 Turbo', () => {
+    expect(estimateVideoCost(rjob()).amount).toBeCloseTo(0.6, 4);
+    expect(() => normalizeVideoJob(rjob({ modelId: 'gen4_turbo' }))).toThrow(/starting picture/);
+    expect(estimateVideoCost(rjob({ modelId: 'gen4_turbo', referenceAssetId: 'x', durationSeconds: 10 })).amount).toBeCloseTo(0.5, 4);
+  });
+
+  it('sends the version header, polls, downloads without the key and can cancel', async () => {
+    await vault.save('runway', 'key_0123456789abcdefghijklmnopqrstuvwxyz');
+    const mp4 = await fs.readFile(path.join(FIXTURES, 'aurora-clip.mp4'));
+    let polls = 0;
+    const f = vi.fn(async (url: string, init?: RequestInit) => {
+      if (url.endsWith('/v1/text_to_video')) return json({ id: '11111111-2222-3333-4444-555555555555' });
+      if (url.includes('/v1/tasks/') && init?.method !== 'DELETE') {
+        return ++polls < 2 ? json({ status: 'RUNNING' }) : json({ status: 'SUCCEEDED', output: ['https://dnznrvs05pmza.cloudfront.net/out.mp4?sig=1'] });
+      }
+      if (url.includes('/v1/tasks/')) return new Response(null, { status: 204 });
+      return new Response(new Uint8Array(mp4), { status: 200 });
+    });
+    const svc = make(f);
+    await svc.submit(rjob(), 'user');
+    await until(async () => (await svc.list())[0]?.state === 'done');
+    const first = f.mock.calls[0]!;
+    expect(first[0]).toBe('https://api.dev.runwayml.com/v1/text_to_video');
+    expect((first[1]!.headers as Record<string, string>)['X-Runway-Version']).toBe('2024-11-06');
+    expect(JSON.parse(first[1]!.body as string)).toMatchObject({ model: 'gen4.5', ratio: '1280:720', duration: 5, promptText: 'A paper boat' });
+    const dl = f.mock.calls.find((c) => String(c[0]).includes('cloudfront'))!;
+    expect(JSON.stringify(dl[1]!.headers)).not.toContain('key_');
+    expect((await store.spending()).entries.at(-1)).toMatchObject({ provider: 'runway', estimateUsd: 0.6 });
+
+    const slow = vi.fn(async (url: string, init?: RequestInit) => (url.endsWith('/v1/text_to_video') ? json({ id: '99999999-2222-3333-4444-555555555555' }) : init?.method === 'DELETE' ? new Response(null, { status: 204 }) : json({ status: 'RUNNING' })));
+    const s2 = make(slow);
+    const r = await s2.submit(rjob({ prompt: 'two' }), 'user');
+    const c = await s2.cancel(r.id);
+    expect(c.state).toBe('cancelled');
+    expect(c.message).toMatch(/Cancelled at Runway/);
+    expect(slow.mock.calls.some((x) => (x[1] as RequestInit | undefined)?.method === 'DELETE')).toBe(true);
+  });
+});
+

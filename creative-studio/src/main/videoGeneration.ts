@@ -11,7 +11,11 @@ import { ACTIVE_VIDEO_STATES, estimateVideoCost, normalizeVideoJob, videoModelBy
 import { GEMINI_BASE, GenerationCancelled, type GenerationDeps } from './generation';
 import { redact } from './credentialVault';
 import type { ProjectStore } from './projectStore';
-import { parseOperation, parseOperationName, veoBody, type RefImage } from './videoApis';
+import { parseOperation, parseOperationName, parseRunwayTask, parseRunwayTaskId, runwayRequest, veoBody, type PollResult, type RefImage } from './videoApis';
+
+export const RUNWAY_BASE = 'https://api.dev.runwayml.com';
+export const RUNWAY_VERSION = '2024-11-06';
+const PROVIDER_NAME = { gemini: 'Google', runway: 'Runway' } as const;
 
 const REF_MIME: Record<string, string> = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp' };
 const MAX_REF_BYTES = 8 * 1024 * 1024;
@@ -24,14 +28,17 @@ export interface VideoDeps extends Omit<GenerationDeps, 'timeoutMs'> {
   onChange?: (r: VideoJobRecord) => void;
 }
 
-async function httpFailure(res: Response): Promise<Error> {
+async function httpFailure(res: Response, who = 'Google Veo'): Promise<Error> {
   let detail = '';
-  try { const j = (await res.json()) as { error?: { message?: string } }; detail = j.error?.message ?? ''; } catch { /* not JSON */ }
+  try {
+    const j = (await res.json()) as { error?: { message?: string } | string };
+    detail = typeof j.error === 'string' ? j.error : j.error?.message ?? '';
+  } catch { /* not JSON */ }
   const why = res.status === 401 || res.status === 403 ? 'the key was rejected or has no video access'
     : res.status === 429 ? 'rate limit or quota reached'
     : res.status === 400 ? 'the request was refused'
     : `HTTP ${res.status}`;
-  return new Error(redact(`Google Veo: ${why}${detail ? ` — ${detail.slice(0, 300)}` : ''}`, null));
+  return new Error(redact(`${who}: ${why}${detail ? ` — ${detail.slice(0, 300)}` : ''}`, null));
 }
 
 export class VideoService {
@@ -79,7 +86,7 @@ export class VideoService {
   async submit(raw: VideoJob, requestedBy: 'user' | 'claude'): Promise<VideoJobRecord> {
     const job = normalizeVideoJob(raw);
     const model = videoModelById(job.modelId)!;
-    if (!(await this.d.vault.status(model.provider)).configured) throw new Error('Add your Gemini API key first (AI Generate → Providers). Veo uses the same key.');
+    if (!(await this.d.vault.status(model.provider)).configured) throw new Error(`Add your ${model.provider === 'runway' ? 'Runway' : 'Gemini'} API key first (AI Generate → Providers).`);
     const store = await this.d.store();
     const manifest = await store.loadManifest();
     let ref: RefImage | null = null;
@@ -101,7 +108,7 @@ export class VideoService {
       throw new Error(`This would go over the project's spending limit of $${spend.limitUsd.toFixed(2)}: about $${(spend.spentUsd + inFlight).toFixed(2)} is already estimated as spent or running and this video is about $${estimate.amount.toFixed(2)}. Nothing was sent. Raise the limit in AI Generate to continue.`);
     }
     const ok = await this.d.approve({
-      kind: 'video', provider: 'Google', model: model.label, prompt: job.prompt, count: 1,
+      kind: 'video', provider: PROVIDER_NAME[model.provider], model: model.label, prompt: job.prompt, count: 1,
       settings: { aspect: job.aspectRatio, length: `${job.durationSeconds} s`, resolution: job.resolution },
       references: refName ? [refName] : [], estimate, requestedBy, limitUsd: spend.limitUsd, spentUsd: spend.spentUsd + inFlight,
     });
@@ -109,6 +116,15 @@ export class VideoService {
 
     const now = new Date().toISOString();
     const operation = await this.d.vault.withKey(model.provider, async (key) => {
+      if (model.provider === 'runway') {
+        const q = runwayRequest(job, ref);
+        const res = await this.d.fetch(`${RUNWAY_BASE}${q.path}`, {
+          method: 'POST', headers: { Authorization: `Bearer ${key}`, 'X-Runway-Version': RUNWAY_VERSION, 'Content-Type': 'application/json' },
+          body: JSON.stringify(q.body), signal: AbortSignal.timeout(120_000),
+        });
+        if (!res.ok) throw await httpFailure(res, 'Runway');
+        return parseRunwayTaskId(await res.json());
+      }
       const res = await this.d.fetch(`${GEMINI_BASE}/models/${model.id}:predictLongRunning`, {
         method: 'POST', headers: { 'x-goog-api-key': key, 'Content-Type': 'application/json' }, body: JSON.stringify(veoBody(job, ref)), signal: AbortSignal.timeout(120_000),
       });
@@ -117,24 +133,32 @@ export class VideoService {
     });
     const rec: VideoJobRecord = {
       id: randomUUID(), provider: model.provider, job, state: 'running', operation, estimateUsd: estimate.amount, requestedBy,
-      createdAt: now, updatedAt: now, assetId: null, message: 'Google is making the video. This usually takes a few minutes.',
+      createdAt: now, updatedAt: now, assetId: null, message: `${PROVIDER_NAME[model.provider]} is making the video. This usually takes a few minutes.`,
     };
     await this.update(store, rec.id, rec);
     void this.track(store, rec.id);
     return rec;
   }
 
-  /** Veo has no documented cancel: this stops waiting; the provider may still finish and bill. */
+  /** Runway: asks the provider to cancel. Veo has no documented cancel: this only stops waiting and the provider may still bill it. */
   async cancel(id: string): Promise<VideoJobRecord> {
     const store = await this.d.store();
     const cur = (await this.read(store)).find((j) => j.id === id);
     if (!cur) throw new Error('That video job was not found.');
     if (!ACTIVE_VIDEO_STATES.includes(cur.state)) return cur;
-    const next = await this.update(store, id, {
-      state: 'cancelled',
-      message: 'Stopped waiting. Google does not offer a way to cancel a running video, so it may still finish and be billed to your account; CreateCraft will not import it.',
-    });
-    return next!;
+    let message = 'Stopped waiting. Google does not offer a way to cancel a running video, so it may still finish and be billed to your account; CreateCraft will not import it.';
+    if (cur.provider === 'runway' && cur.operation) {
+      try {
+        await this.d.vault.withKey('runway', async (key) => {
+          const res = await this.d.fetch(`${RUNWAY_BASE}/v1/tasks/${cur.operation}`, { method: 'DELETE', headers: { Authorization: `Bearer ${key}`, 'X-Runway-Version': RUNWAY_VERSION }, signal: AbortSignal.timeout(30_000) });
+          if (!res.ok) throw await httpFailure(res, 'Runway');
+        });
+        message = 'Cancelled at Runway. Credits for a cancelled job are normally not charged; check your Runway balance.';
+      } catch (e) {
+        message = `Stopped waiting, but Runway could not confirm the cancel (${e instanceof Error ? e.message : String(e)}). It may still finish and be billed; CreateCraft will not import it.`;
+      }
+    }
+    return (await this.update(store, id, { state: 'cancelled', message }))!;
   }
 
   private async track(store: ProjectStore, id: string): Promise<void> {
@@ -149,11 +173,16 @@ export class VideoService {
         const rec = (await this.read(store)).find((j) => j.id === id);
         if (!rec || !ACTIVE_VIDEO_STATES.includes(rec.state) || !rec.operation) return;
         if (Date.now() - Date.parse(rec.createdAt) > maxWait) {
-          await this.update(store, id, { state: 'failed', message: 'Stopped waiting after 30 minutes. Google may still finish it; check your Google account billing.' });
+          await this.update(store, id, { state: 'failed', message: 'Stopped waiting after 30 minutes. The provider may still finish it; check your account billing.' });
           return;
         }
         try {
-          const done = await this.d.vault.withKey(rec.provider, async (key) => {
+          const done: PollResult = await this.d.vault.withKey(rec.provider, async (key): Promise<PollResult> => {
+            if (rec.provider === 'runway') {
+              const res = await this.d.fetch(`${RUNWAY_BASE}/v1/tasks/${rec.operation}`, { headers: { Authorization: `Bearer ${key}`, 'X-Runway-Version': RUNWAY_VERSION }, signal: AbortSignal.timeout(60_000) });
+              if (!res.ok) throw await httpFailure(res, 'Runway');
+              return parseRunwayTask(await res.json());
+            }
             const res = await this.d.fetch(`${GEMINI_BASE}/${rec.operation}`, { headers: { 'x-goog-api-key': key }, signal: AbortSignal.timeout(60_000) });
             if (!res.ok) throw await httpFailure(res);
             return parseOperation(await res.json());
@@ -178,8 +207,9 @@ export class VideoService {
     await this.update(store, rec.id, { state: 'downloading', message: 'Downloading the finished video…' });
     try {
       const bytes = await this.d.vault.withKey(rec.provider, async (key) => {
-        const res = await this.d.fetch(uri, { headers: { 'x-goog-api-key': key }, redirect: 'follow', signal: AbortSignal.timeout(600_000) });
-        if (!res.ok) throw await httpFailure(res);
+        // Only Google's file URL gets the key; Runway's output is a signed link on another host.
+        const res = await this.d.fetch(uri, { headers: rec.provider === 'gemini' ? { 'x-goog-api-key': key } : {}, redirect: 'follow', signal: AbortSignal.timeout(600_000) });
+        if (!res.ok) throw await httpFailure(res, PROVIDER_NAME[rec.provider]);
         const buf = Buffer.from(await res.arrayBuffer());
         if (buf.length > MAX_VIDEO_BYTES) throw new Error('The video file is larger than 500 MB; not imported.');
         if (buf.length < 1000) throw new Error('The downloaded video file was empty.');
@@ -195,12 +225,12 @@ export class VideoService {
       const r = await store.addGeneratedFile(file, {
         name,
         provenance: {
-          source: `Generated with Google · ${model.label} (${model.id})`,
+          source: `Generated with ${PROVIDER_NAME[rec.provider]} · ${model.label} (${model.id})`,
           prompt: rec.job.prompt, provider: rec.provider, model: model.id,
           settings: { aspect: rec.job.aspectRatio, length: `${rec.job.durationSeconds} s`, resolution: rec.job.resolution },
           estimatedCostUsd: rec.estimateUsd, requestedBy: rec.requestedBy,
           ...(rec.job.referenceAssetId ? { referenceAssetIds: [rec.job.referenceAssetId] } : {}),
-          licensingNotes: "AI-generated via Google Veo. Check Google's terms for usage rights. Carries Google's SynthID watermark.",
+          licensingNotes: rec.provider === 'gemini' ? "AI-generated via Google Veo. Check Google's terms for usage rights. Carries Google's SynthID watermark." : "AI-generated via Runway. Check Runway's terms for usage rights.",
         },
       });
       await store.recordSpend({ at: new Date().toISOString(), provider: rec.provider, model: model.id, images: 0, estimateUsd: rec.estimateUsd, requestedBy: rec.requestedBy });

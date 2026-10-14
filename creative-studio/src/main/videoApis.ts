@@ -36,3 +36,34 @@ export function parseOperation(json: unknown): PollResult {
   const why = g?.raiMediaFilteredReasons?.join(' ');
   return { done: true, error: why ? `Google's safety filter blocked the video: ${why.slice(0, 300)}` : 'Google finished but returned no video.' };
 }
+
+// ---- Runway ----
+
+const RUNWAY_RATIO: Record<string, string> = { '16:9': '1280:720', '9:16': '720:1280' };
+
+export function runwayRequest(job: VideoJob, ref: RefImage | null): { path: string; body: Record<string, unknown> } {
+  const ratio = RUNWAY_RATIO[job.aspectRatio];
+  if (!ratio) throw new Error(`Aspect ratio ${job.aspectRatio} is not available for Runway.`);
+  const base = { model: job.modelId, promptText: job.prompt, ratio, duration: job.durationSeconds };
+  if (!ref) return { path: '/v1/text_to_video', body: base };
+  const uri = `data:${ref.mime};base64,${ref.data.toString('base64')}`;
+  return { path: '/v1/image_to_video', body: { ...base, promptImage: [{ uri, position: 'first' }] } };
+}
+
+export function parseRunwayTaskId(json: unknown): string {
+  const id = (json as { id?: unknown })?.id;
+  if (typeof id !== 'string' || !/^[A-Za-z0-9-]{8,80}$/.test(id)) throw new Error('Runway did not return a job to wait for.');
+  return id;
+}
+
+export function parseRunwayTask(json: unknown): PollResult {
+  const j = json as { status?: string; output?: unknown; failure?: string; failureCode?: string };
+  if (j?.status === 'SUCCEEDED') {
+    const uri = Array.isArray(j.output) ? j.output.find((x): x is string => typeof x === 'string') : undefined;
+    if (uri && /^https:\/\//.test(uri)) return { done: true, uri };
+    return { done: true, error: 'Runway finished but returned no video.' };
+  }
+  if (j?.status === 'FAILED') return { done: true, error: `Runway could not make the video: ${(j.failure ?? j.failureCode ?? 'unknown error').slice(0, 300)}` };
+  if (j?.status === 'CANCELLED') return { done: true, error: 'The Runway job was cancelled.' };
+  return { done: false };
+}

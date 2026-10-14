@@ -20,7 +20,7 @@ const STATE_LABEL: Record<VideoJobRecord['state'], string> = {
 /** AI video (Google Veo with the Gemini key): text or a starting picture, approval, background job list. */
 export function VideoPanel({ providers, selected, onGoto, log }: Props) {
   const [jobs, setJobs] = useState<VideoJobRecord[]>([]);
-  const [modelId, setModelId] = useState(VIDEO_MODELS[0]!.id);
+  const [modelId, setModelId] = useState(VIDEO_MODELS.find((m) => m.provider === 'gemini')!.id);
   const [prompt, setPrompt] = useState('');
   const [aspect, setAspect] = useState('16:9');
   const [duration, setDuration] = useState(8);
@@ -38,7 +38,8 @@ export function VideoPanel({ providers, selected, onGoto, log }: Props) {
   }, [log]);
 
   const model = videoModelById(modelId)!;
-  const ready = !!providers?.find((p) => p.id === 'gemini')?.configured;
+  const ready = !!providers?.find((p) => p.id === model.provider)?.configured;
+  const needsPicture = !model.capabilities.includes('text-to-video');
   // Keep settings valid when the model changes.
   useEffect(() => {
     if (!model.resolutions.includes(resolution)) setResolution(model.resolutions[0]!);
@@ -63,17 +64,19 @@ export function VideoPanel({ providers, selected, onGoto, log }: Props) {
   };
 
   const cancel = (id: string) => {
-    if (!window.confirm('Google does not offer a way to cancel a running video. CreateCraft will stop waiting and will not import it, but Google may still finish it and bill your account. Stop waiting?')) return;
+    const j = jobs.find((x) => x.id === id);
+    const text = j?.provider === 'runway' ? 'CreateCraft will ask Runway to cancel this job and will not import it. Cancel it?' : 'Google does not offer a way to cancel a running video. CreateCraft will stop waiting and will not import it, but Google may still finish it and bill your account. Stop waiting?';
+    if (!window.confirm(text)) return;
     void window.studio.generate.videoCancel(id).catch((e: unknown) => setMsg({ text: errText(e), error: true }));
   };
 
   return (
     <div className="panel-card" aria-label="AI video">
-      <h3>Video (Google Veo)</h3>
-      {!ready && <div className="notice">Veo uses your Gemini key. Add it under Providers above to make videos.</div>}
+      <h3>Video (Google Veo, Runway)</h3>
+      {!ready && <div className="notice">{model.provider === 'gemini' ? 'Veo uses your Gemini key.' : 'Runway needs its own API key and prepaid credits.'} Add it under Providers above to make videos.</div>}
       <label className="field">Model
         <select value={modelId} onChange={(e) => setModelId(e.target.value)}>
-          {VIDEO_MODELS.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
+          {VIDEO_MODELS.map((m) => <option key={m.id} value={m.id}>{m.label}{providers?.find((p) => p.id === m.provider)?.configured ? '' : ' (key needed)'}</option>)}
         </select>
       </label>
       <div className="asset-meta">{model.note} · {model.id}</div>
@@ -98,13 +101,14 @@ export function VideoPanel({ providers, selected, onGoto, log }: Props) {
         </label>
       </div>
       {resolution !== '720p' && <div className="asset-meta">1080p and 4k are only available for 8-second clips.</div>}
+      {needsPicture && !refAsset && <div className="asset-meta">{model.label} needs a starting picture. Select a PNG, JPEG or WebP in the library first.</div>}
       {estimate && (
         <div className="estimate" aria-label="Veo price">
           <strong>≈ {formatUsd(estimate.amount)}</strong>
           <span className="asset-meta">{estimate.basis} An estimate, not a confirmed charge.</span>
         </div>
       )}
-      <button className="btn primary" disabled={!ready || !prompt.trim() || busy} onClick={() => void submit()}>
+      <button className="btn primary" disabled={!ready || !prompt.trim() || busy || (needsPicture && !refAsset)} onClick={() => void submit()}>
         {busy ? 'Waiting for approval…' : 'Make video… (asks you to approve)'}
       </button>
       {msg && <div className={`wf-msg${msg.error ? ' error' : ''}`} role="status">{msg.text}</div>}
@@ -123,7 +127,7 @@ export function VideoPanel({ providers, selected, onGoto, log }: Props) {
               <div className="btn-row">
                 {j.state === 'done' && j.assetId && <button className="btn small primary" onClick={() => onGoto('media', j.assetId!)}>Show in library</button>}
                 {j.state === 'done' && j.assetId && <button className="btn small" onClick={() => onGoto('edit', j.assetId!)}>Open in Edit</button>}
-                {ACTIVE_VIDEO_STATES.includes(j.state) && <button className="btn small danger" onClick={() => cancel(j.id)}>Stop waiting</button>}
+                {ACTIVE_VIDEO_STATES.includes(j.state) && <button className="btn small danger" onClick={() => cancel(j.id)}>{j.provider === 'runway' ? 'Cancel' : 'Stop waiting'}</button>}
               </div>
             </div>
           ))}
