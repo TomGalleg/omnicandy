@@ -266,7 +266,7 @@ Phase 7 (2026-10-14):
   window change or restart resumes any still-running job from its saved operation (Google keeps the file 2 days). The finished
   mp4 is downloaded with the key, imported to `Assets/Generated`, and shown under "Video jobs" (Show in library / Open in Edit).
 * **Honest limits:** Veo has no documented cancel call, so "Stop waiting" only stops CreateCraft and warns that Google may still
-  bill it. Verified live: text-to-video, polling, download, import. Not live-tested: image-to-video. Request fields for image-to-video (`instances[0].image.bytesBase64Encoded/mimeType`) and the response path
+  bill it. Verified live: text-to-video, polling, download, import. Image-to-video also verified live. Request fields for image-to-video (`instances[0].image.bytesBase64Encoded/mimeType`) and the response path
   (`response.generateVideoResponse.generatedSamples[0].video.uri`) follow Google's docs but image-to-video is **unverified against the live API**. Claude has no video tool yet; Workflow AI step is images only; no resume of a job whose app was closed beyond 2 days.
 * **Finish-up (same day):** (1) Media list now refreshes when a video job finishes (bug found in the real run). (2) **Runway built**
   (`gen4.5` text or picture, `gen4_turbo` picture only; header `X-Runway-Version 2024-11-06`; poll `/v1/tasks/{id}`; DELETE cancels;
@@ -274,7 +274,7 @@ Phase 7 (2026-10-14):
   balance). **Unverified with a real Runway key and clip**; the base64 data-URI picture upload and `/v1/organization` are
   assumptions from the docs. (3) **Claude tools** `list_video_models` and `generate_video` (same approval dialog, spending limit;
   returns when submitted, the clip arrives later). (4) **Luma not built**: its docs give no price and its image-to-video needs
-  an already-hosted image URL (no upload API). Veo image-to-video still not live-tested.
+  an already-hosted image URL (no upload API). **Veo image-to-video verified** (2026-10-14 23:47): a library picture + prompt gave a 4 s 1280-wide mp4 with the reference recorded in provenance (est. $0.20).
 * Tests after finish-up: lint 0, types 0, **183 passed / 14 skipped** (+2 Runway); `smoke-generate` 16/16 (provider count 3),
   `smoke-claude-generate` 5/5.
 * Tests: lint 0, types 0, **181 passed / 14 skipped** (+7 `videoGeneration.test.ts`: price and rules, request mapping, decline sends
