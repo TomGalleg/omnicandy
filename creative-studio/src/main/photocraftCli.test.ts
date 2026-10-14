@@ -97,6 +97,8 @@ describe.skipIf(!installed)('PhotoCraftCliAdapter (real photocraft-cli)', () => 
       exportAsset: (id, f) => pc.exportAsset(id, f),
     });
     const graph = demoGraph(ids['harbor-landscape.svg']!);
+    // The engine-command form of the App step (Other PhotoCraft command…), as older workflows store it.
+    graph.nodes.find((n) => n.id === 'n-edit')!.params = { appId: 'photocraft', command: 'image.adjustments.photoFilter', commandParams: '{"filter":"warming85","density":40}' };
     const events: WorkflowRunEvent[] = [];
     const r = await runner.run(graph, { onEvent: (e) => events.push(e), requestApproval: async () => true });
     expect(r).toEqual({ ok: true, cancelled: false });

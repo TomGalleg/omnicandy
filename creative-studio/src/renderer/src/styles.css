@@ -439,3 +439,22 @@ h1, h2, h3 { margin: 0; font-weight: 600; }
 .clip-tools { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding-bottom: 6px; }
 .clip-tools select { height: 24px; font-size: 12px; background: var(--surface-2); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius-sm); max-width: 220px; }
 .clip-tools .spacer { flex: 1; }
+
+/* ---- Workflow: batch table, approval panel, settings lists ---- */
+.wf-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.wf-main .wf-canvas { flex: 1; min-height: 200px; }
+.wf-files { max-height: 34%; overflow: auto; border-top: 1px solid var(--border); background: var(--surface); }
+.wf-files table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.wf-files th, .wf-files td { padding: 4px 8px; text-align: left; border-bottom: 1px solid var(--border); white-space: nowrap; max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
+.wf-files th { color: var(--text-3); font-weight: 600; position: sticky; top: 0; background: var(--surface); }
+.wf-files td.cell.completed { color: var(--ok); }
+.wf-files td.cell.failed { color: var(--danger); }
+.wf-files td.cell.running { color: var(--accent-text); }
+.wf-approval { border-top: 1px solid var(--border); background: var(--surface-2); padding: 10px; display: grid; gap: 8px; max-height: 40%; overflow: auto; }
+.wf-approval-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 8px; }
+.wf-approval-item { display: grid; gap: 4px; padding: 6px; border: 1px solid var(--border); border-radius: var(--radius-sm); cursor: pointer; background: var(--surface); opacity: 0.6; }
+.wf-approval-item.on { opacity: 1; border-color: var(--accent); }
+.wf-approval-item .thumb { aspect-ratio: 1; }
+.wf-file-list { display: grid; gap: 3px; max-height: 260px; overflow: auto; font-size: 12px; }
+.wf-presets { border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 6px 8px; display: grid; gap: 2px; font-size: 12px; }
+.wf-presets legend { font-size: 11px; color: var(--text-3); padding: 0 4px; }

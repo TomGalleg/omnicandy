@@ -30,11 +30,11 @@ export interface NodeSpec {
 export const NODE_SPECS: Record<WorkflowNodeType, NodeSpec> = {
   import: {
     type: 'import',
-    label: 'Import',
-    description: 'An immutable original from the project library.',
+    label: 'Files',
+    description: 'Library files to work on (one, several, or a folder); originals stay read-only.',
     inputs: [],
-    outputs: [{ id: 'image', label: 'Image', type: 'image' }],
-    defaultParams: { assetId: '' },
+    outputs: [{ id: 'image', label: 'Files', type: 'image' }],
+    defaultParams: { mode: 'files', assetIds: '[]', assetId: '', folder: '' },
   },
   aiGenerate: {
     type: 'aiGenerate',
@@ -46,19 +46,19 @@ export const NODE_SPECS: Record<WorkflowNodeType, NodeSpec> = {
   },
   artcraftEdit: {
     type: 'artcraftEdit',
-    label: 'ArtCraft Edit',
-    description: 'Runs an engine command in an ArtCraft app.',
+    label: 'App step',
+    description: 'An edit in an ArtCraft app, run in the background (no window); results are new versions.',
     inputs: [{ id: 'image', label: 'Image', accepts: ['image', 'document'], required: true }],
     outputs: [
       { id: 'image', label: 'Image', type: 'image' },
       { id: 'document', label: 'Editable doc', type: 'document' },
     ],
-    defaultParams: { appId: 'photocraft', command: 'image.adjustments.hueSaturation', commandParams: '{"hue":30,"saturation":15,"lightness":0}' },
+    defaultParams: { appId: 'photocraft', opId: 'blackWhite', values: '{}', command: '', commandParams: '' },
   },
   approval: {
     type: 'approval',
     label: 'Approval',
-    description: 'Blocks downstream nodes until you approve.',
+    description: 'Pauses so you can look at every file and approve or reject them.',
     inputs: [{ id: 'in', label: 'Input', accepts: ['image', 'document'], required: true }],
     outputs: [{ id: 'out', label: 'Approved', type: 'image' }],
     defaultParams: { note: '' },
@@ -66,10 +66,10 @@ export const NODE_SPECS: Record<WorkflowNodeType, NodeSpec> = {
   export: {
     type: 'export',
     label: 'Export',
-    description: 'Writes a deliverable file.',
+    description: 'Writes finished files with Deliver presets into the exports folder.',
     inputs: [{ id: 'in', label: 'Input', accepts: ['image', 'document'], required: true }],
     outputs: [],
-    defaultParams: { format: 'png' },
+    defaultParams: { presets: 'image-jpg' },
   },
 };
 
@@ -168,7 +168,10 @@ export function validateGraph(graph: WorkflowGraph): GraphIssue[] {
         issues.push({ nodeId: n.id, message: `${NODE_SPECS[n.type].label}: required input "${inp.label}" is not connected.` });
       }
     }
-    if (n.type === 'import' && !n.params.assetId) issues.push({ nodeId: n.id, message: 'Import: choose an asset.' });
+    if (n.type === 'import' && (n.params.mode === 'folder' ? !n.params.folder : !n.params.assetId && !/"[^"]+"/.test(n.params.assetIds ?? ''))) {
+      issues.push({ nodeId: n.id, message: n.params.mode === 'folder' ? 'Files: choose a folder.' : 'Files: choose at least one file.' });
+    }
+    if (n.type === 'artcraftEdit' && !n.params.opId && !n.params.command) issues.push({ nodeId: n.id, message: 'App step: choose an edit.' });
   }
   return issues;
 }
@@ -222,22 +225,28 @@ export type NodeRunStatus =
 export type WorkflowRunEvent =
   | { kind: 'run-started'; runId: string; mock: boolean }
   | { kind: 'node-status'; runId: string; nodeId: string; status: NodeRunStatus; message?: string; outputRef?: string }
+  /** The files this run works on (a batch), in order. */
+  | { kind: 'run-items'; runId: string; names: string[] }
+  /** One file at one step. */
+  /** An Approval step is waiting: these files (with their latest version) need your decision. */
+  | { kind: 'approval-request'; runId: string; nodeId: string; note: string; items: Array<{ item: number; name: string; assetId: string }> }
+  | { kind: 'item-status'; runId: string; nodeId: string; item: number; name: string; status: NodeRunStatus; message?: string; assetId?: string }
   | { kind: 'run-finished'; runId: string; ok: boolean; cancelled: boolean };
 
 export function emptyGraph(): WorkflowGraph {
   return { schemaVersion: 1, nodes: [], edges: [] };
 }
 
-/** Starter graph for a new project: Import → ArtCraft Edit → Approval → Export, plus an AI branch. */
+/** Starter graph for a new project: Files → App step → Approval → Export, plus an AI branch. */
 export function demoGraph(assetId: string): WorkflowGraph {
   return {
     schemaVersion: 1,
     nodes: [
       { id: 'n-import', type: 'import', position: { x: 0, y: 80 }, params: { assetId } },
       { id: 'n-gen', type: 'aiGenerate', position: { x: 0, y: 340 }, params: { providerId: 'mock', prompt: 'Warm sunset variation' } },
-      { id: 'n-edit', type: 'artcraftEdit', position: { x: 280, y: 80 }, params: { appId: 'photocraft', command: 'image.adjustments.photoFilter', commandParams: '{"filter":"warming85","density":40}' } },
+      { id: 'n-edit', type: 'artcraftEdit', position: { x: 280, y: 80 }, params: { appId: 'photocraft', opId: 'warm', values: '{}', command: '', commandParams: '' } },
       { id: 'n-approve', type: 'approval', position: { x: 560, y: 80 }, params: { note: 'Check colour balance' } },
-      { id: 'n-export', type: 'export', position: { x: 840, y: 80 }, params: { format: 'png' } },
+      { id: 'n-export', type: 'export', position: { x: 840, y: 80 }, params: { presets: 'image-png' } },
     ],
     edges: [
       { id: 'e1', source: 'n-import', sourceHandle: 'image', target: 'n-edit', targetHandle: 'image' },

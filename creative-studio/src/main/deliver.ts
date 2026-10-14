@@ -109,7 +109,7 @@ export class DeliverQueue {
   }
 
   /** Queues one export per preset for a library file. Throws before queueing anything that can't be exported. */
-  async enqueue(assetId: string, presetIds: string[], requestedBy: 'user' | 'claude' = 'user'): Promise<DeliverJob[]> {
+  async enqueue(assetId: string, presetIds: string[], requestedBy: DeliverJob['requestedBy'] = 'user'): Promise<DeliverJob[]> {
     const a = (await this.d.store.loadManifest()).assets.find((x) => x.id === assetId);
     if (!a) throw new Error('Unknown file.');
     if (!presetIds.length) throw new Error('Pick at least one export format.');

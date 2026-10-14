@@ -35,7 +35,7 @@ describe('validateGraph', () => {
     graph.edges.push({ id: 'bad', source: 'n-export', sourceHandle: 'x', target: 'n-edit', targetHandle: 'image' });
     const msgs = validateGraph(graph).map((i) => i.message).join('\n');
     expect(msgs).toContain('Approval: required input');
-    expect(msgs).toContain('Import: choose an asset');
+    expect(msgs).toContain('Files: choose at least one file');
     expect(msgs).toContain('no output');
   });
 });

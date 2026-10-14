@@ -3,12 +3,16 @@ import {
   addEdge, applyEdgeChanges, applyNodeChanges, Background, Controls, Handle, MiniMap, Position, ReactFlow,
   type Connection, type Edge, type EdgeChange, type IsValidConnection, type Node, type NodeChange, type NodeProps,
 } from '@xyflow/react';
+import { EDITOR_APPS, type EditorAppId, type QuickEdit } from '@shared/appEditors';
+import { DELIVER_PRESETS, type DeliverGroup } from '@shared/deliver';
 import type { IntegrationSnapshot } from '@shared/ipc';
 import { checkPhotoCraftOp, PHOTOCRAFT_PRESETS, presetLabel } from '@shared/photocraftOps';
 import type { Asset, ProjectManifest } from '@shared/types';
 import {
   NODE_SPECS, validateConnection, validateGraph, type NodeRunStatus, type WorkflowGraph, type WorkflowNodeType,
 } from '@shared/workflow';
+import { exportPresetsOf, importAssetIds } from '@shared/workflowRunner';
+import { AssetThumb } from './AssetBrowser';
 
 type StudioNodeData = {
   kind: WorkflowNodeType;
@@ -17,12 +21,15 @@ type StudioNodeData = {
   message?: string;
   outputRef?: string;
   // Derived for display only (not persisted):
-  assetName?: string;
+  summary?: string;
   mock?: boolean;
   previewAssetId?: string;
   onApprove?: (approved: boolean) => void;
 };
 type StudioNode = Node<StudioNodeData, 'studio'>;
+
+const APP_IDS = Object.keys(EDITOR_APPS) as EditorAppId[];
+const GROUP_LABEL: Record<DeliverGroup, string> = { image: 'Pictures', vector: 'Vector art', audio: 'Audio', video: 'Video', design: 'Layouts' };
 
 const toGraph = (nodes: StudioNode[], edges: Edge[]): WorkflowGraph => ({
   schemaVersion: 1,
@@ -30,13 +37,39 @@ const toGraph = (nodes: StudioNode[], edges: Edge[]): WorkflowGraph => ({
   edges: edges.map((e) => ({ id: e.id, source: e.source, sourceHandle: e.sourceHandle ?? '', target: e.target, targetHandle: e.targetHandle ?? '' })),
 });
 
-/** The viewable image for an asset: itself if raster/vector, else its derived PNG (PhotoCraft writes one per version). */
+/** The viewable image for an asset: itself if raster/vector, else its derived PNG (PhotoCraft/DesignCraft write one per version). */
 function previewFor(assets: Asset[], assetId: string | undefined): string | undefined {
   if (!assetId) return undefined;
   const a = assets.find((x) => x.id === assetId);
   if (!a) return undefined;
   if (a.kind === 'image' || a.kind === 'vector') return a.id;
   return assets.find((x) => x.parentId === a.id && x.kind === 'image')?.id;
+}
+
+const stepOp = (p: Record<string, string>): QuickEdit | undefined => EDITOR_APPS[p.appId as EditorAppId]?.quickEdits.find((o) => o.id === p.opId);
+
+/** One line describing what a node does, for the canvas. */
+function summarize(kind: WorkflowNodeType, p: Record<string, string>, assets: Asset[]): string {
+  switch (kind) {
+    case 'import': {
+      if (p.mode === 'folder') return p.folder ? `Folder: ${p.folder.split(/[\\/]/).pop()}` : 'No folder chosen';
+      const ids = importAssetIds(p);
+      if (!ids.length) return 'No files chosen';
+      const first = assets.find((a) => a.id === ids[0])?.name ?? 'missing file';
+      return ids.length === 1 ? first : `${ids.length} files (${first}, …)`;
+    }
+    case 'artcraftEdit': {
+      const app = EDITOR_APPS[p.appId as EditorAppId];
+      if (!p.opId) return `PhotoCraft · ${presetLabel(p.command ?? '')}`;
+      return `${app?.name ?? p.appId} · ${stepOp(p)?.label ?? p.opId}`;
+    }
+    case 'export': {
+      const ps = exportPresetsOf(p).map((id) => DELIVER_PRESETS.find((x) => x.id === id)?.label ?? id);
+      return ps.length ? ps.join(', ') : 'No format chosen';
+    }
+    case 'approval': return p.note || 'Review gate';
+    case 'aiGenerate': return `“${p.prompt || 'No prompt'}” · ${p.providerId}`;
+  }
 }
 
 function StudioNodeView({ data, selected }: NodeProps<StudioNode>) {
@@ -48,11 +81,7 @@ function StudioNodeView({ data, selected }: NodeProps<StudioNode>) {
         <span className={`node-status ${data.status ?? 'idle'}`}>{(data.status ?? 'idle').replace('_', ' ')}</span>
       </div>
       <div className="node-body">
-        {data.kind === 'import' && <span>{data.assetName ?? 'No asset chosen'}</span>}
-        {data.kind === 'aiGenerate' && <span>“{data.params.prompt || 'No prompt'}” · {data.params.providerId}</span>}
-        {data.kind === 'artcraftEdit' && <span>PhotoCraft · {presetLabel(data.params.command ?? '')}</span>}
-        {data.kind === 'approval' && <span>{data.params.note || 'Review gate'}</span>}
-        {data.kind === 'export' && <span>Format: {data.params.format}</span>}
+        <span>{data.summary}</span>
         {data.previewAssetId && <img className="node-preview" src={window.studio.assetUrl(data.previewAssetId)} alt="" draggable={false} />}
         {data.message && <small>{data.message}</small>}
       </div>
@@ -60,12 +89,6 @@ function StudioNodeView({ data, selected }: NodeProps<StudioNode>) {
         <span>{spec.inputs.map((i) => i.label).join(' · ')}</span>
         <span>{spec.outputs.map((o) => o.label).join(' · ')}</span>
       </div>
-      {data.status === 'awaiting_approval' && data.onApprove && (
-        <div className="node-approve">
-          <button className="btn small primary nodrag" onClick={() => data.onApprove!(true)}>Approve</button>
-          <button className="btn small danger nodrag" onClick={() => data.onApprove!(false)}>Reject</button>
-        </div>
-      )}
       {spec.inputs.map((inp, i) => (
         <Handle key={inp.id} id={inp.id} type="target" position={Position.Left} className={`port-${inp.accepts[0]}`}
           style={{ top: 22 + i * 18 }} title={`${inp.label}: accepts ${inp.accepts.join('/')}${inp.required ? ' (required)' : ''}`} />
@@ -88,19 +111,24 @@ interface Props {
   onProjectChanged: () => void;
 }
 
+interface RunFiles { names: string[]; cells: Record<string, Record<number, { status: NodeRunStatus; message?: string }>> }
+interface Approval { nodeId: string; note: string; items: Array<{ item: number; name: string; assetId: string }> }
+
 export function WorkflowEditor({ manifest, integrations, colorMode, log, onProjectChanged }: Props) {
   const [nodes, setNodes] = useState<StudioNode[]>([]);
   const [edges, setEdges] = useState<Edge[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [message, setMessage] = useState<{ text: string; error?: boolean } | null>(null);
   const [running, setRunning] = useState(false);
+  const [files, setFiles] = useState<RunFiles | null>(null);
+  const [approval, setApproval] = useState<Approval | null>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   const assets = useMemo(() => manifest?.assets ?? [], [manifest]);
   const photocraftReal = integrations?.appAdapters.some((a) => a.id === 'photocraft' && !a.isMock) ?? false;
-  const isMockNode = useCallback((kind: WorkflowNodeType) =>
-    kind === 'aiGenerate' || (kind === 'artcraftEdit' && !photocraftReal) || (kind === 'export' && !integrations?.realExport),
-  [photocraftReal, integrations]);
+  const isMockNode = useCallback((kind: WorkflowNodeType, p: Record<string, string>) =>
+    kind === 'aiGenerate' || (kind === 'artcraftEdit' && !p.opId && !photocraftReal),
+  [photocraftReal]);
 
   useEffect(() => {
     void window.studio.loadWorkflow().then((g) => {
@@ -126,37 +154,40 @@ export function WorkflowEditor({ manifest, integrations, colorMode, log, onProje
 
   useEffect(() => window.studio.onWorkflowEvent((ev) => {
     if (ev.kind === 'run-started') log('workflow', `Run ${ev.runId} started${ev.mock ? ' (some steps are MOCK)' : ''}.`);
+    if (ev.kind === 'run-items') setFiles({ names: ev.names, cells: {} });
+    if (ev.kind === 'item-status') {
+      setFiles((f) => f && { ...f, cells: { ...f.cells, [ev.nodeId]: { ...f.cells[ev.nodeId], [ev.item]: { status: ev.status, message: ev.message } } } });
+      if (ev.status === 'completed' || ev.status === 'failed') onProjectChanged();
+    }
+    if (ev.kind === 'approval-request') setApproval({ nodeId: ev.nodeId, note: ev.note, items: ev.items });
     if (ev.kind === 'run-finished') {
-      const outcome = ev.cancelled ? 'cancelled' : ev.ok ? 'completed' : 'stopped';
+      const outcome = ev.cancelled ? 'cancelled' : ev.ok ? 'completed' : 'finished with problems';
       log('workflow', `Run ${ev.runId} ${outcome}.`);
-      setMessage({ text: `Run ${outcome}.${ev.ok ? ' New versions are in the media library.' : ''}`, error: !ev.ok && !ev.cancelled });
+      setMessage({ text: `Run ${outcome}.${ev.ok ? ' New versions are in the library; exports are in the Deliver tab.' : ''}`, error: !ev.ok && !ev.cancelled });
       setRunning(false);
+      setApproval(null);
       onProjectChanged();
     }
     if (ev.kind === 'node-status') {
       if (ev.message) log('workflow', `${ev.nodeId}: ${ev.status}. ${ev.message}`);
+      if (ev.status !== 'awaiting_approval') setApproval((a) => (a?.nodeId === ev.nodeId ? null : a));
       setNodes((ns) => ns.map((n) => n.id === ev.nodeId ? {
         ...n,
-        data: {
-          ...n.data,
-          status: ev.status,
-          message: ev.message,
-          outputRef: ev.outputRef ?? (ev.status === 'queued' ? undefined : n.data.outputRef),
-          onApprove: ev.status === 'awaiting_approval' ? (ok: boolean) => void window.studio.answerApproval(ev.nodeId, ok) : undefined,
-        },
+        data: { ...n.data, status: ev.status, message: ev.message, outputRef: ev.outputRef ?? (ev.status === 'queued' ? undefined : n.data.outputRef) },
       } : n));
     }
   }), [log, onProjectChanged]);
 
   const decorated = useMemo(() => nodes.map((n) => {
     const out = n.data.outputRef?.startsWith('asset:') ? n.data.outputRef.slice(6) : undefined;
+    const first = n.data.kind === 'import' ? importAssetIds(n.data.params)[0] : undefined;
     return {
       ...n,
       data: {
         ...n.data,
-        mock: isMockNode(n.data.kind),
-        assetName: n.data.kind === 'import' ? assets.find((a) => a.id === n.data.params.assetId)?.name : undefined,
-        previewAssetId: n.data.kind === 'import' ? previewFor(assets, n.data.params.assetId) : n.data.kind === 'artcraftEdit' ? previewFor(assets, out) : undefined,
+        mock: isMockNode(n.data.kind, n.data.params),
+        summary: summarize(n.data.kind, n.data.params, assets),
+        previewAssetId: n.data.kind === 'import' ? previewFor(assets, out ?? first) : n.data.kind === 'artcraftEdit' ? previewFor(assets, out) : undefined,
       },
     };
   }), [nodes, assets, isMockNode]);
@@ -181,27 +212,29 @@ export function WorkflowEditor({ manifest, integrations, colorMode, log, onProje
   const addNode = (kind: WorkflowNodeType) => {
     const id = `n-${crypto.randomUUID().slice(0, 8)}`;
     const params = { ...NODE_SPECS[kind].defaultParams };
-    if (kind === 'import') params.assetId = assets.find((a) => a.kind === 'image')?.id ?? '';
+    if (kind === 'import') { const a = assets.find((x) => x.kind === 'image'); if (a) params.assetIds = JSON.stringify([a.id]); }
     setNodes((ns) => [...ns.map((n) => ({ ...n, selected: false })), { id, type: 'studio', selected: true, position: { x: 80 + ns.length * 30, y: 380 + ns.length * 20 }, data: { kind, params } }]);
   };
 
   // Validation the runner will apply, surfaced before running.
   const opIssues = nodes.flatMap((n) => {
-    if (n.data.kind !== 'artcraftEdit') return [];
+    if (n.data.kind !== 'artcraftEdit' || n.data.params.opId) return [];
     const r = checkPhotoCraftOp(n.data.params.command ?? '', n.data.params.commandParams ?? '{}');
-    return r.ok ? [] : [`ArtCraft Edit: ${r.reason}`];
+    return r.ok ? [] : [`App step: ${r.reason}`];
   });
   const issues = [...validateGraph(graph).map((i) => i.message), ...opIssues];
 
   const run = async () => {
     if (issues.length) { setMessage({ text: issues.join(' · '), error: true }); return; }
     setNodes((ns) => ns.map((n) => ({ ...n, data: { ...n.data, status: 'idle', message: undefined, outputRef: undefined } })));
-    setMessage({ text: photocraftReal ? 'Running: PhotoCraft edits are real and add new versions; originals are untouched.' : 'Running with MOCK steps only.' });
+    setFiles(null);
+    setMessage({ text: 'Running in the background: app steps add new versions, exports go to the Deliver tab. No app windows open.' });
     setRunning(true);
     try { await window.studio.runWorkflow(graph); } catch (e) { setMessage({ text: String(e), error: true }); setRunning(false); }
   };
 
-  const anyMock = nodes.some((n) => isMockNode(n.data.kind));
+  const anyMock = nodes.some((n) => isMockNode(n.data.kind, n.data.params));
+  const order = nodes.map((n) => n.id).filter((id) => files?.cells[id]);
 
   return (
     <div className="wf">
@@ -211,35 +244,83 @@ export function WorkflowEditor({ manifest, integrations, colorMode, log, onProje
         ))}
         <span className="spacer" />
         <span className={`wf-msg${message?.error ? ' error' : ''}`} role="status">
-          {message?.text ?? (issues.length ? `${issues.length} issue${issues.length > 1 ? 's' : ''}: ${issues[0]}` : 'Graph valid · autosaved')}
+          {message?.text ?? (issues.length ? `${issues.length} issue${issues.length > 1 ? 's' : ''}: ${issues[0]}` : 'Workflow valid · autosaved')}
         </span>
         {running
           ? <button className="btn small danger" onClick={() => void window.studio.cancelWorkflow()}>Cancel run</button>
           : <button className="btn small primary" onClick={() => void run()} disabled={!nodes.length}>Run {anyMock && <span className="badge-mock">PARTLY MOCK</span>}</button>}
       </div>
       <div className="wf-body">
-        <div className="wf-canvas">
-          <ReactFlow<StudioNode>
-            nodes={decorated}
-            edges={edges}
-            nodeTypes={nodeTypes}
-            onNodesChange={onNodesChange}
-            onEdgesChange={onEdgesChange}
-            onConnect={onConnect}
-            isValidConnection={isValidConnection}
-            colorMode={colorMode}
-            fitView
-            deleteKeyCode={['Delete']}
-          >
-            <Background gap={18} />
-            <Controls />
-            <MiniMap pannable zoomable />
-          </ReactFlow>
+        <div className="wf-main">
+          <div className="wf-canvas">
+            <ReactFlow<StudioNode>
+              nodes={decorated}
+              edges={edges}
+              nodeTypes={nodeTypes}
+              onNodesChange={onNodesChange}
+              onEdgesChange={onEdgesChange}
+              onConnect={onConnect}
+              isValidConnection={isValidConnection}
+              colorMode={colorMode}
+              fitView
+              deleteKeyCode={['Delete']}
+            >
+              <Background gap={18} />
+              <Controls />
+              <MiniMap pannable zoomable />
+            </ReactFlow>
+          </div>
+          {approval && <ApprovalPanel approval={approval} assets={assets} />}
+          {files && files.names.length > 0 && (
+            <div className="wf-files" aria-label="Files in this run">
+              <table>
+                <thead><tr><th>File</th>{order.map((id) => <th key={id}>{decorated.find((n) => n.id === id)?.data.summary}</th>)}</tr></thead>
+                <tbody>
+                  {files.names.map((name, i) => (
+                    <tr key={i}>
+                      <td title={name}>{name}</td>
+                      {order.map((id) => {
+                        const c = files.cells[id]?.[i];
+                        return <td key={id} className={`cell ${c?.status ?? 'idle'}`} title={c?.message}>{c ? (c.status === 'completed' ? '✓' : c.status === 'failed' ? '✕' : c.status === 'running' ? '…' : c.status) : '·'}{c?.status === 'failed' && c.message ? ` ${c.message}` : ''}</td>;
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
         {selectedNode && (
-          <NodeInspector key={selectedNode.id} node={selectedNode} assets={assets} disabled={running} mock={isMockNode(selectedNode.data.kind)}
+          <NodeInspector key={selectedNode.id} node={selectedNode} assets={assets} disabled={running} mock={isMockNode(selectedNode.data.kind, selectedNode.data.params)}
             onChange={(patch) => updateParams(selectedNode.id, patch)} />
         )}
+      </div>
+    </div>
+  );
+}
+
+/** The Approval step: every file's latest version, each with a tick; approve the ticked ones or reject all. */
+function ApprovalPanel({ approval, assets }: { approval: Approval; assets: Asset[] }) {
+  const [ok, setOk] = useState<Set<number>>(() => new Set(approval.items.map((x) => x.item)));
+  return (
+    <div className="wf-approval" role="region" aria-label="Approval">
+      <div className="row-between">
+        <strong>Approve: {approval.note || 'check the results'}</strong>
+        <span className="btn-row">
+          <button className="btn small primary" disabled={!ok.size} onClick={() => void window.studio.answerApproval(approval.nodeId, [...ok])}>Approve {ok.size === approval.items.length ? 'all' : `${ok.size} of ${approval.items.length}`}</button>
+          <button className="btn small danger" onClick={() => void window.studio.answerApproval(approval.nodeId, false)}>Reject all</button>
+        </span>
+      </div>
+      <div className="wf-approval-grid">
+        {approval.items.map((x) => {
+          const a = assets.find((y) => y.id === x.assetId);
+          return (
+            <label key={x.item} className={`wf-approval-item${ok.has(x.item) ? ' on' : ''}`}>
+              {a ? <AssetThumb asset={a} rendition={a.kind === 'image' ? undefined : assets.find((y) => y.parentId === a.id && y.kind === 'image')} /> : <div className="thumb" />}
+              <span className="asset-name" title={a?.name ?? x.name}><input type="checkbox" checked={ok.has(x.item)} onChange={(e) => setOk((s) => { const n = new Set(s); if (e.target.checked) n.add(x.item); else n.delete(x.item); return n; })} /> {a?.name ?? x.name}</span>
+            </label>
+          );
+        })}
       </div>
     </div>
   );
@@ -249,86 +330,140 @@ function NodeInspector({ node, assets, disabled, mock, onChange }: {
   node: StudioNode; assets: Asset[]; disabled: boolean; mock: boolean; onChange: (patch: Record<string, string>) => void;
 }) {
   const p = node.data.params;
-  const [paramsText, setParamsText] = useState(p.commandParams ?? '{}');
-  const check = node.data.kind === 'artcraftEdit' ? checkPhotoCraftOp(p.command ?? '', paramsText) : null;
-  const isPreset = PHOTOCRAFT_PRESETS.some((x) => x.id === p.command);
-  const editable = assets.filter((a) => a.kind === 'image' || a.kind === 'vector' || a.sourceFormat === 'pcraft' || a.sourceFormat === 'psd');
-
   return (
     <aside className="wf-inspector" aria-label="Node settings">
       <div className="pane-header">{NODE_SPECS[node.data.kind].label} settings {mock && <span className="badge-mock">MOCK</span>}</div>
       <div className="wf-inspector-body">
-        {node.data.kind === 'import' && (
-          <label className="field">Asset
-            <select value={p.assetId ?? ''} disabled={disabled} onChange={(e) => onChange({ assetId: e.target.value })}>
-              <option value="">Choose…</option>
-              {editable.map((a) => <option key={a.id} value={a.id}>{a.name}{a.parentId ? ' (version)' : ''}</option>)}
-            </select>
-          </label>
-        )}
-
-        {node.data.kind === 'artcraftEdit' && (
-          <>
-            <label className="field">App
-              <select value="photocraft" disabled><option value="photocraft">PhotoCraft</option></select>
-            </label>
-            <label className="field">Operation
-              <select value={isPreset ? p.command : '__custom'} disabled={disabled} onChange={(e) => {
-                if (e.target.value === '__custom') { onChange({ command: '' }); return; }
-                const preset = PHOTOCRAFT_PRESETS.find((x) => x.id === e.target.value)!;
-                const text = JSON.stringify(preset.params);
-                setParamsText(text);
-                onChange({ command: preset.id, commandParams: text });
-              }}>
-                {PHOTOCRAFT_PRESETS.map((x) => <option key={x.id} value={x.id}>{x.label}</option>)}
-                <option value="__custom">Other PhotoCraft command…</option>
-              </select>
-            </label>
-            {!isPreset && (
-              <label className="field">Command id
-                <input value={p.command ?? ''} disabled={disabled} placeholder="e.g. filter.blur.motionBlur" spellCheck={false} onChange={(e) => onChange({ command: e.target.value.trim() })} />
-              </label>
-            )}
-            <label className="field">Parameters (JSON)
-              <textarea className="mono" value={paramsText} disabled={disabled} spellCheck={false} onChange={(e) => {
-                setParamsText(e.target.value);
-                onChange({ commandParams: e.target.value });
-              }} />
-            </label>
-            <small className={check?.ok ? 'asset-meta' : 'wf-msg error'}>
-              {check?.ok
-                ? 'Allowed. PhotoCraft checks value ranges when it runs.'
-                : check?.reason}
-            </small>
-            <small className="asset-meta">Only adjustments, filters, rotations and fills are allowed: no commands that open, save or reference other files. Vector inputs (SVG) are flattened first.</small>
-          </>
-        )}
-
+        {node.data.kind === 'import' && <FilesSettings p={p} assets={assets} disabled={disabled} onChange={onChange} />}
+        {node.data.kind === 'artcraftEdit' && <StepSettings p={p} disabled={disabled} onChange={onChange} />}
         {node.data.kind === 'approval' && (
           <label className="field">What to check
             <input value={p.note ?? ''} disabled={disabled} onChange={(e) => onChange({ note: e.target.value })} />
           </label>
         )}
-
-        {node.data.kind === 'export' && (
-          <label className="field">Format
-            <select value={p.format ?? 'png'} disabled={disabled} onChange={(e) => onChange({ format: e.target.value })}>
-              {['png', 'jpg', 'webp', 'tif', 'psd', 'pcraft'].map((f) => <option key={f} value={f}>{f.toUpperCase()}</option>)}
-            </select>
-            <small className="asset-meta">Written to the project's exports folder by PhotoCraft.</small>
-          </label>
-        )}
-
+        {node.data.kind === 'export' && <ExportSettings p={p} disabled={disabled} onChange={onChange} />}
         {node.data.kind === 'aiGenerate' && (
           <>
             <label className="field">Prompt
               <textarea value={p.prompt ?? ''} disabled={disabled} onChange={(e) => onChange({ prompt: e.target.value })} />
             </label>
-            <small className="asset-meta">Only the MOCK provider exists: nothing is generated, no network call, $0.</small>
+            <small className="asset-meta">Only the MOCK provider exists here: nothing is generated, no network call, $0.</small>
           </>
         )}
         <small className="asset-meta">Delete key removes the selected node or connection.</small>
       </div>
     </aside>
+  );
+}
+
+function FilesSettings({ p, assets, disabled, onChange }: { p: Record<string, string>; assets: Asset[]; disabled: boolean; onChange: (patch: Record<string, string>) => void }) {
+  const ids = new Set(importAssetIds(p));
+  const setIds = (s: Set<string>) => onChange({ assetIds: JSON.stringify([...s]), assetId: '' });
+  return (
+    <>
+      <div className="field" role="radiogroup" aria-label="Where the files come from">
+        <label><input type="radio" checked={p.mode !== 'folder'} disabled={disabled} onChange={() => onChange({ mode: 'files' })} /> Files from the library</label>
+        <label><input type="radio" checked={p.mode === 'folder'} disabled={disabled} onChange={() => onChange({ mode: 'folder' })} /> Every file in a folder</label>
+      </div>
+      {p.mode === 'folder' ? (
+        <>
+          <div className="btn-row">
+            <button className="btn small" disabled={disabled} onClick={() => void window.studio.pickWorkflowFolder().then((f) => { if (f) onChange({ folder: f }); })}>Choose folder…</button>
+          </div>
+          <small className="asset-meta">{p.folder ? p.folder : 'No folder chosen.'} Files are copied into the library when the run starts; the folder itself is only read.</small>
+        </>
+      ) : (
+        <>
+          <div className="btn-row">
+            <button className="btn small ghost" disabled={disabled} onClick={() => setIds(new Set(assets.map((a) => a.id)))}>All</button>
+            <button className="btn small ghost" disabled={disabled} onClick={() => setIds(new Set())}>None</button>
+            <span className="asset-meta">{ids.size} chosen</span>
+          </div>
+          <div className="wf-file-list" aria-label="Files">
+            {assets.map((a) => (
+              <label key={a.id}>
+                <input type="checkbox" checked={ids.has(a.id)} disabled={disabled} onChange={(e) => { const s = new Set(ids); if (e.target.checked) s.add(a.id); else s.delete(a.id); setIds(s); }} />
+                {' '}{a.name} <span className="asset-meta">{a.kind}</span>
+              </label>
+            ))}
+          </div>
+        </>
+      )}
+    </>
+  );
+}
+
+function StepSettings({ p, disabled, onChange }: { p: Record<string, string>; disabled: boolean; onChange: (patch: Record<string, string>) => void }) {
+  const appId = (p.appId as EditorAppId) || 'photocraft';
+  const app = EDITOR_APPS[appId];
+  const legacy = !p.opId && appId === 'photocraft' && !!p.command;
+  const op = stepOp(p);
+  let values: Record<string, unknown> = {};
+  try { values = JSON.parse(p.values || '{}') as Record<string, unknown>; } catch { /* reset below */ }
+  const setValue = (k: string, v: unknown) => onChange({ values: JSON.stringify({ ...values, [k]: v }) });
+  const [paramsText, setParamsText] = useState(p.commandParams ?? '{}');
+  const check = legacy ? checkPhotoCraftOp(p.command ?? '', paramsText) : null;
+  return (
+    <>
+      <label className="field">App
+        <select aria-label="App" value={appId} disabled={disabled} onChange={(e) => {
+          const a = EDITOR_APPS[e.target.value as EditorAppId];
+          onChange({ appId: a.id, opId: a.quickEdits[0]?.id ?? '', values: '{}', command: '', commandParams: '' });
+        }}>
+          {APP_IDS.map((id) => <option key={id} value={id}>{EDITOR_APPS[id].name}: {EDITOR_APPS[id].blurb}</option>)}
+        </select>
+      </label>
+      <label className="field">Edit
+        <select aria-label="Edit" value={legacy ? '__command' : p.opId ?? ''} disabled={disabled} onChange={(e) => {
+          if (e.target.value === '__command') { const pr = PHOTOCRAFT_PRESETS[0]!; setParamsText(JSON.stringify(pr.params)); onChange({ opId: '', command: pr.id, commandParams: JSON.stringify(pr.params) }); return; }
+          onChange({ opId: e.target.value, values: '{}', command: '', commandParams: '' });
+        }}>
+          {app.quickEdits.map((o) => <option key={o.id} value={o.id}>{o.group}: {o.label}</option>)}
+          {appId === 'photocraft' && <option value="__command">Other PhotoCraft command…</option>}
+        </select>
+      </label>
+      {!legacy && op?.params.map((q) => (
+        <label className="field" key={q.key}>{q.label}{q.type === 'number' && q.unit ? ` (${q.unit})` : ''}
+          {q.type === 'number' && <input type="number" min={q.min} max={q.max} step={q.step} value={String(values[q.key] ?? q.default)} disabled={disabled} onChange={(e) => setValue(q.key, Number(e.target.value))} />}
+          {q.type === 'select' && <select value={String(values[q.key] ?? q.default)} disabled={disabled} onChange={(e) => setValue(q.key, e.target.value)}>{q.options.map((x) => <option key={x.value} value={x.value}>{x.label}</option>)}</select>}
+          {q.type === 'text' && <input value={String(values[q.key] ?? q.default)} maxLength={q.maxLength} disabled={disabled} onChange={(e) => setValue(q.key, e.target.value)} />}
+        </label>
+      ))}
+      {legacy && (
+        <>
+          <label className="field">PhotoCraft command
+            <select value={PHOTOCRAFT_PRESETS.some((x) => x.id === p.command) ? p.command : ''} disabled={disabled} onChange={(e) => {
+              const pr = PHOTOCRAFT_PRESETS.find((x) => x.id === e.target.value);
+              if (pr) { setParamsText(JSON.stringify(pr.params)); onChange({ command: pr.id, commandParams: JSON.stringify(pr.params) }); }
+            }}>
+              {PHOTOCRAFT_PRESETS.map((x) => <option key={x.id} value={x.id}>{x.label}</option>)}
+            </select>
+          </label>
+          <label className="field">Parameters (JSON)
+            <textarea className="mono" value={paramsText} disabled={disabled} spellCheck={false} onChange={(e) => { setParamsText(e.target.value); onChange({ commandParams: e.target.value }); }} />
+          </label>
+          <small className={check?.ok ? 'asset-meta' : 'wf-msg error'}>{check?.ok ? 'Allowed. PhotoCraft checks value ranges when it runs.' : check?.reason}</small>
+        </>
+      )}
+      <small className="asset-meta">{app.name} opens {app.formats.map((f) => f.toUpperCase()).join(', ')}. Runs in the background without a window; each file gets a new version (originals are never changed). Files the app can't open stop at this step; the others carry on.</small>
+    </>
+  );
+}
+
+function ExportSettings({ p, disabled, onChange }: { p: Record<string, string>; disabled: boolean; onChange: (patch: Record<string, string>) => void }) {
+  const chosen = new Set(exportPresetsOf(p));
+  const toggle = (id: string, on: boolean) => { const s = new Set(chosen); if (on) s.add(id); else s.delete(id); onChange({ presets: [...s].join(','), format: '' }); };
+  return (
+    <>
+      {(Object.keys(GROUP_LABEL) as DeliverGroup[]).map((g) => (
+        <fieldset key={g} className="wf-presets">
+          <legend>{GROUP_LABEL[g]}</legend>
+          {DELIVER_PRESETS.filter((x) => x.group === g).map((x) => (
+            <label key={x.id} title={x.note}><input type="checkbox" checked={chosen.has(x.id)} disabled={disabled} onChange={(e) => toggle(x.id, e.target.checked)} /> {x.label}</label>
+          ))}
+        </fieldset>
+      ))}
+      <small className="asset-meta">Each file gets the formats that fit it (a picture can't become a WAV). Exports go to the Deliver tab, with the source version and a checksum.</small>
+    </>
   );
 }

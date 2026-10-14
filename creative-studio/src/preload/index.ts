@@ -19,6 +19,7 @@ const api: StudioApi = {
   runWorkflow: (g) => ipcRenderer.invoke(IPC.runWorkflow, g),
   answerApproval: (nodeId, approved) => ipcRenderer.invoke(IPC.answerApproval, nodeId, approved),
   cancelWorkflow: () => ipcRenderer.invoke(IPC.cancelWorkflow),
+  pickWorkflowFolder: () => ipcRenderer.invoke(IPC.workflowPickFolder),
   onWorkflowEvent: (cb) => {
     const listener = (_e: IpcRendererEvent, ev: WorkflowRunEvent) => cb(ev);
     ipcRenderer.on(IPC.workflowEvent, listener);

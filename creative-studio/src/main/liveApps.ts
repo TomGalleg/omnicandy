@@ -24,6 +24,11 @@ export interface LiveAppOptions {
   writeRoot: string;
   /** Called with the app's process id right after launch (before its window appears). */
   onSpawn?: (pid: number) => void;
+  /**
+   * Run the app's engine in its command-line tool's own MCP server, with no window (workflows).
+   * Only apps with headlessArgs() support it.
+   */
+  headless?: boolean;
 }
 
 abstract class LiveAppBase implements LiveDoc {
@@ -35,8 +40,9 @@ abstract class LiveAppBase implements LiveDoc {
 
   constructor(protected readonly o: LiveAppOptions) {}
 
-  get connected(): boolean { return !!this.mcp?.alive && !!this.gui && this.gui.exitCode === null; }
-  get pid(): number | null { return this.connected ? this.gui!.pid ?? null : null; }
+  get connected(): boolean { return this.o.headless ? !!this.mcp?.alive : !!this.mcp?.alive && !!this.gui && this.gui.exitCode === null; }
+  /** The app window's process (none when headless). */
+  get pid(): number | null { return this.connected && this.gui ? this.gui.pid ?? null : null; }
 
   async ensureStarted(): Promise<void> {
     if (this.connected) return;
@@ -48,10 +54,18 @@ abstract class LiveAppBase implements LiveDoc {
   /** Command-line arguments for the app window (default: just the control port). */
   protected guiArgs(port: number): string[] { return ['--control', String(port)]; }
   protected abstract bridgeArgs(port: number): string[];
+  /** Arguments for the CLI's MCP server running the engine without a window; null when not supported. */
+  protected headlessArgs(): string[] | null { return null; }
 
   private async start(): Promise<void> {
     this.stop();
     await fs.mkdir(this.o.writeRoot, { recursive: true });
+    if (this.o.headless) {
+      const args = this.headlessArgs();
+      if (!args) throw new Error(`The ${this.appId} engine can't run without its window.`);
+      this.mcp = await McpClient.start(path.join(this.o.installDir, `${this.exeName}-cli.exe`), args);
+      return;
+    }
     const port = await freePort();
     const gui = spawn(path.join(this.o.installDir, `${this.exeName}.exe`), this.guiArgs(port), {
       env: { ...process.env, ...this.guiEnv(port) }, stdio: 'ignore', windowsHide: false,
@@ -64,7 +78,7 @@ abstract class LiveAppBase implements LiveDoc {
   }
 
   protected client(): McpClient {
-    if (!this.connected || !this.mcp) throw new Error(`The ${this.appId} window is not running (was it closed?).`);
+    if (!this.connected || !this.mcp) throw new Error(this.o.headless ? `The ${this.appId} engine stopped.` : `The ${this.appId} window is not running (was it closed?).`);
     return this.mcp;
   }
 
@@ -279,6 +293,7 @@ export class LiveFilmCraft extends LiveAppBase {
   protected guiArgs(port: number) { return ['--control', String(port), '--empty', '--no-recover', '--data-dir', path.join(this.o.writeRoot, 'filmcraft-data')]; }
   protected guiEnv() { return {}; }
   protected bridgeArgs(port: number) { return ['mcp', '--bridge', `127.0.0.1:${port}`]; }
+  protected headlessArgs() { return ['--data-dir', path.join(this.o.writeRoot, 'filmcraft-data'), 'mcp']; }
 
   private cmd(id: string, params: Record<string, unknown> = {}, timeoutMs?: number) {
     return this.client().callTool('command_run', { id, params }, timeoutMs);
@@ -373,7 +388,7 @@ export class LiveFilmCraft extends LiveAppBase {
     if (from < 0) throw new Error('Only picture clips (V1) can be reordered.');
     const to = Math.max(0, Math.min(clips.length - 1, Math.round(edit.to)));
     if (to === from) throw new Error('The clip is already there.');
-    // Insert-move: before the clip now at 	o (moving earlier) or after it (moving later).
+    // Insert-move: before the clip now at `to` (moving earlier) or after it (moving later).
     const target = clips[to]!;
     const time = to < from ? target.start : target.start + target.duration;
     return [{ command: 'timeline.move', params: { moves: [{ clip: edit.clip, track: v1!.id, time }], insert: true, linked: true } }];
@@ -446,6 +461,8 @@ export class LiveLightCraft extends LiveAppBase {
   protected guiArgs(port: number) { this.port = port; return ['--control', String(port), '--memory', '--no-demo']; }
   protected guiEnv() { return {}; }
   protected bridgeArgs(port: number) { return ['mcp', '--connect', `127.0.0.1:${port}`]; }
+  /** In-memory session: the user's LightCraft library is never opened. */
+  protected headlessArgs() { return ['mcp']; }
 
   private cmd(command: string, params: Record<string, unknown> = {}) { return this.client().callTool('run_command', { command, params }); }
 
@@ -505,6 +522,7 @@ export class LiveEffectCraft extends LiveAppBase {
   protected guiArgs() { return []; }
   protected guiEnv(port: number) { return { EFFECTCRAFT_CONTROL_PORT: String(port) }; }
   protected bridgeArgs(port: number) { return ['mcp', '--bridge', String(port), '--automation-read-root', this.o.readRoot, '--automation-write-root', this.o.writeRoot]; }
+  protected headlessArgs() { return ['mcp', '--automation-read-root', this.o.readRoot, '--automation-write-root', this.o.writeRoot]; }
 
   private exec(command: string, params: Record<string, unknown> = {}, timeoutMs?: number) {
     return this.client().callTool('execute_command', { command, params }, timeoutMs);
@@ -583,6 +601,7 @@ export class LiveDesignCraft extends LiveAppBase {
   protected guiArgs(port: number) { return ['--control', String(port)]; }
   protected guiEnv() { return {}; }
   protected bridgeArgs(port: number) { return ['mcp', '--connect', String(port)]; }
+  protected headlessArgs() { return ['mcp']; }
 
   async open(absPath: string) {
     await this.client().callTool('open_document', { path: absPath });

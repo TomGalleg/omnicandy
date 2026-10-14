@@ -52,7 +52,11 @@ export interface AssetRepository {
 
 export interface WorkflowRunOptions {
   onEvent(event: WorkflowRunEvent): void;
-  requestApproval(nodeId: string, summary: string): Promise<boolean>;
+  /**
+   * Waits for your decision at an Approval step. `true` approves every file, `false` none, or a
+   * list of the approved files' indexes (the others stop there).
+   */
+  requestApproval(nodeId: string, summary: string, items?: Array<{ item: number; name: string; assetId: string }>): Promise<boolean | number[]>;
   /** Explicit consent for billable calls. Undefined means no consent. */
   consentToBillable?: (nodeId: string, estimate: string) => Promise<boolean>;
   signal?: AbortSignal;

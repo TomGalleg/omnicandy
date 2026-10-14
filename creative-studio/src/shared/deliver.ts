@@ -104,7 +104,7 @@ export interface DeliverJob {
   presetId: string;
   presetLabel: string;
   status: DeliverStatus;
-  requestedBy: 'user' | 'claude';
+  requestedBy: 'user' | 'claude' | 'workflow';
   queuedAt: string;
   startedAt?: string;
   finishedAt?: string;
@@ -121,7 +121,7 @@ export interface DeliverRecord {
   preset: string;
   presetLabel: string;
   app: EditorAppId;
-  requestedBy: 'user' | 'claude';
+  requestedBy: 'user' | 'claude' | 'workflow';
   source: { assetId: string; name: string; sha256: string; versions: string[] };
   output: { file: string; bytes: number; sha256: string };
   ms: number;

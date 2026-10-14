@@ -19,6 +19,7 @@ export const IPC = {
   runWorkflow: 'workflow:run',
   answerApproval: 'workflow:approval',
   cancelWorkflow: 'workflow:cancel',
+  workflowPickFolder: 'workflow:pick-folder',
   workflowEvent: 'workflow:event',
   listExports: 'exports:list',
   revealExport: 'exports:reveal',
@@ -141,8 +142,11 @@ export interface StudioApi {
   loadWorkflow(): Promise<WorkflowGraph>;
   saveWorkflow(g: WorkflowGraph): Promise<{ ok: true } | { ok: false; issues: string[] }>;
   runWorkflow(g: WorkflowGraph): Promise<{ ok: boolean; cancelled: boolean }>;
-  answerApproval(nodeId: string, approved: boolean): Promise<void>;
+  /** true = approve every file, false = reject, or the indexes of the approved files. */
+  answerApproval(nodeId: string, approved: boolean | number[]): Promise<void>;
   cancelWorkflow(): Promise<void>;
+  /** Native folder picker for a workflow's Files step; null when cancelled. */
+  pickWorkflowFolder(): Promise<string | null>;
   onWorkflowEvent(cb: (e: WorkflowRunEvent) => void): () => void;
   listExports(): Promise<Array<{ name: string; bytes: number; modified: string }>>;
   revealExport(name: string): Promise<void>;

@@ -20,6 +20,7 @@ import { PhotoCraftCliAdapter } from './photocraftCli';
 import type { ProjectManager } from './projects';
 import { EDITOR_APPS, type EditorAppId } from '@shared/appEditors';
 import { DeliverQueue } from './deliver';
+import { WorkflowSteps } from './workflowSteps';
 import type { EmbeddedApp } from './embeddedApp';
 import { LiveDesignCraft, LiveEffectCraft, LiveFilmCraft, LiveLightCraft, LiveSoundCraft, LiveVectorCraft } from './liveApps';
 import { LivePhotoCraft } from './photocraftLive';
@@ -76,7 +77,7 @@ export function registerIpc(d: IpcDeps): void {
     };
   })());
 
-  let running: { abort: AbortController; approvals: Map<string, (ok: boolean) => void> } | null = null;
+  let running: { abort: AbortController; approvals: Map<string, (ok: boolean | number[]) => void> } | null = null;
 
   handle(IPC.getAppearance, none, () => d.settings.load());
   handle(IPC.setAppearance, z.tuple([z.unknown()]), async (raw) => {
@@ -136,22 +137,37 @@ export function registerIpc(d: IpcDeps): void {
     const issues = validateGraph(g);
     if (issues.length) throw new Error(issues.map((i) => i.message).join('\n'));
     const abort = new AbortController();
-    const approvals = new Map<string, (ok: boolean) => void>();
+    const approvals = new Map<string, (ok: boolean | number[]) => void>();
     running = { abort, approvals };
     abort.signal.addEventListener('abort', () => { for (const r of approvals.values()) r(false); });
+    // Real side effects for this run: app edits in the background (no windows) and Deliver exports.
+    const steps = new WorkflowSteps({ store: await d.project(), installDir: (app) => PFdir(EDITOR_APPS[app].name), deliver: () => deliver() });
     try {
-      return await new WorkflowRunner(await runnerDeps()).run(g, {
+      const base = await runnerDeps();
+      return await new WorkflowRunner({
+        ...base,
+        resolveImport: (p) => steps.resolveImport(p),
+        applyStep: (s, inputs) => steps.applyStep(s, inputs),
+        deliver: (inputs, presets) => steps.deliver(inputs, presets),
+      }).run(g, {
         signal: abort.signal,
         onEvent: (ev) => d.window()?.webContents.send(IPC.workflowEvent, ev),
-        requestApproval: (nodeId) => new Promise<boolean>((resolve) => approvals.set(nodeId, resolve)),
+        requestApproval: (nodeId) => new Promise<boolean | number[]>((resolve) => approvals.set(nodeId, resolve)),
         // No consent path in Phase 1: any billable provider is refused.
         consentToBillable: undefined,
       });
     } finally {
       running = null;
+      await steps.close();
     }
   });
-  handle(IPC.answerApproval, z.tuple([z.string().max(128), z.boolean()]), (nodeId, approved) => {
+  handle(IPC.workflowPickFolder, none, async () => {
+    const win = d.window();
+    const o: Electron.OpenDialogOptions = { title: 'Folder of files for the workflow (they are copied into the library)', properties: ['openDirectory'] };
+    const r = await (win ? dialog.showOpenDialog(win, o) : dialog.showOpenDialog(o));
+    return r.canceled ? null : r.filePaths[0] ?? null;
+  });
+  handle(IPC.answerApproval, z.tuple([z.string().max(128), z.union([z.boolean(), z.array(z.number().int().min(0).max(10_000)).max(10_000)])]), (nodeId, approved) => {
     const r = running?.approvals.get(nodeId);
     if (!r) throw new Error('No approval pending for that node.');
     running!.approvals.delete(nodeId);

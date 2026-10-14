@@ -1,18 +1,47 @@
-// Workflow runner. Walks the graph in topological order and reports node states. All side
-// effects go through injected adapters: real ones (PhotoCraft CLI) or explicitly labelled mocks.
-// Billable providers are refused without explicit consent.
+// Workflow runner. Walks the graph in topological order; an Import node can bring in many files
+// (a batch), and every later step runs once per file, step by step (so an Approval step sees all
+// files at once). All side effects go through injected adapters: real ones (the ArtCraft apps'
+// command-line engines, the Deliver queue) or explicitly labelled mocks. A file that fails a step
+// stops there; the other files carry on. Billable providers are refused without explicit consent.
 
 import type { AppAdapter, GenerationProvider, WorkflowExecutor, WorkflowRunOptions } from './contracts';
 import { topologicalOrder, validateGraph, type NodeRunStatus, type WorkflowGraph } from './workflow';
 
+export interface StepRequest { appId: string; opId: string; values: Record<string, unknown> }
+
 export interface RunnerDeps {
   apps: Record<string, AppAdapter>;
   providers: Record<string, GenerationProvider>;
-  /** Writes a deliverable for an asset; returns a display name. Absent → export is simulated. */
+  /** Library files for an Import node: chosen files, or a folder imported into the library first. */
+  resolveImport?: (params: Record<string, string>, signal?: AbortSignal) => Promise<Array<{ assetId: string; name: string }>>;
+  /**
+   * Runs one app edit on a file in the background (no window) and adds the result as new versions.
+   * `inputs` are the file's current versions, main first; the step picks the one the app can open.
+   */
+  applyStep?: (step: StepRequest, inputs: string[], signal?: AbortSignal) => Promise<{ assetIds: string[]; message: string }>;
+  /** Exports a file with Deliver presets (exports folder + manifest); returns the file names. */
+  deliver?: (inputs: string[], presetIds: string[], signal?: AbortSignal) => Promise<string[]>;
+  /** Legacy single-format export (PhotoCraft convert). Absent with no `deliver` → export is simulated. */
   exportAsset?: (assetId: string, format: string) => Promise<string>;
   /** Delay per node so the UI can show progress; 0 in tests. */
   stepMs?: number;
   newRunId?: () => string;
+}
+
+/** Old graphs stored one export format; Deliver presets replace it. */
+const LEGACY_FORMAT: Record<string, string> = { png: 'image-png', jpg: 'image-jpg', webp: 'image-webp', tif: 'image-tiff', psd: 'image-psd' };
+export function exportPresetsOf(params: Record<string, string>): string[] {
+  const list = (params.presets ?? '').split(',').map((s) => s.trim()).filter(Boolean);
+  if (list.length) return list;
+  return params.format && LEGACY_FORMAT[params.format] ? [LEGACY_FORMAT[params.format]!] : [];
+}
+
+/** The files an Import node names (JSON list in `assetIds`, or the single legacy `assetId`). */
+export function importAssetIds(params: Record<string, string>): string[] {
+  let ids: string[] = [];
+  try { const v = JSON.parse(params.assetIds || '[]') as unknown; if (Array.isArray(v)) ids = v.filter((x): x is string => typeof x === 'string'); } catch { /* invalid → none */ }
+  if (!ids.length && params.assetId) ids = [params.assetId];
+  return [...new Set(ids)];
 }
 
 const sleep = (ms: number, signal?: AbortSignal) =>
@@ -26,9 +55,12 @@ const sleep = (ms: number, signal?: AbortSignal) =>
 export function graphUsesMocks(graph: WorkflowGraph, deps: RunnerDeps): boolean {
   return graph.nodes.some((n) =>
     (n.type === 'aiGenerate' && (deps.providers[n.params.providerId ?? '']?.isMock ?? true)) ||
-    (n.type === 'artcraftEdit' && (deps.apps[n.params.appId ?? '']?.isMock ?? true)) ||
-    (n.type === 'export' && !deps.exportAsset));
+    (n.type === 'artcraftEdit' && !(n.params.opId && deps.applyStep) && (deps.apps[n.params.appId ?? '']?.isMock ?? true)) ||
+    (n.type === 'export' && !deps.deliver && !deps.exportAsset));
 }
+
+/** One file going through the workflow: its current versions (main first), or null once it stopped. */
+interface Item { name: string; refs: string[] | null }
 
 export class WorkflowRunner implements WorkflowExecutor {
   readonly isMock = false;
@@ -38,6 +70,8 @@ export class WorkflowRunner implements WorkflowExecutor {
     const runId = this.deps.newRunId?.() ?? `run-${Date.now()}`;
     const emit = (nodeId: string, status: NodeRunStatus, message?: string, outputRef?: string) =>
       o.onEvent({ kind: 'node-status', runId, nodeId, status, message, outputRef });
+    const emitItem = (nodeId: string, item: number, name: string, status: NodeRunStatus, message?: string, assetId?: string) =>
+      o.onEvent({ kind: 'item-status', runId, nodeId, item, name, status, message, assetId });
     const finish = (ok: boolean, cancelled: boolean) => {
       o.onEvent({ kind: 'run-finished', runId, ok, cancelled });
       return { ok, cancelled };
@@ -53,29 +87,63 @@ export class WorkflowRunner implements WorkflowExecutor {
     const order = topologicalOrder(graph);
     for (const id of order) emit(id, 'queued');
 
-    const outputs = new Map<string, string>();
+    const outputs = new Map<string, Item[]>();
     const halted = new Set<string>(); // nodes that did not complete; their descendants are blocked
+    let anyFailed = false;
+    const cancelFrom = (id: string) => { for (const rest of order.slice(order.indexOf(id))) emit(rest, 'cancelled'); return finish(false, true); };
+
     for (const id of order) {
-      if (o.signal?.aborted) {
-        for (const rest of order.slice(order.indexOf(id))) emit(rest, 'cancelled');
-        return finish(false, true);
-      }
+      if (o.signal?.aborted) return cancelFrom(id);
       const node = graph.nodes.find((n) => n.id === id)!;
       const upstream = graph.edges.filter((e) => e.target === id).map((e) => e.source);
       if (upstream.some((u) => halted.has(u))) {
         halted.add(id);
-        emit(id, 'blocked', 'An upstream node did not complete.');
+        emit(id, 'blocked', 'An upstream step did not complete.');
         continue;
       }
       emit(id, 'running');
       await sleep(this.deps.stepMs ?? 0, o.signal);
+      const input = upstream.map((u) => outputs.get(u)).find(Boolean) ?? [];
+      const live = input.map((it, i) => ({ it, i })).filter((x) => x.it.refs);
+
+      /** Runs `fn` for every file still going; per-file failures stop only that file. */
+      const perItem = async (fn: (it: Item, i: number) => Promise<{ refs: string[]; message?: string }>) => {
+        const out: Item[] = input.map((it) => ({ name: it.name, refs: null }));
+        let done = 0, failed = 0;
+        for (const { it, i } of live) {
+          if (o.signal?.aborted) return null;
+          emitItem(id, i, it.name, 'running');
+          try {
+            const r = await fn(it, i);
+            out[i] = { name: it.name, refs: r.refs };
+            done++;
+            emitItem(id, i, it.name, 'completed', r.message, r.refs[0]);
+          } catch (err) {
+            failed++;
+            emitItem(id, i, it.name, 'failed', err instanceof Error ? err.message : String(err));
+          }
+          if (live.length > 1) emit(id, 'running', `${done + failed} of ${live.length} files`);
+        }
+        if (failed) anyFailed = true;
+        return { out, done, failed };
+      };
+      const summary = (done: number, failed: number, what: string) =>
+        live.length === 1 && !failed ? what : `${what}: ${done} of ${live.length} file${live.length === 1 ? '' : 's'}${failed ? `, ${failed} failed` : ''}.`;
+
       try {
-        const input = upstream.map((u) => outputs.get(u)).find(Boolean);
         switch (node.type) {
-          case 'import':
-            outputs.set(id, `asset:${node.params.assetId}`);
-            emit(id, 'completed', 'Original referenced (read-only).', outputs.get(id));
+          case 'import': {
+            const files = this.deps.resolveImport
+              ? await this.deps.resolveImport(node.params, o.signal)
+              : importAssetIds(node.params).map((assetId) => ({ assetId, name: assetId }));
+            if (!files.length) throw new Error('No files to work on.');
+            const items = files.map((f) => ({ name: f.name, refs: [f.assetId] }));
+            outputs.set(id, items);
+            o.onEvent({ kind: 'run-items', runId, names: items.map((x) => x.name) });
+            items.forEach((it, i) => emitItem(id, i, it.name, 'completed', 'Original (read-only).', it.refs[0]));
+            emit(id, 'completed', files.length === 1 ? 'Original referenced (read-only).' : `${files.length} files (originals stay read-only).`, `asset:${files[0]!.assetId}`);
             break;
+          }
           case 'aiGenerate': {
             const p = this.deps.providers[node.params.providerId ?? ''];
             if (!p) throw new Error(`Provider "${node.params.providerId}" is not configured.`);
@@ -89,49 +157,79 @@ export class WorkflowRunner implements WorkflowExecutor {
               }
             }
             const { jobId } = await p.submit({ modelId: 'mock-image', prompt: node.params.prompt ?? '', referenceAssetIds: [] }, null);
-            outputs.set(id, `mock-generation:${jobId}`);
-            emit(id, 'completed', p.isMock ? 'MOCK provider: no image generated, no network call.' : 'Generated.', outputs.get(id));
+            outputs.set(id, [{ name: 'Generated', refs: null }]);
+            emit(id, 'completed', p.isMock ? 'MOCK provider: no image generated, no network call.' : 'Generated.', `mock-generation:${jobId}`);
             break;
           }
           case 'artcraftEdit': {
-            const app = this.deps.apps[node.params.appId ?? ''];
-            if (!app) throw new Error(`App adapter "${node.params.appId}" is not available.`);
-            let params: Record<string, unknown> = {};
-            try { params = JSON.parse(node.params.commandParams || '{}'); } catch { throw new Error('Command parameters are not valid JSON.'); }
-            const { documentId } = await app.open(input ?? '');
-            const r = await app.execute(documentId, { command: node.params.command ?? '', params });
-            const out = r.outputAssetIds[0] ? `asset:${r.outputAssetIds[0]}` : r.checkpointId;
-            outputs.set(id, out);
-            emit(id, 'completed', app.isMock
-              ? `MOCK ${node.params.appId}: no real app was driven.`
-              : `${node.params.command} applied by PhotoCraft; ${r.outputAssetIds.length} new version(s) added to the library.`, out);
+            const appId = node.params.appId ?? '';
+            const opId = node.params.opId ?? '';
+            let r;
+            if (opId && this.deps.applyStep) {
+              let values: Record<string, unknown> = {};
+              try { values = JSON.parse(node.params.values || '{}') as Record<string, unknown>; } catch { throw new Error('Step settings are not valid JSON.'); }
+              r = await perItem(async (it) => {
+                const res = await this.deps.applyStep!({ appId, opId, values }, it.refs!, o.signal);
+                return { refs: res.assetIds, message: res.message };
+              });
+            } else {
+              const app = this.deps.apps[appId];
+              if (!app) throw new Error(`App adapter "${appId}" is not available.`);
+              let params: Record<string, unknown> = {};
+              try { params = JSON.parse(node.params.commandParams || '{}'); } catch { throw new Error('Command parameters are not valid JSON.'); }
+              r = await perItem(async (it) => {
+                const { documentId } = await app.open(`asset:${it.refs![0]}`);
+                const res = await app.execute(documentId, { command: node.params.command ?? '', params });
+                return { refs: res.outputAssetIds.length ? res.outputAssetIds : [res.checkpointId], message: app.isMock ? `MOCK ${appId}` : undefined };
+              });
+            }
+            if (!r) return cancelFrom(id);
+            outputs.set(id, r.out);
+            const first = r.out.find((x) => x.refs)?.refs?.[0];
+            if (!r.done) { halted.add(id); emit(id, 'failed', summary(0, r.failed, 'Failed')); break; }
+            const what = opId && this.deps.applyStep ? 'Done; new versions are in the library'
+              : this.deps.apps[appId]?.isMock ? `MOCK ${appId}: no real app was driven` : `${node.params.command} applied by PhotoCraft; new versions are in the library`;
+            emit(id, 'completed', summary(r.done, r.failed, what), first ? `asset:${first}` : undefined);
             break;
           }
           case 'approval': {
+            const waiting = live.map(({ it, i }) => ({ item: i, name: it.name, assetId: it.refs![0]! }));
             emit(id, 'awaiting_approval', node.params.note || 'Waiting for your approval.');
-            const approved = await o.requestApproval(id, node.params.note || 'Approve to continue');
-            if (o.signal?.aborted) {
-              for (const rest of order.slice(order.indexOf(id))) emit(rest, 'cancelled');
-              return finish(false, true);
-            }
-            if (!approved) {
+            o.onEvent({ kind: 'approval-request', runId, nodeId: id, note: node.params.note || '', items: waiting });
+            const answer = await o.requestApproval(id, node.params.note || 'Approve to continue', waiting);
+            if (o.signal?.aborted) return cancelFrom(id);
+            const approved = new Set(answer === true ? waiting.map((w) => w.item) : Array.isArray(answer) ? answer : []);
+            const out = input.map((it, i) => ({ name: it.name, refs: approved.has(i) ? it.refs : null }));
+            for (const w of waiting) emitItem(id, w.item, w.name, approved.has(w.item) ? 'completed' : 'failed', approved.has(w.item) ? 'Approved.' : 'Rejected.', w.assetId);
+            outputs.set(id, out);
+            if (!approved.size) {
               halted.add(id);
-              emit(id, 'failed', 'Rejected. Downstream nodes will not run.');
+              emit(id, 'failed', 'Rejected. Downstream steps will not run.');
               continue;
             }
-            outputs.set(id, input ?? '');
-            emit(id, 'completed', 'Approved.', input);
+            emit(id, 'completed', approved.size === waiting.length ? 'Approved.' : `Approved ${approved.size} of ${waiting.length} files.`, waiting[0] ? `asset:${waiting[0].assetId}` : undefined);
             break;
           }
           case 'export': {
-            const format = node.params.format || 'png';
-            if (!this.deps.exportAsset) {
-              emit(id, 'completed', `MOCK export (${format}): no file written.`);
+            const presets = exportPresetsOf(node.params);
+            if (!this.deps.deliver && !this.deps.exportAsset) {
+              emit(id, 'completed', `MOCK export (${presets.join(', ') || node.params.format}): no file written.`);
               break;
             }
-            if (!input?.startsWith('asset:')) throw new Error('Nothing real to export: the upstream node produced no file.');
-            const name = await this.deps.exportAsset(input.slice('asset:'.length), format);
-            emit(id, 'completed', `Exported exports/${name}`, `export:${name}`);
+            if (!live.length) throw new Error('Nothing real to export: the upstream step produced no file.');
+            if (!presets.length && !this.deps.exportAsset) throw new Error('Pick at least one export format.');
+            const files: string[] = [];
+            const r = await perItem(async (it) => {
+              const names = this.deps.deliver && presets.length
+                ? await this.deps.deliver(it.refs!, presets, o.signal)
+                : [await this.deps.exportAsset!(it.refs![0]!, node.params.format || 'png')];
+              files.push(...names);
+              return { refs: it.refs!, message: names.map((n) => `exports/${n}`).join(', ') };
+            });
+            if (!r) return cancelFrom(id);
+            outputs.set(id, r.out);
+            if (!r.done) { halted.add(id); emit(id, 'failed', summary(0, r.failed, 'Export failed')); break; }
+            emit(id, 'completed', files.length === 1 ? `Exported exports/${files[0]}` : summary(r.done, r.failed, `Exported ${files.length} files`), `export:${files[0]}`);
             break;
           }
         }
@@ -140,6 +238,6 @@ export class WorkflowRunner implements WorkflowExecutor {
         emit(id, 'failed', err instanceof Error ? err.message : String(err));
       }
     }
-    return finish(halted.size === 0, false);
+    return finish(halted.size === 0 && !anyFailed, false);
   }
 }
