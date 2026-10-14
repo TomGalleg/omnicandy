@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { TimelineDto, TimelineEdit } from '@shared/live';
-import type { Asset, ProjectManifest } from '@shared/types';
+import type { Asset, ProjectManifest, WorkspaceId } from '@shared/types';
 import { shouldShowTimeline } from '@shared/timeline';
 import type { LiveApi } from '../useLive';
 import { Waveform } from './Waveform';
@@ -19,10 +19,10 @@ const SOURCE_LABEL: Record<string, string> = {
 };
 
 /** Context-sensitive bottom area: a timeline only for time-based media, otherwise the activity log. */
-export function BottomPanel({ selected, log, liveApi, manifest, open = true, onToggle }: {
-  selected: Asset | null; log: LogEntry[]; liveApi: LiveApi; manifest?: ProjectManifest | null; open?: boolean; onToggle?: () => void;
+export function BottomPanel({ selected, log, liveApi, manifest, open = true, onToggle, workspace }: {
+  workspace?: WorkspaceId; selected: Asset | null; log: LogEntry[]; liveApi: LiveApi; manifest?: ProjectManifest | null; open?: boolean; onToggle?: () => void;
 }) {
-  const timeline = shouldShowTimeline(selected?.kind);
+  const timeline = shouldShowTimeline(selected?.kind, workspace);
   const live = liveApi.live;
   const liveApp = !!selected && live?.status === 'ready' && live.asset?.id === selected.id && (live.appId === 'filmcraft' || live.appId === 'soundcraft') ? live.appId : null;
   const hint = liveApp === 'filmcraft' ? 'Live from FilmCraft: click the ruler to move the playhead, a clip to select it'

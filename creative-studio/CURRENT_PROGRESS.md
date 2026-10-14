@@ -20,7 +20,7 @@ Evidence for each integration (exact commands, versions and test results) is in
 still describes "Phase 2, steps 1–2"); this file and the audit are the current picture.
 
 **Resume here (new conversation):** follow Tomas's Master Development Instructions (phases 0–10).
-Phase 0 audit, Phase 1, Phase 2 and Phase 3 (3.1-3.4, plus the two gap fixes below) are done (see "Master plan status" below). **Next: Phase 4 (Simplified / Advanced navigation), after Tomas's OK of Phase 3.** Keep work in small milestones and replies short.
+Phase 0 audit, Phase 1, Phase 2 and Phase 3 (3.1-3.4, plus the two gap fixes below) are done (see "Master plan status" below). Phase 4 (Simplified / Advanced navigation) is done too. **Next: Phase 5 (Claude-created workflows), after Tomas's OK of Phase 4.** Keep work in small milestones and replies short.
 
 ## Master plan status (Phase 0 audit, 2026-10-14)
 
@@ -42,7 +42,7 @@ typecheck 0, Vitest 135 passed / 14 skipped (opt-in live tests).
 | 3.2 | AI-first creation: real Claude call returns name, type, finished output, apps, AI tools, steps, questions; user approves; project created in chosen/default folder; optional reference import; opens matching workspace | **WORKING** (one real Claude call verified) | 3.1 | `smoke-home-ai.mjs` 6/6 (real Claude, Sonnet 5.5) |
 | 3.3 | Blank project: name, type (5 categories), folder | **WORKING** | 3.1 | `projects.test.ts`, `smoke-projects.mjs` |
 | 3.4 | Project Overview: brief, objective, progress, latest artwork, items to review, recent versions/exports, Continue creating, workspace + selected file restored | **WORKING**: Claude chat is saved in the project folder and restored on reopen (see "Phase 3 gaps closed") | 3.1 | `projects.test.ts`, `projectStore.test.ts`, `smoke-home-ai.mjs`, screenshots 46-47 |
-| 4 | Simplified / Advanced navigation | NOT IMPLEMENTED | 1, 3 | smoke |
+| 4 | Simplified / Advanced navigation | **WORKING** | 1, 3 | `navigation.test.ts`, `smoke-nav.mjs` 7/7 |
 | 5 | Claude builds and runs workflows (shared engine) | NOT IMPLEMENTED (Claude has no workflow tools) | 1.4 | real Claude run + `workflowRunner` tests |
 | 6 | Real Gemini / OpenAI image generation; spending limits; Workflow AI node | PARTIAL (mocked-HTTP tests only; Workflow AI node is MOCK) | user's keys + OK | one approved real call per provider |
 | 7 | AI video providers (Veo, Runway, Luma) | NOT IMPLEMENTED | 6 | per provider |
@@ -152,6 +152,19 @@ Phase 3 gaps closed (2026-10-14):
   `smoke-projects.mjs` 13/13, `smoke-docks.mjs` 15/15. No generation was started. Not covered: the native file
   dialog itself (stubbed in the smoke) and a UI test of Move/Duplicate carrying the chat (logic is a whole-folder copy).
 
+Phase 4 (2026-10-14):
+* Header has two configurations, same project files and workflow system. **Simplified** (default): Project, Create,
+  AI Generate, Deliver, **More** (menu: Media, Workflow, Effects, Color, Audio; More shows "More: <tool>" while one is open).
+  **Advanced**: full navigation (Home, Media, Edit, AI Generate, Workflow, Effects, Color, Audio, Deliver). A header
+  button switches modes at any time; the open workspace stays open; the choice is remembered (localStorage `cs-nav-mode`).
+  Claude opening a file in Color/Effects/Audio still moves there in both modes. Code: `src/shared/navigation.ts`, `Header.tsx`.
+* Timelines now show only while editing time-based media in Edit/Effects/Color/Audio (`shouldShowTimeline(kind, workspace)`),
+  not in Project, Media, AI Generate, Workflow or Deliver.
+* Not done: specialist tools are not auto-promoted to the main row by project type (always under More in Simplified).
+* Tests: lint 0, types 0, **156 passed / 14 skipped** (+3 navigation); `smoke-nav.mjs` 7/7 (new), `smoke-docks.mjs` 15/15,
+  `smoke-projects.mjs` 13/13. Other smokes click header tabs by name and now start in Simplified: they need the
+  Advanced mode (or `More`) and were not updated or re-run. Screenshots `48-nav-simplified-more.png`, `49-nav-advanced.png`.
+
 Phase 1 note: the old `integrationStatus().claude` field in `src/main/ipc.ts` still says "not
 configured in this build" (stale); Settings now shows Claude's real sign-in state instead.
 
@@ -198,7 +211,7 @@ built-in demos, a DesignCraft flyer). Tests: `projects.test.ts`, `projectStore.t
 
 ## 4. Simplified and Advanced navigation
 
-**NOT IMPLEMENTED.** There is one navigation layout: a header with nine workspace tabs (Home, Media,
+**WORKING** since Phase 4 (see above). Before that there was one navigation layout: a header with nine workspace tabs (Home, Media,
 Edit, AI Generate, Workflow, Effects, Color, Audio, Deliver) and a Settings button (no status chips
 since Phase 1.1); the media browser + inspector docks on the left behind a vertical Media tab, a
 context bottom panel (timeline for audio/video, activity log otherwise), and the Claude panel docks

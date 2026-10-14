@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Group, Panel, Separator, useDefaultLayout, usePanelRef, type PanelSize } from 'react-resizable-panels';
 import { EDITOR_APPS } from '@shared/appEditors';
 import type { IntegrationSnapshot } from '@shared/ipc';
+import { parseNavMode, type NavMode } from '@shared/navigation';
 import { shouldShowTimeline } from '@shared/timeline';
 import type { AppProbeResult, ProjectManifest, WorkspaceId } from '@shared/types';
 import { AssetBrowser } from './components/AssetBrowser';
@@ -100,6 +101,8 @@ function SideTab({ label, text, open, onToggle, controls, shortcut, side }: {
 export function App() {
   const appearance = useAppearance();
   const [workspace, setWorkspace] = useState<WorkspaceId>('home');
+  const [navMode, setNavModeState] = useState<NavMode>(() => parseNavMode(read('cs-nav-mode')));
+  const setNavMode = useCallback((m: NavMode) => { write('cs-nav-mode', m); setNavModeState(m); }, []);
   const [manifest, setManifest] = useState<ProjectManifest | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [apps, setApps] = useState<AppProbeResult[]>([]);
@@ -199,7 +202,7 @@ export function App() {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [toggleMedia, toggleClaude]);
-  const bottom = useBottom(shouldShowTimeline(selected?.kind) ? 'timeline' : 'activity');
+  const bottom = useBottom(shouldShowTimeline(selected?.kind, workspace) ? 'timeline' : 'activity');
 
   return (
     <div className="app">
@@ -208,6 +211,8 @@ export function App() {
         onProjectHome={() => setWorkspace('home')}
         workspace={workspace}
         onWorkspace={setWorkspace}
+        navMode={navMode}
+        onNavMode={setNavMode}
         apps={apps}
         integrations={integrations}
         appearance={appearance}
@@ -255,7 +260,7 @@ export function App() {
               </Panel>
               <Separator className="sep" />
               <Panel id="bottom" defaultSize="13" minSize={90} collapsible collapsedSize={BOTTOM_HEADER} panelRef={bottom.ref} onResize={bottom.onResize}>
-                <BottomPanel selected={selected} log={log} liveApi={liveApi} manifest={manifest} open={bottom.open} onToggle={bottom.toggle} />
+                <BottomPanel workspace={workspace} selected={selected} log={log} liveApi={liveApi} manifest={manifest} open={bottom.open} onToggle={bottom.toggle} />
               </Panel>
             </Group>
           </Panel>
