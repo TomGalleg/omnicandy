@@ -124,7 +124,9 @@ export const EDITOR_APPS: Record<EditorAppId, EditorApp> = {
         { key: 'start', label: 'Cut from start', type: 'number', min: 0, max: 600, step: 0.1, default: 0.5, unit: 's' },
         { key: 'end', label: 'Cut from end', type: 'number', min: 0, max: 600, step: 0.1, default: 0.5, unit: 's' }] },
       { id: 'speed', group: 'Timing', label: 'Speed', params: [{ key: 'percent', label: 'Speed', type: 'number', min: 25, max: 400, step: 5, default: 150, unit: '%' }] },
-      { id: 'volume', group: 'Sound', label: 'Change volume', params: [{ key: 'db', label: 'Gain', type: 'number', min: -40, max: 20, step: 0.5, default: -6, unit: 'dB' }] },
+      { id: 'volume', group: 'Sound', label: 'Clip sound volume', params: [{ key: 'db', label: 'Gain', type: 'number', min: -40, max: 20, step: 0.5, default: -6, unit: 'dB' }] },
+      { id: 'musicVolume', group: 'Sound', label: 'Music volume', params: [{ key: 'db', label: 'Gain', type: 'number', min: -40, max: 20, step: 0.5, default: -10, unit: 'dB' }] },
+      { id: 'crossfades', group: 'Fades', label: 'Crossfade between clips', params: [{ key: 'seconds', label: 'Length', type: 'number', min: 0.1, max: 3, step: 0.1, default: 0.5, unit: 's' }] },
       { id: 'fades', group: 'Fades', label: 'Fade in / out (picture and sound)', params: [
         { key: 'fadeIn', label: 'Fade in', type: 'number', min: 0, max: 10, step: 0.1, default: 0.5, unit: 's' },
         { key: 'fadeOut', label: 'Fade out', type: 'number', min: 0, max: 10, step: 0.1, default: 0.5, unit: 's' }] },
@@ -287,6 +289,8 @@ export interface FilmSequence {
   fps: number;
   video: Array<{ clip: number; startFrame: number; durationFrames: number }>;
   audio: Array<{ clip: number; startFrame: number; durationFrames: number }>;
+  /** Clips on the music tracks (A2 and later). */
+  music?: Array<{ clip: number; startFrame: number; durationFrames: number }>;
 }
 
 /** FilmCraft engine commands for a quick edit. Targets the clips on the first video/audio track. */
@@ -312,6 +316,22 @@ export function filmcraftSteps(opId: string, v: EditValues, seq: FilmSequence): 
     case 'volume':
       if (!auds.length) throw new Error('This video has no sound.');
       return [{ command: 'clip.audioGain', params: { clips: auds, mode: 'adjust', db: v.db } }];
+    case 'musicVolume': {
+      const music = (seq.music ?? []).map((c) => c.clip);
+      if (!music.length) throw new Error('There is no music on the timeline. Add some first.');
+      return [{ command: 'clip.audioGain', params: { clips: music, mode: 'adjust', db: v.db } }];
+    }
+    case 'crossfades': {
+      // A dissolve (picture) and a constant-power fade (sound) at every cut between clips that touch.
+      const len = frames(Number(v.seconds));
+      const cuts = (cs: FilmSequence['video']) => cs.slice(1).filter((c, i) => Math.abs(cs[i]!.startFrame + cs[i]!.durationFrames - c.startFrame) <= 1);
+      const steps: Op[] = [
+        ...cuts(seq.video).map((c) => ({ command: 'sequence.applyVideoTransition', params: { clip: c.clip, effect: 'cross_dissolve', edge: 'in', frames: len } })),
+        ...cuts(seq.audio).map((c) => ({ command: 'sequence.applyAudioTransition', params: { clip: c.clip, effect: 'constant_power', edge: 'in', frames: len } })),
+      ];
+      if (!steps.length) throw new Error('There is only one clip, so there is nothing to crossfade. Add another clip first.');
+      return steps;
+    }
     case 'fades': {
       const fin = frames(Number(v.fadeIn)), fout = frames(Number(v.fadeOut));
       const steps: Op[] = [];
@@ -320,6 +340,10 @@ export function filmcraftSteps(opId: string, v: EditValues, seq: FilmSequence): 
       if (fout > 0 && vLast) steps.push({ command: 'sequence.applyVideoTransition', params: { clip: vLast.clip, effect: 'dip_to_black', edge: 'out', frames: fout } });
       if (fin > 0 && aFirst) steps.push({ command: 'sequence.applyAudioTransition', params: { clip: aFirst.clip, effect: 'constant_power', edge: 'in', frames: fin } });
       if (fout > 0 && aLast) steps.push({ command: 'sequence.applyAudioTransition', params: { clip: aLast.clip, effect: 'constant_power', edge: 'out', frames: fout } });
+      // Music fades with the picture.
+      const m = seq.music ?? [];
+      if (fin > 0 && m[0]) steps.push({ command: 'sequence.applyAudioTransition', params: { clip: m[0].clip, effect: 'constant_power', edge: 'in', frames: fin } });
+      if (fout > 0 && m.length) steps.push({ command: 'sequence.applyAudioTransition', params: { clip: m.at(-1)!.clip, effect: 'constant_power', edge: 'out', frames: fout } });
       if (!steps.length) throw new Error('Set a fade-in or fade-out length.');
       return steps;
     }

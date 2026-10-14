@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import type { TimelineDto } from '@shared/live';
-import type { Asset } from '@shared/types';
+import type { TimelineDto, TimelineEdit } from '@shared/live';
+import type { Asset, ProjectManifest } from '@shared/types';
 import { shouldShowTimeline } from '@shared/timeline';
 import type { LiveApi } from '../useLive';
 import { Waveform } from './Waveform';
@@ -12,7 +12,7 @@ export interface LogEntry {
 }
 
 /** Context-sensitive bottom area: a timeline only for time-based media, otherwise the activity log. */
-export function BottomPanel({ selected, log, liveApi }: { selected: Asset | null; log: LogEntry[]; liveApi: LiveApi }) {
+export function BottomPanel({ selected, log, liveApi, manifest }: { selected: Asset | null; log: LogEntry[]; liveApi: LiveApi; manifest?: ProjectManifest | null }) {
   const timeline = shouldShowTimeline(selected?.kind);
   const live = liveApi.live;
   const liveApp = !!selected && live?.status === 'ready' && live.asset?.id === selected.id && (live.appId === 'filmcraft' || live.appId === 'soundcraft') ? live.appId : null;
@@ -26,7 +26,7 @@ export function BottomPanel({ selected, log, liveApi }: { selected: Asset | null
         {timeline && <span className="asset-meta" style={{ textTransform: 'none', letterSpacing: 0 }}>{hint}</span>}
       </div>
       <div className="pane-body">
-        {timeline ? (liveApp ? <LiveTimeline liveApi={liveApi} app={liveApp} assetId={selected!.id} /> : <Timeline asset={selected!} />) : <ActivityLog log={log} />}
+        {timeline ? (liveApp ? <LiveTimeline liveApi={liveApi} app={liveApp} assetId={selected!.id} assets={manifest?.assets ?? []} /> : <Timeline asset={selected!} />) : <ActivityLog log={log} />}
       </div>
     </section>
   );
@@ -51,7 +51,7 @@ const fmt = (s: number) => `${Math.floor(s / 60)}:${(s % 60).toFixed(1).padStart
 const NAME = { filmcraft: 'FilmCraft', soundcraft: 'SoundCraft' } as const;
 
 /** The open file's timeline as FilmCraft or SoundCraft has it, refreshed while it is shown. */
-function LiveTimeline({ liveApi, app, assetId }: { liveApi: LiveApi; app: 'filmcraft' | 'soundcraft'; assetId: string }) {
+function LiveTimeline({ liveApi, app, assetId, assets }: { liveApi: LiveApi; app: 'filmcraft' | 'soundcraft'; assetId: string; assets: Asset[] }) {
   const [tl, setTl] = useState<TimelineDto | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const historyLen = liveApi.live?.history.length ?? 0;
@@ -81,6 +81,7 @@ function LiveTimeline({ liveApi, app, assetId }: { liveApi: LiveApi; app: 'filmc
   let v = 0, a = 0;
   return (
     <div className="timeline live" aria-label={`${NAME[app]} timeline`}>
+      {app === 'filmcraft' && <ClipTools tl={tl} assets={assets} liveApi={liveApi} />}
       <div className="track">
         <span>{fmt(dur)}</span>
         <div className="ruler seekable" onClick={seek} title="Click to move the playhead" role="slider" aria-label="Playhead" aria-valuemin={0} aria-valuemax={dur} aria-valuenow={tl.playhead ?? 0}>
@@ -89,7 +90,7 @@ function LiveTimeline({ liveApi, app, assetId }: { liveApi: LiveApi; app: 'filmc
       </div>
       {tl.tracks.map((t) => (
         <div className="track" key={t.id}>
-          <span title={t.name}>{t.kind === 'video' ? `V${++v}` : `A${++a}`}</span>
+          <span title={t.name}>{t.music ? '♪' : t.kind === 'video' ? `V${++v}` : `A${++a}`}</span>
           <div className="lane" onClick={seek}>
             {t.clips.map((c) => (
               <button key={c.id} className={`tl-clip ${t.kind}${tl.selection.includes(c.id) ? ' selected' : ''}`}
@@ -110,6 +111,39 @@ function LiveTimeline({ liveApi, app, assetId }: { liveApi: LiveApi; app: 'filmc
         </div>
       ))}
       <p className="asset-meta">{app === 'filmcraft' ? `${tl.fps.toFixed(3).replace(/\.?0+$/, '')} fps · edits you make in FilmCraft show up here.` : 'Waveform decoded from the file, scaled by the clip gain · edits you make in SoundCraft show up here.'}</p>
+    </div>
+  );
+}
+
+/** Build a video from several files: add clips or music from the library, reorder or remove the selected clip. */
+function ClipTools({ tl, assets, liveApi }: { tl: TimelineDto; assets: Asset[]; liveApi: LiveApi }) {
+  const v1 = tl.tracks.find((t) => t.kind === 'video')?.clips ?? [];
+  const order = [...v1].sort((x, y) => x.start - y.start);
+  const sel = order.findIndex((c) => tl.selection.includes(c.id));
+  const picked = sel >= 0 ? order[sel]! : null;
+  const busy = liveApi.busy || !!liveApi.live?.collab.activeOperation;
+  const edit = (label: string, e: TimelineEdit) => void liveApi.act(label, () => window.studio.live.editTimeline(e));
+  const clipFiles = assets.filter((x) => x.kind === 'video' || x.kind === 'image');
+  const musicFiles = assets.filter((x) => x.kind === 'audio');
+  return (
+    <div className="clip-tools" role="toolbar" aria-label="Clips">
+      <select aria-label="Add a clip" value="" disabled={busy} onChange={(e) => { if (e.target.value) edit('Add clip', { kind: 'add', assetId: e.target.value, as: 'clip' }); }}>
+        <option value="">+ Add clip…</option>
+        {clipFiles.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
+      </select>
+      <select aria-label="Add music" value="" disabled={busy} onChange={(e) => { if (e.target.value) edit('Add music', { kind: 'add', assetId: e.target.value, as: 'music' }); }}>
+        <option value="">♪ Add music…</option>
+        {musicFiles.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
+      </select>
+      <span className="spacer" />
+      {picked ? (
+        <>
+          <span className="asset-meta">Clip {sel + 1} of {order.length}: {picked.name}</span>
+          <button className="btn small" disabled={busy || sel === 0} onClick={() => edit('Move clip earlier', { kind: 'move', clip: picked.id, to: sel - 1 })}>◀ Earlier</button>
+          <button className="btn small" disabled={busy || sel === order.length - 1} onClick={() => edit('Move clip later', { kind: 'move', clip: picked.id, to: sel + 1 })}>Later ▶</button>
+          <button className="btn small danger" disabled={busy || order.length < 2} onClick={() => edit('Remove clip', { kind: 'remove', clip: picked.id })}>Remove</button>
+        </>
+      ) : <span className="asset-meta">{order.length > 1 ? 'Click a picture clip to move or remove it.' : 'Add clips to build a longer video.'}</span>}
     </div>
   );
 }

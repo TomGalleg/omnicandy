@@ -25,7 +25,7 @@ const SYSTEM_PROMPT = `You are Claude, the Creative Partner inside CreateCraft, 
 
 You can only act through the createcraft tools. Start by calling get_status. For visual work, call look_at_document before and after you change something, so you see what you are doing.
 
-One file is open at a time, in one app. To use a different app, open a file in it with open_file and its app (get_status lists every app and the file types it takes). The same photo can go to PhotoCraft (edit), LightCraft (light and colour) or EffectCraft (effects and titles); a video to FilmCraft (timeline: trim, speed, sound, fades) or EffectCraft. To carry your changes from one app to the next, save_version first, then open the saved version (its name is in the save result) in the next app. Opening another file replaces what is open, so save first if the user wants to keep the changes. get_status also shows details of the open file when the app provides them (FilmCraft: the timeline; DesignCraft: the text on the page, which replaceText can change).
+One file is open at a time, in one app. To use a different app, open a file in it with open_file and its app (get_status lists every app and the file types it takes). The same photo can go to PhotoCraft (edit), LightCraft (light and colour) or EffectCraft (effects and titles); a video to FilmCraft (timeline: trim, speed, sound, fades) or EffectCraft. To carry your changes from one app to the next, save_version first, then open the saved version (its name is in the save result) in the next app. Opening another file replaces what is open, so save first if the user wants to keep the changes. get_status also shows details of the open file when the app provides them (FilmCraft: the timeline with clip ids; DesignCraft: the text on the page, which replaceText can change). To build a video from several files, open the first video, then add more with timeline_add (as clip, or as music), arrange them with timeline_move_clip / timeline_remove_clip, and use apply_edit for trims, crossfades between clips, fades, music volume and looks, which act on the whole video.
 
 Follow the user's direction. You may suggest improvements, but ask before big creative reinterpretations. Work in small steps and say briefly what you changed. If a tool says the user paused you or took control, stop at once and tell them you are waiting. Never claim a change you did not make.
 
@@ -35,7 +35,7 @@ To deliver finished files (JPEG for the web, PDF, MP4, WAV, GIF and so on), use 
 
 You can also create new pictures with generate_image (OpenAI or Google Gemini, using the user's own account). It costs the user money: only generate when they ask for it, keep the count low, and say which model you will use. CreateCraft shows the user the price and asks them to approve every call; if they cancel, accept it and do not ask again unless they bring it up. New images are added to the library as new files; open one with open_file to edit it.`;
 
-const TOOL_NAMES = ['get_status', 'look_at_document', 'apply_edit', 'photocraft_command', 'undo', 'save_version', 'list_files', 'open_file', 'list_image_models', 'generate_image', 'list_export_formats', 'export_file'];
+const TOOL_NAMES = ['get_status', 'look_at_document', 'apply_edit', 'photocraft_command', 'undo', 'save_version', 'list_files', 'open_file', 'list_image_models', 'generate_image', 'list_export_formats', 'export_file', 'timeline_add', 'timeline_move_clip', 'timeline_remove_clip'];
 
 export interface ClaudePartnerDeps {
   live: () => Promise<LiveTaskController>;
@@ -191,6 +191,28 @@ export class ClaudePartner {
             activity(s.message ?? 'Saved a new version');
             return text(s.message ?? 'Saved.');
           } catch (e) { return fail(e); }
+        }),
+        tool('timeline_add', 'FilmCraft only (a video open in the Edit tab): adds a library file (exact name from list_files) to the open video. as "clip" puts a video or picture at the end of the picture track (pictures last 3 s); as "music" puts a sound file on a music track from the start, trimmed to the video\'s length. get_status shows the timeline with clip ids.', {
+          name: z.string().max(512),
+          as: z.enum(['clip', 'music']),
+        }, async ({ name, as }) => {
+          try {
+            const a = (await (await this.d.store()).loadManifest()).assets.find((x) => x.name === name);
+            if (!a) throw new Error(`No file named "${name}". Use list_files.`);
+            const r = await ctl.claudeTimelineEdit({ kind: 'add', assetId: a.id, as });
+            activity(r); return text(r);
+          } catch (e) { activity(`Timeline change refused: ${e instanceof Error ? e.message : e}`); return fail(e); }
+        }),
+        tool('timeline_move_clip', 'FilmCraft only: moves a picture clip (id from get_status, track V1) to a new position in the clip order (0 = first). Its sound moves with it; music stays put.', {
+          clip_id: z.number().int().min(0),
+          to_position: z.number().int().min(0).max(1000),
+        }, async ({ clip_id, to_position }) => {
+          try { const r = await ctl.claudeTimelineEdit({ kind: 'move', clip: clip_id, to: to_position }); activity(r); return text(r); } catch (e) { activity(`Timeline change refused: ${e instanceof Error ? e.message : e}`); return fail(e); }
+        }),
+        tool('timeline_remove_clip', 'FilmCraft only: removes a clip (id from get_status) and closes the gap. Removing a picture clip removes its sound too.', {
+          clip_id: z.number().int().min(0),
+        }, async ({ clip_id }) => {
+          try { const r = await ctl.claudeTimelineEdit({ kind: 'remove', clip: clip_id }); activity(r); return text(r); } catch (e) { activity(`Timeline change refused: ${e instanceof Error ? e.message : e}`); return fail(e); }
         }),
         tool('list_export_formats', 'Export formats (Deliver presets) available for a library file (exact name from list_files).', {
           name: z.string().max(512),

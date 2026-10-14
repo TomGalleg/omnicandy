@@ -6,6 +6,13 @@ const seq: FilmSequence = {
   video: [{ clip: 10, startFrame: 0, durationFrames: 96 }],
   audio: [{ clip: 11, startFrame: 0, durationFrames: 96 }],
 };
+/** Two clips with sound, a still without, and music. */
+const multi: FilmSequence = {
+  fps: 24,
+  video: [{ clip: 10, startFrame: 0, durationFrames: 96 }, { clip: 20, startFrame: 96, durationFrames: 72 }, { clip: 30, startFrame: 168, durationFrames: 72 }],
+  audio: [{ clip: 11, startFrame: 0, durationFrames: 96 }, { clip: 21, startFrame: 96, durationFrames: 72 }],
+  music: [{ clip: 40, startFrame: 0, durationFrames: 240 }],
+};
 const defaults = (app: keyof typeof EDITOR_APPS, id: string) => {
   const op = EDITOR_APPS[app].quickEdits.find((o) => o.id === id)!;
   const r = checkEditValues(op, {});
@@ -47,7 +54,20 @@ describe('FilmCraft quick edits', () => {
   });
 
   it('every FilmCraft quick edit builds with its default settings', () => {
-    for (const op of EDITOR_APPS.filmcraft.quickEdits) expect(filmcraftSteps(op.id, defaults('filmcraft', op.id), seq).length, op.id).toBeGreaterThan(0);
+    for (const op of EDITOR_APPS.filmcraft.quickEdits) expect(filmcraftSteps(op.id, defaults('filmcraft', op.id), multi).length, op.id).toBeGreaterThan(0);
+  });
+
+  it('crossfades every cut, and fades and turns down the music separately', () => {
+    expect(filmcraftSteps('crossfades', { seconds: 0.5 }, multi)).toEqual([
+      { command: 'sequence.applyVideoTransition', params: { clip: 20, effect: 'cross_dissolve', edge: 'in', frames: 12 } },
+      { command: 'sequence.applyVideoTransition', params: { clip: 30, effect: 'cross_dissolve', edge: 'in', frames: 12 } },
+      { command: 'sequence.applyAudioTransition', params: { clip: 21, effect: 'constant_power', edge: 'in', frames: 12 } },
+    ]);
+    expect(() => filmcraftSteps('crossfades', { seconds: 0.5 }, seq)).toThrow(/only one clip/);
+    expect(filmcraftSteps('musicVolume', { db: -10 }, multi)).toEqual([{ command: 'clip.audioGain', params: { clips: [40], mode: 'adjust', db: -10 } }]);
+    expect(() => filmcraftSteps('musicVolume', { db: -10 }, seq)).toThrow(/no music/);
+    const fades = filmcraftSteps('fades', { fadeIn: 0.5, fadeOut: 1 }, multi).map((s) => s.params.clip);
+    expect(fades).toEqual([10, 30, 11, 21, 40, 40]);
   });
 });
 

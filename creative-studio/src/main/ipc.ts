@@ -248,6 +248,12 @@ export function registerIpc(d: IpcDeps): void {
   handle(IPC.liveTimeline, none, async () => (livePromise ? (await live()).timeline() : null));
   handle(IPC.livePlayhead, z.tuple([z.number().finite().min(0).max(36_000)]), async (s) => (await live()).setPlayhead(s));
   handle(IPC.liveSelectClip, z.tuple([z.number().int().min(0)]), async (c) => (await live()).selectClip(c));
+  const timelineEdit = z.discriminatedUnion('kind', [
+    z.object({ kind: z.literal('add'), assetId: z.string().min(1).max(128), as: z.enum(['clip', 'music']) }),
+    z.object({ kind: z.literal('move'), clip: z.number().int().min(0), to: z.number().int().min(0).max(1000) }),
+    z.object({ kind: z.literal('remove'), clip: z.number().int().min(0) }),
+  ]);
+  handle(IPC.liveTimelineEdit, z.tuple([timelineEdit]), async (edit) => (await live()).editTimeline(edit));
 
   // ---- AI Generate (BYOK: keys in Windows protected storage, approval before every paid call) ----
   /** Native dialog in main: neither the renderer nor Claude can answer it. Cancel is the default. */

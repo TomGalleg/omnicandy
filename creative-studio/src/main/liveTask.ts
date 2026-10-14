@@ -16,7 +16,7 @@ import { randomUUID } from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { collabReducer, initialCollabState, type CollabEvent, type CollabState } from '@shared/collaboration';
-import type { LiveSnapshot, LiveStatus, LiveStep, TimelineDto } from '@shared/live';
+import type { LiveSnapshot, LiveStatus, LiveStep, TimelineDto, TimelineEdit } from '@shared/live';
 import { checkEditValues, EDITOR_APPS, editorFor, type EditorAppId } from '@shared/appEditors';
 import { appThemeValue } from '@shared/appTheme';
 import type { AppOperation } from '@shared/contracts';
@@ -475,6 +475,41 @@ export class LiveTaskController {
   }
 
   setPoppedOut(v: boolean) { this.poppedOut = v; this.publish(); }
+
+  /** Checks a clip-list change and turns it into the app's steps (library files only; right kinds only). */
+  private async timelineStepsFor(edit: TimelineEdit): Promise<{ label: string; steps: AppOperation[] }> {
+    const doc = this.requireDoc();
+    if (!doc.timelineSteps) throw new Error(`${EDITOR_APPS[this.appId].name} has no clip list to change.`);
+    if (edit.kind === 'add') {
+      const a = (await this.d.store.loadManifest()).assets.find((x) => x.id === edit.assetId);
+      if (!a) throw new Error('Unknown file.');
+      const ok = edit.as === 'clip' ? a.kind === 'video' || a.kind === 'image' : a.kind === 'audio' || a.kind === 'video';
+      if (!ok) throw new Error(edit.as === 'clip' ? `${a.name} is not a video or picture.` : `${a.name} has no sound to use as music.`);
+      const steps = await doc.timelineSteps(edit, { path: await this.d.store.resolveAssetPath(a.id), still: a.kind === 'image' });
+      return { label: edit.as === 'clip' ? `Add ${a.name} to the timeline` : `Add ${a.name} as music`, steps };
+    }
+    const steps = await doc.timelineSteps(edit);
+    return { label: edit.kind === 'move' ? `Move clip to position ${edit.to + 1}` : 'Remove clip', steps };
+  }
+
+  /** You change the clip list from the timeline under the app. */
+  async editTimeline(edit: TimelineEdit): Promise<LiveSnapshot> {
+    const doc = this.requireDoc();
+    if (this.collab.activeOperation || ['running', 'pausing'].includes(this.collab.phase)) throw new Error('An automation task is running. Pause or cancel it first.');
+    const { label, steps } = await this.timelineStepsFor(edit);
+    for (const s of steps) await doc.run(s);
+    const v = await this.currentVersion();
+    if (this.collab.phase !== 'manual' && !this.collab.needsSync) this.dispatch({ type: 'syncVersion', version: v });
+    this.message = `${label}. Save to keep it as a new version.`;
+    this.publish();
+    return this.snapshot();
+  }
+
+  /** Claude changes the clip list (same lock as every other Claude edit). */
+  async claudeTimelineEdit(edit: TimelineEdit): Promise<string> {
+    const { label, steps } = await this.timelineStepsFor(edit);
+    return this.claudeRun(`${label} (${EDITOR_APPS[this.appId].name})`, steps);
+  }
 
   /** The open video's timeline (FilmCraft); null for apps without one. */
   async timeline(): Promise<TimelineDto | null> {

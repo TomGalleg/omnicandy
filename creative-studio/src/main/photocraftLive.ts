@@ -14,7 +14,7 @@ import net from 'node:net';
 import path from 'node:path';
 import { photocraftCommand, type EditValues } from '@shared/appEditors';
 import type { AppOperation } from '@shared/contracts';
-import type { TimelineDto } from '@shared/live';
+import type { TimelineDto, TimelineEdit } from '@shared/live';
 import { McpClient } from './mcpClient';
 
 /** What the live task controller needs from an open document. Implemented for real below; faked in tests. */
@@ -43,6 +43,8 @@ export interface LiveDoc {
   selectClip?(clipId: number): Promise<void>;
   /** App-specific facts for Claude (FilmCraft: the timeline; DesignCraft: page size and text). */
   describe?(): Promise<unknown>;
+  /** Video apps: steps for adding, reordering or removing clips (the controller resolves and checks the file). */
+  timelineSteps?(edit: TimelineEdit, file?: { path: string; still: boolean }): Promise<AppOperation[]>;
 }
 
 export function versionOf(history: string[]): string {

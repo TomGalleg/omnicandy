@@ -59,6 +59,7 @@ const api: StudioApi = {
     timeline: () => ipcRenderer.invoke(IPC.liveTimeline),
     setPlayhead: (s) => ipcRenderer.invoke(IPC.livePlayhead, s),
     selectClip: (c) => ipcRenderer.invoke(IPC.liveSelectClip, c),
+    editTimeline: (edit) => ipcRenderer.invoke(IPC.liveTimelineEdit, edit),
     onChange: (cb) => {
       const listener = (_e: IpcRendererEvent, s: LiveSnapshot) => cb(s);
       ipcRenderer.on(IPC.liveEvent, listener);

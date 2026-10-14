@@ -3,7 +3,7 @@
 import type { AppearanceSettings, AppProbeResult, Asset, ProjectManifest, ProjectSummary } from './types';
 import type { ClaudeState } from './claude';
 import type { CostEstimate, ImageJob, ProviderId } from './generation';
-import type { LiveSnapshot, TimelineDto } from './live';
+import type { LiveSnapshot, TimelineDto, TimelineEdit } from './live';
 import type { EditorAppId } from './appEditors';
 import type { DeliverJob, DeliverRecord } from './deliver';
 import type { WorkflowGraph, WorkflowRunEvent } from './workflow';
@@ -42,6 +42,7 @@ export const IPC = {
   liveTimeline: 'live:timeline',
   livePlayhead: 'live:playhead',
   liveSelectClip: 'live:select-clip',
+  liveTimelineEdit: 'live:timeline-edit',
   claudeState: 'claude:state',
   claudeSend: 'claude:send',
   claudeStop: 'claude:stop',
@@ -182,6 +183,8 @@ export interface StudioApi {
     timeline(): Promise<TimelineDto | null>;
     setPlayhead(seconds: number): Promise<void>;
     selectClip(clipId: number): Promise<void>;
+    /** Adds a library file as a clip or music, or moves/removes a clip (FilmCraft). */
+    editTimeline(edit: TimelineEdit): Promise<LiveSnapshot>;
     onChange(cb: (s: LiveSnapshot) => void): () => void;
   };
   claude: {

@@ -143,7 +143,7 @@ export function App() {
               </Panel>
               <Separator className="sep" />
               <Panel id="bottom" defaultSize="24" minSize={90} collapsible>
-                <BottomPanel selected={selected} log={log} liveApi={liveApi} />
+                <BottomPanel selected={selected} log={log} liveApi={liveApi} manifest={manifest} />
               </Panel>
             </Group>
           </Panel>

@@ -94,6 +94,56 @@ describe.skipIf(!has('FilmCraft'))('Live FilmCraft (real window)', () => {
     expect((await t.ctl.timeline())!.duration).toBeCloseTo(4.0, 1);
   }, 180000);
 
+  it('builds a video from several clips with music: add, reorder, remove, crossfade, music volume, save', async () => {
+    const lib = async (f: string) => (await t.store.importFile(path.join(FIXTURES, f))).asset.id;
+    const [aurora, still, groove] = [await lib('aurora-clip.mp4'), await lib('sunset-still.jpg'), await lib('groove-loop.wav')];
+    await t.ctl.open(clip);
+    await t.ctl.editTimeline({ kind: 'add', assetId: aurora, as: 'clip' });
+    await t.ctl.editTimeline({ kind: 'add', assetId: groove, as: 'music' }); // music first: cut to 7 s
+    await t.ctl.editTimeline({ kind: 'add', assetId: still, as: 'clip' }); // then runs on under the still
+    await expect(t.ctl.editTimeline({ kind: 'add', assetId: groove, as: 'clip' })).rejects.toThrow(/not a video or picture/);
+    let tl = (await t.ctl.timeline())!;
+    const v1 = () => tl.tracks.find((x) => x.kind === 'video')!.clips.slice().sort((a, b) => a.start - b.start);
+    const music = () => tl.tracks.find((x) => x.music)!.clips;
+    expect(v1().map((c) => [c.name.replace(/^[0-9a-f]{8}-/, ''), Math.round(c.duration)])).toEqual([['sunset-clip.mp4', 4], ['aurora-clip.mp4', 3], ['sunset-still.jpg', 3]]);
+    expect(tl.duration).toBeCloseTo(10, 0);
+    expect(music()[0]!.start).toBe(0);
+    expect(music()[0]!.duration).toBeLessThanOrEqual(10.05); // trimmed to the picture
+    expect(music()[0]!.duration).toBeGreaterThan(9.9); // and extended again when the still was added
+
+    // Move the still to the front (Claude's path, same lock), then the aurora clip to the end.
+    const stillClip = v1()[2]!.id;
+    await t.ctl.claudeTimelineEdit({ kind: 'move', clip: stillClip, to: 0 });
+    t.ctl.claudeDone();
+    tl = (await t.ctl.timeline())!;
+    expect(v1()[0]!.id).toBe(stillClip);
+    expect(music()[0]!.start).toBe(0); // music did not move
+    const auroraClip = v1()[2]!.id;
+    await t.ctl.editTimeline({ kind: 'move', clip: auroraClip, to: 1 });
+    tl = (await t.ctl.timeline())!;
+    expect(v1()[1]!.id).toBe(auroraClip);
+    expect(tl.duration).toBeCloseTo(10, 0);
+
+    await t.ctl.editTimeline({ kind: 'remove', clip: auroraClip });
+    tl = (await t.ctl.timeline())!;
+    expect(v1()).toHaveLength(2);
+    expect(v1()[1]!.start).toBeCloseTo(3, 1); // the gap closed
+
+    await t.ctl.quickEdit('crossfades', { seconds: 0.5 });
+    await t.ctl.quickEdit('musicVolume', { db: -12 });
+    await t.ctl.quickEdit('fades', { fadeIn: 0.5, fadeOut: 0.5 });
+    tl = (await t.ctl.timeline())!;
+    expect(tl.tracks.find((x) => x.kind === 'video')!.transitions).toBeGreaterThanOrEqual(3);
+    const n = (await t.ctl.refresh()).history.length;
+    expect((await t.ctl.undo()).history.length).toBe(n - 1);
+
+    const saved = await t.ctl.saveVersion();
+    const v = await fileInfo(t.store, saved.savedVersionIds.at(-1)!);
+    expect(v.asset.kind).toBe('video');
+    expect(v.info.durationSec).toBeGreaterThan(6.5);
+    expect(v.info.durationSec).toBeLessThan(7.5);
+  }, 300000);
+
   it('switches its theme through its own preferences and back', async () => {
     expect(await t.app.applyTheme('light')).toBe('light');
     expect(await t.app.applyTheme('darkest')).toBe('darkest');

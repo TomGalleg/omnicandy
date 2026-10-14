@@ -9,10 +9,17 @@ export interface TimelineClip {
   /** SoundCraft clips: gain, fade lengths (seconds) and mute. */
   gainDb?: number; fadeIn?: number; fadeOut?: number; muted?: boolean;
 }
-export interface TimelineTrack { id: number; name: string; kind: 'video' | 'audio'; clips: TimelineClip[]; transitions: number }
+export interface TimelineTrack { id: number; name: string; kind: 'video' | 'audio'; clips: TimelineClip[]; transitions: number; /** FilmCraft: an audio track after A1, used for music. */ music?: boolean }
 export interface TimelineDto { duration: number; fps: number; playhead: number | null; tracks: TimelineTrack[]; selection: number[] }
 
-export type LiveStatus = 'stopped' | 'starting' | 'ready' | 'error';
+/** Changes to a video's clip list (FilmCraft): add a library file as a clip or as music, reorder, remove. */
+export type TimelineEdit =
+  | { kind: 'add'; assetId: string; as: 'clip' | 'music' }
+  /** `to` is the clip's new position among the picture clips (0 = first). */
+  | { kind: 'move'; clip: number; to: number }
+  | { kind: 'remove'; clip: number };
+
+export type LiveStatus ='stopped' | 'starting' | 'ready' | 'error';
 
 export interface LiveStep {
   command: string;

@@ -11,7 +11,7 @@ import { execFile, spawn, type ChildProcess } from 'node:child_process';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { designcraftSteps, effectcraftSteps, filmcraftSteps, type DesignPage, lightcraftSteps, vectorcraftSteps, type EditValues, type EditorAppId } from '@shared/appEditors';
-import type { TimelineDto } from '@shared/live';
+import type { TimelineDto, TimelineEdit } from '@shared/live';
 import type { AppOperation } from '@shared/contracts';
 import { McpClient } from './mcpClient';
 import { freePort, waitForPort, type LiveDoc } from './photocraftLive';
@@ -299,7 +299,85 @@ export class LiveFilmCraft extends LiveAppBase {
     this.opened = true;
     return { name: path.basename(absPath) };
   }
-  async run(op: AppOperation) { await this.cmd(op.command, op.params); }
+  async run(op: AppOperation) {
+    if (op.command === 'createcraft.place') return this.place(op.params as { path: string; as: 'clip' | 'music'; still?: boolean });
+    if (op.command === 'createcraft.fitMusic') return this.fitMusic();
+    await this.cmd(op.command, op.params);
+  }
+  /**
+   * Adds a library file to the open sequence (verified live): a clip goes at the end of V1 with its
+   * sound on A1; music goes on the first free audio track from the start, with sync lock off so
+   * reordering clips doesn't shift it, trimmed to the picture's length.
+   */
+  private async place(p: { path: string; as: 'clip' | 'music'; still?: boolean }) {
+    const r = (await this.client().callTool('media_import', { paths: [p.path] })) as { items?: number[]; errors?: unknown[] };
+    const item = r.items?.[0];
+    if (item === undefined) throw new Error(`FilmCraft could not import ${path.basename(p.path)}${r.errors?.length ? `: ${JSON.stringify(r.errors[0])}` : ''}.`);
+    let s = await this.sequence();
+    const v1 = s.video?.[0], a1 = s.audio?.[0];
+    const endOf = (t?: FcTrack) => Math.max(0, ...(t?.items ?? []).map((i) => i.start + i.duration));
+    if (p.as === 'clip') {
+      if (!v1) throw new Error('The sequence has no video track.');
+      await this.cmd('timeline.place', { item, track: v1.id, ...(a1 ? { audioTrack: a1.id } : {}), time: endOf(v1), insert: false, ...(p.still ? { duration: 3 * TICKS } : {}) });
+      await this.fitMusic(); // music that was cut to the old length runs on under the new clip
+      return;
+    }
+    let music = (s.audio ?? []).slice(1).find((t) => !t.items.length);
+    if (!music) {
+      await this.cmd('sequence.addTracks', { video: 0, audio: 1 });
+      s = await this.sequence();
+      music = (s.audio ?? []).slice(1).find((t) => !t.items.length);
+      if (!music) throw new Error('Could not add a music track.');
+    }
+    await this.cmd('timeline.place', { item, track: music.id, time: 0, insert: false, video: false });
+    await this.cmd('timeline.setTrack', { track: music.id, syncLock: false, name: 'Music' });
+    await this.fitMusic();
+  }
+  /**
+   * Music follows the picture's length: never past its end (trimmed, or removed when it starts after
+   * it), and the last music clip runs on to the end again when the picture gets longer, as far as the
+   * music file allows.
+   */
+  private async fitMusic() {
+    const s = await this.sequence();
+    const picture = Math.max(0, ...(s.video?.[0]?.items ?? []).map((i) => i.start + i.duration));
+    if (!picture) return;
+    for (const i of (s.audio ?? []).slice(1).flatMap((t) => t.items)) {
+      const end = i.start + i.duration;
+      if (i.start >= picture) await this.cmd('edit.clear', { clips: [i.clip] });
+      else if (end > picture) await this.cmd('timeline.trim', { clip: i.clip, edge: 'out', mode: 'regular', delta: picture - end });
+    }
+    const music = (s.audio ?? []).slice(1).flatMap((t) => t.items);
+    const last = music.sort((a, b) => b.start + b.duration - (a.start + a.duration))[0];
+    if (last && last.start < picture && last.start + last.duration < picture) {
+      // FilmCraft stops the trim where the media ends; a refusal just leaves the music as it is.
+      await this.cmd('timeline.trim', { clip: last.clip, edge: 'out', mode: 'regular', delta: picture - (last.start + last.duration) }).catch(() => {});
+    }
+  }
+  /** FilmCraft steps for a clip-list change (the file path is resolved and checked by the controller). */
+  async timelineSteps(edit: TimelineEdit, file?: { path: string; still: boolean }): Promise<AppOperation[]> {
+    if (edit.kind === 'add') {
+      if (!file) throw new Error('No file to add.');
+      return [{ command: 'createcraft.place', params: { path: file.path, as: edit.as, still: file.still } }];
+    }
+    const s = await this.sequence();
+    const v1 = s.video?.[0];
+    const clips = [...(v1?.items ?? [])].sort((a, b) => a.start - b.start);
+    const all = [...(s.video ?? []), ...(s.audio ?? [])].flatMap((t) => t.items);
+    if (!all.some((i) => i.clip === edit.clip)) throw new Error(`There is no clip ${edit.clip} on the timeline.`);
+    if (edit.kind === 'remove') {
+      if (clips.length === 1 && clips[0]!.clip === edit.clip) throw new Error('That is the only picture clip; open another video instead.');
+      return [{ command: 'edit.rippleDelete', params: { clips: [edit.clip] } }, { command: 'createcraft.fitMusic', params: {} }];
+    }
+    const from = clips.findIndex((i) => i.clip === edit.clip);
+    if (from < 0) throw new Error('Only picture clips (V1) can be reordered.');
+    const to = Math.max(0, Math.min(clips.length - 1, Math.round(edit.to)));
+    if (to === from) throw new Error('The clip is already there.');
+    // Insert-move: before the clip now at 	o (moving earlier) or after it (moving later).
+    const target = clips[to]!;
+    const time = to < from ? target.start : target.start + target.duration;
+    return [{ command: 'timeline.move', params: { moves: [{ clip: edit.clip, track: v1!.id, time }], insert: true, linked: true } }];
+  }
   async history() {
     const h = (await this.cmd('history.list')) as { undo?: string[] };
     return ['Open', ...(h.undo ?? []).slice(2)]; // the import and new-sequence steps are part of opening
@@ -313,8 +391,11 @@ export class LiveFilmCraft extends LiveAppBase {
     const s = await this.sequence();
     const fr = s.settings?.frame_rate;
     const fps = fr && fr.den ? fr.num / fr.den : 24;
-    const clips = (t?: FcTrack) => (t?.items ?? []).map((i) => ({ clip: i.clip, startFrame: i.startFrame, durationFrames: i.durationFrames }));
-    return filmcraftSteps(opId, values, { fps, video: clips(s.video?.[0]), audio: clips(s.audio?.[0]) });
+    const clips = (t?: FcTrack) => [...(t?.items ?? [])].sort((a, b) => a.start - b.start).map((i) => ({ clip: i.clip, startFrame: i.startFrame, durationFrames: i.durationFrames }));
+    const music = (s.audio ?? []).slice(1).flatMap((t) => clips(t));
+    const steps = filmcraftSteps(opId, values, { fps, video: clips(s.video?.[0]), audio: clips(s.audio?.[0]), music });
+    // Trims and speed changes shorten the picture: keep the music inside it.
+    return music.length && (opId === 'trim' || opId === 'speed') ? [...steps, { command: 'createcraft.fitMusic', params: {} }] : steps;
   }
   async writeVersion(dir: string, base: string) {
     const main = path.join(dir, `${base}.mp4`);
@@ -333,14 +414,14 @@ export class LiveFilmCraft extends LiveAppBase {
     const s = await this.sequence();
     const fr = s.settings?.frame_rate;
     const sec = (t: number) => Math.round((t / TICKS) * 1000) / 1000;
-    const track = (t: FcTrack, kind: 'video' | 'audio') => ({
-      id: t.id, name: t.name, kind, transitions: t.transitions?.length ?? 0,
+    const track = (t: FcTrack, kind: 'video' | 'audio', music = false) => ({
+      id: t.id, name: music ? 'Music' : t.name, kind, ...(music ? { music: true } : {}), transitions: t.transitions?.length ?? 0,
       clips: t.items.map((i) => ({ id: i.clip, name: i.name.replace(/^[0-9a-f]{8}-/, ''), start: sec(i.start), duration: sec(i.duration), speed: i.speed, effects: (i.effects ?? []).map((e) => e.effect) })),
     });
     const used = (ts?: FcTrack[]) => (ts ?? []).filter((t, i) => i === 0 || t.items.length);
     return {
       duration: sec(s.duration), fps: fr && fr.den ? fr.num / fr.den : 24, playhead: s.playhead === null ? null : sec(s.playhead),
-      tracks: [...used(s.video).reverse().map((t) => track(t, 'video')), ...used(s.audio).map((t) => track(t, 'audio'))],
+      tracks: [...used(s.video).reverse().map((t) => track(t, 'video')), ...used(s.audio).map((t, i) => track(t, 'audio', i > 0))],
       selection: s.selection ?? [],
     };
   }

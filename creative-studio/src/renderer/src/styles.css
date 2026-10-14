@@ -434,3 +434,8 @@ h1, h2, h3 { margin: 0; font-weight: 600; }
 .tl-clip.audio .wave-real { position: absolute; inset: 0; opacity: 0.55; pointer-events: none; }
 .tl-fade { position: absolute; top: 0; bottom: 0; pointer-events: none; background: linear-gradient(to right, rgba(0,0,0,0.35), transparent); }
 .tl-fade.out { right: 0; background: linear-gradient(to left, rgba(0,0,0,0.35), transparent); }
+
+/* ---- Clip tools above the FilmCraft timeline ---- */
+.clip-tools { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding-bottom: 6px; }
+.clip-tools select { height: 24px; font-size: 12px; background: var(--surface-2); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius-sm); max-width: 220px; }
+.clip-tools .spacer { flex: 1; }
