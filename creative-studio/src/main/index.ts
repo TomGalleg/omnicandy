@@ -11,7 +11,7 @@ import { ProjectManager } from './projects';
 import { SettingsStore } from './settingsStore';
 
 protocol.registerSchemesAsPrivileged([
-  { scheme: ASSET_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } },
+  { scheme: ASSET_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true, corsEnabled: true } },
 ]);
 
 app.setName('CreateCraft');
@@ -109,7 +109,12 @@ app.whenReady().then(async () => {
       const key = url.searchParams.get('p');
       const store = key ? await projects.storeFor(key) : await project();
       const file = await store.resolveAssetPath(assetId);
-      return net.fetch(pathToFileURL(file).href);
+      // The renderer decodes sound for waveforms with fetch(), which needs a CORS header (the
+      // scheme only serves this app's own library files, read-only).
+      const res = await net.fetch(pathToFileURL(file).href, { headers: req.headers.get('range') ? { range: req.headers.get('range')! } : undefined });
+      const headers = new Headers(res.headers);
+      headers.set('Access-Control-Allow-Origin', '*');
+      return new Response(res.body, { status: res.status, statusText: res.statusText, headers });
     } catch {
       return new Response('Not found', { status: 404 });
     }

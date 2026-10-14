@@ -403,3 +403,34 @@ h1, h2, h3 { margin: 0; font-weight: 600; }
 .tl-badge { position: absolute; right: 4px; top: -14px; font-size: 10px; color: var(--text-3); }
 .tl-playhead { position: absolute; top: -4px; bottom: -4px; width: 2px; margin-left: -1px; background: #e5484d; pointer-events: none; }
 .thumb video { width: 100%; height: 100%; object-fit: contain; pointer-events: none; }
+
+/* ---- Deliver tab ---- */
+.deliver { display: grid; grid-template-columns: minmax(0, 1fr) minmax(280px, 360px); gap: 16px; padding: 16px; height: 100%; overflow: auto; align-items: start; }
+.deliver-main, .deliver-side { display: grid; gap: 16px; align-content: start; min-width: 0; }
+.deliver h2 { font-size: 15px; }
+.deliver h3 { font-size: 13px; }
+.deliver-source { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 12px; align-items: start; }
+.deliver-thumb .thumb { width: 96px; height: 96px; border-radius: var(--radius-sm); overflow: hidden; }
+.deliver-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.preset-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px; }
+.preset { display: flex; gap: 8px; align-items: flex-start; padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); cursor: pointer; background: var(--surface-2); }
+.preset.on { border-color: var(--accent); }
+.preset input { margin-top: 2px; }
+.preset-text { display: grid; gap: 2px; font-size: 12.5px; }
+.row-between { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.progress { position: relative; height: 6px; border-radius: 3px; background: var(--surface-3); overflow: hidden; }
+.progress > span:first-child { position: absolute; inset: 0 auto 0 0; background: var(--accent); transition: width 0.3s; }
+.progress-run { position: absolute; top: 0; bottom: 0; width: 30%; background: color-mix(in srgb, var(--accent) 45%, transparent); animation: progress-run 1.2s linear infinite; }
+@keyframes progress-run { from { left: -30%; } to { left: 100%; } }
+@media (prefers-reduced-motion: reduce) { .progress-run { animation: none; left: 0; width: 100%; opacity: 0.4; } }
+.job { display: grid; gap: 4px; padding: 8px 0; border-top: 1px solid var(--border); }
+.job-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.job-name { font-size: 12.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.link { background: none; border: 0; padding: 0; font: inherit; color: var(--accent-text); cursor: pointer; text-decoration: underline; }
+@media (max-width: 1100px) { .deliver { grid-template-columns: 1fr; } }
+
+/* ---- Real waveforms ---- */
+.wave-real { width: 100%; height: 100%; display: block; color: currentColor; }
+.tl-clip.audio .wave-real { position: absolute; inset: 0; opacity: 0.55; pointer-events: none; }
+.tl-fade { position: absolute; top: 0; bottom: 0; pointer-events: none; background: linear-gradient(to right, rgba(0,0,0,0.35), transparent); }
+.tl-fade.out { right: 0; background: linear-gradient(to left, rgba(0,0,0,0.35), transparent); }

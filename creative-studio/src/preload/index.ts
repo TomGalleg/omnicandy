@@ -4,6 +4,7 @@ import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron';
 import { ASSET_SCHEME, IPC, type StudioApi } from '@shared/ipc';
 import type { ClaudeState } from '@shared/claude';
 import type { GenerateResultDto } from '@shared/ipc';
+import type { DeliverJob } from '@shared/deliver';
 import type { LiveSnapshot } from '@shared/live';
 import type { WorkflowRunEvent } from '@shared/workflow';
 
@@ -25,6 +26,19 @@ const api: StudioApi = {
   },
   listExports: () => ipcRenderer.invoke(IPC.listExports),
   revealExport: (name) => ipcRenderer.invoke(IPC.revealExport, name),
+  deliver: {
+    jobs: () => ipcRenderer.invoke(IPC.deliverJobs),
+    enqueue: (assetId, presetIds) => ipcRenderer.invoke(IPC.deliverEnqueue, assetId, presetIds),
+    cancel: (jobId) => ipcRenderer.invoke(IPC.deliverCancel, jobId),
+    clearFinished: () => ipcRenderer.invoke(IPC.deliverClear),
+    history: (assetId) => (assetId ? ipcRenderer.invoke(IPC.deliverHistory, assetId) : ipcRenderer.invoke(IPC.deliverHistory)),
+    openFolder: () => ipcRenderer.invoke(IPC.deliverOpenFolder),
+    onJobs: (cb) => {
+      const listener = (_e: IpcRendererEvent, jobs: DeliverJob[]) => cb(jobs);
+      ipcRenderer.on(IPC.deliverEvent, listener);
+      return () => ipcRenderer.removeListener(IPC.deliverEvent, listener);
+    },
+  },
   live: {
     state: () => ipcRenderer.invoke(IPC.liveState),
     open: (assetId, app) => (app ? ipcRenderer.invoke(IPC.liveOpen, assetId, app) : ipcRenderer.invoke(IPC.liveOpen, assetId)),

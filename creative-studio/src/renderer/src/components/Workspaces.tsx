@@ -1,8 +1,8 @@
-import { useEffect, useState } from 'react';
 import type { IntegrationSnapshot } from '@shared/ipc';
 import type { AppProbeResult, Asset, ProjectManifest, WorkspaceId } from '@shared/types';
 import { formatBytes, formatDims } from '../format';
 import type { LiveApi } from '../useLive';
+import { DeliverWorkspace } from './DeliverWorkspace';
 import { AppWorkspace, EditWorkspace } from './EditWorkspace';
 import { GenerateWorkspace } from './GenerateWorkspace';
 import { HomeWorkspace } from './HomeWorkspace';
@@ -33,8 +33,8 @@ export function WorkspaceView(p: Props) {
     case 'workflow': return <WorkflowEditor manifest={p.manifest} integrations={p.integrations} colorMode={p.resolvedTheme} log={p.log} onProjectChanged={p.onProjectChanged} />;
     case 'effects': return <AppWorkspace tab="effects" manifest={p.manifest} selected={p.selected} liveApi={p.liveApi} onProjectChanged={p.onProjectChanged} onSelectAsset={p.onSelectAsset} log={p.log} />;
     case 'color': return <AppWorkspace tab="color" manifest={p.manifest} selected={p.selected} liveApi={p.liveApi} onProjectChanged={p.onProjectChanged} onSelectAsset={p.onSelectAsset} log={p.log} />;
-    case 'audio': return <Bridge title="Audio" appId="soundcraft" apps={p.apps} what="sessions, tracks, mixing and bounce" />;
-    case 'deliver': return <DeliverView manifest={p.manifest} />;
+    case 'audio': return <AppWorkspace tab="audio" manifest={p.manifest} selected={p.selected} liveApi={p.liveApi} onProjectChanged={p.onProjectChanged} onSelectAsset={p.onSelectAsset} log={p.log} />;
+    case 'deliver': return <DeliverWorkspace manifest={p.manifest} selected={p.selected} liveApi={p.liveApi} onSelectAsset={p.onSelectAsset} log={p.log} />;
   }
 }
 
@@ -85,57 +85,6 @@ function MediaPreview({ asset, label }: { asset: Asset | null; label?: string })
     <div className="viewer">
       <div className="stage-label"><span className="chip">{label ?? (asset.parentId ? 'Version · read-only' : 'Original · read-only')}</span><span className="chip">{formatDims(asset)}</span></div>
       <div className="preview-stage"><img src={window.studio.assetUrl(asset.id)} alt={asset.name} /></div>
-    </div>
-  );
-}
-
-function Bridge({ title, appId, apps, what }: { title: string; appId: string; apps: AppProbeResult[]; what: string }) {
-  const app = apps.find((a) => a.appId === appId);
-  return (
-    <Empty title={`${title}: not implemented yet`}>
-      <p>This workspace will bridge to <strong>{app?.displayName ?? appId}</strong> for {what}.</p>
-      <p>{app ? (app.installed ? `${app.displayName} ${app.version ?? ''} is installed. Its MCP server answered the Phase 0 handshake, but no operations are wired yet.` : `${app.displayName} is not installed.`) : 'Detecting…'}</p>
-      <span className="badge-mock">PLACEHOLDER</span>
-    </Empty>
-  );
-}
-
-function DeliverView({ manifest }: { manifest: ProjectManifest | null }) {
-  return (
-    <div style={{ padding: 20, display: 'grid', gap: 16, alignContent: 'start', height: '100%', overflow: 'auto' }}>
-      <div className="panel-card">
-        <h2 style={{ fontSize: 15 }}>Source manifest</h2>
-        <p className="asset-meta">Originals in this project, with content hashes. Export presets and job queue arrive with the first real export node.</p>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-          <thead><tr style={{ textAlign: 'left', color: 'var(--text-3)' }}><th>Name</th><th>Kind</th><th>Size</th><th>SHA-256</th></tr></thead>
-          <tbody>
-            {manifest?.assets.map((a) => (
-              <tr key={a.id} style={{ borderTop: '1px solid var(--border)' }}>
-                <td style={{ padding: '6px 0' }}>{a.name}</td><td>{a.kind}</td><td>{formatBytes(a.bytes)}</td><td className="mono">{a.sha256.slice(0, 16)}…</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      <ExportsCard />
-    </div>
-  );
-}
-
-function ExportsCard() {
-  const [files, setFiles] = useState<Array<{ name: string; bytes: number; modified: string }> | null>(null);
-  useEffect(() => { void window.studio.listExports().then(setFiles); }, []);
-  return (
-    <div className="panel-card">
-      <h2 style={{ fontSize: 15 }}>Exports</h2>
-      <p className="asset-meta">Files written by Export nodes into the project's exports folder.</p>
-      {files?.length === 0 && <p className="asset-meta">No exports yet. Add an Export node after an ArtCraft Edit and run the workflow.</p>}
-      {files?.map((f) => (
-        <div className="export-row" key={f.name}>
-          <span>{f.name} <span className="asset-meta">· {formatBytes(f.bytes)} · {new Date(f.modified).toLocaleString()}</span></span>
-          <button className="btn small" onClick={() => void window.studio.revealExport(f.name)}>Show in folder</button>
-        </div>
-      ))}
     </div>
   );
 }

@@ -9,6 +9,7 @@ import { constants as fsc } from 'node:fs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import type { AssetRepository } from '@shared/contracts';
+import { MANIFEST_FILE } from '@shared/deliver';
 import type { Asset, AssetProvenance, ProjectManifest } from '@shared/types';
 import { emptyGraph, type WorkflowGraph } from '@shared/workflow';
 import { kindForExtension, sniffMedia } from './media';
@@ -163,7 +164,7 @@ export class ProjectStore implements AssetRepository {
     const d = await this.exportsDir();
     const out = [];
     for (const e of await fs.readdir(d, { withFileTypes: true })) {
-      if (!e.isFile()) continue;
+      if (!e.isFile() || e.name === MANIFEST_FILE || e.name.endsWith('.tmp')) continue;
       const st = await fs.stat(path.join(d, e.name));
       out.push({ name: e.name, bytes: st.size, modified: st.mtime.toISOString() });
     }

@@ -167,7 +167,7 @@ export class AppEditors {
   async openWorkingCopy(assetId: string): Promise<ExternalEdit> {
     const a = await this.asset(assetId);
     const app = editorFor(a.sourceFormat);
-    if (!app || app.open !== 'working-copy') throw new Error(`Opening ${a.sourceFormat.toUpperCase()} files this way isn't supported.`);
+    if (!app || app.open === 'none') throw new Error(`Opening ${a.sourceFormat.toUpperCase()} files this way isn't supported.`);
     const work = await this.workDir(app.id);
     const id = randomUUID().slice(0, 8);
     const src = await this.store.resolveAssetPath(a.id);

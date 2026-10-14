@@ -19,6 +19,7 @@ const INTRO: Record<Tab, { title: string; text: string }> = {
   edit: { title: 'Pick something to edit', text: 'Choose a file on the left. It opens here in the right app: photos in PhotoCraft, vector art in VectorCraft, audio in SoundCraft, video in FilmCraft and layouts in DesignCraft.' },
   color: { title: 'Pick a photo to colour', text: 'Choose a photo (PNG, JPEG, WebP or TIFF) on the left. It opens here in LightCraft for light and colour work: exposure, white balance, curves, colour grading and looks.' },
   effects: { title: 'Pick a picture or video', text: 'Choose a picture or a video on the left. It opens here in EffectCraft as a composition, ready for effects, titles and animation.' },
+  audio: { title: 'Pick a sound', text: 'Choose an audio file (WAV, MP3, FLAC, OGG or AIFF) on the left. It opens here in SoundCraft, with its waveform and clips in the timeline below.' },
 };
 
 /** The Edit tab: the selected file opens in its ArtCraft app, shown right here. */
@@ -115,6 +116,7 @@ function Stage({ asset, app, tab, live, showingThis }: { asset: Asset; app: Edit
   else if (showingThis && live?.poppedOut) status = `${app?.name} is open in its own window.`;
   else if (!app && tab === 'color') status = `The Color tab works on photos. ${asset.sourceFormat.toUpperCase()} files open in the Edit tab.`;
   else if (!app && tab === 'effects') status = `The Effects tab works on pictures and video. ${asset.sourceFormat.toUpperCase()} files open in the Edit tab.`;
+  else if (!app && tab === 'audio') status = `The Audio tab works on sound files. ${asset.sourceFormat.toUpperCase()} files open in the Edit tab.`;
   else if (!app || app.open === 'none') status = app?.note ?? `No ArtCraft app edits ${asset.sourceFormat.toUpperCase()} files yet.`;
   return (
     <div className="stage-art">

@@ -140,11 +140,20 @@ export class LiveVectorCraft extends LiveAppBase {
   }
 }
 
+interface ScSession {
+  sample_rate?: number; length_samples?: number;
+  transport?: { position?: number };
+  selection?: { clips?: number[] };
+  tracks?: Array<{ id: number; name: string; clips?: Array<{ id: number; name: string; start?: number; position?: number; end?: number; length?: number; fade_in?: number; fade_out?: number; gain_db?: number; muted?: boolean }> }>;
+}
+
 export class LiveSoundCraft extends LiveAppBase {
   readonly appId = 'soundcraft' as const;
   protected exeName = 'soundcraft';
   private clip: { track: number; frames: number; seconds: number } | null = null;
   private applied: string[] = [];
+  /** Undo steps that belong to opening (new session + import); history starts after them. */
+  private baseUndo = 0;
 
   protected guiEnv() { return {}; }
   protected bridgeArgs(port: number) { return ['mcp', '--connect', String(port)]; }
@@ -165,13 +174,21 @@ export class LiveSoundCraft extends LiveAppBase {
     const info = await this.cliInfo(absPath);
     this.clip = { track: imp.track, frames: imp.frames, seconds: info.seconds ?? 0 };
     this.applied = ['Import audio'];
+    this.baseUndo = (await this.undoList())?.length ?? 0;
     return { name: path.basename(absPath) };
   }
   async run(op: AppOperation) {
     await this.client().callTool('execute', { command: op.command, params: op.params });
     this.applied.push(op.command);
   }
-  async history() { return [...this.applied]; }
+  /** SoundCraft's own undo history (engine.history), so edits made by hand show up too. */
+  private async undoList(): Promise<string[] | null> {
+    try { return ((await this.client().callTool('execute', { command: 'engine.history', params: {} })) as { undo?: string[] }).undo ?? []; } catch { return null; }
+  }
+  async history() {
+    const u = await this.undoList();
+    return u ? ['Open', ...u.slice(this.baseUndo)] : [...this.applied];
+  }
   async applyTheme(value: string): Promise<string | null> {
     await this.client().callTool('ui_set', { state: { theme: value } });
     const ui = await this.client().callTool('ui_inspect', {});
@@ -179,9 +196,32 @@ export class LiveSoundCraft extends LiveAppBase {
     return m?.[1] ?? null;
   }
   async undo() {
+    const u = await this.undoList();
+    if (u && u.length <= this.baseUndo) throw new Error('Nothing to undo.');
     await this.client().callTool('execute', { command: 'edit.undo', params: {} });
     if (this.applied.length > 1) this.applied.pop();
   }
+  /** The session's tracks and clips (gain, fades) from inspect_session, times in seconds. */
+  async timeline(): Promise<TimelineDto> {
+    const s = (await this.client().callTool('inspect_session', {})) as ScSession;
+    const sr = s.sample_rate || 48000;
+    const sec = (n: number) => Math.round((n / sr) * 1000) / 1000;
+    const tracks = (s.tracks ?? []).filter((t) => (t.clips ?? []).length).map((t) => ({
+      id: t.id, name: t.name, kind: 'audio' as const, transitions: 0,
+      clips: (t.clips ?? []).map((k) => {
+        const start = k.start ?? k.position ?? 0;
+        const len = k.length ?? Math.max(0, (k.end ?? start) - start);
+        return { id: k.id, name: k.name, start: sec(start), duration: sec(len), speed: 1, effects: [], gainDb: k.gain_db ?? 0, fadeIn: sec(k.fade_in ?? 0), fadeOut: sec(k.fade_out ?? 0), muted: !!k.muted };
+      }),
+    }));
+    const end = Math.max(s.length_samples ?? 0, ...(s.tracks ?? []).flatMap((t) => (t.clips ?? []).map((k) => k.end ?? 0)));
+    return { duration: sec(end), fps: 0, playhead: sec(s.transport?.position ?? 0), tracks, selection: s.selection?.clips ?? [] };
+  }
+  async setPlayhead(seconds: number) {
+    const s = (await this.client().callTool('inspect_session', {})) as ScSession;
+    await this.client().callTool('execute', { command: 'transport.locate', params: { at: Math.round(seconds * (s.sample_rate || 48000)) } });
+  }
+  describe() { return this.timeline(); }
   quickEditSteps(opId: string, v: EditValues): AppOperation[] {
     const c = this.clip;
     if (!c) throw new Error('No audio is open.');

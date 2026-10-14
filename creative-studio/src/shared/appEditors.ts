@@ -29,10 +29,11 @@ export interface EditorApp {
   /** How "Open in app" works for this app. */
   open: 'live' | 'working-copy' | 'none';
   /**
-   * Which CreateCraft tab uses the app. Only 'edit' apps are picked by file type in the Edit tab;
-   * Color (LightCraft) and Effects (EffectCraft) open the same files in their own tabs.
+   * Which CreateCraft tab is the app's home. The Edit tab picks 'edit' and 'audio' apps by file
+   * type (so sounds open in SoundCraft there too); Color (LightCraft), Effects (EffectCraft) and
+   * Audio (SoundCraft) open files in their own tabs.
    */
-  tab: 'edit' | 'color' | 'effects';
+  tab: 'edit' | 'color' | 'effects' | 'audio';
   note?: string;
 }
 
@@ -81,7 +82,7 @@ export const EDITOR_APPS: Record<EditorAppId, EditorApp> = {
     name: 'VectorCraft',
     blurb: 'Vector illustration (SVG, AI, PDF, EPS)',
     formats: ['svg', 'svgz', 'vectorcraft', 'ai', 'eps', 'pdf'],
-    open: 'working-copy',
+    open: 'live',
     quickEdits: [
       { id: 'invertColors', group: 'Colour', label: 'Invert colours', params: [] },
       { id: 'rotate', label: 'Rotate artwork', group: 'Arrange', params: [deg(15)] },
@@ -93,11 +94,11 @@ export const EDITOR_APPS: Record<EditorAppId, EditorApp> = {
   },
   soundcraft: {
     id: 'soundcraft',
-    tab: 'edit',
+    tab: 'audio',
     name: 'SoundCraft',
     blurb: 'Audio editing and mixing',
     formats: ['wav', 'mp3', 'flac', 'ogg', 'aif', 'aiff'],
-    open: 'working-copy',
+    open: 'live',
     quickEdits: [
       { id: 'normalize', group: 'Make a copy', copyOnly: true, label: 'Normalize', params: [] },
       { id: 'gain', group: 'Volume', label: 'Change volume', params: [{ key: 'db', label: 'Gain', type: 'number', min: -40, max: 20, step: 0.5, default: -6, unit: 'dB' }] },
@@ -211,7 +212,7 @@ export const EDITOR_APPS: Record<EditorAppId, EditorApp> = {
 /** The Edit tab's app for a file type (Color and Effects pick their app explicitly). */
 export function editorFor(format: string): EditorApp | null {
   const f = format.toLowerCase();
-  return Object.values(EDITOR_APPS).find((a) => a.tab === 'edit' && a.formats.includes(f)) ?? null;
+  return Object.values(EDITOR_APPS).find((a) => (a.tab === 'edit' || a.tab === 'audio') && a.formats.includes(f)) ?? null;
 }
 
 /** The app a workspace tab uses for a file, or null when that tab can't open it. */

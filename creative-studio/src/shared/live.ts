@@ -3,8 +3,12 @@
 import type { EditorAppId } from './appEditors';
 import type { CollabState } from './collaboration';
 
-/** A video's timeline as FilmCraft has it (times in seconds). */
-export interface TimelineClip { id: number; name: string; start: number; duration: number; speed: number; effects: string[] }
+/** A timeline as FilmCraft (video) or SoundCraft (audio) has it (times in seconds; fps 0 for audio). */
+export interface TimelineClip {
+  id: number; name: string; start: number; duration: number; speed: number; effects: string[];
+  /** SoundCraft clips: gain, fade lengths (seconds) and mute. */
+  gainDb?: number; fadeIn?: number; fadeOut?: number; muted?: boolean;
+}
 export interface TimelineTrack { id: number; name: string; kind: 'video' | 'audio'; clips: TimelineClip[]; transitions: number }
 export interface TimelineDto { duration: number; fps: number; playhead: number | null; tracks: TimelineTrack[]; selection: number[] }
 

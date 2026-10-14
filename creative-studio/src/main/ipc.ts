@@ -18,7 +18,8 @@ import { ClaudePartner, defaultClaudeCli } from './claudePartner';
 import { LiveTaskController } from './liveTask';
 import { PhotoCraftCliAdapter } from './photocraftCli';
 import type { ProjectManager } from './projects';
-import type { EditorAppId } from '@shared/appEditors';
+import { EDITOR_APPS, type EditorAppId } from '@shared/appEditors';
+import { DeliverQueue } from './deliver';
 import type { EmbeddedApp } from './embeddedApp';
 import { LiveDesignCraft, LiveEffectCraft, LiveFilmCraft, LiveLightCraft, LiveSoundCraft, LiveVectorCraft } from './liveApps';
 import { LivePhotoCraft } from './photocraftLive';
@@ -332,6 +333,7 @@ export function registerIpc(d: IpcDeps): void {
     emit: (st) => { for (const w of BrowserWindow.getAllWindows()) if (!w.isDestroyed()) w.webContents.send(IPC.claudeEvent, st); },
     cliPath: defaultClaudeCli(),
     generate: (job) => runGeneration(job, 'claude'),
+    deliver: async () => deliver(),
     imageModels: async () => (await providerStatus()).filter((p) => p.configured),
     workDir: async () => { const dir = path.join((await d.project()).root, 'work', 'claude'); await fs.mkdir(dir, { recursive: true }); return dir; },
   }));
@@ -347,7 +349,7 @@ export function registerIpc(d: IpcDeps): void {
   handle(IPC.liveDock, none, () => popIn());
   handle(IPC.liveViewport, z.tuple([z.object({ x: z.number().finite(), y: z.number().finite(), width: z.number().finite().min(0), height: z.number().finite().min(0), visible: z.boolean() }).nullable()]),
     (v) => { d.embedded.setViewport(v); });
-  handle(IPC.liveQuickEdit, z.tuple([z.string().min(1).max(64), z.record(z.string().max(64), z.union([z.number(), z.string().max(64)]))]),
+  handle(IPC.liveQuickEdit, z.tuple([z.string().min(1).max(64), z.record(z.string().max(64), z.union([z.number(), z.string().max(200)]))]),
     async (opId, values) => (await live()).quickEdit(opId, values));
   handle(IPC.liveUndo, none, async () => (await live()).undo());
   const stepSchema = z.object({ command: z.string().min(1).max(128), params: z.record(z.string().max(64), z.unknown()) });
@@ -366,7 +368,7 @@ export function registerIpc(d: IpcDeps): void {
   resetters.push(() => { editorsPromise = null; });
   const editors = () => (editorsPromise ??= d.project().then((s) => new AppEditors(s)));
   const id = z.string().min(1).max(128);
-  handle(IPC.editApply, z.tuple([id, z.string().min(1).max(64), z.record(z.string().max(64), z.union([z.number(), z.string().max(64)]))]),
+  handle(IPC.editApply, z.tuple([id, z.string().min(1).max(64), z.record(z.string().max(64), z.union([z.number(), z.string().max(200)]))]),
     async (assetId, opId, values) => (await editors()).apply(assetId, opId, values));
   handle(IPC.editOpenCopy, z.tuple([id]), async (assetId) => strip(await (await editors()).openWorkingCopy(assetId)));
   handle(IPC.editList, none, async () => (await editors()).list().map(strip));
@@ -378,6 +380,21 @@ export function registerIpc(d: IpcDeps): void {
     const file = path.join(await (await d.project()).exportsDir(), name);
     shell.showItemInFolder(file);
   });
+
+  // ---- Deliver: export queue (headless ArtCraft command-line tools, no app windows) ----
+  let deliverPromise: Promise<DeliverQueue> | null = null;
+  resetters.push(() => { deliverPromise = null; });
+  const deliver = () => (deliverPromise ??= d.project().then((store) => new DeliverQueue({
+    store,
+    installDir: (app) => PFdir(EDITOR_APPS[app].name),
+    emit: (jobs) => { for (const w of BrowserWindow.getAllWindows()) if (!w.isDestroyed()) w.webContents.send(IPC.deliverEvent, jobs); },
+  })));
+  handle(IPC.deliverJobs, none, async () => (await deliver()).list());
+  handle(IPC.deliverEnqueue, z.tuple([id, z.array(z.string().min(1).max(64)).min(1).max(30)]), async (assetId, presets) => (await deliver()).enqueue(assetId, presets, 'user'));
+  handle(IPC.deliverCancel, z.tuple([id]), async (jobId) => (await deliver()).cancel(jobId));
+  handle(IPC.deliverClear, none, async () => (await deliver()).clearFinished());
+  handle(IPC.deliverHistory, z.union([z.tuple([]), z.tuple([id])]), async (assetId?: string) => (await deliver()).history(assetId));
+  handle(IPC.deliverOpenFolder, none, async () => { await shell.openPath(await (await d.project()).exportsDir()); });
 
   // ---- Projects ----
   const projectKey = z.string().regex(/^[A-Za-z0-9_-]{1,64}$/);

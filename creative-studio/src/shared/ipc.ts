@@ -5,6 +5,7 @@ import type { ClaudeState } from './claude';
 import type { CostEstimate, ImageJob, ProviderId } from './generation';
 import type { LiveSnapshot, TimelineDto } from './live';
 import type { EditorAppId } from './appEditors';
+import type { DeliverJob, DeliverRecord } from './deliver';
 import type { WorkflowGraph, WorkflowRunEvent } from './workflow';
 
 export const IPC = {
@@ -68,6 +69,13 @@ export const IPC = {
   genRun: 'generate:run',
   genKeyPage: 'generate:key-page',
   genEvent: 'generate:event',
+  deliverJobs: 'deliver:jobs',
+  deliverEnqueue: 'deliver:enqueue',
+  deliverCancel: 'deliver:cancel',
+  deliverClear: 'deliver:clear',
+  deliverHistory: 'deliver:history',
+  deliverOpenFolder: 'deliver:open-folder',
+  deliverEvent: 'deliver:event',
   probeApps: 'apps:probe',
   integrationStatus: 'integrations:status',
 } as const;
@@ -137,6 +145,17 @@ export interface StudioApi {
   onWorkflowEvent(cb: (e: WorkflowRunEvent) => void): () => void;
   listExports(): Promise<Array<{ name: string; bytes: number; modified: string }>>;
   revealExport(name: string): Promise<void>;
+  /** Deliver tab: export queue (ArtCraft command-line tools, no app windows). */
+  deliver: {
+    jobs(): Promise<DeliverJob[]>;
+    enqueue(assetId: string, presetIds: string[]): Promise<DeliverJob[]>;
+    cancel(jobId: string): Promise<void>;
+    clearFinished(): Promise<void>;
+    /** Recorded exports, newest first (all, or made from one file). */
+    history(assetId?: string): Promise<DeliverRecord[]>;
+    openFolder(): Promise<void>;
+    onJobs(cb: (jobs: DeliverJob[]) => void): () => void;
+  };
   live: {
     state(): Promise<LiveSnapshot>;
     /** Opens a library file in its app (or in `app`, e.g. LightCraft for the Color tab). */

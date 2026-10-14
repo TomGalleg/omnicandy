@@ -16,6 +16,8 @@ import { CLAUDE_MODELS, type ClaudeChatItem, type ClaudeModelId, type ClaudeStat
 import { estimateCost, formatUsd, IMAGE_MODELS, modelById, providerById, type ImageJob } from '@shared/generation';
 import type { GenerateResultDto, ProviderStatusDto } from '@shared/ipc';
 import { EDITOR_APPS, type EditorAppId } from '@shared/appEditors';
+import { presetsFor } from '@shared/deliver';
+import type { DeliverQueue } from './deliver';
 import type { LiveTaskController } from './liveTask';
 import type { ProjectStore } from './projectStore';
 
@@ -27,11 +29,13 @@ One file is open at a time, in one app. To use a different app, open a file in i
 
 Follow the user's direction. You may suggest improvements, but ask before big creative reinterpretations. Work in small steps and say briefly what you changed. If a tool says the user paused you or took control, stop at once and tell them you are waiting. Never claim a change you did not make.
 
-Saving creates a new version in the library; the user's original file is never changed. Save only when the user asks or agrees. Keep replies short and plain.
+Saving creates a new version in the library; the user's original file is never changed. Save only when the user asks or agrees.
+
+To deliver finished files (JPEG for the web, PDF, MP4, WAV, GIF and so on), use list_export_formats and export_file. Exports go to the project's exports folder (the Deliver tab) and are made from saved library files, never from unsaved changes in the open app. Keep replies short and plain.
 
 You can also create new pictures with generate_image (OpenAI or Google Gemini, using the user's own account). It costs the user money: only generate when they ask for it, keep the count low, and say which model you will use. CreateCraft shows the user the price and asks them to approve every call; if they cancel, accept it and do not ask again unless they bring it up. New images are added to the library as new files; open one with open_file to edit it.`;
 
-const TOOL_NAMES = ['get_status', 'look_at_document', 'apply_edit', 'photocraft_command', 'undo', 'save_version', 'list_files', 'open_file', 'list_image_models', 'generate_image'];
+const TOOL_NAMES = ['get_status', 'look_at_document', 'apply_edit', 'photocraft_command', 'undo', 'save_version', 'list_files', 'open_file', 'list_image_models', 'generate_image', 'list_export_formats', 'export_file'];
 
 export interface ClaudePartnerDeps {
   live: () => Promise<LiveTaskController>;
@@ -46,6 +50,8 @@ export interface ClaudePartnerDeps {
   generate: (job: ImageJob) => Promise<GenerateResultDto>;
   /** Providers with a saved key (status only, never the key). */
   imageModels: () => Promise<ProviderStatusDto[]>;
+  /** The Deliver tab's export queue (same queue, presets and manifest as the UI). */
+  deliver: () => Promise<DeliverQueue>;
 }
 
 export class ClaudePartner {
@@ -165,7 +171,7 @@ export class ClaudePartner {
         }),
         tool('apply_edit', 'Applies one of the available edits (see get_status) in the open app. settings uses the keys listed for that edit; omit a key to use its default.', {
           edit_id: z.string().max(64),
-          settings: z.record(z.string().max(64), z.union([z.number(), z.string().max(64)])).optional(),
+          settings: z.record(z.string().max(64), z.union([z.number(), z.string().max(200)])).optional(),
         }, async ({ edit_id, settings }) => {
           try { const r = await ctl.claudeQuickEdit(edit_id, settings ?? {}); activity(r); return text(r); } catch (e) { activity(`Edit refused: ${e instanceof Error ? e.message : e}`); return fail(e); }
         }),
@@ -184,6 +190,35 @@ export class ClaudePartner {
             const s = await ctl.saveVersion();
             activity(s.message ?? 'Saved a new version');
             return text(s.message ?? 'Saved.');
+          } catch (e) { return fail(e); }
+        }),
+        tool('list_export_formats', 'Export formats (Deliver presets) available for a library file (exact name from list_files).', {
+          name: z.string().max(512),
+        }, async ({ name }) => {
+          try {
+            const a = (await (await this.d.store()).loadManifest()).assets.find((x) => x.name === name);
+            if (!a) throw new Error(`No file named "${name}". Use list_files.`);
+            const ps = presetsFor(a.sourceFormat);
+            if (!ps.length) return text(`${a.sourceFormat.toUpperCase()} files can't be exported yet.`);
+            return text(JSON.stringify(ps.map((p) => ({ preset_id: p.id, label: p.label, note: p.note, file_type: p.ext, made_by: EDITOR_APPS[p.app].name })), null, 2));
+          } catch (e) { return fail(e); }
+        }),
+        tool('export_file', 'Exports a library file (exact name from list_files) with one or more Deliver presets (see list_export_formats) into the project\'s exports folder, and waits until done. Exports use the SAVED library file: if the user wants changes in the open app included, save_version first and export the new version. Never changes the library.', {
+          name: z.string().max(512),
+          preset_ids: z.array(z.string().max(64)).min(1).max(10),
+        }, async ({ name, preset_ids }) => {
+          try {
+            const a = (await (await this.d.store()).loadManifest()).assets.find((x) => x.name === name);
+            if (!a) throw new Error(`No file named "${name}". Use list_files.`);
+            const q = await this.d.deliver();
+            const jobs = await q.enqueue(a.id, preset_ids, 'claude');
+            activity(`Exporting ${a.name}: ${jobs.map((j) => j.presetLabel).join(', ')}`);
+            const done = await q.wait(jobs.map((j) => j.id));
+            const lines = done.map((j) => (j.status === 'done' ? `${j.presetLabel}: exports/${j.output}` : `${j.presetLabel}: ${j.status}${j.error ? ` (${j.error})` : ''}`));
+            activity(`Export finished: ${lines.join('; ')}`);
+            const s = ctl.snapshot();
+            const unsaved = s.asset?.id === a.id && s.history.length > 1 && !s.savedVersionIds.length;
+            return text(lines.join('\n') + (unsaved ? '\nNote: the open document has edits that are not saved, so they are not in these exports.' : ''));
           } catch (e) { return fail(e); }
         }),
         tool('list_files', 'Lists the files in the project library (name, kind, size).', {}, async () => {

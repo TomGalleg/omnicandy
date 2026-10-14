@@ -7,7 +7,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { EDITOR_APPS, type EditorAppId } from '@shared/appEditors';
-import { LiveDesignCraft, LiveEffectCraft, LiveFilmCraft, LiveLightCraft } from './liveApps';
+import { LiveDesignCraft, LiveEffectCraft, LiveFilmCraft, LiveLightCraft, LiveSoundCraft } from './liveApps';
 import { LiveTaskController } from './liveTask';
 import { sniffMedia } from './media';
 import { ProjectStore } from './projectStore';
@@ -16,7 +16,7 @@ const PF = process.env.ProgramFiles ?? 'C:\\Program Files';
 const FIXTURES = path.resolve(__dirname, '../../fixtures/sample-project');
 const has = (app: string) => process.env.CS_LIVE_TESTS === '1' && existsSync(path.join(PF, app, `${app.toLowerCase()}.exe`));
 
-type Driver = LiveFilmCraft | LiveLightCraft | LiveEffectCraft | LiveDesignCraft;
+type Driver = LiveFilmCraft | LiveLightCraft | LiveEffectCraft | LiveDesignCraft | LiveSoundCraft;
 
 async function setup(appId: EditorAppId, make: (o: { installDir: string; readRoot: string; writeRoot: string }) => Driver) {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), `cs-live-${appId}-`));
@@ -227,4 +227,36 @@ describe.skipIf(!has('DesignCraft'))('Live DesignCraft (real window)', () => {
     expect(await t.app.applyTheme('light')).toBe('light');
     expect(await t.app.applyTheme('mediumDark')).toBe('mediumDark');
   }, 60000);
+});
+
+describe.skipIf(!has('SoundCraft'))('Live SoundCraft timeline and history (real window)', () => {
+  let t: Awaited<ReturnType<typeof setup>>;
+  let tone: string;
+  beforeAll(async () => {
+    t = await setup('soundcraft', (o) => new LiveSoundCraft(o));
+    tone = (await t.store.importFile(path.join(FIXTURES, 'tone-a440.wav'))).asset.id;
+  }, 60000);
+  afterAll(async () => { await t?.cleanup(); });
+
+  it('shows the clip on a timeline with gain and fades, tracks SoundCraft\'s own undo history, and moves the playhead', async () => {
+    const s = await t.ctl.open(tone);
+    expect(s.history).toEqual(['Open']);
+    const tl = (await t.ctl.timeline())!;
+    expect(tl.tracks).toHaveLength(1);
+    expect(tl.tracks[0]!.clips[0]!.duration).toBeCloseTo(2, 1);
+    await t.ctl.quickEdit('gain', { db: -6 });
+    await t.ctl.quickEdit('fades', { fadeIn: 0.25, fadeOut: 0.5 });
+    const h = (await t.ctl.refresh()).history;
+    expect(h[0]).toBe('Open');
+    expect(h.length).toBeGreaterThanOrEqual(3);
+    const clip = (await t.ctl.timeline())!.tracks[0]!.clips[0]!;
+    expect(clip.gainDb).toBeCloseTo(-6, 1);
+    expect(clip.fadeIn).toBeCloseTo(0.25, 1);
+    expect(clip.fadeOut).toBeCloseTo(0.5, 1);
+    expect((await t.ctl.undo()).history.length).toBe(h.length - 1);
+    await t.ctl.setPlayhead(1);
+    expect((await t.ctl.timeline())!.playhead).toBeCloseTo(1, 1);
+    const d = (await (t.app as LiveSoundCraft).describe()) as { tracks: unknown[] };
+    expect(d.tracks).toHaveLength(1);
+  }, 120000);
 });
