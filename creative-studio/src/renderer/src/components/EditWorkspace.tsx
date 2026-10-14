@@ -43,8 +43,11 @@ export function AppWorkspace({ selected, liveApi, onProjectChanged, tab }: Props
   const key = selected && app ? `${app.id}:${selected.id}` : null;
 
   // Open the selected file in the tab's app automatically (unless an automation task is mid-way).
+  // Only when you pick a file or tab: once it has been shown, Claude opening something else (and
+  // this tab following it) must not reopen it.
   useEffect(() => {
-    if (!selected || !app || !canLive || showingThis || busy || taskActive || live?.status === 'starting') return;
+    if (showingThis) { tried.current = key; return; }
+    if (!selected || !app || !canLive || busy || taskActive || live?.status === 'starting') return;
     if (tried.current === key) return;
     tried.current = key;
     void act(`Open in ${app.name}`, () => window.studio.live.open(selected.id, app.id));

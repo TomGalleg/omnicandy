@@ -36,4 +36,6 @@ export interface LiveSnapshot {
   poppedOut: boolean;
   /** The open app's interface theme as last set by CreateCraft (read back from the app). */
   appTheme: { app: EditorAppId; value: string } | null;
+  /** Who opened the current file: Claude's opens make the main window follow (tab + selection). */
+  openedBy: 'user' | 'claude';
 }

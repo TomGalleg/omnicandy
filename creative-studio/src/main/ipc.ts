@@ -231,9 +231,9 @@ export function registerIpc(d: IpcDeps): void {
   };
   handle(IPC.liveState, none, async () => (await live()).snapshot());
   /** Opens a library file in its app and shows it in the Edit area (or its own window). */
-  const openLive = async (id: string, app?: EditorAppId) => {
+  const openLive = async (id: string, app?: EditorAppId, by: 'user' | 'claude' = 'user') => {
     const ctl = await live();
-    const s = await ctl.open(id, app);
+    const s = await ctl.open(id, app, by);
     await syncAppTheme();
     const pid = await currentPid();
     if (pid) {
@@ -328,7 +328,7 @@ export function registerIpc(d: IpcDeps): void {
   const claude = () => (partner ??= new ClaudePartner({
     live,
     store: d.project,
-    openAsset: async (id) => { await openLive(id); },
+    openAsset: async (id, app) => { await openLive(id, app, 'claude'); },
     emit: (st) => { for (const w of BrowserWindow.getAllWindows()) if (!w.isDestroyed()) w.webContents.send(IPC.claudeEvent, st); },
     cliPath: defaultClaudeCli(),
     generate: (job) => runGeneration(job, 'claude'),

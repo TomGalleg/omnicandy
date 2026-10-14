@@ -41,6 +41,8 @@ export interface LiveDoc {
   timeline?(): Promise<TimelineDto>;
   setPlayhead?(seconds: number): Promise<void>;
   selectClip?(clipId: number): Promise<void>;
+  /** App-specific facts for Claude (FilmCraft: the timeline; DesignCraft: page size and text). */
+  describe?(): Promise<unknown>;
 }
 
 export function versionOf(history: string[]): string {

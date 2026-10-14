@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { appForTab, checkEditValues, EDITOR_APPS, editorFor, effectcraftSteps, filmcraftSteps, lightcraftSteps, type FilmSequence } from './appEditors';
+import { appForTab, checkEditValues, designcraftSteps, EDITOR_APPS, editorFor, effectcraftSteps, filmcraftSteps, lightcraftSteps, type FilmSequence } from './appEditors';
 
 const seq: FilmSequence = {
   fps: 24000 / 1001,
@@ -71,5 +71,20 @@ describe('LightCraft and EffectCraft quick edits', () => {
     expect(checkEditValues(title, { text: '   ' }).ok).toBe(false);
     expect(checkEditValues(title, { text: 'x'.repeat(121) }).ok).toBe(false);
     expect(checkEditValues(title, { text: 42 }).ok).toBe(false);
+  });
+});
+
+describe('DesignCraft steps', () => {
+  const page = { bounds: [0, 0, 612, 792] as [number, number, number, number], margins: { top: 36, bottom: 36, inside: 36, outside: 36 } };
+  it('replaces text with Find/Change and places new text inside the margins', () => {
+    expect(designcraftSteps('replaceText', { find: 'Sunset', replace: 'Dawn' }, page)).toEqual([{ command: 'find.change', params: { find: 'Sunset', change: 'Dawn' } }]);
+    const [bottom] = designcraftSteps('addText', defaults('designcraft', 'addText'), page);
+    expect(bottom).toEqual({ command: 'createcraft.addText', params: { rect: [36, 712, 576, 756], text: 'Your text', size: 24, fill: '[Black]' } });
+    const [top] = designcraftSteps('addText', { text: 'Hi', position: 'top', size: 24, color: '[Paper]' }, page);
+    expect((top!.params.rect as number[])[1]).toBe(36);
+  });
+  it('only offers the swatch colours every document has', () => {
+    const add = EDITOR_APPS.designcraft.quickEdits.find((o) => o.id === 'addText')!;
+    expect(checkEditValues(add, { text: 'x', color: '#ff0000' }).ok).toBe(false);
   });
 });

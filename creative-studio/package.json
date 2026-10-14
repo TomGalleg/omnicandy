@@ -16,7 +16,8 @@
     "smoke": "electron-vite build && node scripts/smoke.mjs",
     "smoke:live": "electron-vite build && node scripts/smoke-live.mjs",
     "smoke:generate": "electron-vite build && node scripts/smoke-generate.mjs",
-    "smoke:apps": "electron-vite build && node scripts/smoke-apps.mjs"
+    "smoke:apps": "electron-vite build && node scripts/smoke-apps.mjs",
+    "smoke:claude-apps": "electron-vite build && node scripts/smoke-claude-apps.mjs"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.3.296",

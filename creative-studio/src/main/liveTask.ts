@@ -61,6 +61,7 @@ export class LiveTaskController {
   private claudeActive = false;
   private appId: EditorAppId = 'photocraft';
   private appTheme: { app: EditorAppId; value: string } | null = null;
+  private openedBy: 'user' | 'claude' = 'user';
   private saveCount = 0;
 
   constructor(private readonly d: LiveTaskDeps) {}
@@ -80,6 +81,7 @@ export class LiveTaskController {
       message: this.message,
       poppedOut: this.poppedOut,
       appTheme: this.appTheme,
+      openedBy: this.openedBy,
     };
   }
 
@@ -110,7 +112,9 @@ export class LiveTaskController {
   }
 
   /** Launches the matching app if needed and opens a library asset in its window (read-only source). */
-  async open(assetId: string, appOverride?: EditorAppId): Promise<LiveSnapshot> {
+  async open(assetId: string, appOverride?: EditorAppId, openedBy: 'user' | 'claude' = 'user'): Promise<LiveSnapshot> {
+    // Claude handing off to another file/app ends its task on the current one first.
+    if (openedBy === 'claude') this.claudeDone();
     if (this.collab.activeOperation || this.collab.phase === 'running' || this.collab.phase === 'pausing') {
       throw new Error('Pause or cancel the running task before opening another document.');
     }
@@ -118,6 +122,7 @@ export class LiveTaskController {
     if (!a) throw new Error('Unknown asset.');
     const appId = appOverride ?? editorFor(a.sourceFormat)?.id;
     if (!appId || !LIVE_APPS.includes(appId)) throw new Error(`No app can open ${a.sourceFormat.toUpperCase()} files live yet.`);
+    if (!EDITOR_APPS[appId].formats.includes(a.sourceFormat.toLowerCase())) throw new Error(`${EDITOR_APPS[appId].name} can't open ${a.sourceFormat.toUpperCase()} files.`);
     const appName = EDITOR_APPS[appId].name;
     const abs = await this.d.store.resolveAssetPath(a.id);
 
@@ -139,6 +144,7 @@ export class LiveTaskController {
       throw err;
     }
     this.asset = { id: a.id, name: a.name };
+    this.openedBy = openedBy;
     this.parentForNextSave = a.id;
     this.steps = [];
     this.stepIndex = 0;
@@ -430,10 +436,14 @@ export class LiveTaskController {
   }
 
   /** What Claude needs to know about the current state. */
-  statusForClaude() {
+  async statusForClaude() {
     const app = EDITOR_APPS[this.appId];
+    const ready = this.status === 'ready' && !!this.asset && !!this.doc;
+    const details = ready && this.doc!.describe ? await this.doc!.describe().catch(() => undefined) : undefined;
     return {
-      open: this.asset ? { file: this.asset.name, app: app.name } : null,
+      open: this.asset ? { file: this.asset.name, app: app.name, tab: app.tab, ...(details ? { details } : {}) } : null,
+      // Every app a file can be handed to with open_file (app id, CreateCraft tab, file types).
+      apps: LIVE_APPS.map((id) => ({ app: id, name: EDITOR_APPS[id].name, tab: EDITOR_APPS[id].tab, for: EDITOR_APPS[id].blurb, fileTypes: EDITOR_APPS[id].formats })),
       history: this.history,
       lock: this.collab.lockOwner === 'user' ? 'the user has control (do not edit)' : this.collab.phase === 'paused' || this.collab.phase === 'pausing' ? 'paused by the user (do not edit)' : 'free',
       edits: this.asset ? app.quickEdits.filter((o) => !o.copyOnly).map((o) => ({

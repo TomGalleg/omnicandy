@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Group, Panel, Separator, useDefaultLayout, usePanelRef } from 'react-resizable-panels';
+import { EDITOR_APPS } from '@shared/appEditors';
 import type { IntegrationSnapshot } from '@shared/ipc';
 import type { AppProbeResult, ProjectManifest, WorkspaceId } from '@shared/types';
 import { AssetBrowser } from './components/AssetBrowser';
@@ -48,6 +49,19 @@ export function App() {
   }, [addLog, loadCurrent]);
 
   const liveApi = useLive(addLog);
+
+  // When Claude opens a file (possibly in another app), show it: select it and go to that app's tab.
+  const live = liveApi.live;
+  const claudeOpened = live?.status === 'ready' && live.openedBy === 'claude' && live.asset ? `${live.appId}:${live.asset.id}` : null;
+  useEffect(() => {
+    if (!claudeOpened || !live?.asset) return;
+    const id = live.asset.id;
+    if (!manifest?.assets.some((a) => a.id === id)) reloadProject();
+    setSelectedId(id);
+    setWorkspace(EDITOR_APPS[live.appId].tab);
+    // Only when Claude opens something new, not on every state update.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [claudeOpened]);
 
   // New AI images (from the Generate tab or Claude) appear in the library right away.
   useEffect(() => window.studio.generate.onResult((r) => {

@@ -251,7 +251,10 @@ describe('apps chosen by tab (Color = LightCraft) and async quick edits', () => 
     expect(s.appId).toBe('lightcraft');
     await c.quickEdit('auto', {});
     expect(light.ran).toEqual(['develop.auto']);
-    expect(c.statusForClaude().edits.map((e) => e.id)).toContain('look');
+    const st = await c.statusForClaude();
+    expect(st.edits.map((e) => e.id)).toContain('look');
+    expect(st.open).toMatchObject({ app: 'LightCraft', tab: 'color' });
+    expect(st.apps.map((a) => a.app)).toEqual(['photocraft', 'vectorcraft', 'soundcraft', 'filmcraft', 'lightcraft', 'effectcraft', 'designcraft']);
     const saved = await c.saveVersion();
     const v = (await store.loadManifest()).assets.find((a) => a.id === saved.savedVersionIds[0]);
     expect(v).toMatchObject({ name: 'photocraft-smoke-color1.png', parentId: assetId });
@@ -264,6 +267,25 @@ describe('apps chosen by tab (Color = LightCraft) and async quick edits', () => 
     const again = await ctl.saveVersion();
     expect(again.message).toMatch(/Nothing changed/);
     expect(again.savedVersionIds).toHaveLength(2);
+  });
+
+  it('refuses an app that cannot open the file type', async () => {
+    await expect(ctl.open(assetId, 'soundcraft')).rejects.toThrow(/SoundCraft can't open PNG/);
+  });
+
+  it('lets Claude hand off to another app mid-task (its task on the first file ends) and marks who opened it', async () => {
+    const light = new FakeLightDoc();
+    const c = new LiveTaskController({
+      connect: async (app) => (app === 'lightcraft' ? light : doc), store, emit: () => {},
+      writeDir: async () => { const d = path.join(store.root, 'work', 'h'); await fs.mkdir(d, { recursive: true }); return d; },
+    });
+    expect((await c.open(assetId)).openedBy).toBe('user');
+    await c.claudeQuickEdit('blackWhite', {});
+    expect(c.snapshot().collab.phase).toBe('running'); // Claude's task is still going
+    const s = await c.open(assetId, 'lightcraft', 'claude');
+    expect(s).toMatchObject({ appId: 'lightcraft', openedBy: 'claude', status: 'ready' });
+    expect(await c.claudeQuickEdit('auto', {})).toMatch(/applied/);
+    expect(light.ran).toEqual(['develop.auto']);
   });
 
   it('only video apps have a timeline', async () => {

@@ -15,12 +15,15 @@ import { z } from 'zod';
 import { CLAUDE_MODELS, type ClaudeChatItem, type ClaudeModelId, type ClaudeState } from '@shared/claude';
 import { estimateCost, formatUsd, IMAGE_MODELS, modelById, providerById, type ImageJob } from '@shared/generation';
 import type { GenerateResultDto, ProviderStatusDto } from '@shared/ipc';
+import { EDITOR_APPS, type EditorAppId } from '@shared/appEditors';
 import type { LiveTaskController } from './liveTask';
 import type { ProjectStore } from './projectStore';
 
 const SYSTEM_PROMPT = `You are Claude, the Creative Partner inside CreateCraft, a desktop app where the user edits media in ArtCraft apps: PhotoCraft (photos), VectorCraft (vector art), SoundCraft (audio), FilmCraft (video, on a timeline) and DesignCraft (page layouts) in the Edit tab, LightCraft (photo light and colour) in the Color tab, and EffectCraft (effects and titles on pictures and video) in the Effects tab. The file the user is working on is open in one of these apps, shown inside CreateCraft. get_status tells you which app, and the edits that app offers.
 
 You can only act through the createcraft tools. Start by calling get_status. For visual work, call look_at_document before and after you change something, so you see what you are doing.
+
+One file is open at a time, in one app. To use a different app, open a file in it with open_file and its app (get_status lists every app and the file types it takes). The same photo can go to PhotoCraft (edit), LightCraft (light and colour) or EffectCraft (effects and titles); a video to FilmCraft (timeline: trim, speed, sound, fades) or EffectCraft. To carry your changes from one app to the next, save_version first, then open the saved version (its name is in the save result) in the next app. Opening another file replaces what is open, so save first if the user wants to keep the changes. get_status also shows details of the open file when the app provides them (FilmCraft: the timeline; DesignCraft: the text on the page, which replaceText can change).
 
 Follow the user's direction. You may suggest improvements, but ask before big creative reinterpretations. Work in small steps and say briefly what you changed. If a tool says the user paused you or took control, stop at once and tell them you are waiting. Never claim a change you did not make.
 
@@ -34,7 +37,7 @@ export interface ClaudePartnerDeps {
   live: () => Promise<LiveTaskController>;
   store: () => Promise<ProjectStore>;
   /** Opens a library file in its app inside the Edit tab (same path as the UI). */
-  openAsset: (assetId: string) => Promise<void>;
+  openAsset: (assetId: string, app?: EditorAppId) => Promise<void>;
   emit: (s: ClaudeState) => void;
   /** Claude Code CLI on this PC, used only for `auth status` / `auth login`. */
   cliPath: string;
@@ -150,9 +153,9 @@ export class ClaudePartner {
       version: '0.1.0',
       tools: [
         tool('get_status', 'What is open (file and app), its edit history, whether you may edit (lock), and the edits available for this app with their settings.', {}, async () => {
-          try { return text(JSON.stringify(ctl.statusForClaude(), null, 2)); } catch (e) { return fail(e); }
+          try { return text(JSON.stringify(await ctl.statusForClaude(), null, 2)); } catch (e) { return fail(e); }
         }),
-        tool('look_at_document', 'Returns a picture of the open document (photos and vector art) or of the app window (audio), so you can see it.', {}, async () => {
+        tool('look_at_document', 'Returns a picture of the open document (photos, vector art, layouts, the current video frame or composition) or of the app window (audio), so you can see it.', {}, async () => {
           try {
             const png = await ctl.preview(1024);
             if (!png) return text('No picture is available for this document.');
@@ -231,15 +234,18 @@ New files: ${names.join(', ') || '(none)'}`);
             return fail(/cancelled/i.test(msg) ? new Error('The user cancelled this generation. Nothing was charged. Do not retry unless they ask.') : e);
           }
         }),
-        tool('open_file', 'Opens a library file (exact name from list_files) in its app in the Edit tab. Ask the user first if the current document has unsaved changes.', {
+        tool('open_file', 'Opens a library file (exact name from list_files) in an ArtCraft app and shows it in that app\'s CreateCraft tab. Without app it uses the file type\'s Edit-tab app (photos: PhotoCraft, vector: VectorCraft, audio: SoundCraft, video: FilmCraft, .designcraft: DesignCraft). Pass app to use another one, e.g. lightcraft for colour work on a photo or effectcraft for effects and titles. Ask the user first if the current document has unsaved changes.', {
           name: z.string().max(512),
-        }, async ({ name }) => {
+          app: z.enum(['photocraft', 'vectorcraft', 'soundcraft', 'filmcraft', 'lightcraft', 'effectcraft', 'designcraft']).optional(),
+        }, async ({ name, app }) => {
           try {
             const a = (await (await this.d.store()).loadManifest()).assets.find((x) => x.name === name);
             if (!a) throw new Error(`No file named "${name}". Use list_files.`);
-            await this.d.openAsset(a.id);
-            activity(`Opened ${a.name}`);
-            return text(`${a.name} is open.`);
+            await this.d.openAsset(a.id, app);
+            const s = ctl.snapshot();
+            const appName = EDITOR_APPS[s.appId].name;
+            activity(`Opened ${a.name} in ${appName}`);
+            return text(`${a.name} is open in ${appName}. Call get_status to see its edits.`);
           } catch (e) { return fail(e); }
         }),
       ],

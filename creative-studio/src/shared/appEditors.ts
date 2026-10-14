@@ -192,8 +192,19 @@ export const EDITOR_APPS: Record<EditorAppId, EditorApp> = {
     blurb: 'Page layout (flyers, posters, documents)',
     formats: ['designcraft'],
     open: 'live',
-    quickEdits: [],
-    note: "Edit the layout with DesignCraft's own tools. Saving keeps a new .designcraft version plus a PNG of the first page.",
+    quickEdits: [
+      { id: 'replaceText', group: 'Text', label: 'Replace text', params: [
+        { key: 'find', label: 'Find', type: 'text', default: 'Title', maxLength: 200 },
+        { key: 'replace', label: 'Replace with', type: 'text', default: 'New title', maxLength: 200 }] },
+      { id: 'addText', group: 'Text', label: 'Add a line of text', params: [
+        { key: 'text', label: 'Text', type: 'text', default: 'Your text', maxLength: 200 },
+        { key: 'position', label: 'Where', type: 'select', default: 'bottom', options: [
+          { value: 'top', label: 'Top' }, { value: 'middle', label: 'Middle' }, { value: 'bottom', label: 'Bottom' }] },
+        { key: 'size', label: 'Size', type: 'number', min: 6, max: 144, step: 1, default: 24, unit: 'pt' },
+        { key: 'color', label: 'Colour', type: 'select', default: '[Black]', options: [
+          { value: '[Black]', label: 'Black' }, { value: '[Paper]', label: 'White' }] }] },
+    ],
+    note: "Edit the layout with DesignCraft's own tools, or use the text edits here. Saving keeps a new .designcraft version plus a PNG of the first page.",
   },
 };
 
@@ -321,6 +332,29 @@ export function filmcraftSteps(opId: string, v: EditValues, seq: FilmSequence): 
         ...vids.map((clip) => ({ command: 'effects.setParam', params: { clip, effect: 'lumetri', param: 'saturation', value: v.saturation } })),
       ];
     default: throw new Error(`Unknown FilmCraft edit "${opId}".`);
+  }
+}
+
+/** A DesignCraft page as far as the quick edits need it (points). */
+export interface DesignPage { bounds: [number, number, number, number]; margins: { top: number; bottom: number; inside: number; outside: number } }
+
+/**
+ * DesignCraft commands for a quick edit. `createcraft.addText` is CreateCraft's own two-step
+ * operation (frame.create, then find.change with attrs on the new story), run by LiveDesignCraft.
+ */
+export function designcraftSteps(opId: string, v: EditValues, page: DesignPage): Op[] {
+  switch (opId) {
+    case 'replaceText': return [{ command: 'find.change', params: { find: v.find, change: v.replace } }];
+    case 'addText': {
+      const [x0, y0, x1, y1] = page.bounds;
+      const m = page.margins;
+      const size = Number(v.size);
+      const h = Math.ceil(size * 1.5 + 8);
+      const top = v.position === 'top' ? y0 + m.top : v.position === 'middle' ? Math.round((y0 + y1 - h) / 2) : y1 - m.bottom - h;
+      const left = x0 + Math.min(m.inside, m.outside), right = x1 - Math.min(m.inside, m.outside);
+      return [{ command: 'createcraft.addText', params: { rect: [left, top, right, top + h], text: v.text, size, fill: v.color } }];
+    }
+    default: throw new Error(`Unknown DesignCraft edit "${opId}".`);
   }
 }
 

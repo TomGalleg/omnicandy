@@ -10,7 +10,7 @@
 import { execFile, spawn, type ChildProcess } from 'node:child_process';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { effectcraftSteps, filmcraftSteps, lightcraftSteps, vectorcraftSteps, type EditValues, type EditorAppId } from '@shared/appEditors';
+import { designcraftSteps, effectcraftSteps, filmcraftSteps, type DesignPage, lightcraftSteps, vectorcraftSteps, type EditValues, type EditorAppId } from '@shared/appEditors';
 import type { TimelineDto } from '@shared/live';
 import type { AppOperation } from '@shared/contracts';
 import { McpClient } from './mcpClient';
@@ -304,6 +304,8 @@ export class LiveFilmCraft extends LiveAppBase {
       selection: s.selection ?? [],
     };
   }
+  /** The timeline (clips, times in seconds, effects) so Claude knows what the video looks like. */
+  describe() { return this.timeline(); }
   async setPlayhead(seconds: number) { await this.cmd('playhead.set', { seconds }); }
   async selectClip(clipId: number) { await this.cmd('timeline.select', { clips: [clipId], add: false, toggle: false }); }
 }
@@ -441,6 +443,13 @@ export class LiveEffectCraft extends LiveAppBase {
   }
 }
 
+interface DcInspect {
+  pageCount?: number;
+  settings?: { pageWidth: number; pageHeight: number };
+  spreads?: Array<{ pages?: DesignPage[] }>;
+  stories?: Array<{ preview: string }>;
+}
+
 /**
  * DesignCraft: `designcraft --control <port>` (loopback, no token) driven through `designcraft-cli
  * mcp --connect`. The layout is opened read-only from the library; saving writes a new
@@ -458,12 +467,38 @@ export class LiveDesignCraft extends LiveAppBase {
     await this.client().callTool('open_document', { path: absPath });
     return { name: path.basename(absPath) };
   }
-  async run(op: AppOperation) { await this.client().callTool('execute', { command: op.command, params: op.params }); }
+  private exec(command: string, params: Record<string, unknown> = {}) { return this.client().callTool('execute', { command, params }); }
+  private async inspect() { return (await this.exec('document.inspect')) as DcInspect; }
+
+  async run(op: AppOperation) {
+    if (op.command === 'createcraft.addText') {
+      // New text frame, then size and colour applied to just that story (verified headless + live).
+      const { rect, text, size, fill } = op.params as { rect: number[]; text: string; size: number; fill: string };
+      const r = (await this.exec('frame.create', { rect, content: 'text', text })) as { story?: number };
+      if (r?.story !== undefined) await this.exec('find.change', { find: text, change: text, story: r.story, attrs: { size, fill } });
+      return;
+    }
+    const r = (await this.exec(op.command, op.params)) as { count?: number };
+    if (op.command === 'find.change' && r?.count === 0) throw new Error(`"${String(op.params.find)}" was not found in the layout.`);
+  }
+  async quickEditSteps(opId: string, values: EditValues): Promise<AppOperation[]> {
+    const page = (await this.inspect()).spreads?.[0]?.pages?.[0];
+    if (!page) throw new Error('The layout has no pages.');
+    return designcraftSteps(opId, values, page);
+  }
+  /** Page size and the text on each page, so Claude knows what it can replace. */
+  async describe() {
+    const d = await this.inspect();
+    return {
+      pages: d.pageCount, pageSize: d.settings ? `${d.settings.pageWidth}x${d.settings.pageHeight} pt` : undefined,
+      text: (d.stories ?? []).map((s) => s.preview),
+    };
+  }
   async history() {
-    const h = (await this.client().callTool('execute', { command: 'document.history', params: {} })) as { undo?: string[] };
+    const h = (await this.exec('document.history')) as { undo?: string[] };
     return ['Open', ...(h.undo ?? [])];
   }
-  async undo() { await this.client().callTool('execute', { command: 'edit.undo', params: {} }); }
+  async undo() { await this.exec('edit.undo'); }
   async writeVersion(dir: string, base: string) {
     const main = path.join(dir, `${base}.designcraft`);
     const preview = path.join(dir, `${base}.png`);

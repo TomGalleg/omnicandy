@@ -211,6 +211,18 @@ describe.skipIf(!has('DesignCraft'))('Live DesignCraft (real window)', () => {
     expect((await t.ctl.preview(800))?.subarray(1, 4).toString()).toBe('PNG');
   }, 120000);
 
+  it('replaces text and adds a styled line of text through the quick edits', async () => {
+    await t.ctl.open(flyer);
+    const d = (await (t.app as LiveDesignCraft).describe()) as { text: string[] };
+    expect(d.text[0]).toBe('Sunset Over the Sea');
+    await t.ctl.quickEdit('replaceText', { find: 'Sunset Over the Sea', replace: 'Evening Tide' });
+    await expect(t.ctl.quickEdit('replaceText', { find: 'not in this layout', replace: 'x' })).rejects.toThrow(/not found/);
+    const h = (await t.ctl.quickEdit('addText', { text: 'Saturday 8 pm', position: 'bottom', size: 36 })).history;
+    expect(h.length).toBeGreaterThanOrEqual(3);
+    expect(((await (t.app as LiveDesignCraft).describe()) as { text: string[] }).text).toEqual(expect.arrayContaining(['Evening Tide', 'Saturday 8 pm']));
+    expect((await t.ctl.preview(800))?.subarray(1, 4).toString()).toBe('PNG');
+  }, 120000);
+
   it('switches its interface brightness and back', async () => {
     expect(await t.app.applyTheme('light')).toBe('light');
     expect(await t.app.applyTheme('mediumDark')).toBe('mediumDark');
