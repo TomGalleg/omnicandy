@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef } from 'react';
 import { appForTab, type EditorApp } from '@shared/appEditors';
 import type { Asset, ProjectManifest } from '@shared/types';
+import { useOverlayOpen } from '../overlay';
 import type { LiveApi } from '../useLive';
 import { isTaskActive } from './live/LiveParts';
 
@@ -54,8 +55,10 @@ export function AppWorkspace({ selected, liveApi, onProjectChanged, tab }: Props
     void act(`Open in ${app.name}`, () => window.studio.live.open(selected.id, app.id));
   }, [selected, app, key, canLive, showingThis, busy, taskActive, live?.status, act]);
 
-  // Tell main where the app should sit; hide it when we leave the tab or it shows another file.
-  const embedVisible = !!showingThis && !live!.poppedOut;
+  // Tell main where the app should sit; hide it when we leave the tab, it shows another file, or a
+  // dialog such as Settings is open (the app's window would cover it).
+  const overlay = useOverlayOpen();
+  const embedVisible = !!showingThis && !live!.poppedOut && !overlay;
   useLayoutEffect(() => {
     const el = stageRef.current;
     if (!el) return;

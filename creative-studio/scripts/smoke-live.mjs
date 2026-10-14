@@ -114,7 +114,7 @@ try {
   await win.evaluate(() => window.studio.live.quickEdit('blackWhite', {}));
   let before = (await win.evaluate(() => window.studio.loadProject())).assets.length;
   await win.getByRole('button', { name: 'Save as new version' }).click();
-  await win.getByText(/Saved photocraft-smoke-live1\.pcraft/).first().waitFor({ timeout: 30000 });
+  await win.getByText(/Saved photocraft-smoke-live1\.pcraft/).filter({ visible: true }).first().waitFor({ timeout: 30000 });
   check('Save as new version (PhotoCraft) adds .pcraft + .png', (await win.evaluate(() => window.studio.loadProject())).assets.length === before + 2);
 
   // ---- VectorCraft (SVG) ----
@@ -130,7 +130,7 @@ try {
   await desktopShot('21-edit-vectorcraft-embedded');
   before = (await win.evaluate(() => window.studio.loadProject())).assets.length;
   await win.getByRole('button', { name: 'Save as new version' }).click();
-  await win.getByText(/Saved harbor-landscape-live1\.svg/).first().waitFor({ timeout: 40000 });
+  await win.getByText(/Saved harbor-landscape-live1\.svg/).filter({ visible: true }).first().waitFor({ timeout: 40000 });
   const after = (await win.evaluate(() => window.studio.loadProject())).assets;
   check('Save as new version (VectorCraft) adds .svg + .png', after.length === before + 2 && after.some((a) => a.name === 'harbor-landscape-live1.png' && a.width > 0));
 
@@ -145,17 +145,25 @@ try {
   await desktopShot('22-edit-soundcraft-embedded');
   before = (await win.evaluate(() => window.studio.loadProject())).assets.length;
   await win.getByRole('button', { name: 'Save as new version' }).click();
-  await win.getByText(/Saved tone-a440-live1\.wav/).first().waitFor({ timeout: 40000 });
+  // The save message shows in the Claude panel, which is minimized here: wait for the file instead.
+  for (let t = Date.now(); Date.now() - t < 40000; await sleep(500)) {
+    if ((await win.evaluate(() => window.studio.loadProject())).assets.some((a) => a.name === 'tone-a440-live1.wav')) break;
+  }
   const wav = (await win.evaluate(() => window.studio.loadProject())).assets.find((a) => a.name === 'tone-a440-live1.wav');
   check('Save as new version (SoundCraft) adds the mixed .wav', !!wav && Math.abs((wav.durationSec ?? 0) - 2) < 0.1, wav ? `${wav.durationSec}s` : 'missing');
 
-  // ---- Claude panel toggles from the header ----
-  await win.locator('.header-status .chip-btn', { hasText: 'Claude' }).click();
+  // ---- Claude panel toggles from its side tab ----
+  await win.locator('.side-tab.right').click();
   await win.locator('.claude').waitFor({ timeout: 5000 });
   await sleep(800);
   const scP = probes[probes.length - 1].state();
-  check('Claude button opens the panel and the app shrinks to fit', scP?.found && near(await toDip(scP), await stageRect()), JSON.stringify(await toDip(scP)));
-  await win.locator('.header-status .chip-btn', { hasText: 'Claude' }).click();
+  check('Claude tab opens the panel and the app shrinks to fit', scP?.found && near(await toDip(scP), await stageRect()), JSON.stringify(await toDip(scP)));
+  await win.locator('.side-tab.right').click();
+  await win.locator('.side-tab.left').click();
+  await sleep(800);
+  const scM = probes[probes.length - 1].state();
+  check('Media tab collapses the library and the app grows to fit', scM?.found && near(await toDip(scM), await stageRect()), JSON.stringify(await toDip(scM)));
+  await win.locator('.side-tab.left').click();
 
   // ---- leaving the Edit tab hides the app ----
   const scProbe = probes[probes.length - 1];

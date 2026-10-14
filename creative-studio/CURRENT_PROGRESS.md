@@ -1,0 +1,271 @@
+# CreateCraft: current progress (review package)
+
+Date: 2026-10-14 · Branch: `main` (local only, not pushed) · Last commit: `fab6ab7`
+
+CreateCraft is a Windows desktop app (Electron + React + TypeScript) that embeds and drives the
+seven installed ArtCraft apps (PhotoCraft, VectorCraft, SoundCraft, FilmCraft, LightCraft,
+EffectCraft, DesignCraft) with Claude as a Creative Partner.
+
+**Status labels used below**
+
+| Label | Meaning |
+|---|---|
+| **WORKING** | Implemented and verified against the real installed apps or services on this PC (tests and/or end-to-end smoke runs listed). |
+| **PARTIAL** | Implemented but with known gaps, or only verified in part. |
+| **MOCK** | Present in the UI but backed by a labelled mock; no real work is done. |
+| **NOT IMPLEMENTED** | Not built yet. |
+
+Evidence for each integration (exact commands, versions and test results) is in
+`docs/integration-audit.md` (the "Integration truth table"). Note: `README.md` is out of date (it
+still describes "Phase 2, steps 1–2"); this file and the audit are the current picture.
+
+**Resume here (new conversation):** follow Tomas's Master Development Instructions (phases 0–10).
+Phase 0 audit and Phase 1 items 1.1 and 1.2 are done (see "Master plan status" below). **Next: Phase 1.3
+(layout declutter) and 1.4 (Workflow Editor layout), after Tomas's OK.** Do not start Phase 2 until
+Phase 1 is approved. Keep work in small milestones and replies short.
+
+## Master plan status (Phase 0 audit, 2026-10-14)
+
+Verified against the code at `fab6ab7` plus the Phase 1 commit. Baseline before changes: lint 0,
+typecheck 0, Vitest 135 passed / 14 skipped (opt-in live tests).
+
+| Phase | Item | Status | Depends on | Acceptance test |
+|---|---|---|---|---|
+| 1.1 | Header status chips moved out of the header | **WORKING** | none | `scripts/smoke-docks.mjs` |
+| 1.1 | Settings dialog: Appearance, Integrations (ArtCraft, Claude, AI keys), Advanced diagnostics | **WORKING** | none | `smoke-docks.mjs` |
+| 1.2 | Vertical Media tab (far left) and Claude tab (left edge of Claude panel); collapse/expand, resize, remembered width and state, Ctrl+Shift+M / Ctrl+Shift+C, aria labels | **WORKING** | none | `smoke-docks.mjs` 15/15; embedded app follows: `smoke-live.mjs` |
+| 1.3 | Collapsible inspector, metadata in an expandable section, smaller Activity panel, plainer labels | NOT STARTED | 1.2 | screenshots + smoke |
+| 1.4 | Workflow Editor: collapsible side panels, Fit/auto layout, running-node highlight, approval expands | NOT STARTED | 1.2 | `smoke-workflow.mjs` + screenshots |
+| 2 | User-selected project storage, project folder layout, open/move/duplicate/relink, virtual collections | NOT IMPLEMENTED (projects live in `%APPDATA%\creative-studio\projects`, `src/main/index.ts:49`) | 1 | new unit tests + `smoke-projects.mjs` |
+| 3 | Prompt-first Project Home, Claude creates projects, blank project types, overview | NOT IMPLEMENTED (Home lists projects; creation is name-only) | 2 | smoke + real Claude run |
+| 4 | Simplified / Advanced navigation | NOT IMPLEMENTED | 1, 3 | smoke |
+| 5 | Claude builds and runs workflows (shared engine) | NOT IMPLEMENTED (Claude has no workflow tools) | 1.4 | real Claude run + `workflowRunner` tests |
+| 6 | Real Gemini / OpenAI image generation; spending limits; Workflow AI node | PARTIAL (mocked-HTTP tests only; Workflow AI node is MOCK) | user's keys + OK | one approved real call per provider |
+| 7 | AI video providers (Veo, Runway, Luma) | NOT IMPLEMENTED | 6 | per provider |
+| 8 | Templates | NOT IMPLEMENTED | 5 | smoke |
+| 9 | README / docs refresh, status vocabulary | PARTIAL (README out of date) | any | review |
+| 10 | Installer, first run, backup, recovery | NOT IMPLEMENTED | 2 | manual |
+
+Phase 1 tests (2026-10-14): `npm run check` lint 0, types 0, 135 passed / 14 skipped (unchanged);
+`smoke-docks.mjs` 15/15 (new); `smoke-live.mjs` 22/22 with real PhotoCraft, VectorCraft and SoundCraft
+windows, including the embedded app following the Claude and Media tabs; `smoke-projects.mjs` 10/10
+(its stale "9 originals" check now accepts the current 11). Other smokes only had their header
+selectors updated (Settings button, `.side-tab.right`) and were not re-run. New screenshots:
+`docs/screenshots/40-45` (settings, side tabs).
+
+Phase 1 note: the old `integrationStatus().claude` field in `src/main/ipc.ts` still says "not
+configured in this build" (stale); Settings now shows Claude's real sign-in state instead.
+
+---
+
+## 1. Features implemented and working
+
+| Area | Status | Notes |
+|---|---|---|
+| Project library (import, read-only originals, versions with lineage, ratings, provenance, SHA-256) | **WORKING** | Originals are copied and never modified; every edit or save creates a new version with a parent link. |
+| Media tab (browser, inspector, image/vector/video/audio preview, video thumbnails) | **WORKING** | Video thumbnails and real waveforms are decoded from the files. |
+| Edit tab: files open in their ArtCraft app embedded in CreateCraft | **WORKING** | PhotoCraft, VectorCraft, SoundCraft, FilmCraft (video), DesignCraft (layouts). The app window sits over the Edit area; pop-out / put-back; hidden when you leave the tab. |
+| Color tab (LightCraft), Effects tab (EffectCraft), Audio tab (SoundCraft) | **WORKING** | Same embedding; each tab opens the selected file in its app. |
+| Quick edits per app (one-click, verified commands only) | **WORKING** | Every quick edit offered was verified against the real app (live tests). |
+| Edit lock / Pause / Take control / resync | **WORKING** | Shared by the user, automation and Claude. |
+| Save as new version from any live app | **WORKING** | PhotoCraft .pcraft+PNG, VectorCraft SVG+PNG, SoundCraft WAV, FilmCraft MP4, LightCraft full-size image, EffectCraft MP4/PNG, DesignCraft .designcraft+PNG. Unchanged saves make no duplicate. |
+| FilmCraft timeline under the Edit area | **WORKING** | Live tracks/clips, playhead, clip select; multi-clip: add clip, add music, reorder, remove; crossfades, music volume, fades, trim, speed, looks. |
+| SoundCraft timeline under the Audio tab | **WORKING** | Clips with real waveform, gain, fades, playhead; history from SoundCraft's own undo list. |
+| Deliver tab (export queue) | **WORKING** | 24 presets across pictures, vector, audio, video and layouts, run headless by each app's CLI (no windows); queue with progress and cancel; never overwrites; `exports/manifest.json` records source, version history, preset, SHA-256; Show in folder. No MP3 (SoundCraft cannot write it). |
+| Workflow tab (batches across apps) | **PARTIAL** | See section 8. |
+| Claude Creative Partner | **WORKING** | See section 7. |
+| AI image generation (BYOK) | **PARTIAL** | Real code, tested with mocked HTTP; no real paid call made yet. See section 9. |
+| Themes and ArtCraft app theme sync | **WORKING** | See section 5. |
+| Window capture (screenshots of app windows as a service) | **NOT IMPLEMENTED** | Interface only; the UI says "not connected". |
+
+## 2. Project Home and new project creation
+
+**WORKING.** The Home tab lists all projects (thumbnail, file count) with New project, Open,
+Rename, Show folder and Remove (moves the folder to the Windows Recycle Bin after confirmation).
+The open project has an Overview (files by kind, recent versions, workflow, exports, Import
+files…, Show folder). Switching projects resets live sessions, Claude's session and per-project
+queues. A Sample Project is created on first run and gains new sample files from later versions
+once (current samples: photos, SVGs, a .pcraft, two sounds, two short videos made from the apps'
+built-in demos, a DesignCraft flyer). Tests: `projects.test.ts`, `projectStore.test.ts`,
+`scripts/smoke-projects.mjs`.
+
+## 3. User-selected project storage and multi-project management
+
+* Multi-project management (create, open, switch, rename, remove, remembered across restarts): **WORKING**.
+* **User-selected storage location: NOT IMPLEMENTED.** All projects live under
+  `%APPDATA%\creative-studio\projects\<key>\` (one folder per project: `originals/`, `versions/`,
+  `work/`, `exports/`, manifest and workflow JSON). There is no folder picker for where projects are
+  stored, and no "open project from folder" or move-project feature yet.
+
+## 4. Simplified and Advanced navigation
+
+**NOT IMPLEMENTED.** There is one navigation layout: a header with nine workspace tabs (Home, Media,
+Edit, AI Generate, Workflow, Effects, Color, Audio, Deliver) and a Settings button (no status chips
+since Phase 1.1); the media browser + inspector docks on the left behind a vertical Media tab, a
+context bottom panel (timeline for audio/video, activity log otherwise), and the Claude panel docks
+on the right behind a vertical Claude tab (Phase 1.2). There is no Simplified/Advanced mode switch.
+
+## 5. Themes: ArtCraft Match, Studio Dark, Light, System
+
+| Theme | Status |
+|---|---|
+| ArtCraft Match (palette measured from PhotoCraft's "proMedium" theme) | **WORKING** |
+| Studio Dark (original CreateCraft palette) | **WORKING** |
+| Light | **WORKING** |
+| System (follows Windows light/dark; the dark choice is configurable) | **WORKING** |
+| Accent colour (presets + custom) | **WORKING** |
+| ArtCraft app theme sync (open app follows CreateCraft's theme) | **WORKING** for all seven apps, each through its own official setting and read back: PhotoCraft (`ui.set theme`), VectorCraft (`uiBrightness`), SoundCraft (`ui_set theme`), FilmCraft (`appearance.colorTheme`), LightCraft (`appearanceMode`), EffectCraft (`appearance.appearanceMode`), DesignCraft (`ui_set brightness`). Can be switched off. |
+
+Tests: `theme.test.ts`, `settingsStore.test.ts`, `scripts/smoke-theme.mjs`, theme checks in `scripts/smoke-apps.mjs`.
+
+## 6. Live control of PhotoCraft, VectorCraft and SoundCraft
+
+**Yes, all three are controlled live (WORKING),** and so are FilmCraft, LightCraft, EffectCraft and DesignCraft.
+
+| App | How | Safety |
+|---|---|---|
+| PhotoCraft | `photocraft.exe --control <port>` + `photocraft-cli mcp --bridge` | Control token file + automation read/write roots (verified: wrong token and outside paths are refused); command allowlist. |
+| VectorCraft | `vectorcraft --control <port>` + `vectorcraft-cli mcp --connect` | Automation read/write roots. No token exists in VectorCraft; random loopback port. |
+| SoundCraft | `soundcraft --control <port>` + `soundcraft-cli mcp --connect` | No token or roots in SoundCraft; CreateCraft only sends commands from its own table and only writes to the project's work folder. |
+| FilmCraft, LightCraft, EffectCraft, DesignCraft | Same pattern (see audit) | LightCraft uses a throwaway in-memory session (your library is never opened); EffectCraft uses automation roots; FilmCraft/DesignCraft have no token (fixed command tables only). |
+
+Live behaviour: open, quick edits, undo, history (including hand edits), save as new version,
+theme sync, embedding in the tab, pop-out. Tests: `liveApps.live.test.ts`, `photocraftLive.test.ts`
+(opt-in: `CS_LIVE_TESTS=1`, they open real windows and close them), `scripts/smoke-live.mjs`,
+`scripts/smoke-apps.mjs` (20/20), `scripts/smoke-audio-deliver.mjs` (13/13 + Claude checks 4/4).
+
+## 7. Claude Creative Partner
+
+**WORKING** (verified with real requests; the user's own Claude Code sign-in through the Claude
+Agent SDK; no API key stored by CreateCraft; models: Claude Opus 5.5 default, Claude Sonnet 5.5).
+
+Claude gets no shell, file or web tools: only CreateCraft's in-process tools, all under the same
+edit lock, allowlists and versioning as the user:
+
+* `get_status` (open file, app, history, lock, available edits, every app and its file types, plus app details such as the FilmCraft timeline or DesignCraft page text)
+* `look_at_document` (picture of the document, frame or composition)
+* `open_file` (any library file, in any suitable app; hands off between apps, e.g. PhotoCraft → LightCraft; the window follows to that app's tab)
+* `apply_edit` (any verified quick edit of the open app), `photocraft_command` (allowlisted PhotoCraft adjustments/filters), `undo`, `save_version`
+* `timeline_add`, `timeline_move_clip`, `timeline_remove_clip` (build multi-clip videos with music in FilmCraft)
+* `list_export_formats`, `export_file` (Deliver presets, same queue and manifest)
+* `list_files`, `list_image_models`, `generate_image` (each paid call needs the user's approval in a native dialog)
+
+Verified with real requests: one request per app (7/7) plus a PhotoCraft → LightCraft hand-off;
+multi-clip video with music and crossfades; export a layout to PDF; audio fade in the Audio tab.
+Claude correctly refuses to discard unsaved edits without permission. Total Claude usage for all
+verification runs today: about $5.
+
+**Not yet:** Claude cannot build or run workflows (planned, Workflow step two).
+
+## 8. Workflow node execution
+
+| Node | Status | Notes |
+|---|---|---|
+| Files (Import) | **WORKING** | One file, several library files, or every supported file in a folder (copied into the library; folder only read; up to 200 files, no subfolders). |
+| App step (ArtCraft Edit) | **WORKING** | Any of the 7 apps with its verified quick edits, run in the background with **no window**: PhotoCraft/VectorCraft/SoundCraft through their headless CLIs, FilmCraft/LightCraft/EffectCraft/DesignCraft through their CLI's own MCP engine. Each file gets new versions; a file the app cannot open stops alone. Older "PhotoCraft engine command" steps still run. |
+| Approval | **WORKING** | Shows every file's result as a thumbnail; approve all, some (ticked) or reject. |
+| Export | **WORKING** | Any of the 24 Deliver presets; formats that don't fit a file are skipped; same queue and manifest (marked "workflow"). |
+| AI Generate | **MOCK** | Only the mock provider; no image, no network call. Real providers come in Workflow step two. |
+| Batch execution | **WORKING** | Every file goes through each step in turn; per-file progress table under the canvas. |
+
+Limits: one Files step per workflow; a straight chain per file (no merging files, e.g. placing a
+photo into a layout); no saved named workflows or starter templates yet; Claude cannot build or
+run workflows yet. Tests: `workflowRunner.test.ts`, `workflow.test.ts`, `headlessApps.test.ts`,
+`workflowSteps.test.ts` (real cross-app workflows), `scripts/smoke-workflow.mjs` (7/7, no ArtCraft
+window opened).
+
+## 9. AI generation providers
+
+| Item | Status |
+|---|---|
+| OpenAI (GPT Image 2.5 Flare / Sunburst) and Google Gemini (Nano Banana 2.1, Gemini 3.1 Flash Lite Image, 3.1 Flash Image, 3 Pro Image) | **PARTIAL**: request/response code is implemented and unit-tested with mocked HTTP. **No real generation has been made** (needs the user's key and explicit OK). A fake OpenAI key was tested and the real API answered 401, shown as "the key was rejected". |
+| Keys | **WORKING**: encrypted with Windows DPAPI (Electron `safeStorage`) in the main process only; read from the clipboard and then cleared; never sent to the renderer, logs, project files or Claude. |
+| Approval before every paid call | **WORKING**: native dialog in main with provider, model, prompt, settings and estimated price; Cancel is the default. Verified with the dialog stubbed to Cancel (nothing sent). |
+| Mock provider | **MOCK** (labelled in the UI). |
+| Claude `generate_image` | **WORKING** through the same approval path (verified with mock + a cancelled OpenAI request). |
+| Workflow AI Generate node | **MOCK** (not connected to the real providers yet). |
+| Midjourney | Folder import only (by policy). |
+
+## 10. Known bugs, incomplete features and next milestones
+
+**Known issues**
+
+* `README.md` is out of date (Phase 2 text) and some fixture/README strings show mis-encoded dashes (`â€"`).
+* FilmCraft timeline panel: with music added, the music track can be below the fold of the bottom panel (scrolls).
+* Multi-clip video: clips are appended and moved one step at a time (no drag-and-drop on the strip); pictures last 3 s; music cannot loop or run longer than its file.
+* Deliver: no MP3 export; progress is per job (no percentage within one export).
+* DesignCraft text edits only offer black or white text.
+* Live apps without a control token (VectorCraft, SoundCraft, FilmCraft, DesignCraft) rely on a random loopback port plus CreateCraft's fixed command tables.
+* Live/smoke tests that open app windows are opt-in and must be run on a PC with the ArtCraft apps installed.
+* The renderer console logs a harmless warning that the CSP `frame-ancestors` directive is ignored in a `<meta>` tag.
+
+**Incomplete / not implemented**
+
+* User-selected project storage location; open/move project folders.
+* Simplified / Advanced navigation modes.
+* Window capture service.
+* Workflow step two: real AI Generate node, saved/named workflows with starters, Claude building and running workflows, merging files (e.g. photo into a layout).
+* A real paid AI generation (awaiting the user's key and OK).
+* Windows installer / packaging, first-run guide; code not yet pushed to a remote.
+
+**Recommended next milestones**
+
+1. Workflow step two (AI node with approval, saved workflows and starters, Claude builds/runs workflows).
+2. Project storage choice (pick a folder, open existing project folders) and Simplified/Advanced navigation.
+3. Place library pictures into DesignCraft layouts (by hand and by Claude), enabling photo → flyer → PDF pipelines.
+4. Packaging: Windows installer, first-run guide, README refresh; push to a private remote for backup.
+5. One real AI generation test with the user's key, then enable the Workflow AI node.
+
+---
+
+## Test results (run for this package, 2026-10-14)
+
+`npm run check` (ESLint + TypeScript for main/preload and renderer + Vitest): **all passed.**
+
+* Lint: 0 problems. Typecheck: 0 errors.
+* Unit/integration tests: **19 files passed, 2 skipped; 135 tests passed, 14 skipped.**
+  The 14 skipped tests are the opt-in live tests that open real app windows
+  (`liveApps.live.test.ts`, `photocraftLive.test.ts`; run with `CS_LIVE_TESTS=1`).
+  Several of the passing tests drive the real installed ArtCraft command-line tools headlessly
+  (no windows): `deliver.test.ts` (all 24 export presets), `headlessApps.test.ts`,
+  `workflowSteps.test.ts` (real cross-app workflows), `appEditors.test.ts`, `photocraftCli.test.ts`.
+
+| Test file | Passed |
+|---|---|
+| src/shared/appSteps.test.ts | 10 |
+| src/shared/collaboration.test.ts | 8 |
+| src/shared/generation.test.ts | 4 |
+| src/shared/photocraftOps.test.ts | 5 |
+| src/shared/theme.test.ts | 10 |
+| src/shared/workflow.test.ts | 6 |
+| src/shared/workflowRunner.test.ts | 8 |
+| src/main/appEditors.test.ts | 7 |
+| src/main/deliver.test.ts | 12 |
+| src/main/generation.test.ts | 11 |
+| src/main/headlessApps.test.ts | 4 |
+| src/main/imageApis.test.ts | 4 |
+| src/main/liveTask.test.ts | 17 |
+| src/main/media.test.ts | 4 |
+| src/main/photocraftCli.test.ts | 5 |
+| src/main/projects.test.ts | 5 |
+| src/main/projectStore.test.ts | 8 |
+| src/main/settingsStore.test.ts | 3 |
+| src/main/workflowSteps.test.ts | 4 |
+| src/main/liveApps.live.test.ts | 12 skipped (opt-in) |
+| src/main/photocraftLive.test.ts | 2 skipped (opt-in) |
+
+The window-opening tests were not re-run for this package (they open the ArtCraft apps). Their most
+recent results from today: live app tests all passed; smokes: apps 20/20, Claude across apps 15/15,
+Audio + Deliver 13/13 (+ Claude checks 4/4), multi-clip 8/8, workflow 7/7.
+
+## What is in this ZIP
+
+* `README.md` (out of date, see above), `CURRENT_PROGRESS.md`, `package.json`, `package-lock.json`
+* `src/main/`, `src/renderer/`, `src/shared/`, `src/preload/` (all source and tests)
+* `docs/` (`architecture.md`, `integration-audit.md` from the repository's top-level `docs/`, and all screenshots)
+* Configuration: `tsconfig.node.json`, `tsconfig.web.json`, `electron.vite.config.ts`, `eslint.config.mjs`, `vitest.config.ts`, `.gitignore`, `.gitattributes`
+* `resources/` (window tracker script, icons) and `scripts/` (end-to-end smoke tests and fixture helpers)
+
+Excluded: `node_modules/`, `out/`, `dist/`, `build/`, caches, sample media fixtures, credentials,
+keys, tokens and `.env` files (none exist in the source; the only key-shaped strings are obvious fake
+values in unit tests, e.g. `AIzaTEST…`).

@@ -24,7 +24,7 @@ try {
     dialog.showMessageBox = async (...args) => { globalThis.__approvals.push(args.at(-1)); return { response: 0, checkboxChecked: false }; };
   });
   await win.locator('nav.workspaces button', { hasText: 'AI Generate' }).click();
-  await win.locator('.header-status .chip-btn', { hasText: 'Claude' }).click();
+  await win.locator('.side-tab.right').click();
   await win.locator('#claude-input').fill('Test run, follow exactly: 1) call generate_image once with model_id "mock-image" and prompt "a calm blue sea at dawn". 2) call generate_image once with model_id "gpt-image-2.5-flare" and the same prompt. Then tell me in one sentence what happened with each.');
   await win.getByRole('button', { name: 'Send' }).click();
   await win.locator('.claude .chip', { hasText: 'Ready' }).waitFor({ timeout: 240000 });

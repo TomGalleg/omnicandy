@@ -23,7 +23,7 @@ const win = await app.firstWindow();
 win.on('dialog', (d) => void d.accept().catch(() => {}));
 try {
   await win.locator('.asset').first().waitFor({ timeout: 20000 });
-  await win.getByRole('button', { name: 'Appearance' }).click();
+  await win.getByRole('button', { name: 'Settings' }).click();
   await win.getByRole('radio', { name: /^ArtCraft Match/ }).click();
   await win.keyboard.press('Escape');
   await win.locator('nav.workspaces button', { hasText: 'AI Generate' }).click();

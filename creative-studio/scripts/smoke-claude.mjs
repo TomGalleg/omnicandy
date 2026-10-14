@@ -19,7 +19,7 @@ const app = await electron.launch({ args: [root], cwd: root, env: { ...process.e
 const win = await app.firstWindow();
 try {
   await win.locator('.asset').first().waitFor({ timeout: 20000 });
-  await win.locator('.header-status .chip-btn', { hasText: 'Claude' }).click();
+  await win.locator('.side-tab.right').click();
   await win.locator('.claude').waitFor();
   const st = await win.evaluate(() => window.studio.claude.checkAuth());
   check('Claude panel opens and reads the Claude Code sign-in state', st !== undefined, `signedIn=${st}`);

@@ -80,7 +80,7 @@ async function waitJobs(n, timeout = 120000) {
 try {
   await win.locator('.asset').first().waitFor({ timeout: 20000 });
   await app.evaluate((e) => { e.BrowserWindow.getAllWindows()[0].setBounds({ x: 80, y: 60, width: 1500, height: 940 }); });
-  await win.getByRole('button', { name: 'Appearance' }).click();
+  await win.getByRole('button', { name: 'Settings' }).click();
   await win.getByRole('radio', { name: /^ArtCraft Match/ }).click();
   await win.keyboard.press('Escape');
 

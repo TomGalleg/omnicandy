@@ -29,7 +29,7 @@ const desktopShot = async (name) => {
   grabScreen(px.x, px.y, px.width, px.height, path.join(shots, `${name}.png`));
 };
 const pick = async (label) => {
-  await win.getByRole('button', { name: 'Appearance' }).click();
+  await win.getByRole('button', { name: 'Settings' }).click();
   await win.getByRole('radio', { name: new RegExp(`^${label}`) }).click();
   await win.keyboard.press('Escape');
 };
@@ -95,17 +95,17 @@ try {
 
   // ---- workflow + Claude panel follow the theme ----
   await pick('ArtCraft Match');
-  await win.locator('.header-status .chip-btn', { hasText: 'Claude' }).click();
+  await win.locator('.side-tab.right').click();
   await win.locator('.claude').waitFor();
   const claudeBg = await win.locator('.claude').evaluate((el) => getComputedStyle(el).backgroundColor);
   check('Claude panel uses the theme', claudeBg === 'rgb(83, 83, 83)', claudeBg);
-  await win.locator('.header-status .chip-btn', { hasText: 'Claude' }).click();
+  await win.locator('.side-tab.right').click();
   await win.getByRole('button', { name: 'Workflow' }).click();
   await win.locator('.react-flow__node').first().waitFor();
   const nodeBg = await win.locator('.node').first().evaluate((el) => getComputedStyle(el).backgroundColor);
   check('workflow nodes use the theme', nodeBg === 'rgb(83, 83, 83)', nodeBg);
   await win.screenshot({ path: path.join(shots, '33-theme-artcraft-workflow.png') });
-  await win.getByRole('button', { name: 'Appearance' }).click();
+  await win.getByRole('button', { name: 'Settings' }).click();
   await win.screenshot({ path: path.join(shots, '34-appearance-menu.png') });
   await win.keyboard.press('Escape');
 

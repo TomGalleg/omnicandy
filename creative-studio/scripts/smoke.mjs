@@ -22,7 +22,7 @@ async function launch() {
 }
 const shot = (win, name) => win.screenshot({ path: path.join(shots, `${name}.png`) });
 const setMode = async (win, label) => {
-  await win.getByRole('button', { name: 'Appearance' }).click();
+  await win.getByRole('button', { name: 'Settings' }).click();
   await win.getByRole('radio', { name: new RegExp(`^${label}`) }).click();
   await win.keyboard.press('Escape');
 };
@@ -43,8 +43,11 @@ try {
   check('audio asset shows the timeline', await win.getByRole('region', { name: 'Timeline' }).isVisible());
   await shot(win, '02-audio-timeline');
 
-  const apps = await win.locator('.header-status .chip').first().textContent();
-  check('ArtCraft detection reports installed but not connected', /ArtCraft \d+ installed · 0 live/.test(apps ?? ''), apps ?? '');
+  await win.getByRole('button', { name: 'Settings' }).click();
+  await win.getByRole('tab', { name: 'Integrations' }).click();
+  const apps = await win.locator('.settings .menu-label', { hasText: 'ArtCraft apps' }).textContent();
+  check('ArtCraft detection is in Settings > Integrations', /\d+ of \d+ installed/.test(apps ?? ''), apps ?? '');
+  await win.keyboard.press('Escape');
 
 
   await win.getByRole('button', { name: 'Workflow' }).click();

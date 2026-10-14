@@ -58,7 +58,7 @@ async function scenario(label, message, verify, shot) {
 try {
   await win.locator('.asset').first().waitFor({ timeout: 20000 });
   await app.evaluate((e) => { e.BrowserWindow.getAllWindows()[0].setBounds({ x: 80, y: 60, width: 1500, height: 940 }); });
-  await win.locator('.header-status .chip-btn', { hasText: 'Claude' }).click();
+  await win.locator('.side-tab.right').click();
   await win.locator('.claude').waitFor();
   const signedIn = await win.evaluate(() => window.studio.claude.checkAuth());
   check('Claude Code on this PC is signed in', signedIn === true, `signedIn=${signedIn}`);

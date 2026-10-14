@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Group, Panel, Separator, useDefaultLayout, usePanelRef } from 'react-resizable-panels';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Group, Panel, Separator, useDefaultLayout, usePanelRef, type PanelSize } from 'react-resizable-panels';
 import { EDITOR_APPS } from '@shared/appEditors';
 import type { IntegrationSnapshot } from '@shared/ipc';
 import type { AppProbeResult, ProjectManifest, WorkspaceId } from '@shared/types';
@@ -12,6 +12,51 @@ import { useAppearance } from './useAppearance';
 import { useLive } from './useLive';
 
 const storage = (() => { try { return window.localStorage; } catch { return undefined; } })();
+const read = (k: string) => { try { return storage?.getItem(k) ?? null; } catch { return null; } };
+const write = (k: string, v: string) => { try { storage?.setItem(k, v); } catch { /* storage unavailable */ } };
+
+/** Width of the vertical tab a docked panel keeps when collapsed. */
+const RAIL = 28;
+
+/** A side panel that collapses to its vertical tab; open state and width are remembered. */
+function useDock(key: string, defaultOpen: boolean) {
+  const ref = usePanelRef();
+  const [open, setOpen] = useState(() => { const v = read(`${key}-open`); return v === null ? defaultOpen : v === '1'; });
+  const synced = useRef(false);
+  useEffect(() => {
+    const p = ref.current;
+    if (!p) return;
+    if (open && p.isCollapsed()) {
+      p.expand();
+      const w = Number(read(`${key}-width`));
+      if (w > RAIL) p.resize(w);
+    }
+    if (!open && !p.isCollapsed()) p.collapse();
+    synced.current = true;
+    write(`${key}-open`, open ? '1' : '0');
+  }, [open, ref, key]);
+  // Dragging the divider can also collapse or expand it.
+  const onResize = useCallback((size: PanelSize) => {
+    if (!synced.current) return;
+    const collapsed = ref.current?.isCollapsed() ?? false;
+    if (!collapsed) write(`${key}-width`, String(Math.round(size.inPixels)));
+    setOpen(!collapsed);
+  }, [ref, key]);
+  const toggle = useCallback(() => setOpen((o) => !o), []);
+  return { ref, open, toggle, onResize };
+}
+
+function SideTab({ label, text, open, onToggle, controls, shortcut, side }: {
+  label: string; text: string; open: boolean; onToggle: () => void; controls: string; shortcut: string; side: 'left' | 'right';
+}) {
+  const action = `${open ? 'Hide' : 'Show'} ${label}`;
+  return (
+    <button className={`side-tab ${side}${open ? ' open' : ''}`} aria-expanded={open} aria-controls={controls}
+      aria-label={action} aria-keyshortcuts={shortcut.replace(/\s/g, '').replace('Ctrl', 'Control')} title={`${action} (${shortcut})`} onClick={onToggle}>
+      <span className="side-tab-text">{text}</span>
+    </button>
+  );
+}
 
 export function App() {
   const appearance = useAppearance();
@@ -79,17 +124,23 @@ export function App() {
 
   const selected = useMemo(() => manifest?.assets.find((a) => a.id === selectedId) ?? null, [manifest, selectedId]);
 
-  const outer = useDefaultLayout({ id: 'cs-outer', storage });
-  // Claude panel starts minimized; the header's Claude button opens/closes it (remembered).
-  const claudeRef = usePanelRef();
-  const [claudeOpen, setClaudeOpen] = useState(() => { try { return storage?.getItem('cs-claude-open') === '1'; } catch { return false; } });
+  const outer = useDefaultLayout({ id: 'cs-outer-docks', storage });
+  // Panels moved: the embedded ArtCraft window follows its stage even when only the position changed.
+  const onOuterLayout = outer.onLayoutChanged;
+  const onLayoutChanged = useCallback((...a: Parameters<typeof onOuterLayout>) => { onOuterLayout(...a); window.dispatchEvent(new Event('resize')); }, [onOuterLayout]);
+  // Media starts open, Claude starts minimized; each side tab opens/closes its panel.
+  const media = useDock('cs-media', true);
+  const claude = useDock('cs-claude', false);
+  const toggleMedia = media.toggle, toggleClaude = claude.toggle;
   useEffect(() => {
-    const p = claudeRef.current;
-    if (!p) return;
-    if (claudeOpen && p.isCollapsed()) p.expand();
-    if (!claudeOpen && !p.isCollapsed()) p.collapse();
-    try { storage?.setItem('cs-claude-open', claudeOpen ? '1' : '0'); } catch { /* storage unavailable */ }
-  }, [claudeOpen, claudeRef]);
+    const onKey = (e: KeyboardEvent) => {
+      if (!e.ctrlKey || !e.shiftKey || e.altKey) return;
+      if (e.code === 'KeyM') { e.preventDefault(); toggleMedia(); }
+      if (e.code === 'KeyC') { e.preventDefault(); toggleClaude(); }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [toggleMedia, toggleClaude]);
   const center = useDefaultLayout({ id: 'cs-center', storage });
 
   return (
@@ -102,21 +153,24 @@ export function App() {
         apps={apps}
         integrations={integrations}
         appearance={appearance}
-        claudeOpen={claudeOpen}
         appTheme={liveApi.live?.appTheme ?? null}
-        onToggleClaude={() => setClaudeOpen((o) => !o)}
       />
       {error && <div className="notice" role="alert">Could not load project: {error}</div>}
       <div className="main">
-        <Group orientation="horizontal" defaultLayout={outer.defaultLayout} onLayoutChanged={outer.onLayoutChanged}>
-          <Panel id="left" defaultSize="20" minSize={220} collapsible>
-            <AssetBrowser
-              manifest={manifest}
-              selectedId={selectedId}
-              onSelect={setSelectedId}
-              onManifest={setManifest}
-              log={addLog}
-            />
+        <Group orientation="horizontal" defaultLayout={outer.defaultLayout} onLayoutChanged={onLayoutChanged}>
+          <Panel id="left" defaultSize="20" minSize={RAIL + 220} collapsible collapsedSize={RAIL} panelRef={media.ref} onResize={media.onResize}>
+            <div className="dock">
+              <SideTab side="left" label="media library" text="Media" open={media.open} onToggle={media.toggle} controls="dock-media" shortcut="Ctrl + Shift + M" />
+              <div id="dock-media" className="dock-content" hidden={!media.open}>
+                <AssetBrowser
+                  manifest={manifest}
+                  selectedId={selectedId}
+                  onSelect={setSelectedId}
+                  onManifest={setManifest}
+                  log={addLog}
+                />
+              </div>
+            </div>
           </Panel>
           <Separator className="sep" />
           <Panel id="center" minSize="35">
@@ -148,9 +202,13 @@ export function App() {
             </Group>
           </Panel>
           <Separator className="sep" />
-          <Panel id="right" defaultSize="22" minSize={260} collapsible collapsedSize={0} panelRef={claudeRef}
-            onResize={() => { const c = claudeRef.current?.isCollapsed() ?? false; if (c === claudeOpen) setClaudeOpen(!c); }}>
-            <ClaudePanel key={projectKey ?? 'none'} selected={selected} integrations={integrations} liveApi={liveApi} />
+          <Panel id="right" defaultSize="22" minSize={RAIL + 260} collapsible collapsedSize={RAIL} panelRef={claude.ref} onResize={claude.onResize}>
+            <div className="dock">
+              <SideTab side="right" label="Claude, your Creative Partner" text="Claude" open={claude.open} onToggle={claude.toggle} controls="dock-claude" shortcut="Ctrl + Shift + C" />
+              <div id="dock-claude" className="dock-content" hidden={!claude.open}>
+                <ClaudePanel key={projectKey ?? 'none'} selected={selected} integrations={integrations} liveApi={liveApi} />
+              </div>
+            </div>
           </Panel>
         </Group>
       </div>
