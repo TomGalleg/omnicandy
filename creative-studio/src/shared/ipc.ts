@@ -118,6 +118,10 @@ export const IPC = {
   genSpendingSet: 'generate:spending-set',
   genKeyPage: 'generate:key-page',
   genEvent: 'generate:event',
+  videoList: 'video:list',
+  videoSubmit: 'video:submit',
+  videoCancel: 'video:cancel',
+  videoEvent: 'video:event',
   deliverJobs: 'deliver:jobs',
   deliverEnqueue: 'deliver:enqueue',
   deliverCancel: 'deliver:cancel',
@@ -150,6 +154,8 @@ export interface ProviderStatusDto {
   encryptionAvailable: boolean;
   keyHint: string;
 }
+
+import type { VideoJob, VideoJobRecord } from './video';
 
 export interface GenerateResultDto {
   assetIds: string[];
@@ -343,6 +349,12 @@ export interface StudioApi {
     spending(): Promise<{ limitUsd: number | null; spentUsd: number; count: number }>;
     setSpendingLimit(limitUsd: number | null): Promise<{ limitUsd: number | null; spentUsd: number; count: number }>;
     openKeyPage(providerId: ProviderId): Promise<void>;
+    /** AI video (Google Veo): saved jobs of this project; running ones are tracked in the background. */
+    videoJobs(): Promise<VideoJobRecord[]>;
+    /** Asks for approval in a native dialog, then submits. Returns at once; the video arrives minutes later. */
+    videoSubmit(job: VideoJob): Promise<VideoJobRecord>;
+    videoCancel(id: string): Promise<VideoJobRecord>;
+    onVideo(cb: (r: VideoJobRecord) => void): () => void;
     /** New generated images (from the Generate tab or Claude). */
     onResult(cb: (r: GenerateResultDto) => void): () => void;
   };

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { estimateCost, formatUsd, IMAGE_MODELS, PROVIDERS, type GenCapability, type ImageModel } from '@shared/generation';
 import type { ProviderStatusDto } from '@shared/ipc';
 import type { Asset, ProjectManifest, WorkspaceId } from '@shared/types';
+import { VideoPanel } from './VideoPanel';
 
 interface Props {
   manifest: ProjectManifest | null;
@@ -76,7 +77,7 @@ export function GenerateWorkspace({ manifest, selected, onGoto, log }: Props) {
     } finally { setBusy(null); }
   };
 
-  const results = (manifest?.assets ?? []).filter((a) => a.provenance.origin === 'generated').slice().reverse();
+  const results = (manifest?.assets ?? []).filter((a) => a.provenance.origin === 'generated' && a.kind !== 'video').slice().reverse();
   const isMock = model?.provider === 'mock';
   const configuredReal = providers?.some((p) => p.billable && p.configured);
 
@@ -168,6 +169,8 @@ export function GenerateWorkspace({ manifest, selected, onGoto, log }: Props) {
           {!isMock && <div className="asset-meta">You'll see the price and must approve before anything is sent. Charges go to your own provider account.</div>}
           {msg && <div className={`wf-msg${msg.error ? ' error' : ''}`} role="status">{msg.text}</div>}
         </div>
+
+        <VideoPanel providers={providers} selected={selected} onGoto={onGoto} log={log} />
       </div>
 
       <div className="gen-results">

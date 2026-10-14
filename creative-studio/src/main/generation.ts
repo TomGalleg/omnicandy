@@ -18,6 +18,8 @@ export const OPENAI_BASE = 'https://api.openai.com/v1';
 export const GEMINI_BASE = 'https://generativelanguage.googleapis.com/v1beta';
 
 export interface ApprovalRequest {
+  /** 'video' for Veo jobs (default 'image'). */
+  kind?: 'image' | 'video';
   provider: string;
   model: string;
   prompt: string;

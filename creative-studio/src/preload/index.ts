@@ -149,6 +149,14 @@ const api: StudioApi = {
     spending: () => ipcRenderer.invoke(IPC.genSpending),
     setSpendingLimit: (limitUsd) => ipcRenderer.invoke(IPC.genSpendingSet, limitUsd),
     openKeyPage: (id) => ipcRenderer.invoke(IPC.genKeyPage, id),
+    videoJobs: () => ipcRenderer.invoke(IPC.videoList),
+    videoSubmit: (job) => ipcRenderer.invoke(IPC.videoSubmit, job),
+    videoCancel: (id) => ipcRenderer.invoke(IPC.videoCancel, id),
+    onVideo: (cb) => {
+      const listener = (_e: unknown, r: Parameters<typeof cb>[0]) => cb(r);
+      ipcRenderer.on(IPC.videoEvent, listener);
+      return () => ipcRenderer.removeListener(IPC.videoEvent, listener);
+    },
     onResult: (cb) => {
       const listener = (_e: IpcRendererEvent, r: GenerateResultDto) => cb(r);
       ipcRenderer.on(IPC.genEvent, listener);

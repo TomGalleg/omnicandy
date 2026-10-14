@@ -32,6 +32,8 @@ import { parseWorkflow } from './schemas';
 import { UnavailableWindowCapture } from './services';
 import { SafeStorageVault } from './credentialVault';
 import { GenerationService, type ApprovalRequest } from './generation';
+import { VideoService } from './videoGeneration';
+import { MAX_VIDEO_PROMPT } from '@shared/video';
 import type { SettingsStore } from './settingsStore';
 
 export interface IpcDeps {
@@ -389,12 +391,13 @@ export function registerIpc(d: IpcDeps): void {
   /** Native dialog in main: neither the renderer nor Claude can answer it. Cancel is the default. */
   const approveGeneration = async (r: ApprovalRequest): Promise<boolean> => {
     const win = d.window();
-    const many = r.count === 1 ? 'image' : 'images';
+    const isVideo = r.kind === 'video';
+    const many = isVideo ? 'video' : r.count === 1 ? 'image' : 'images';
     const prompt = r.prompt.length > 300 ? `${r.prompt.slice(0, 300)}…` : r.prompt;
     const options: Electron.MessageBoxOptions = {
       type: 'question',
-      title: 'Approve paid image generation',
-      message: `${r.requestedBy === 'claude' ? 'Claude is asking to generate' : 'Generate'} ${r.count} ${many} with ${r.provider} · ${r.model}?`,
+      title: isVideo ? 'Approve paid video generation' : 'Approve paid image generation',
+      message: `${r.requestedBy === 'claude' ? 'Claude is asking to generate' : 'Generate'} ${isVideo ? 'a' : r.count} ${many} with ${r.provider} · ${r.model}?`,
       detail: [
         `Estimated cost: ${r.estimate.approximate ? 'about ' : ''}${formatUsd(r.estimate.amount)} USD, charged to your ${r.provider} account.`,
         r.estimate.basis,
@@ -404,9 +407,9 @@ export function registerIpc(d: IpcDeps): void {
         r.references.length ? `Reference images sent to ${r.provider}: ${r.references.join(', ')}` : '',
         '',
         r.limitUsd != null ? `Project spending limit: $${r.limitUsd.toFixed(2)} (about $${(r.spentUsd ?? 0).toFixed(2)} estimated so far).` : '',
-        'Nothing is sent until you click Generate.',
+        isVideo ? 'Nothing is sent until you click Make video. Video can take several minutes and cannot be cancelled once Google has it.' : 'Nothing is sent until you click Generate.',
       ].filter((l, i, a) => l !== '' || a[i - 1] !== '').join('\n'),
-      buttons: ['Cancel', `Generate (${r.estimate.approximate ? '~' : ''}${formatUsd(r.estimate.amount)})`],
+      buttons: ['Cancel', `${isVideo ? 'Make video' : 'Generate'} (${r.estimate.approximate ? '~' : ''}${formatUsd(r.estimate.amount)})`],
       defaultId: 0,
       cancelId: 0,
       noLink: true,
@@ -459,6 +462,21 @@ export function registerIpc(d: IpcDeps): void {
     return dto;
   };
   handle(IPC.genRun, z.tuple([jobSchema]), (job) => runGeneration(job, 'user'));
+  const video = new VideoService({
+    vault, store: d.project, approve: approveGeneration, fetch: globalThis.fetch.bind(globalThis),
+    onChange: (r) => { for (const w of BrowserWindow.getAllWindows()) if (!w.isDestroyed()) w.webContents.send(IPC.videoEvent, r); },
+  });
+  const videoJobSchema = z.object({
+    modelId: z.string().min(1).max(64),
+    prompt: z.string().min(1).max(MAX_VIDEO_PROMPT),
+    referenceAssetId: z.string().min(1).max(128).nullable(),
+    aspectRatio: z.string().max(16),
+    durationSeconds: z.number().int().min(1).max(60),
+    resolution: z.string().max(16),
+  });
+  handle(IPC.videoList, none, () => video.list());
+  handle(IPC.videoSubmit, z.tuple([videoJobSchema]), (job) => video.submit(job, 'user'));
+  handle(IPC.videoCancel, z.tuple([z.string().min(1).max(64)]), (id) => video.cancel(id));
   const spendingDto = async () => { const s = await (await d.project()).spending(); return { limitUsd: s.limitUsd, spentUsd: s.spentUsd, count: s.entries.length }; };
   handle(IPC.genSpending, none, spendingDto);
   handle(IPC.genSpendingSet, z.tuple([z.number().min(0).max(100000).nullable()]), async (limit) => { await (await d.project()).setSpendingLimit(limit); return spendingDto(); });
