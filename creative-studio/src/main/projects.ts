@@ -1,6 +1,8 @@
-// All projects under <userData>/projects/<key>/ (one portable folder each: project.json,
-// workflow.json, originals/, versions/, exports/, work/). Remembers the open project and recent
-// order in <userData>/projects.json. Removing a project moves its folder to the Recycle Bin.
+// Each project is one portable, self-contained folder (see projectStore.ts for the layout).
+// Projects made before Phase 2 live under <userData>/projects/<key>/; new ones go to the default
+// project folder the user chose (Settings, Projects & Storage) or a per-project folder, and their
+// location is recorded in the registry <userData>/projects.json. Changing the default folder never
+// moves an existing project. Removing a project moves its folder to the Recycle Bin.
 
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -13,7 +15,36 @@ import { ensureSampleProject } from './sampleProject';
 const KEY = /^[A-Za-z0-9_-]{1,64}$/;
 export const SAMPLE_KEY = 'sample-project';
 
-interface State { current: string; recent: string[] }
+interface State { current: string; recent: string[]; defaultDir?: string; locations: Record<string, string> }
+
+export interface StorageInfo {
+  /** Where new projects go unless a folder is chosen when creating one. */
+  defaultDir: string;
+  /** True when the user chose it (false = the built-in folder under the app data directory). */
+  isCustom: boolean;
+  builtInDir: string;
+  freeBytes: number | null;
+  totalBytes: number | null;
+}
+
+/** A name that is safe as a Windows folder name. */
+export function folderNameFor(name: string): string {
+  const n = name.replace(/[<>:"/\\|?*]/g, ' ').replace(/\s+/g, ' ').trim().replace(/[. ]+$/, '').slice(0, 60);
+  return /^(con|prn|aux|nul|com\d|lpt\d)$/i.test(n) || !n ? 'Untitled project' : n;
+}
+
+/** Throws a plain-language error unless `dir` exists (or can be created) and can be written to. */
+export async function checkWritableFolder(dir: string): Promise<void> {
+  if (!path.isAbsolute(dir)) throw new Error('Choose a full folder path, for example D:\\CreateCraft Projects.');
+  try {
+    await fs.mkdir(dir, { recursive: true });
+    const probe = path.join(dir, `.createcraft-write-test-${process.pid}`);
+    await fs.writeFile(probe, 'ok');
+    await fs.rm(probe, { force: true });
+  } catch {
+    throw new Error(`CreateCraft can't write to "${dir}". Pick a folder you have permission to change, or reconnect the drive.`);
+  }
+}
 
 export class ProjectManager {
   private store: ProjectStore | null = null;
@@ -27,23 +58,42 @@ export class ProjectManager {
     private readonly trash: (dir: string) => Promise<void>,
   ) {}
 
-  private dir(key: string) {
-    if (!KEY.test(key)) throw new Error('Invalid project.');
-    return path.join(this.baseDir, key);
-  }
+  private cached: State | null = null;
 
   private async readState(): Promise<State> {
+    if (this.cached) return structuredClone(this.cached);
+    let st: State;
     try {
       const s = JSON.parse(await fs.readFile(this.stateFile, 'utf8')) as Partial<State>;
-      return { current: typeof s.current === 'string' && KEY.test(s.current) ? s.current : SAMPLE_KEY, recent: Array.isArray(s.recent) ? s.recent.filter((k) => typeof k === 'string' && KEY.test(k)) : [] };
+      const locations: Record<string, string> = {};
+      if (s.locations && typeof s.locations === 'object') {
+        for (const [k, v] of Object.entries(s.locations)) if (KEY.test(k) && typeof v === 'string' && path.isAbsolute(v)) locations[k] = v;
+      }
+      st = {
+        current: typeof s.current === 'string' && KEY.test(s.current) ? s.current : SAMPLE_KEY,
+        recent: Array.isArray(s.recent) ? s.recent.filter((k) => typeof k === 'string' && KEY.test(k)) : [],
+        defaultDir: typeof s.defaultDir === 'string' && path.isAbsolute(s.defaultDir) ? s.defaultDir : undefined,
+        locations,
+      };
     } catch {
-      return { current: SAMPLE_KEY, recent: [] };
+      st = { current: SAMPLE_KEY, recent: [], locations: {} };
     }
+    this.cached = st;
+    return structuredClone(st);
   }
 
   private async writeState(s: State) {
     await fs.mkdir(path.dirname(this.stateFile), { recursive: true });
-    await fs.writeFile(this.stateFile, JSON.stringify(s, null, 2), 'utf8');
+    const tmp = `${this.stateFile}.tmp`;
+    await fs.writeFile(tmp, JSON.stringify(s, null, 2), 'utf8');
+    await fs.rename(tmp, this.stateFile);
+    this.cached = structuredClone(s);
+  }
+
+  /** The folder of a project: its recorded location, or <userData>/projects/<key>. */
+  private async dirOf(key: string): Promise<string> {
+    if (!KEY.test(key)) throw new Error('Invalid project.');
+    return (await this.readState()).locations[key] ?? path.join(this.baseDir, key);
   }
 
   /** The open project (the sample project on first run, or if the remembered one is gone). */
@@ -51,9 +101,9 @@ export class ProjectManager {
     if (this.store) return Promise.resolve(this.store);
     this.loading ??= (async () => {
       const st = await this.readState();
-      const sample = await ensureSampleProject(this.dir(SAMPLE_KEY), this.fixturesDir);
+      const sample = await ensureSampleProject(await this.dirOf(SAMPLE_KEY), this.fixturesDir);
       let key = st.current;
-      let store = key === SAMPLE_KEY ? sample : new ProjectStore(this.dir(key));
+      let store = key === SAMPLE_KEY ? sample : new ProjectStore(await this.dirOf(key));
       if (!(await store.exists())) { key = SAMPLE_KEY; store = sample; }
       this.store = store;
       this.storeKey = key;
@@ -70,7 +120,7 @@ export class ProjectManager {
   /** A project's store by key (for thumbnails of projects that are not open). */
   async storeFor(key: string): Promise<ProjectStore> {
     if (key === this.storeKey && this.store) return this.store;
-    const s = new ProjectStore(this.dir(key));
+    const s = new ProjectStore(await this.dirOf(key));
     if (!(await s.exists())) throw new Error('No such project.');
     return s;
   }
@@ -79,10 +129,15 @@ export class ProjectManager {
     await this.current();
     const st = await this.readState();
     const out: ProjectSummary[] = [];
+    const entries = new Map<string, string>();
     for (const e of await fs.readdir(this.baseDir, { withFileTypes: true }).catch(() => [])) {
-      if (!e.isDirectory() || !KEY.test(e.name)) continue;
+      if (e.isDirectory() && KEY.test(e.name)) entries.set(e.name, path.join(this.baseDir, e.name));
+    }
+    for (const [k, dir] of Object.entries(st.locations)) entries.set(k, dir);
+    for (const [name, dir] of entries) {
+      const e = { name };
       try {
-        const m = await new ProjectStore(this.dir(e.name)).loadManifest();
+        const m = await new ProjectStore(dir).loadManifest();
         // Thumbnail: the newest saved version if any, else the largest picture.
         const pics = m.assets.filter((a) => a.kind === 'image' || a.kind === 'vector');
         const area = (a: { width?: number; height?: number }) => (a.width ?? 0) * (a.height ?? 0);
@@ -91,7 +146,7 @@ export class ProjectManager {
           id: e.name, name: m.name, assetCount: m.assets.length,
           originals: m.assets.filter((a) => !a.parentId).length, versions: m.assets.filter((a) => a.parentId).length,
           createdAt: m.createdAt, updatedAt: m.updatedAt, thumbAssetId: thumb?.id ?? null,
-          isOpen: e.name === this.storeKey, isSample: e.name === SAMPLE_KEY,
+          isOpen: e.name === this.storeKey, isSample: e.name === SAMPLE_KEY, folder: dir,
         });
       } catch { /* not a project folder */ }
     }
@@ -104,14 +159,27 @@ export class ProjectManager {
     this.store = store;
     this.storeKey = key;
     const st = await this.readState();
-    await this.writeState({ current: key, recent: [key, ...st.recent.filter((k) => k !== key)].slice(0, 20) });
+    await this.writeState({ ...st, current: key, recent: [key, ...st.recent.filter((k) => k !== key)].slice(0, 20) });
     return store;
   }
 
-  async create(name: string): Promise<string> {
+  /** Creates a project in `parentDir` (or the default project folder); returns its key (does not open it). */
+  async create(name: string, parentDir?: string): Promise<string> {
     const clean = name.trim().slice(0, 80) || 'Untitled project';
     const key = `p-${randomUUID().slice(0, 8)}`;
-    const store = new ProjectStore(this.dir(key));
+    const st = await this.readState();
+    const parent = parentDir ?? st.defaultDir;
+    let dir: string;
+    if (!parent) {
+      dir = path.join(this.baseDir, key);
+    } else {
+      await checkWritableFolder(parent);
+      const base = folderNameFor(clean);
+      dir = path.join(parent, base);
+      for (let i = 2; await fs.access(dir).then(() => true, () => false); i++) dir = path.join(parent, `${base} ${i}`);
+      await this.writeState({ ...st, locations: { ...st.locations, [key]: dir } });
+    }
+    const store = new ProjectStore(dir);
     await store.create(clean);
     await store.saveWorkflow(emptyGraph());
     return key;
@@ -128,10 +196,38 @@ export class ProjectManager {
     if (key === this.storeKey) throw new Error('Open another project first, then remove this one.');
     if (key === SAMPLE_KEY) throw new Error('The Sample Project stays; it is recreated anyway.');
     await this.storeFor(key);
-    await this.trash(this.dir(key));
+    await this.trash(await this.dirOf(key));
     const st = await this.readState();
-    await this.writeState({ ...st, recent: st.recent.filter((k) => k !== key) });
+    const locations = { ...st.locations };
+    delete locations[key];
+    await this.writeState({ ...st, recent: st.recent.filter((k) => k !== key), locations });
   }
 
-  folder(key: string) { return this.dir(key); }
+  async folder(key: string): Promise<string> { return this.dirOf(key); }
+
+  async storageInfo(): Promise<StorageInfo> {
+    const st = await this.readState();
+    const dir = st.defaultDir ?? this.baseDir;
+    let freeBytes: number | null = null;
+    let totalBytes: number | null = null;
+    try {
+      await fs.mkdir(dir, { recursive: true });
+      const s = await fs.statfs(dir);
+      freeBytes = Number(s.bavail) * Number(s.bsize);
+      totalBytes = Number(s.blocks) * Number(s.bsize);
+    } catch { /* unknown (for example a disconnected network drive) */ }
+    return { defaultDir: dir, isCustom: !!st.defaultDir, builtInDir: this.baseDir, freeBytes, totalBytes };
+  }
+
+  /** Sets the folder new projects go to (null = back to the built-in folder). Existing projects stay where they are. */
+  async setDefaultDir(dir: string | null): Promise<StorageInfo> {
+    const st = await this.readState();
+    if (dir === null) {
+      await this.writeState({ ...st, defaultDir: undefined });
+    } else {
+      await checkWritableFolder(dir);
+      await this.writeState({ ...st, defaultDir: path.resolve(dir) });
+    }
+    return this.storageInfo();
+  }
 }

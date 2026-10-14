@@ -8,6 +8,14 @@ import type { EditorAppId } from './appEditors';
 import type { DeliverJob, DeliverRecord } from './deliver';
 import type { WorkflowGraph, WorkflowRunEvent } from './workflow';
 
+export interface StorageDto {
+  defaultDir: string;
+  isCustom: boolean;
+  builtInDir: string;
+  freeBytes: number | null;
+  totalBytes: number | null;
+}
+
 export const IPC = {
   getAppearance: 'appearance:get',
   setAppearance: 'appearance:set',
@@ -64,6 +72,10 @@ export const IPC = {
   projectsRename: 'projects:rename',
   projectsRemove: 'projects:remove',
   projectsReveal: 'projects:reveal',
+  projectsStorage: 'projects:storage',
+  projectsPickFolder: 'projects:pick-folder',
+  projectsSetDefaultDir: 'projects:set-default-dir',
+  projectsRevealDefault: 'projects:reveal-default',
   genProviders: 'generate:providers',
   genPasteKey: 'generate:paste-key',
   genRemoveKey: 'generate:remove-key',
@@ -216,8 +228,15 @@ export interface StudioApi {
   projects: {
     list(): Promise<ProjectSummary[]>;
     current(): Promise<string>;
-    /** Creates an empty project; returns its key (does not open it). */
-    create(name: string): Promise<string>;
+    /** Creates an empty project (in `parentDir`, else the default project folder); returns its key (does not open it). */
+    create(name: string, parentDir?: string): Promise<string>;
+    /** Where new projects go, and free space there when known. */
+    storage(): Promise<StorageDto>;
+    /** Native Browse dialog; null when cancelled. */
+    pickFolder(): Promise<string | null>;
+    /** Changes where NEW projects go (null = built-in folder). Existing projects are never moved. */
+    setDefaultDir(dir: string | null): Promise<StorageDto>;
+    revealDefaultDir(): Promise<void>;
     /** Switches the open project (refused while a task, workflow or Claude is busy). */
     open(key: string): Promise<void>;
     rename(key: string, name: string): Promise<void>;

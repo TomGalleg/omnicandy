@@ -57,6 +57,7 @@ const assetSchema = z.object({
 
 export const manifestSchema = z.object({
   schemaVersion: z.literal(1),
+  layout: z.literal(2).optional(),
   id,
   name: z.string().max(256),
   createdAt: z.string(),

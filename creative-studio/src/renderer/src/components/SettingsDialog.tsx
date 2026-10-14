@@ -1,16 +1,18 @@
 import { Fragment, useEffect, useRef, useState } from 'react';
 import { APP_THEME_SUPPORT } from '@shared/appTheme';
 import type { ClaudeState } from '@shared/claude';
-import type { IntegrationSnapshot, ProviderStatusDto } from '@shared/ipc';
+import type { IntegrationSnapshot, ProviderStatusDto, StorageDto } from '@shared/ipc';
+import { formatBytes } from '../format';
 import type { LiveSnapshot } from '@shared/live';
 import { ACCENT_PRESETS, THEME_OPTIONS } from '@shared/theme';
 import type { AppProbeResult } from '@shared/types';
 import { setOverlayOpen } from '../overlay';
 import type { useAppearance } from '../useAppearance';
 
-type Section = 'appearance' | 'integrations' | 'diagnostics';
+type Section = 'appearance' | 'storage' | 'integrations' | 'diagnostics';
 const SECTIONS: Array<{ id: Section; label: string }> = [
   { id: 'appearance', label: 'Appearance' },
+  { id: 'storage', label: 'Projects & Storage' },
   { id: 'integrations', label: 'Integrations' },
   { id: 'diagnostics', label: 'Advanced diagnostics' },
 ];
@@ -49,6 +51,7 @@ export function SettingsDialog({ appearance, appTheme, apps, integrations, onClo
           </div>
           <div role="tabpanel" className="settings-content">
             {section === 'appearance' && <AppearanceSettings appearance={appearance} appTheme={appTheme} />}
+            {section === 'storage' && <StorageSettings />}
             {section === 'integrations' && <IntegrationSettings apps={apps} />}
             {section === 'diagnostics' && <Diagnostics apps={apps} integrations={integrations} />}
           </div>
@@ -130,6 +133,48 @@ const claudeText = (st: ClaudeState | null) => !st ? 'Checking…'
   : st.signedIn === false || st.status === 'signed-out' ? 'Not signed in. Sign in from the Claude panel.'
     : st.signedIn ? `Signed in with the Claude Code sign-in on this PC · ${st.status === 'working' ? 'working' : 'ready'}`
       : 'Sign-in not checked yet. Open the Claude panel to check.';
+
+function StorageSettings() {
+  const [info, setInfo] = useState<StorageDto | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { void window.studio.projects.storage().then(setInfo); }, []);
+  const apply = async (fn: () => Promise<StorageDto | null>) => {
+    setBusy(true); setError(null);
+    try { const r = await fn(); if (r) setInfo(r); }
+    catch (e) { setError((e instanceof Error ? e.message : String(e)).replace(/^Error invoking remote method '[^']+': (Error: )?/, '')); }
+    finally { setBusy(false); }
+  };
+  const browse = () => apply(async () => {
+    const dir = await window.studio.projects.pickFolder();
+    return dir ? window.studio.projects.setDefaultDir(dir) : null;
+  });
+  return (
+    <>
+      <div className="field">
+        <span className="menu-label">Project folder</span>
+        <p className="hint">New projects are created here, each in its own self-contained folder. Pick a drive with plenty of space for large media; external drives and network folders work too.</p>
+        {info ? (
+          <>
+            <div className="asset-meta" aria-label="Current project folder"><strong>{info.defaultDir}</strong>{!info.isCustom && ' (built-in default)'}</div>
+            <div className="asset-meta">
+              {info.freeBytes !== null && info.totalBytes !== null
+                ? `${formatBytes(info.freeBytes)} free of ${formatBytes(info.totalBytes)}`
+                : 'Free space is not available for this location.'}
+            </div>
+            <div className="menu-row">
+              <button className="btn small" disabled={busy} onClick={() => void browse()}>Browse…</button>
+              <button className="btn small" onClick={() => void window.studio.projects.revealDefaultDir()}>Open folder</button>
+              {info.isCustom && <button className="btn small ghost" disabled={busy} onClick={() => void apply(() => window.studio.projects.setDefaultDir(null))}>Use built-in default</button>}
+            </div>
+          </>
+        ) : <div className="asset-meta">Loading…</div>}
+        {error && <div className="wf-msg error" role="alert">{error}</div>}
+        <p className="hint">Changing this only affects projects you create from now on. Existing projects stay where they are, and your settings, keys and project list stay in CreateCraft's own data folder.</p>
+      </div>
+    </>
+  );
+}
 
 function IntegrationSettings({ apps }: { apps: AppProbeResult[] }) {
   const [providers, setProviders] = useState<ProviderStatusDto[] | null>(null);

@@ -20,8 +20,8 @@ Evidence for each integration (exact commands, versions and test results) is in
 still describes "Phase 2, steps 1–2"); this file and the audit are the current picture.
 
 **Resume here (new conversation):** follow Tomas's Master Development Instructions (phases 0–10).
-Phase 0 audit and all of Phase 1 (1.1 to 1.4) are done (see "Master plan status" below). **Next: Phase 2.1
-and 2.2 (project storage folder and folder layout), after Tomas's OK of Phase 1.** Keep work in small milestones and replies short.
+Phase 0 audit, all of Phase 1 and Phase 2.1-2.2 are done (see "Master plan status" below). **Next: Phase 2.3
+and 2.4 (move/rename/duplicate/relink projects, virtual collections), after Tomas's OK of 2.1-2.2.** Keep work in small milestones and replies short.
 
 ## Master plan status (Phase 0 audit, 2026-10-14)
 
@@ -35,7 +35,10 @@ typecheck 0, Vitest 135 passed / 14 skipped (opt-in live tests).
 | 1.2 | Vertical Media tab (far left) and Claude tab (left edge of Claude panel); collapse/expand, resize, remembered width and state, Ctrl+Shift+M / Ctrl+Shift+C, aria labels | **WORKING** | none | `smoke-docks.mjs` 15/15; embedded app follows: `smoke-live.mjs` |
 | 1.3 | Collapsible inspector, metadata in an expandable section, smaller Activity panel, plainer labels | **WORKING** | 1.2 | `smoke-docks.mjs`; screenshots 01, 42-45 |
 | 1.4 | Workflow Editor: collapsible side panels, Fit/auto layout, running-node highlight, approval expands | **WORKING** | 1.2 | `smoke-workflow.mjs` 7/7, `workflowLayout.test.ts`; screenshots 95-96 |
-| 2 | User-selected project storage, project folder layout, open/move/duplicate/relink, virtual collections | NOT IMPLEMENTED (projects live in `%APPDATA%\creative-studio\projects`, `src/main/index.ts:49`) | 1 | new unit tests + `smoke-projects.mjs` |
+| 2.1 | Default project folder in Settings, Projects & Storage (Browse, Open folder, write check, free space, per-project folder when creating) | **WORKING** | 1 | `projects.test.ts`, `smoke-projects.mjs` |
+| 2.2 | Self-contained project folder layout (Assets/, Versions/, Exports/, Workflows/, per-app folders...) | **WORKING** for new projects; older projects keep their layout | 2.1 | `projectStore.test.ts`, `projects.test.ts` |
+| 2.3 | Open from any folder, move, rename folder, duplicate, locate/relink | NOT IMPLEMENTED | 2.1 | new unit tests |
+| 2.4 | Virtual collections (All, Originals, AI, Favorites, Versions, Workflows, Deliverables) | NOT IMPLEMENTED | 2.2 | smoke |
 | 3 | Prompt-first Project Home, Claude creates projects, blank project types, overview | NOT IMPLEMENTED (Home lists projects; creation is name-only) | 2 | smoke + real Claude run |
 | 4 | Simplified / Advanced navigation | NOT IMPLEMENTED | 1, 3 | smoke |
 | 5 | Claude builds and runs workflows (shared engine) | NOT IMPLEMENTED (Claude has no workflow tools) | 1.4 | real Claude run + `workflowRunner` tests |
@@ -73,6 +76,25 @@ Phase 1.3-1.4 (2026-10-14):
   `smoke-docks.mjs` 15/15; `smoke-workflow.mjs` 7/7 (real LightCraft headless run + approval).
   `scripts/smoke.mjs` stops at its workflow part ("Approve" button never appears for its old demo graph);
   it fails the same way on `bb89719` without these changes, so it is a stale smoke, not a regression.
+
+Phase 2.1-2.2 (2026-10-14):
+* Settings has **Projects & Storage**: shows the folder new projects go to (built-in
+  `%APPDATA%\creative-studio\projects` until changed), free/total space (`fs.statfs`, "not available"
+  if unknown), **Browse...** (native dialog), **Open folder**, **Use built-in default**. A folder is
+  accepted only after a real write test (plain-language error otherwise). Changing it never moves
+  existing projects. Settings, keys and the registry (`projects.json`: current, recent, `defaultDir`,
+  `locations` key -> absolute folder) stay in app data. Home's New project has **Choose folder...** for
+  a per-project location (folder named after the project, " 2", " 3" if taken).
+* New projects use layout 2 (`"layout": 2` in project.json): `Assets/{Originals,Generated,Audio,Video,
+  Documents}`, `Versions`, `Exports`, `Workflows/workflow.json`, `Previews`, `Checkpoints`, one folder per
+  ArtCraft app (live working files go in `<App>/work`), and `work/` scratch. AI generations go to
+  `Assets/Generated`. Paths stay relative; hashes, lineage, provenance and read-only storing are unchanged.
+  Projects without `layout` (Sample Project and anything older) keep `originals/`, `versions/`, `exports/`,
+  `workflow.json` exactly as before, so nothing needs migrating.
+* Not done yet: `Previews/` and `Checkpoints/` are created but unused; app folders hold only live scratch.
+* Tests: `npm run check` lint 0, types 0, **142 passed / 14 skipped** (+3 projects, +1 legacy layout);
+  `smoke-projects.mjs` 10/10 on a fresh build. Live-app and workflow smokes not re-run (not touched
+  beyond the live work-folder path; do it with 2.3).
 
 Phase 1 note: the old `integrationStatus().claude` field in `src/main/ipc.ts` still says "not
 configured in this build" (stale); Settings now shows Claude's real sign-in state instead.

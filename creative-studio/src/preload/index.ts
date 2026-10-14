@@ -91,7 +91,11 @@ const api: StudioApi = {
   projects: {
     list: () => ipcRenderer.invoke(IPC.projectsList),
     current: () => ipcRenderer.invoke(IPC.projectsCurrent),
-    create: (name) => ipcRenderer.invoke(IPC.projectsCreate, name),
+    create: (name, parentDir) => ipcRenderer.invoke(IPC.projectsCreate, name, parentDir),
+    storage: () => ipcRenderer.invoke(IPC.projectsStorage),
+    pickFolder: () => ipcRenderer.invoke(IPC.projectsPickFolder),
+    setDefaultDir: (dir) => ipcRenderer.invoke(IPC.projectsSetDefaultDir, dir),
+    revealDefaultDir: () => ipcRenderer.invoke(IPC.projectsRevealDefault),
     open: (key) => ipcRenderer.invoke(IPC.projectsOpen, key),
     rename: (key, name) => ipcRenderer.invoke(IPC.projectsRename, key, name),
     remove: (key) => ipcRenderer.invoke(IPC.projectsRemove, key),

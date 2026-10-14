@@ -117,7 +117,7 @@ describe('GenerationService', () => {
     expect(r.assets).toHaveLength(2);
     const a = r.assets[0]!;
     expect(a.parentId).toBeUndefined();
-    expect(a.relPath).toMatch(/^originals\//);
+    expect(a.relPath).toMatch(/^Assets\/Generated\//);
     expect(a.provenance).toMatchObject({ origin: 'generated', provider: 'openai', model: 'gpt-image-2.5-flare', prompt: 'A lighthouse at dusk', requestedBy: 'claude', settings: { quality: 'high' } });
     expect(a.provenance.estimatedCostUsd).toBe(r.estimate.amount);
     const manifestText = await fs.readFile(path.join(store.root, 'project.json'), 'utf8');

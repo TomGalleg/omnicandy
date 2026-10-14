@@ -189,13 +189,13 @@ export function registerIpc(d: IpcDeps): void {
     const store = await d.project();
     // Each app writes only into its own work folder; the library itself is only ever read.
     const roots: Record<EditorAppId, string> = {
-      photocraft: path.join(store.root, 'work', 'live'),
-      vectorcraft: path.join(store.root, 'work', 'vectorcraft-live'),
-      soundcraft: path.join(store.root, 'work', 'soundcraft-live'),
-      filmcraft: path.join(store.root, 'work', 'filmcraft-live'),
-      lightcraft: path.join(store.root, 'work', 'lightcraft-live'),
-      effectcraft: path.join(store.root, 'work', 'effectcraft-live'),
-      designcraft: path.join(store.root, 'work', 'designcraft-live'),
+      photocraft: await store.appWorkDir('photocraft', 'live'),
+      vectorcraft: await store.appWorkDir('vectorcraft', 'vectorcraft-live'),
+      soundcraft: await store.appWorkDir('soundcraft', 'soundcraft-live'),
+      filmcraft: await store.appWorkDir('filmcraft', 'filmcraft-live'),
+      lightcraft: await store.appWorkDir('lightcraft', 'lightcraft-live'),
+      effectcraft: await store.appWorkDir('effectcraft', 'effectcraft-live'),
+      designcraft: await store.appWorkDir('designcraft', 'designcraft-live'),
     };
     // Catch each app's window the moment it appears so it never flashes up on its own.
     const onSpawn = (pid: number) => d.embedded.prepare(pid);
@@ -357,7 +357,7 @@ export function registerIpc(d: IpcDeps): void {
     generate: (job) => runGeneration(job, 'claude'),
     deliver: async () => deliver(),
     imageModels: async () => (await providerStatus()).filter((p) => p.configured),
-    workDir: async () => { const dir = path.join((await d.project()).root, 'work', 'claude'); await fs.mkdir(dir, { recursive: true }); return dir; },
+    workDir: async () => (await d.project()).workDir('claude'),
   }));
   handle(IPC.claudeState, none, () => claude().state());
   handle(IPC.claudeSend, z.tuple([z.string().min(1).max(4000)]), (msg) => claude().send(msg));
@@ -422,10 +422,21 @@ export function registerIpc(d: IpcDeps): void {
   const projectKey = z.string().regex(/^[A-Za-z0-9_-]{1,64}$/);
   handle(IPC.projectsList, none, () => d.projects.list());
   handle(IPC.projectsCurrent, none, () => d.projects.currentKey());
-  handle(IPC.projectsCreate, z.tuple([z.string().max(80)]), (name) => d.projects.create(name));
+  const folderPath = z.string().min(3).max(1024);
+  handle(IPC.projectsCreate, z.union([z.tuple([z.string().max(80)]), z.tuple([z.string().max(80), folderPath.optional()])]), (name, parentDir?: string) => d.projects.create(name, parentDir));
+  handle(IPC.projectsStorage, none, () => d.projects.storageInfo());
+  handle(IPC.projectsPickFolder, none, async () => {
+    const win = d.window();
+    const start = (await d.projects.storageInfo()).defaultDir;
+    const o: Electron.OpenDialogOptions = { title: 'Choose a folder for projects', defaultPath: start, properties: ['openDirectory', 'createDirectory'] };
+    const r = await (win ? dialog.showOpenDialog(win, o) : dialog.showOpenDialog(o));
+    return r.canceled || !r.filePaths[0] ? null : r.filePaths[0];
+  });
+  handle(IPC.projectsSetDefaultDir, z.tuple([folderPath.nullable()]), (dir) => d.projects.setDefaultDir(dir));
+  handle(IPC.projectsRevealDefault, none, async () => { await shell.openPath((await d.projects.storageInfo()).defaultDir); });
   handle(IPC.projectsRename, z.tuple([projectKey, z.string().min(1).max(80)]), (key, name) => d.projects.rename(key, name));
   handle(IPC.projectsRemove, z.tuple([projectKey]), (key) => d.projects.remove(key));
-  handle(IPC.projectsReveal, z.tuple([projectKey]), (key) => { shell.openPath(d.projects.folder(key)); });
+  handle(IPC.projectsReveal, z.tuple([projectKey]), async (key) => { await shell.openPath(await d.projects.folder(key)); });
   handle(IPC.projectsOpen, z.tuple([projectKey]), async (key) => {
     if (key === (await d.projects.currentKey())) return;
     if (running) throw new Error('A workflow is running. Cancel it before switching projects.');

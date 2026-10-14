@@ -39,7 +39,7 @@ describe('ProjectStore', () => {
     expect(await sha256File(src)).toBe(before);
     expect((await fs.stat(src)).mtimeMs).toBe(beforeStat.mtimeMs);
     expect(asset).toMatchObject({ kind: 'image', sourceFormat: 'png', width: 256, height: 256, sha256: before, approval: 'none' });
-    expect(asset.relPath.startsWith('originals/')).toBe(true);
+    expect(asset.relPath.startsWith('Assets/Originals/')).toBe(true);
 
     const stored = await s.resolveAssetPath(asset.id);
     expect(await sha256File(stored)).toBe(before);
@@ -65,7 +65,7 @@ describe('ProjectStore', () => {
     const b = await s.importFile(copy);
     expect(b.duplicateOf).toBe(a.asset.id);
     expect((await s.loadManifest()).assets).toHaveLength(1);
-    expect(await fs.readdir(path.join(s.root, 'originals'))).toHaveLength(1);
+    expect(await fs.readdir(path.join(s.root, 'Assets', 'Originals'))).toHaveLength(1);
   });
 
   it('reads WAV duration and rejects unsupported types', async () => {
@@ -119,5 +119,22 @@ describe('ProjectStore', () => {
     expect(names).toEqual(['aurora-clip.mp4', 'groove-loop.wav', 'sunset-clip.mp4', 'sunset-flyer.designcraft', 'sunset-still.jpg', 'tone-a440.wav']);
     await ensureSampleProject(root, FIXTURES);
     expect((await new ProjectStore(root).loadManifest()).assets).toHaveLength(6);
+  });
+
+  it('keeps the older folder layout for projects created before Phase 2', async () => {
+    const root = path.join(tmp, 'legacy');
+    const s0 = new ProjectStore(root);
+    await s0.create('Legacy');
+    const mf = path.join(root, 'project.json');
+    const m = JSON.parse(await fs.readFile(mf, 'utf8'));
+    delete m.layout;
+    await fs.writeFile(mf, JSON.stringify(m));
+    await fs.rm(path.join(root, 'Assets'), { recursive: true, force: true });
+    const s = new ProjectStore(root);
+    const { asset } = await s.importFile(path.join(FIXTURES, 'photocraft-smoke.png'));
+    expect(asset.relPath.startsWith('originals/')).toBe(true);
+    await s.saveWorkflow(demoGraph(asset.id));
+    expect((await fs.stat(path.join(root, 'workflow.json'))).isFile()).toBe(true);
+    expect(await s.exportsDir()).toBe(path.join(root, 'exports'));
   });
 });

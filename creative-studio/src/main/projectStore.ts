@@ -1,16 +1,19 @@
-// Portable project directory:
-//   <root>/project.json   manifest (relative paths only)
-//   <root>/workflow.json  persisted graph
-//   <root>/originals/     immutable imported originals (written once, then marked read-only)
-// Independent of Electron so it can be unit-tested.
+// Portable, self-contained project directory (paths in project.json are relative to it).
+// Layout 2 (new projects): project.json, Assets/{Originals,Generated,Audio,Video,Documents}/,
+//   Versions/, Exports/, Workflows/workflow.json, Previews/, Checkpoints/, one folder per
+//   ArtCraft app (PhotoCraft/ ... FilmCraft/) for live working files, work/ (scratch).
+// Layout 1 (older projects, left as they are): project.json, workflow.json, originals/,
+//   versions/, exports/, work/.
+// Stored files are written once and marked read-only. Independent of Electron for unit tests.
 
 import { createHash, randomUUID } from 'node:crypto';
 import { constants as fsc } from 'node:fs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { EDITOR_APPS, type EditorAppId } from '@shared/appEditors';
 import type { AssetRepository } from '@shared/contracts';
 import { MANIFEST_FILE } from '@shared/deliver';
-import type { Asset, AssetProvenance, ProjectManifest } from '@shared/types';
+import type { Asset, AssetKind, AssetProvenance, ProjectManifest } from '@shared/types';
 import { emptyGraph, type WorkflowGraph } from '@shared/workflow';
 import { kindForExtension, sniffMedia } from './media';
 import { parseManifest, parseWorkflow } from './schemas';
@@ -25,18 +28,44 @@ async function writeJsonAtomic(file: string, data: unknown): Promise<void> {
   await fs.rename(tmp, file);
 }
 
+/** Folders of a layout-2 project, created up front so the structure is visible in Explorer. */
+export const PROJECT_FOLDERS = [
+  'Assets/Originals', 'Assets/Generated', 'Assets/Audio', 'Assets/Video', 'Assets/Documents',
+  ...Object.values(EDITOR_APPS).map((a) => a.name),
+  'Workflows', 'Previews', 'Versions', 'Exports', 'Checkpoints',
+];
+
+type StoreFolder = 'originals' | 'generated' | 'versions';
+
+function v2Folder(folder: StoreFolder, kind: AssetKind): string {
+  if (folder === 'versions') return 'Versions';
+  if (folder === 'generated') return 'Assets/Generated';
+  if (kind === 'audio') return 'Assets/Audio';
+  if (kind === 'video') return 'Assets/Video';
+  if (kind === 'design' || kind === 'project') return 'Assets/Documents';
+  return 'Assets/Originals';
+}
+
 export class ProjectStore implements AssetRepository {
   private manifest: ProjectManifest | null = null;
 
   constructor(readonly root: string) {}
 
   private get manifestPath() { return path.join(this.root, 'project.json'); }
-  private get workflowPath() { return path.join(this.root, 'workflow.json'); }
+
+  /** 2 for projects with the self-contained Phase 2 layout, 1 for older ones. */
+  async layout(): Promise<1 | 2> {
+    return (await this.loadManifest()).layout === 2 ? 2 : 1;
+  }
+
+  private async workflowPath() {
+    return (await this.layout()) === 2 ? path.join(this.root, 'Workflows', 'workflow.json') : path.join(this.root, 'workflow.json');
+  }
 
   async create(name: string): Promise<ProjectManifest> {
-    await fs.mkdir(path.join(this.root, 'originals'), { recursive: true });
+    for (const f of PROJECT_FOLDERS) await fs.mkdir(path.join(this.root, ...f.split('/')), { recursive: true });
     const now = new Date().toISOString();
-    this.manifest = { schemaVersion: 1, id: randomUUID(), name, createdAt: now, updatedAt: now, assets: [] };
+    this.manifest = { schemaVersion: 1, layout: 2, id: randomUUID(), name, createdAt: now, updatedAt: now, assets: [] };
     await this.persist();
     return this.manifest;
   }
@@ -87,12 +116,12 @@ export class ProjectStore implements AssetRepository {
    */
   async addGeneratedFile(producedPath: string, meta: { name: string; provenance: Omit<AssetProvenance, 'createdAt' | 'origin'> }): Promise<{ asset: Asset; duplicateOf?: string }> {
     this.resolveInsideRoot(path.relative(this.root, producedPath).split(path.sep).join('/'));
-    return this.storeFile(producedPath, { folder: 'originals', name: meta.name, move: true, provenance: { ...meta.provenance, origin: 'generated' } });
+    return this.storeFile(producedPath, { folder: 'generated', name: meta.name, move: true, provenance: { ...meta.provenance, origin: 'generated' } });
   }
 
   private async storeFile(
     sourcePath: string,
-    o: { folder: 'originals' | 'versions'; name: string; move: boolean; parentId?: string; provenance: Partial<AssetProvenance> & Pick<AssetProvenance, 'origin' | 'source'> },
+    o: { folder: StoreFolder; name: string; move: boolean; parentId?: string; provenance: Partial<AssetProvenance> & Pick<AssetProvenance, 'origin' | 'source'> },
   ): Promise<{ asset: Asset; duplicateOf?: string }> {
     const m = await this.loadManifest().then(() => this.manifest!);
     const ext = path.extname(o.name).slice(1).toLowerCase();
@@ -110,7 +139,8 @@ export class ProjectStore implements AssetRepository {
 
     const id = randomUUID();
     const safeBase = o.name.replace(/[^\w.\- ]+/g, '_');
-    const relPath = `${o.folder}/${id.slice(0, 8)}-${safeBase}`;
+    const folder = m.layout === 2 ? v2Folder(o.folder, kind) : o.folder === 'versions' ? 'versions' : 'originals';
+    const relPath = `${folder}/${id.slice(0, 8)}-${safeBase}`;
     const dest = path.join(this.root, ...relPath.split('/'));
     await fs.mkdir(path.dirname(dest), { recursive: true });
     if (o.move) await fs.rename(sourcePath, dest);
@@ -146,16 +176,23 @@ export class ProjectStore implements AssetRepository {
     return { asset: structuredClone(asset) };
   }
 
-  /** Scratch folder for tool output before it is registered. Inside the project root. */
-  async workDir(): Promise<string> {
-    const d = path.join(this.root, 'work');
+  /** Scratch folder (or a subfolder) for tool output before it is registered. Inside the project root. */
+  async workDir(...sub: string[]): Promise<string> {
+    const d = path.join(this.root, 'work', ...sub);
+    await fs.mkdir(d, { recursive: true });
+    return d;
+  }
+
+  /** Where a live ArtCraft app writes working files: its own folder (layout 2) or work/<legacy>. */
+  async appWorkDir(app: EditorAppId, legacy: string): Promise<string> {
+    const d = (await this.layout()) === 2 ? path.join(this.root, EDITOR_APPS[app].name, 'work') : path.join(this.root, 'work', legacy);
     await fs.mkdir(d, { recursive: true });
     return d;
   }
 
   /** Deliverables folder (mutable; exports may be overwritten by later runs). */
   async exportsDir(): Promise<string> {
-    const d = path.join(this.root, 'exports');
+    const d = path.join(this.root, (await this.layout()) === 2 ? 'Exports' : 'exports');
     await fs.mkdir(d, { recursive: true });
     return d;
   }
@@ -204,7 +241,7 @@ export class ProjectStore implements AssetRepository {
 
   async loadWorkflow(): Promise<WorkflowGraph> {
     try {
-      return parseWorkflow(JSON.parse(await fs.readFile(this.workflowPath, 'utf8')));
+      return parseWorkflow(JSON.parse(await fs.readFile(await this.workflowPath(), 'utf8')));
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code === 'ENOENT') return emptyGraph();
       throw err;
@@ -212,6 +249,8 @@ export class ProjectStore implements AssetRepository {
   }
 
   async saveWorkflow(g: WorkflowGraph): Promise<void> {
-    await writeJsonAtomic(this.workflowPath, parseWorkflow(g));
+    const file = await this.workflowPath();
+    await fs.mkdir(path.dirname(file), { recursive: true });
+    await writeJsonAtomic(file, parseWorkflow(g));
   }
 }

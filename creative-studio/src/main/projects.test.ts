@@ -78,4 +78,49 @@ describe('ProjectManager', () => {
     await expect(pm.storeFor('../../etc')).rejects.toThrow(/Invalid project/);
     await expect(pm.open('nope')).rejects.toThrow(/No such project/);
   });
+
+  it('puts new projects in the chosen default folder with the self-contained layout, and never moves old ones', async () => {
+    const pm = make();
+    const oldKey = await pm.create('Old');
+    const oldDir = path.join(tmp, 'projects', oldKey);
+    const dest = path.join(tmp, 'Big Drive', 'CreateCraft Projects');
+    const info = await pm.setDefaultDir(dest);
+    expect(info).toMatchObject({ defaultDir: dest, isCustom: true });
+    const key = await pm.create('My: Project?');
+    const dir = path.join(dest, 'My Project');
+    expect(await pm.folder(key)).toBe(dir);
+    const store = await pm.open(key);
+    await store.importFile(path.join(FIXTURES, 'dune-poster.svg'));
+    for (const f of ['Assets/Originals', 'Assets/Generated', 'Assets/Audio', 'Assets/Video', 'Assets/Documents', 'PhotoCraft', 'FilmCraft', 'Workflows', 'Previews', 'Versions', 'Exports', 'Checkpoints']) {
+      expect((await fs.stat(path.join(dir, f))).isDirectory(), f).toBe(true);
+    }
+    expect((await store.loadManifest()).assets[0]!.relPath).toMatch(/^Assets\/Originals\//);
+    expect((await fs.stat(path.join(dir, 'Workflows', 'workflow.json'))).isFile()).toBe(true);
+    expect(await fs.access(oldDir).then(() => true, () => false)).toBe(true); // old project untouched
+    expect((await pm.create('My Project')).length).toBeGreaterThan(0); // same name gets "My Project 2"
+    expect((await fs.stat(path.join(dest, 'My Project 2'))).isDirectory()).toBe(true);
+
+    const again = make(); // remembered across restarts
+    expect((await again.list()).find((p) => p.id === key)).toMatchObject({ name: 'My: Project?', folder: dir });
+    expect((await again.storageInfo()).defaultDir).toBe(dest);
+    await again.setDefaultDir(null);
+    expect((await again.storageInfo()).isCustom).toBe(false);
+    expect(await again.folder(key)).toBe(dir); // old location still known
+  });
+
+  it('refuses a default folder it cannot write to', async () => {
+    const pm = make();
+    const blocker = path.join(tmp, 'a-file');
+    await fs.writeFile(blocker, 'x');
+    await expect(pm.setDefaultDir(path.join(blocker, 'sub'))).rejects.toThrow(/can't write/);
+    await expect(pm.setDefaultDir('relative/path')).rejects.toThrow(/full folder path/);
+  });
+
+  it('creates a project in a per-project folder', async () => {
+    const pm = make();
+    const parent = path.join(tmp, 'Elsewhere');
+    const key = await pm.create('One-off', parent);
+    expect(await pm.folder(key)).toBe(path.join(parent, 'One-off'));
+    expect((await pm.storageInfo()).isCustom).toBe(false);
+  });
 });

@@ -43,6 +43,8 @@ export interface Asset {
 
 export interface ProjectManifest {
   schemaVersion: 1;
+  /** 2 = self-contained Phase 2 folder layout; absent = older layout (originals/, versions/, exports/). */
+  layout?: 2;
   id: string;
   name: string;
   createdAt: string;
@@ -51,8 +53,10 @@ export interface ProjectManifest {
 }
 
 export interface ProjectSummary {
-  /** Folder key under <userData>/projects. */
+  /** Stable project key (registry id). */
   id: string;
+  /** The project's folder on disk. */
+  folder: string;
   name: string;
   assetCount: number;
   originals: number;

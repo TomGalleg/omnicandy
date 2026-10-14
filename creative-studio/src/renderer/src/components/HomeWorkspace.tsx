@@ -18,6 +18,7 @@ const when = (iso: string) => new Date(iso).toLocaleString(undefined, { dateStyl
 export function HomeWorkspace({ manifest, projectKey, onSwitched, onGoto, log }: Props) {
   const [projects, setProjects] = useState<ProjectSummary[] | null>(null);
   const [newName, setNewName] = useState('');
+  const [location, setLocation] = useState<string | null>(null);
   const [renaming, setRenaming] = useState<{ key: string; name: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -36,9 +37,10 @@ export function HomeWorkspace({ manifest, projectKey, onSwitched, onGoto, log }:
   });
   const create = () => run(async () => {
     const name = newName.trim() || 'Untitled project';
-    const key = await window.studio.projects.create(name);
+    const key = await window.studio.projects.create(name, location ?? undefined);
     await window.studio.projects.open(key);
     setNewName('');
+    setLocation(null);
     log('project', `Created and opened "${name}". Import files to get started.`);
     onSwitched(key);
   });
@@ -50,6 +52,11 @@ export function HomeWorkspace({ manifest, projectKey, onSwitched, onGoto, log }:
           <h2>Projects</h2>
           <form className="new-project" onSubmit={(e) => { e.preventDefault(); void create(); }}>
             <input aria-label="New project name" placeholder="New project name" value={newName} maxLength={80} onChange={(e) => setNewName(e.target.value)} />
+            <button className="btn small ghost" type="button" disabled={busy} title={location ?? 'Uses the project folder from Settings'}
+              onClick={() => void window.studio.projects.pickFolder().then((d) => { if (d) setLocation(d); })}>
+              {location ? `In: ${location.split(/[\\/]/).filter(Boolean).at(-1) ?? location}` : 'Choose folder…'}
+            </button>
+            {location && <button className="btn small ghost" type="button" aria-label="Use the default project folder" onClick={() => setLocation(null)}>✕</button>}
             <button className="btn primary" type="submit" disabled={busy}>New project</button>
           </form>
         </div>
