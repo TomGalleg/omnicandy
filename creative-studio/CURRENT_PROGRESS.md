@@ -20,7 +20,7 @@ Evidence for each integration (exact commands, versions and test results) is in
 still describes "Phase 2, steps 1–2"); this file and the audit are the current picture.
 
 **Resume here (new conversation):** follow Tomas's Master Development Instructions (phases 0–10).
-Phase 0 audit, Phase 1, Phase 2 and Phase 3 (3.1-3.4, plus the two gap fixes below) are done (see "Master plan status" below). Phase 4 (Simplified / Advanced navigation) is done too. **Next: Phase 5 (Claude-created workflows), after Tomas's OK of Phase 4.** Keep work in small milestones and replies short.
+Phase 0 audit, Phase 1, Phase 2 and Phase 3 (3.1-3.4, plus the two gap fixes below) are done (see "Master plan status" below). Phase 4 (Simplified / Advanced navigation) is done too. Phase 5 part 1 (Claude builds workflow plans) is done; **next: Phase 5 part 2 (execution monitoring, rerun of affected nodes, save as template), after Tomas's OK.** Keep work in small milestones and replies short.
 
 ## Master plan status (Phase 0 audit, 2026-10-14)
 
@@ -43,7 +43,7 @@ typecheck 0, Vitest 135 passed / 14 skipped (opt-in live tests).
 | 3.3 | Blank project: name, type (5 categories), folder | **WORKING** | 3.1 | `projects.test.ts`, `smoke-projects.mjs` |
 | 3.4 | Project Overview: brief, objective, progress, latest artwork, items to review, recent versions/exports, Continue creating, workspace + selected file restored | **WORKING**: Claude chat is saved in the project folder and restored on reopen (see "Phase 3 gaps closed") | 3.1 | `projects.test.ts`, `projectStore.test.ts`, `smoke-home-ai.mjs`, screenshots 46-47 |
 | 4 | Simplified / Advanced navigation | **WORKING** | 1, 3 | `navigation.test.ts`, `smoke-nav.mjs` 7/7 |
-| 5 | Claude builds and runs workflows (shared engine) | NOT IMPLEMENTED (Claude has no workflow tools) | 1.4 | real Claude run + `workflowRunner` tests |
+| 5 | Claude builds and runs workflows (shared engine) | **PARTIAL**: part 1 (Claude builds and explains a validated plan) WORKING; part 2 (run monitoring, rerun affected nodes, templates) NOT IMPLEMENTED | 1.4 | `workflowPlan.test.ts`, `smoke-claude-workflow.mjs` 9/9 (real Claude) |
 | 6 | Real Gemini / OpenAI image generation; spending limits; Workflow AI node | PARTIAL (mocked-HTTP tests only; Workflow AI node is MOCK) | user's keys + OK | one approved real call per provider |
 | 7 | AI video providers (Veo, Runway, Luma) | NOT IMPLEMENTED | 6 | per provider |
 | 8 | Templates | NOT IMPLEMENTED | 5 | smoke |
@@ -165,6 +165,34 @@ Phase 4 (2026-10-14):
   `smoke-projects.mjs` 13/13. Other smokes click header tabs by name and now start in Simplified: they need the
   Advanced mode (or `More`) and were not updated or re-run. Screenshots `48-nav-simplified-more.png`, `49-nav-advanced.png`.
 
+Phase 5 part 1 (2026-10-14):
+* **Step A, smokes:** the older smokes (`apps`, `audio-deliver`, `claude-apps`, `claude-generate`, `generate`, `multiclip`,
+  `workflow`) now switch to Advanced navigation at start (`localStorage cs-nav-mode`) and were re-run: workflow 7/7,
+  generate 16/16, claude-generate 5/5, apps 20/20, multiclip 8/8, audio-deliver 17/17, claude-apps 15/15 (real Claude); also
+  docks 15/15, nav 7/7. Fixed stale checks on the way: generated files now live in `Assets/Generated`, the video overview
+  waveform needs the Edit tab (timelines only show while editing), duplicate option matches after the Details panel, and
+  the export "no app window" check compares against windows already open. Not re-run: `smoke.mjs` (known stale), `smoke-live`,
+  `smoke-theme`.
+* **Claude plans workflows:** two new Claude tools. `workflow_catalog` (step types, every app with its edits and settings,
+  connection rules) and `plan_workflow` (title, plain explanation, steps with readable keys, connections). Code:
+  `src/shared/workflowPlan.ts`. It builds a normal `WorkflowGraph` for the existing engine: every connection goes through
+  `validateConnection`, the whole graph through `validateGraph`; apps, edits and settings are checked with `checkEditValues`,
+  files by exact library name, export presets against Deliver presets, image models and settings against the model table,
+  and nodes are laid out with `autoLayout`. Problems come back to Claude as plain sentences so it can fix and retry.
+* **What the user sees:** a card at the top of the Workflow tab with Claude's explanation, the steps, a cost estimate
+  (paid generation per run, estimated with the existing price tables; free when nothing is paid), what they will be asked to
+  approve, and warnings (missing API key, no approval step, app may not open a file type). **Use this workflow** (or
+  **Replace my workflow**) saves it; a non-empty existing workflow is first kept as
+  `Workflows/workflow-before-claude-<time>.json`. **Dismiss** discards it. Proposing saves, runs and generates nothing;
+  Claude cannot run workflows. The pending plan is held in main (reset when switching projects).
+* **Honest limits:** a paid AI Generate step can be planned and priced, but running paid generation inside workflows is
+  still blocked (Phase 6); the plan says so as a warning. AI nodes carry `providerId`, `modelId`, `prompt`, `count`,
+  `settings`; the runner still uses only the mock path. Import steps use library files only (no folder picking by Claude).
+  Plan card appears in the Workflow tab; if the user is elsewhere it waits there (Claude tells them in chat).
+* Tests: lint 0, types 0, **161 passed / 14 skipped** (+5 `workflowPlan.test.ts`); `smoke-claude-workflow.mjs` 9/9 (new,
+  real Claude, Sonnet 5.5: plan appeared, nothing saved until applied, nothing generated, no ArtCraft window).
+  Screenshots `53-claude-workflow-plan.png`, `54-claude-workflow-applied.png`.
+
 Phase 1 note: the old `integrationStatus().claude` field in `src/main/ipc.ts` still says "not
 configured in this build" (stale); Settings now shows Claude's real sign-in state instead.
 
@@ -267,7 +295,7 @@ multi-clip video with music and crossfades; export a layout to PDF; audio fade i
 Claude correctly refuses to discard unsaved edits without permission. Total Claude usage for all
 verification runs today: about $5.
 
-**Not yet:** Claude cannot build or run workflows (planned, Workflow step two).
+Claude can propose workflows (`workflow_catalog`, `plan_workflow`) for the user to apply; it cannot run them yet (Phase 5 part 2).
 
 ## 8. Workflow node execution
 

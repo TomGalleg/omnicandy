@@ -15,6 +15,9 @@ const check = (name, ok, detail = '') => { results.push({ name, ok, detail }); c
 
 const app = await electron.launch({ args: [root], cwd: root, env: { ...process.env, CS_USER_DATA_DIR: profile } });
 const win = await app.firstWindow();
+// Header tabs are addressed by name: use the Advanced navigation (Simplified hides some under More).
+await win.evaluate(() => localStorage.setItem('cs-nav-mode', 'advanced'));
+await win.reload();
 try {
   await win.locator('.asset').first().waitFor({ timeout: 20000 });
   await app.evaluate(({ clipboard }) => clipboard.writeText('sk-createcraft-smoke-NOT-A-REAL-KEY-0000000000'));

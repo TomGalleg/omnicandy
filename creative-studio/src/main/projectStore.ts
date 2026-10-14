@@ -283,6 +283,19 @@ export class ProjectStore implements AssetRepository {
     }
   }
 
+  /** Replaces the workflow with a plan; a non-empty current workflow is kept beside it as a dated backup. */
+  async replaceWorkflow(g: WorkflowGraph): Promise<{ backedUp: string | null }> {
+    const cur = await this.loadWorkflow();
+    let backedUp: string | null = null;
+    if (cur.nodes.length) {
+      const file = await this.workflowPath();
+      backedUp = path.join(path.dirname(file), `workflow-before-claude-${new Date().toISOString().replace(/[:.]/g, '-')}.json`);
+      await writeJsonAtomic(backedUp, cur);
+    }
+    await this.saveWorkflow(g);
+    return { backedUp };
+  }
+
   async saveWorkflow(g: WorkflowGraph): Promise<void> {
     const file = await this.workflowPath();
     await fs.mkdir(path.dirname(file), { recursive: true });

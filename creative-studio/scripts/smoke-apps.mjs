@@ -37,6 +37,9 @@ function grabScreen(x, y, w, h, file) {
 
 const app = await electron.launch({ args: [root], cwd: root, env: { ...process.env, CS_USER_DATA_DIR: profile } });
 const win = await app.firstWindow();
+// Header tabs are addressed by name: use the Advanced navigation (Simplified hides some under More).
+await win.evaluate(() => localStorage.setItem('cs-nav-mode', 'advanced'));
+await win.reload();
 win.on('dialog', (d) => void d.accept().catch(() => {}));
 const probes = [];
 const toDip = (r) => app.evaluate(({ screen }, rr) => screen.screenToDipRect(null, rr), { x: r.x, y: r.y, width: r.w, height: r.h });
@@ -83,7 +86,7 @@ async function waitOpen(appId, name) {
   throw new Error(`${appId} did not open ${name}`);
 }
 const tab = (name) => win.locator('nav.workspaces button', { hasText: new RegExp(`^${name}$`) }).click();
-const pick = (re) => win.getByRole('option', { name: re }).click();
+const pick = (re) => win.getByRole('option', { name: re }).first().click();
 const assets = async () => (await win.evaluate(() => window.studio.loadProject())).assets;
 
 try {
@@ -120,7 +123,7 @@ try {
   check('quick edits show up on the timeline (effect badge, 3 s after trim)', Math.abs(tl.duration - 3) < 0.1, `${tl.duration}s`);
   await desktopShot('60-edit-filmcraft-timeline');
   await win.getByRole('button', { name: 'Save as new version' }).click();
-  await win.getByRole('option', { name: /sunset-clip-live1\.mp4/ }).waitFor({ timeout: 60000 });
+  await win.getByRole('option', { name: /sunset-clip-live1\.mp4/ }).first().waitFor({ timeout: 60000 });
   const v1 = (await assets()).find((a) => a.name === 'sunset-clip-live1.mp4');
   check('Save as new version exports an MP4 into the library', v1?.kind === 'video' && Math.abs((v1.durationSec ?? 0) - 3) < 0.2, `${v1?.durationSec}s ${v1?.width}x${v1?.height}`);
 
@@ -135,7 +138,7 @@ try {
   await win.evaluate(() => window.studio.live.quickEdit('look', { preset: 'lc.golden-hour', amount: 100 }));
   await desktopShot('61-color-lightcraft');
   await win.getByRole('button', { name: 'Save as new version' }).click();
-  await win.getByRole('option', { name: /sunset-still-color1\.jpg/ }).waitFor({ timeout: 30000 });
+  await win.getByRole('option', { name: /sunset-still-color1\.jpg/ }).first().waitFor({ timeout: 30000 });
   check('Color tab saves a developed copy as a new version', (await assets()).some((a) => a.name === 'sunset-still-color1.jpg' && a.width === 960));
 
   // ---- The same photo back in the Edit tab opens in PhotoCraft ----
@@ -155,7 +158,7 @@ try {
   await win.evaluate(() => window.studio.live.quickEdit('title', { text: 'Sunset', size: 96, color: '#ffffff' }));
   await desktopShot('62-effects-effectcraft');
   await win.getByRole('button', { name: 'Save as new version' }).click();
-  await win.getByRole('option', { name: /sunset-clip-fx1\.mp4/ }).waitFor({ timeout: 90000 });
+  await win.getByRole('option', { name: /sunset-clip-fx1\.mp4/ }).first().waitFor({ timeout: 90000 });
   check('Effects tab renders an MP4 version', (await assets()).some((a) => a.name === 'sunset-clip-fx1.mp4' && a.kind === 'video'));
 
   // ---- Layout in the Edit tab: DesignCraft ----
@@ -170,7 +173,9 @@ try {
   // ---- Tabs that can't open a file say so ----
   await pick(/tone-a440\.wav/);
   await tab('Color');
-  check('the Color tab explains it works on photos', /works on photos/.test(await win.locator('.stage-status').textContent()));
+  await win.locator('.stage-status', { hasText: /works on photos/ }).first().waitFor({ timeout: 8000 }).catch(() => {});
+  const colorNote = await win.locator('.stage-status').first().textContent();
+  check('the Color tab explains it works on photos', /works on photos/.test(colorNote), colorNote);
 } catch (e) {
   check('apps smoke', false, String(e).slice(0, 500));
   await desktopShot('apps-smoke-failure').catch(() => {});

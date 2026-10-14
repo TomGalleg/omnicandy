@@ -10,6 +10,7 @@ import { resolveTheme } from '@shared/theme';
 import type { AppearanceSettings } from '@shared/types';
 import { MockArtCraftAdapter, MockGenerationProvider } from '@shared/mocks';
 import { validateGraph } from '@shared/workflow';
+import type { WorkflowPlan } from '@shared/workflowPlan';
 import { WorkflowRunner, type RunnerDeps } from '@shared/workflowRunner';
 import { probeAllArtCraftApps } from './artcraftProbe';
 import { IMPORTABLE_EXTENSIONS, kindForExtension } from './media';
@@ -347,6 +348,23 @@ export function registerIpc(d: IpcDeps): void {
   handle(IPC.genRun, z.tuple([jobSchema]), (job) => runGeneration(job, 'user'));
 
   // ---- Claude Creative Partner (Claude Agent SDK, this PC's Claude Code sign-in) ----
+  // Claude's proposed workflow: held here, shown in the Workflow tab, only saved when the user applies it.
+  let pendingPlan: WorkflowPlan | null = null;
+  resetters.push(() => { pendingPlan = null; });
+  const sendPlan = (p: WorkflowPlan | null) => { for (const w of BrowserWindow.getAllWindows()) if (!w.isDestroyed()) w.webContents.send(IPC.workflowPlan, p); };
+  handle(IPC.workflowPlanGet, none, async () => pendingPlan);
+  handle(IPC.workflowPlanDismiss, none, async () => { pendingPlan = null; sendPlan(null); });
+  handle(IPC.workflowPlanApply, none, async () => {
+    if (!pendingPlan) throw new Error('There is no proposed workflow.');
+    if (running) throw new Error('A workflow is running. Wait for it or cancel it first.');
+    const g = parseWorkflow(pendingPlan.graph);
+    const issues = validateGraph(g);
+    if (issues.length) throw new Error(issues.map((i) => i.message).join('\n'));
+    await (await d.project()).replaceWorkflow(g);
+    pendingPlan = null;
+    sendPlan(null);
+    return g;
+  });
   let partner: ClaudePartner | null = null;
   resetters.push(() => { partner = null; });
   const claude = () => (partner ??= new ClaudePartner({
@@ -359,6 +377,16 @@ export function registerIpc(d: IpcDeps): void {
     deliver: async () => deliver(),
     imageModels: async () => (await providerStatus()).filter((p) => p.configured),
     workDir: async () => (await d.project()).workDir('claude'),
+    workflowPlan: {
+      context: async () => {
+        const m = await (await d.project()).loadManifest();
+        return {
+          assets: m.assets.map((a) => ({ id: a.id, name: a.name, sourceFormat: a.sourceFormat })),
+          configuredProviders: (await providerStatus()).filter((p) => p.configured).map((p) => p.id),
+        };
+      },
+      propose: (p) => { pendingPlan = p; sendPlan(p); },
+    },
     // Bound to the project open when this partner is created, so a late save never lands in another project.
     history: (() => {
       const s = d.project();

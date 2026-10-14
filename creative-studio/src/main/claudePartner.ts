@@ -17,6 +17,7 @@ import { estimateCost, formatUsd, IMAGE_MODELS, modelById, providerById, type Im
 import type { GenerateResultDto, ProviderStatusDto } from '@shared/ipc';
 import { EDITOR_APPS, type EditorAppId } from '@shared/appEditors';
 import { presetsFor } from '@shared/deliver';
+import { buildWorkflowPlan, workflowCatalog, type PlanContext, type WorkflowPlan } from '@shared/workflowPlan';
 import type { DeliverQueue } from './deliver';
 import { buildResumeContext } from '@shared/claudeHistory';
 import { parseProjectPlan, PROJECT_KINDS, type ProjectPlan } from '@shared/projectPlan';
@@ -35,7 +36,9 @@ Saving creates a new version in the library; the user's original file is never c
 
 To deliver finished files (JPEG for the web, PDF, MP4, WAV, GIF and so on), use list_export_formats and export_file. Exports go to the project's exports folder (the Deliver tab) and are made from saved library files, never from unsaved changes in the open app. Keep replies short and plain.
 
-You can also create new pictures with generate_image (OpenAI or Google Gemini, using the user's own account). It costs the user money: only generate when they ask for it, keep the count low, and say which model you will use. CreateCraft shows the user the price and asks them to approve every call; if they cancel, accept it and do not ask again unless they bring it up. New images are added to the library as new files; open one with open_file to edit it.`;
+You can also create new pictures with generate_image (OpenAI or Google Gemini, using the user's own account). It costs the user money: only generate when they ask for it, keep the count low, and say which model you will use. CreateCraft shows the user the price and asks them to approve every call; if they cancel, accept it and do not ask again unless they bring it up. New images are added to the library as new files; open one with open_file to edit it.
+
+When the user wants a repeatable multi-step process (for example edit many photos and export them), build a workflow with plan_workflow instead of editing files yourself: read list_files, list_image_models and workflow_catalog, then propose it. The user decides whether to use it. Plan only: you cannot save or run workflows. Explain the plan in plain words, say what it costs and what they will be asked to approve, and be honest about warnings.`;
 
 const PLAN_PROMPT = `You are Claude, the Creative Partner inside CreateCraft. The user describes a creative project in their own words. Answer with ONE JSON object and nothing else (no code fence, no commentary) with these keys:
 "name": a short project name (max 60 characters);
@@ -48,7 +51,7 @@ const PLAN_PROMPT = `You are Claude, the Creative Partner inside CreateCraft. Th
 "questions": at most 2 essential questions you still need answered (usually none).
 Do not start any work and do not mention software internals, node graphs or file formats unless the user did. Write in the user's language.`;
 
-const TOOL_NAMES = ['get_status', 'look_at_document', 'apply_edit', 'photocraft_command', 'undo', 'save_version', 'list_files', 'open_file', 'list_image_models', 'generate_image', 'list_export_formats', 'export_file', 'timeline_add', 'timeline_move_clip', 'timeline_remove_clip'];
+const TOOL_NAMES = ['get_status', 'look_at_document', 'apply_edit', 'photocraft_command', 'undo', 'save_version', 'list_files', 'open_file', 'list_image_models', 'generate_image', 'list_export_formats', 'export_file', 'timeline_add', 'timeline_move_clip', 'timeline_remove_clip', 'workflow_catalog', 'plan_workflow'];
 
 export interface ClaudePartnerDeps {
   live: () => Promise<LiveTaskController>;
@@ -65,6 +68,8 @@ export interface ClaudePartnerDeps {
   imageModels: () => Promise<ProviderStatusDto[]>;
   /** The Deliver tab's export queue (same queue, presets and manifest as the UI). */
   deliver: () => Promise<DeliverQueue>;
+  /** Workflow planning: the library and provider status to validate against, and where a validated plan goes (shown to the user; never saved or run by Claude). */
+  workflowPlan: { context: () => Promise<PlanContext>; propose: (plan: WorkflowPlan) => void };
   /** The open project's saved chat (inside the project folder, never in app settings). */
   history: { load: () => Promise<ClaudeChatItem[]>; save: (items: ClaudeChatItem[]) => Promise<void> };
 }
@@ -293,6 +298,39 @@ export class ClaudePartner {
           try {
             const m = await (await this.d.store()).loadManifest();
             return text(JSON.stringify(m.assets.map((a) => ({ name: a.name, kind: a.kind, format: a.sourceFormat, size: a.width ? `${a.width}x${a.height}` : a.durationSec ? `${a.durationSec}s` : undefined, version: !!a.parentId, ...(a.provenance.role === 'reference' ? { reference_from_user: true } : {}) })), null, 2));
+          } catch (e) { return fail(e); }
+        }),
+        tool('workflow_catalog', 'What a workflow can contain: step types, every ArtCraft app with its edits and settings, and the connection rules. Call it before plan_workflow.', {}, async () => text(JSON.stringify(workflowCatalog(), null, 2))),
+        tool('plan_workflow', 'Proposes a workflow (a node graph) for the user\'s request, built on the same engine as the Workflow tab. It validates every connection and setting and returns problems to fix, or the plan with cost estimate and approval points, which the user then sees in the Workflow tab and decides to use. It does NOT save, run or generate anything. Use list_files, list_image_models and workflow_catalog first; use exact names and ids. A typical shape: import -> artcraftEdit -> approval -> export. Put an approval step before export and before anything paid.', {
+          title: z.string().min(1).max(120),
+          explanation: z.string().min(1).max(2000).describe('Plain-language description of what the workflow does and why, for the user.'),
+          steps: z.array(z.object({
+            key: z.string().min(1).max(40).describe('Your own short name for the step, used in connections.'),
+            type: z.enum(['import', 'aiGenerate', 'artcraftEdit', 'approval', 'export']),
+            files: z.array(z.string().max(512)).max(100).optional().describe('import: exact library file names.'),
+            model_id: z.string().max(64).optional().describe('aiGenerate: from list_image_models.'),
+            prompt: z.string().max(4000).optional(),
+            count: z.number().int().min(1).max(4).optional(),
+            settings: z.record(z.string().max(64), z.string().max(64)).optional().describe('aiGenerate model settings.'),
+            app: z.string().max(32).optional().describe('artcraftEdit: app id, e.g. photocraft.'),
+            edit: z.string().max(64).optional().describe('artcraftEdit: edit id from workflow_catalog.'),
+            edit_settings: z.record(z.string().max(64), z.union([z.string().max(200), z.number()])).optional(),
+            note: z.string().max(300).optional().describe('approval: what to check.'),
+            presets: z.array(z.string().max(64)).max(10).optional().describe('export: Deliver preset ids (list_export_formats).'),
+          })).min(1).max(30),
+          connections: z.array(z.object({ from: z.string().max(40), to: z.string().max(40), from_port: z.string().max(32).optional(), to_port: z.string().max(32).optional() })).max(60),
+        }, async (input) => {
+          try {
+            const r = buildWorkflowPlan(input, await this.d.workflowPlan.context());
+            if (!r.ok) return text(['The plan has problems; fix them and call plan_workflow again:', ...r.issues.map((x) => `- ${x}`)].join('\n'));
+            this.d.workflowPlan.propose(r.plan);
+            activity(`Proposed a workflow: ${r.plan.title}`);
+            return text(`Plan shown to the user in the Workflow tab (nothing saved or run yet; they choose "Use this workflow").
+Steps: ${r.plan.steps.map((x, i) => `${i + 1}. ${x.title}`).join(' | ')}
+Cost: ${r.plan.costNote}
+Waits for the user: ${r.plan.approvals.join(' ') || 'nothing'}
+Warnings: ${r.plan.warnings.join(' ') || 'none'}
+Now explain the plan to the user in plain language, including cost and what they must approve.`);
           } catch (e) { return fail(e); }
         }),
         tool('list_image_models', 'Image generation models the user has set up (their own OpenAI / Google Gemini account), with settings and the estimated price per image at default settings.', {}, async () => {

@@ -11,6 +11,7 @@ import type { LiveSnapshot, TimelineDto, TimelineEdit } from './live';
 import type { EditorAppId } from './appEditors';
 import type { DeliverJob, DeliverRecord } from './deliver';
 import type { WorkflowGraph, WorkflowRunEvent } from './workflow';
+import type { WorkflowPlan } from './workflowPlan';
 
 export interface StorageDto {
   defaultDir: string;
@@ -33,6 +34,10 @@ export const IPC = {
   cancelWorkflow: 'workflow:cancel',
   workflowPickFolder: 'workflow:pick-folder',
   workflowEvent: 'workflow:event',
+  workflowPlan: 'workflow:plan',
+  workflowPlanGet: 'workflow:plan-get',
+  workflowPlanApply: 'workflow:plan-apply',
+  workflowPlanDismiss: 'workflow:plan-dismiss',
   listExports: 'exports:list',
   revealExport: 'exports:reveal',
   liveState: 'live:state',
@@ -187,6 +192,11 @@ export interface StudioApi {
   /** true = approve every file, false = reject, or the indexes of the approved files. */
   answerApproval(nodeId: string, approved: boolean | number[]): Promise<void>;
   cancelWorkflow(): Promise<void>;
+  /** Claude's proposed workflow (validated; not saved). Applying replaces the workflow and keeps a backup of the old one. */
+  getWorkflowPlan(): Promise<WorkflowPlan | null>;
+  applyWorkflowPlan(): Promise<WorkflowGraph>;
+  dismissWorkflowPlan(): Promise<void>;
+  onWorkflowPlan(cb: (p: WorkflowPlan | null) => void): () => void;
   /** Native folder picker for a workflow's Files step; null when cancelled. */
   pickWorkflowFolder(): Promise<string | null>;
   onWorkflowEvent(cb: (e: WorkflowRunEvent) => void): () => void;

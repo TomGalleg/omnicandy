@@ -12,6 +12,7 @@ import {
   NODE_SPECS, validateConnection, validateGraph, type NodeRunStatus, type WorkflowGraph, type WorkflowNodeType,
 } from '@shared/workflow';
 import { autoLayout } from '@shared/workflowLayout';
+import type { WorkflowPlan } from '@shared/workflowPlan';
 import { exportPresetsOf, importAssetIds } from '@shared/workflowRunner';
 import { AssetThumb } from './AssetBrowser';
 
@@ -131,6 +132,7 @@ export function WorkflowEditor({ manifest, integrations, colorMode, log, onProje
   const [running, setRunning] = useState(false);
   const [files, setFiles] = useState<RunFiles | null>(null);
   const [approval, setApproval] = useState<Approval | null>(null);
+  const [plan, setPlan] = useState<WorkflowPlan | null>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const [flow, setFlow] = useState<ReactFlowInstance<StudioNode> | null>(null);
   // Panels that can fold away to give the graph room; remembered.
@@ -154,6 +156,22 @@ export function WorkflowEditor({ manifest, integrations, colorMode, log, onProje
       setLoaded(true);
     });
   }, []);
+
+  // Claude's proposed workflow: shown for a decision; nothing changes until the user applies it.
+  useEffect(() => {
+    void window.studio.getWorkflowPlan().then(setPlan);
+    return window.studio.onWorkflowPlan(setPlan);
+  }, []);
+  const applyPlan = () => {
+    clearTimeout(saveTimer.current);
+    window.studio.applyWorkflowPlan().then((g) => {
+      setNodes(g.nodes.map((n) => ({ id: n.id, type: 'studio', position: n.position, data: { kind: n.type, params: n.params } })));
+      setEdges(g.edges.map((e) => ({ ...e })));
+      setFiles(null);
+      setMessage({ text: "Claude's workflow is in place. Your previous workflow, if any, was kept as a backup in the project's Workflows folder." });
+      setTimeout(() => flow?.fitView({ padding: 0.2 }), 50);
+    }).catch((e: unknown) => setMessage({ text: String(e instanceof Error ? e.message : e), error: true }));
+  };
 
   const graph = useMemo(() => toGraph(nodes, edges), [nodes, edges]);
 
@@ -295,6 +313,21 @@ export function WorkflowEditor({ manifest, integrations, colorMode, log, onProje
           ? <button className="btn small danger" onClick={() => void window.studio.cancelWorkflow()}>Cancel run</button>
           : <button className="btn small primary" onClick={() => void run()} disabled={!nodes.length}>Run {anyMock && <span className="badge-mock">PARTLY MOCK</span>}</button>}
       </div>
+      {plan && (
+        <section className="wf-plan" aria-label="Claude's proposed workflow">
+          <header><strong>Claude proposes: {plan.title}</strong></header>
+          <p>{plan.explanation}</p>
+          <ol>{plan.steps.map((st) => <li key={st.id}><b>{st.title}</b>{st.detail ? ` — ${st.detail}` : ''}</li>)}</ol>
+          <p className="wf-plan-cost"><b>Cost:</b> {plan.costNote}</p>
+          {plan.approvals.length > 0 && <p><b>You will be asked:</b> {plan.approvals.join(' ')}</p>}
+          {plan.warnings.length > 0 && <ul className="wf-plan-warn">{plan.warnings.map((w) => <li key={w}>{w}</li>)}</ul>}
+          <footer>
+            <button className="btn small primary" onClick={applyPlan} disabled={running}>{nodes.length ? 'Replace my workflow with this' : 'Use this workflow'}</button>
+            <button className="btn small ghost" onClick={() => void window.studio.dismissWorkflowPlan()}>Dismiss</button>
+            <span className="muted">Nothing runs or is charged until you press Run.</span>
+          </footer>
+        </section>
+      )}
       <div className="wf-body">
         <div className="wf-main">
           <div className="wf-canvas">

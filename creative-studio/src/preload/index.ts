@@ -7,6 +7,7 @@ import type { GenerateResultDto } from '@shared/ipc';
 import type { DeliverJob } from '@shared/deliver';
 import type { LiveSnapshot } from '@shared/live';
 import type { WorkflowRunEvent } from '@shared/workflow';
+import type { WorkflowPlan } from '@shared/workflowPlan';
 
 const api: StudioApi = {
   getAppearance: () => ipcRenderer.invoke(IPC.getAppearance),
@@ -25,6 +26,14 @@ const api: StudioApi = {
   runWorkflow: (g) => ipcRenderer.invoke(IPC.runWorkflow, g),
   answerApproval: (nodeId, approved) => ipcRenderer.invoke(IPC.answerApproval, nodeId, approved),
   cancelWorkflow: () => ipcRenderer.invoke(IPC.cancelWorkflow),
+  getWorkflowPlan: () => ipcRenderer.invoke(IPC.workflowPlanGet),
+  applyWorkflowPlan: () => ipcRenderer.invoke(IPC.workflowPlanApply),
+  dismissWorkflowPlan: () => ipcRenderer.invoke(IPC.workflowPlanDismiss),
+  onWorkflowPlan: (cb) => {
+    const listener = (_e: IpcRendererEvent, p: WorkflowPlan | null) => cb(p);
+    ipcRenderer.on(IPC.workflowPlan, listener);
+    return () => ipcRenderer.removeListener(IPC.workflowPlan, listener);
+  },
   pickWorkflowFolder: () => ipcRenderer.invoke(IPC.workflowPickFolder),
   onWorkflowEvent: (cb) => {
     const listener = (_e: IpcRendererEvent, ev: WorkflowRunEvent) => cb(ev);

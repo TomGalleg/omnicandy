@@ -20,6 +20,9 @@ const FAKE_KEY = 'sk-createcraft-smoke-NOT-A-REAL-KEY-0000000000';
 
 const app = await electron.launch({ args: [root], cwd: root, env: { ...process.env, CS_USER_DATA_DIR: profile } });
 const win = await app.firstWindow();
+// Header tabs are addressed by name: use the Advanced navigation (Simplified hides some under More).
+await win.evaluate(() => localStorage.setItem('cs-nav-mode', 'advanced'));
+await win.reload();
 win.on('dialog', (d) => void d.accept().catch(() => {}));
 try {
   await win.locator('.asset').first().waitFor({ timeout: 20000 });
@@ -40,7 +43,7 @@ try {
   await win.locator('.gen-card').first().waitFor({ timeout: 15000 });
   const m = await win.evaluate(() => window.studio.loadProject());
   const gen = m.assets.filter((a) => a.provenance.origin === 'generated');
-  check('result saved as a new original with provenance', m.assets.length === before + 1 && gen[0]?.provenance.prompt === 'Smoke test: teal and orange rings' && gen[0]?.provenance.model === 'mock-image' && /^originals\//.test(gen[0]?.relPath ?? ''));
+  check('result saved as a new original with provenance', m.assets.length === before + 1 && gen[0]?.provenance.prompt === 'Smoke test: teal and orange rings' && gen[0]?.provenance.model === 'mock-image' && /^(originals|Assets\/Generated)\//.test(gen[0]?.relPath ?? ''));
   check('result shows in the library and the results grid', (await win.locator('.asset', { hasText: gen[0]?.name ?? '???' }).count()) === 1 && (await win.locator('.gen-card').count()) === 1);
   await win.screenshot({ path: path.join(shots, '50-generate-mock.png') });
 

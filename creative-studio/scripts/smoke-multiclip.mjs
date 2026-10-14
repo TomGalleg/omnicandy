@@ -30,6 +30,9 @@ function grabScreen(x, y, w, h, file) {
 
 const app = await electron.launch({ args: [root], cwd: root, env: { ...process.env, CS_USER_DATA_DIR: profile } });
 const win = await app.firstWindow();
+// Header tabs are addressed by name: use the Advanced navigation (Simplified hides some under More).
+await win.evaluate(() => localStorage.setItem('cs-nav-mode', 'advanced'));
+await win.reload();
 win.on('dialog', (d) => void d.dismiss().catch(() => {}));
 async function desktopShot(name) {
   const b = await app.evaluate((e) => e.BrowserWindow.getAllWindows().find((w) => !w.webContents.getURL().endsWith('#panel')).getBounds());

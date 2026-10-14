@@ -25,6 +25,9 @@ function ourPids(exe) {
 
 const app = await electron.launch({ args: [root], cwd: root, env: { ...process.env, CS_USER_DATA_DIR: profile } });
 const win = await app.firstWindow();
+// Header tabs are addressed by name: use the Advanced navigation (Simplified hides some under More).
+await win.evaluate(() => localStorage.setItem('cs-nav-mode', 'advanced'));
+await win.reload();
 win.on('dialog', (d) => void d.dismiss().catch(() => {}));
 const live = () => win.evaluate(() => window.studio.live.state());
 const tabNow = () => win.locator('nav.workspaces button[aria-current="page"]').textContent();

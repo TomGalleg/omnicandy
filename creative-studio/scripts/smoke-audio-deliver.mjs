@@ -38,6 +38,9 @@ function grabScreen(x, y, w, h, file) {
 
 const app = await electron.launch({ args: [root], cwd: root, env: { ...process.env, CS_USER_DATA_DIR: profile } });
 const win = await app.firstWindow();
+// Header tabs are addressed by name: use the Advanced navigation (Simplified hides some under More).
+await win.evaluate(() => localStorage.setItem('cs-nav-mode', 'advanced'));
+await win.reload();
 win.on('dialog', (d) => void d.dismiss().catch(() => {}));
 const probes = [];
 const toDip = (r) => app.evaluate(({ screen }, rr) => screen.screenToDipRect(null, rr), { x: r.x, y: r.y, width: r.w, height: r.h });
@@ -86,6 +89,8 @@ try {
 
   // ---- Overview waveform (decoded from the file) for a video that isn't open anywhere ----
   await pick(/sunset-clip\.mp4/);
+  // Timelines only show while editing time-based media (Phase 4), so look at it in the Edit tab.
+  await win.locator('nav.workspaces button', { hasText: /^Edit$/ }).click();
   await win.locator('.timeline svg[data-wave="real"]').first().waitFor({ timeout: 10000 }).catch(() => {});
   check('the timeline overview shows the real waveform of a video\'s sound', (await win.locator('.timeline svg[data-wave="real"]').count()) === 1);
 
@@ -130,6 +135,8 @@ try {
   check('Deliver shows the version history', /tone-a440\.wav → tone-a440-live1\.wav/.test(await win.getByLabel('Version history').textContent()));
   await win.getByRole('checkbox', { name: /WAV, CD quality/ }).check();
   await win.getByRole('checkbox', { name: /FLAC/ }).check();
+  const appWindows = () => ourPids('photocraft.exe').length + ourPids('vectorcraft.exe').length + ourPids('filmcraft.exe').length + ourPids('designcraft.exe').length;
+  const windowsBeforeExport = appWindows(); // the Edit tab above may have opened FilmCraft
   await win.getByRole('button', { name: /^Export \d+ files?$/ }).click();
   let jobs = await waitJobs(3);
   check('Deliver exports through the queue (3 audio files)', jobs.filter((j) => j.status === 'done').length === 3, jobs.map((j) => `${j.presetLabel}: ${j.status} ${j.output ?? j.error ?? ''}`).join(' | '));
@@ -137,7 +144,7 @@ try {
   check('finished exports have Show in folder', (await win.locator('.job[data-status="done"] button', { hasText: 'Show in folder' }).count()) === 3);
   const hist = await win.evaluate(() => window.studio.deliver.history());
   check('exports are recorded with the source version history and checksums', hist.length === 3 && hist.every((r) => r.source.versions.join('>') === 'tone-a440.wav>tone-a440-live1.wav' && /^[0-9a-f]{64}$/.test(r.output.sha256)));
-  check('no app window opened for exports', ourPids('photocraft.exe').length + ourPids('vectorcraft.exe').length + ourPids('filmcraft.exe').length + ourPids('designcraft.exe').length === 0);
+  check('no app window opened for exports', appWindows() === windowsBeforeExport);
 
   await pick(/sunset-clip\.mp4/);
   await win.getByRole('checkbox', { name: /Animated GIF/ }).check();
