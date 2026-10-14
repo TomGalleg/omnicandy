@@ -11,7 +11,18 @@ const readFixtures = async (dir: string) => fixtureList.parse(JSON.parse(await f
 /** Creates the sample project from repo fixtures on first run. Fixtures are copied, never modified. */
 export async function ensureSampleProject(projectRoot: string, fixturesDir: string): Promise<ProjectStore> {
   const store = new ProjectStore(projectRoot);
-  if (await store.exists()) {
+  // A project file that looks missing for a moment (another instance is closing and rewriting it) must
+  // never lead to a fresh project list over a folder that already holds files.
+  let present = await store.exists();
+  for (let i = 0; i < 10 && !present; i++) {
+    await new Promise((r) => setTimeout(r, 200));
+    present = await store.exists();
+  }
+  if (!present) {
+    const files = await Promise.all(['originals', 'versions', 'Assets'].map((d) => fs.readdir(path.join(projectRoot, d)).catch(() => [] as string[])));
+    if (files.some((f) => f.length)) throw new Error(`The Sample Project's project file is missing but its folder still has files (${projectRoot}). Nothing was changed. Restore project.json or move the folder aside.`);
+  }
+  if (present) {
     // v0.1 sample graphs used a parameterless edit.fill (fills with black); upgrade to the current default.
     const g = await store.loadWorkflow();
     let changed = false;
