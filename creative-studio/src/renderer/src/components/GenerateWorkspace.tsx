@@ -27,6 +27,14 @@ export function GenerateWorkspace({ manifest, selected, onGoto, log }: Props) {
   const [msg, setMsg] = useState<{ text: string; error?: boolean } | null>(null);
 
   useEffect(() => { void window.studio.generate.providers().then(setProviders); }, []);
+  const [spend, setSpend] = useState<{ limitUsd: number | null; spentUsd: number; count: number } | null>(null);
+  const [limitText, setLimitText] = useState('');
+  useEffect(() => { void window.studio.generate.spending().then((s) => { setSpend(s); setLimitText(s.limitUsd === null ? '' : String(s.limitUsd)); }); }, [manifest?.assets.length]);
+  const saveLimit = () => {
+    const v = limitText.trim() === '' ? null : Number(limitText);
+    if (v !== null && (!Number.isFinite(v) || v < 0)) { setMsg({ text: 'Enter a limit in dollars, or leave it empty for none.', error: true }); return; }
+    void window.studio.generate.setSpendingLimit(v).then((s) => { setSpend(s); setMsg({ text: v === null ? 'No spending limit for this project.' : `Spending limit set to $${v.toFixed(2)} for this project.` }); }).catch((e: unknown) => setMsg({ text: String(e instanceof Error ? e.message : e), error: true }));
+  };
 
   // Only models whose provider is ready (key saved; listed for that key once tested) and that can do the chosen job.
   const models = useMemo(() => IMAGE_MODELS.filter((m) => {
@@ -151,6 +159,12 @@ export function GenerateWorkspace({ manifest, selected, onGoto, log }: Props) {
           <button className="btn primary" disabled={!job || !prompt.trim() || !!busy || (capability === 'image-edit' && !refAsset)} onClick={() => void generate()}>
             {busy === 'generate' ? 'Generating…' : isMock ? 'Generate (free)' : 'Generate… (asks you to approve)'}
           </button>
+          <div className="estimate" aria-label="Spending limit">
+            <label className="field">Project spending limit (USD, empty = none)
+              <input inputMode="decimal" value={limitText} onChange={(e) => setLimitText(e.target.value)} onBlur={saveLimit} onKeyDown={(e) => { if (e.key === 'Enter') saveLimit(); }} placeholder="e.g. 5.00" />
+            </label>
+            <span className="asset-meta">{spend ? `About ${formatUsd(spend.spentUsd)} estimated so far in this project (${spend.count} paid request${spend.count === 1 ? '' : 's'}). These are estimates from CreateCraft's price tables, not confirmed charges; check your provider's billing for the actual amount.` : ''}</span>
+          </div>
           {!isMock && <div className="asset-meta">You'll see the price and must approve before anything is sent. Charges go to your own provider account.</div>}
           {msg && <div className={`wf-msg${msg.error ? ' error' : ''}`} role="status">{msg.text}</div>}
         </div>

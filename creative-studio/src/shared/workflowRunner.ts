@@ -5,6 +5,7 @@
 // stops there; the other files carry on. Billable providers are refused without explicit consent.
 
 import type { AppAdapter, GenerationProvider, WorkflowExecutor, WorkflowRunOptions, WorkflowRunResult } from './contracts';
+import { modelById, type ImageJob } from './generation';
 import { topologicalOrder, validateGraph, type NodeRunStatus, type WorkflowGraph } from './workflow';
 
 export interface StepRequest { appId: string; opId: string; values: Record<string, unknown> }
@@ -23,6 +24,8 @@ export interface RunnerDeps {
   deliver?: (inputs: string[], presetIds: string[], signal?: AbortSignal) => Promise<string[]>;
   /** Legacy single-format export (PhotoCraft convert). Absent with no `deliver` → export is simulated. */
   exportAsset?: (assetId: string, format: string) => Promise<string>;
+  /** Real image generation for AI Generate steps with a model (approval, spending limit and ledger live behind it). */
+  generateImage?: (job: ImageJob, signal?: AbortSignal) => Promise<{ assetIds: string[]; names: string[]; message: string }>;
   /** Delay per node so the UI can show progress; 0 in tests. */
   stepMs?: number;
   newRunId?: () => string;
@@ -54,7 +57,7 @@ const sleep = (ms: number, signal?: AbortSignal) =>
 /** True when any node in the graph would run against a mock adapter/provider or simulated export. */
 export function graphUsesMocks(graph: WorkflowGraph, deps: RunnerDeps): boolean {
   return graph.nodes.some((n) =>
-    (n.type === 'aiGenerate' && (deps.providers[n.params.providerId ?? '']?.isMock ?? true)) ||
+    (n.type === 'aiGenerate' && !(n.params.modelId && deps.generateImage) && (deps.providers[n.params.providerId ?? '']?.isMock ?? true)) ||
     (n.type === 'artcraftEdit' && !(n.params.opId && deps.applyStep) && (deps.apps[n.params.appId ?? '']?.isMock ?? true)) ||
     (n.type === 'export' && !deps.deliver && !deps.exportAsset));
 }
@@ -161,6 +164,24 @@ export class WorkflowRunner implements WorkflowExecutor {
             break;
           }
           case 'aiGenerate': {
+            if (node.params.modelId && this.deps.generateImage) {
+              // A real (or offline Mock) model: the same approval, spending limit and provenance as AI Generate.
+              const m = modelById(node.params.modelId);
+              if (!m) throw new Error(`Unknown image model "${node.params.modelId}".`);
+              let settings: Record<string, string> = {};
+              try { settings = JSON.parse(node.params.settings || '{}') as Record<string, string>; } catch { throw new Error('Image settings are not valid JSON.'); }
+              const ref = live[0]?.it.refs?.[0];
+              const r = await this.deps.generateImage({
+                modelId: m.id, prompt: node.params.prompt ?? '', settings, count: Math.max(1, Number(node.params.count) || 1),
+                referenceAssetIds: ref && m.capabilities.includes('image-edit') ? [ref] : [],
+              }, o.signal);
+              const items: Item[] = r.assetIds.map((assetId, i) => ({ name: r.names[i] ?? `Image ${i + 1}`, refs: [assetId] }));
+              outputs.set(id, items);
+              if (!graph.nodes.some((n) => n.type === 'import')) o.onEvent({ kind: 'run-items', runId, names: items.map((x) => x.name) });
+              items.forEach((it, i) => emitItem(id, i, it.name, 'completed', 'Generated.', it.refs![0]));
+              emit(id, 'completed', r.message, `asset:${r.assetIds[0]}`);
+              break;
+            }
             const p = this.deps.providers[node.params.providerId ?? ''];
             if (!p) throw new Error(`Provider "${node.params.providerId}" is not configured.`);
             if (p.billable) {

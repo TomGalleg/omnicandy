@@ -26,6 +26,9 @@ export interface ApprovalRequest {
   references: string[];
   estimate: CostEstimate;
   requestedBy: 'user' | 'claude';
+  /** This project's limit and what is already estimated as spent (USD); null limit = none. */
+  limitUsd?: number | null;
+  spentUsd?: number;
 }
 
 export interface GenerationDeps {
@@ -118,12 +121,16 @@ export class GenerationService {
     }
 
     const estimate = estimateCost(job);
+    const spend = provider.billable ? await store.spending() : null;
+    if (spend && spend.limitUsd !== null && spend.spentUsd + estimate.amount > spend.limitUsd) {
+      throw new Error(`This would go over the project's spending limit of $${spend.limitUsd.toFixed(2)}: about $${spend.spentUsd.toFixed(2)} is already estimated as spent and this request is about $${estimate.amount.toFixed(2)}. Nothing was sent. Raise the limit in AI Generate to continue.`);
+    }
     this.busy = true;
     try {
       if (provider.billable) {
         const ok = await this.d.approve({
           provider: provider.label, model: model.label, prompt: job.prompt, count: job.count, settings: job.settings,
-          references: refs.map((r) => r.name), estimate, requestedBy,
+          references: refs.map((r) => r.name), estimate, requestedBy, limitUsd: spend?.limitUsd ?? null, spentUsd: spend?.spentUsd ?? 0,
         });
         if (ok !== true) throw new GenerationCancelled();
       }
@@ -150,6 +157,7 @@ export class GenerationService {
         });
         if (r.duplicateOf) duplicates++; else assets.push(r.asset);
       }
+      if (provider.billable) await store.recordSpend({ at: new Date().toISOString(), provider: provider.id, model: model.id, images: images.length, estimateUsd: estimate.amount, requestedBy });
       const message = `${assets.length} new image${assets.length === 1 ? '' : 's'} from ${model.label}${provider.billable ? ` (estimated ${estimate.amount.toFixed(3)} USD)` : ''}.${duplicates ? ` ${duplicates} identical result${duplicates === 1 ? ' was' : 's were'} already in the library.` : ''}`;
       return { assets, duplicates, estimate, message };
     } finally {

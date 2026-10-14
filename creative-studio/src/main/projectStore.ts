@@ -49,6 +49,9 @@ function v2Folder(folder: StoreFolder, kind: AssetKind): string {
   return 'Assets/Originals';
 }
 
+/** One paid generation: the estimate shown to the user (not a confirmed charge). */
+export interface SpendEntry { at: string; provider: string; model: string; images: number; estimateUsd: number; requestedBy: 'user' | 'claude' }
+
 export interface WorkflowVersionInfo { id: string; savedAt: string; reason: string; steps: number }
 
 export class ProjectStore implements AssetRepository {
@@ -297,6 +300,25 @@ export class ProjectStore implements AssetRepository {
     }
     await this.saveWorkflow(g);
     return { backedUp };
+  }
+
+  // ---- Spending: a per-project limit and a ledger of estimated paid generation (never contains keys) ----
+  private spendingPath() { return path.join(this.root, 'spending.json'); }
+  async spending(): Promise<{ limitUsd: number | null; spentUsd: number; entries: SpendEntry[] }> {
+    try {
+      const j = JSON.parse(await fs.readFile(this.spendingPath(), 'utf8')) as { limitUsd?: number | null; entries?: SpendEntry[] };
+      const entries = Array.isArray(j.entries) ? j.entries : [];
+      return { limitUsd: typeof j.limitUsd === 'number' ? j.limitUsd : null, spentUsd: Math.round(entries.reduce((n, e) => n + e.estimateUsd, 0) * 10000) / 10000, entries };
+    } catch { return { limitUsd: null, spentUsd: 0, entries: [] }; }
+  }
+  async setSpendingLimit(limitUsd: number | null): Promise<void> {
+    if (limitUsd !== null && (!Number.isFinite(limitUsd) || limitUsd < 0 || limitUsd > 100000)) throw new Error('Enter a limit in dollars, or leave it empty for none.');
+    const cur = await this.spending();
+    await writeJsonAtomic(this.spendingPath(), { limitUsd, entries: cur.entries });
+  }
+  async recordSpend(e: SpendEntry): Promise<void> {
+    const cur = await this.spending();
+    await writeJsonAtomic(this.spendingPath(), { limitUsd: cur.limitUsd, entries: [...cur.entries, e].slice(-1000) });
   }
 
   // ---- Workflow versions (a snapshot per run start, Claude change or restore) and templates ----

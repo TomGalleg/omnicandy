@@ -159,7 +159,7 @@ export function WorkflowEditor({ manifest, integrations, colorMode, log, onProje
   const assets = useMemo(() => manifest?.assets ?? [], [manifest]);
   const photocraftReal = integrations?.appAdapters.some((a) => a.id === 'photocraft' && !a.isMock) ?? false;
   const isMockNode = useCallback((kind: WorkflowNodeType, p: Record<string, string>) =>
-    kind === 'aiGenerate' || (kind === 'artcraftEdit' && !p.opId && !photocraftReal),
+    (kind === 'aiGenerate' && (!p.modelId || p.providerId === 'mock')) || (kind === 'artcraftEdit' && !p.opId && !photocraftReal),
   [photocraftReal]);
 
   useEffect(() => {
@@ -543,7 +543,7 @@ function NodeInspector({ node, assets, disabled, mock, onChange, canRerun, onRer
             <label className="field">Prompt
               <textarea value={p.prompt ?? ''} disabled={disabled} onChange={(e) => onChange({ prompt: e.target.value })} />
             </label>
-            <small className="asset-meta">Only the MOCK provider exists here: nothing is generated, no network call, $0.</small>
+            <small className="asset-meta">{p.modelId && p.providerId !== 'mock' ? `${p.modelId}: you approve the price in a dialog when the workflow reaches this step. Charges go to your own provider account.` : 'Offline test pattern: nothing is generated, no network call, $0.'}</small>
           </>
         )}
         {canRerun && node.data.kind !== 'import' && <button className="btn small" onClick={onRerunFrom} title="Runs this step and what follows again; earlier steps keep their results">Rerun from this step</button>}

@@ -124,7 +124,7 @@ export function buildWorkflowPlan(input: PlanInput, ctx: PlanContext): PlanResul
           total += cost ?? 0;
           approvals.push(`${title}: you approve the price before any paid call is sent.`);
           if (!ctx.configuredProviders.includes(m.provider)) warnings.push(`${title}: ${prov.label} has no API key yet (add it in Settings).`);
-          warnings.push(`${title}: running paid generation inside workflows is not enabled yet, so this step will stop and send nothing.`);
+          warnings.push(`${title}: when the workflow reaches this step you are asked to approve the price before anything is sent.`);
         } else {
           warnings.push(`${title}: the Mock provider draws a test pattern; no real image is made.`);
         }

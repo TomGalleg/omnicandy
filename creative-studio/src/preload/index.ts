@@ -146,6 +146,8 @@ const api: StudioApi = {
     removeKey: (id) => ipcRenderer.invoke(IPC.genRemoveKey, id),
     test: (id) => ipcRenderer.invoke(IPC.genTest, id),
     run: (job) => ipcRenderer.invoke(IPC.genRun, job),
+    spending: () => ipcRenderer.invoke(IPC.genSpending),
+    setSpendingLimit: (limitUsd) => ipcRenderer.invoke(IPC.genSpendingSet, limitUsd),
     openKeyPage: (id) => ipcRenderer.invoke(IPC.genKeyPage, id),
     onResult: (cb) => {
       const listener = (_e: IpcRendererEvent, r: GenerateResultDto) => cb(r);

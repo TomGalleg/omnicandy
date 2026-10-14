@@ -66,7 +66,7 @@ describe('buildWorkflowPlan', () => {
     expect(r.plan.totalCostUsd).toBeGreaterThan(0);
     expect(r.plan.approvals.some((a) => /approve the price/.test(a))).toBe(true);
     expect(r.plan.warnings.join(' ')).toMatch(/no API key/);
-    expect(r.plan.warnings.join(' ')).toMatch(/not enabled yet/);
+    expect(r.plan.warnings.join(' ')).toMatch(/approve the price/);
   });
   it('catalogue lists every app edit', () => {
     expect(workflowCatalog().apps.find((a) => a.app === 'photocraft')!.edits.length).toBeGreaterThan(3);

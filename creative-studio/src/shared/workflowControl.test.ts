@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { MockArtCraftAdapter, MockGenerationProvider } from './mocks';
-import { demoGraph, type WorkflowRunEvent } from './workflow';
+import { demoGraph, type WorkflowGraph, type WorkflowRunEvent } from './workflow';
 import { affectedNodes, changedNodes, reusableOutputs, RunMonitor, sameAsRun, templateGraph } from './workflowControl';
 import { changeStep } from './workflowPlan';
 import { WorkflowRunner } from './workflowRunner';
@@ -131,5 +131,46 @@ describe('templates and step changes', () => {
     expect(changeStep(g, 'n-edit', { edit: 'nope' }, ctx).ok).toBe(false);
     expect(changeStep(g, 'n-export', { prompt: 'x' }, ctx).ok).toBe(false);
     expect(changeStep(g, 'zzz', { note: 'x' }, ctx).ok).toBe(false);
+  });
+});
+
+describe('AI Generate step in a workflow', () => {
+  it('uses the real generator with the node settings and passes results downstream', async () => {
+    const jobs: unknown[] = [];
+    const ex = new WorkflowRunner({
+      apps: {}, providers: { mock: new MockGenerationProvider() }, newRunId: () => 'r',
+      generateImage: async (job) => { jobs.push(job); return { assetIds: ['g1', 'g2'], names: ['one.png', 'two.png'], message: 'Made 2' }; },
+    });
+    const g: WorkflowGraph = {
+      schemaVersion: 1,
+      nodes: [
+        { id: 'gen', type: 'aiGenerate', position: { x: 0, y: 0 }, params: { providerId: 'openai', modelId: 'gpt-image-2.5-flare', prompt: 'a fox', count: '2', settings: '{"quality":"low"}' } },
+        { id: 'ok', type: 'approval', position: { x: 0, y: 0 }, params: { note: '' } },
+      ],
+      edges: [{ id: 'e', source: 'gen', sourceHandle: 'image', target: 'ok', targetHandle: 'in' }],
+    };
+    let seen: unknown;
+    const r = await ex.run(g, { onEvent: () => {}, requestApproval: async (_n, _s, items) => { seen = items; return true; } });
+    expect(r.ok).toBe(true);
+    expect(jobs[0]).toMatchObject({ modelId: 'gpt-image-2.5-flare', prompt: 'a fox', count: 2, settings: { quality: 'low' } });
+    expect(seen).toEqual([{ item: 0, name: 'one.png', assetId: 'g1' }, { item: 1, name: 'two.png', assetId: 'g2' }]);
+  });
+  it('a declined paid step stops the branch and nothing downstream runs', async () => {
+    const ex = new WorkflowRunner({
+      apps: {}, providers: {}, newRunId: () => 'r',
+      generateImage: async () => { throw new Error('Generation cancelled. Nothing was sent and nothing was charged.'); },
+    });
+    const g: WorkflowGraph = {
+      schemaVersion: 1,
+      nodes: [
+        { id: 'gen', type: 'aiGenerate', position: { x: 0, y: 0 }, params: { providerId: 'openai', modelId: 'gpt-image-2.5-flare', prompt: 'x', count: '1', settings: '{}' } },
+        { id: 'ok', type: 'approval', position: { x: 0, y: 0 }, params: { note: '' } },
+      ],
+      edges: [{ id: 'e', source: 'gen', sourceHandle: 'image', target: 'ok', targetHandle: 'in' }],
+    };
+    const events: WorkflowRunEvent[] = [];
+    const r = await ex.run(g, { onEvent: (e) => events.push(e), requestApproval: async () => true });
+    expect(r.ok).toBe(false);
+    expect(events.some((e) => e.kind === 'node-status' && e.nodeId === 'ok' && e.status === 'blocked')).toBe(true);
   });
 });

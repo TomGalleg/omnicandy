@@ -44,7 +44,7 @@ typecheck 0, Vitest 135 passed / 14 skipped (opt-in live tests).
 | 3.4 | Project Overview: brief, objective, progress, latest artwork, items to review, recent versions/exports, Continue creating, workspace + selected file restored | **WORKING**: Claude chat is saved in the project folder and restored on reopen (see "Phase 3 gaps closed") | 3.1 | `projects.test.ts`, `projectStore.test.ts`, `smoke-home-ai.mjs`, screenshots 46-47 |
 | 4 | Simplified / Advanced navigation | **WORKING** | 1, 3 | `navigation.test.ts`, `smoke-nav.mjs` 7/7 |
 | 5 | Claude builds and runs workflows (shared engine) | **WORKING** (paid AI Generate steps stay blocked until Phase 6) | 1.4 | `workflowPlan.test.ts`, `workflowControl.test.ts`, `workflowVersions.test.ts`, `smoke-claude-workflow.mjs` 9/9, `smoke-workflow-control.mjs` 32/32 (real Claude + real PhotoCraft) |
-| 6 | Real Gemini / OpenAI image generation; spending limits; Workflow AI node | PARTIAL (mocked-HTTP tests only; Workflow AI node is MOCK) | user's keys + OK | one approved real call per provider |
+| 6 | Real Gemini / OpenAI image generation; spending limits; Workflow AI node | **PARTIAL**: spending limit + ledger and the Workflow AI step on the real generation path WORKING (verified offline / mocked HTTP); **real end-to-end generation per provider NOT YET VERIFIED** (keys saved and connection tests passed by the user at 22:46/22:47; awaiting the user's one approved real image per provider) | user's keys + OK | one approved real call per provider |
 | 7 | AI video providers (Veo, Runway, Luma) | NOT IMPLEMENTED | 6 | per provider |
 | 8 | Templates | NOT IMPLEMENTED | 5 | smoke |
 | 9 | README / docs refresh, status vocabulary | PARTIAL (README out of date) | any | review |
@@ -226,6 +226,24 @@ Phase 5 part 2 (2026-10-14):
   `smoke-workflow` 7/7, `smoke-claude-workflow` 9/9 (its "use plan" wait now waits for the apply instead of racing),
   `smoke-docks` 15/15, `smoke-nav` 7/7. Two existing runner tests now use `toMatchObject` because the run result also
   carries `outputs`. Screenshots `55`-`59`. Not re-run: the other older smokes (they do not touch the changed paths).
+
+Phase 6 part 1 (2026-10-14):
+* **Spending limit:** per project (`<project>/spending.json`, never contains keys). AI Generate shows the limit field and the
+  estimated total so far. A paid request that would pass the limit is refused before the approval dialog and before any
+  network call; the approval dialog also shows the limit and the estimate so far. Every successful paid generation is
+  recorded in the ledger as an **estimate** (CreateCraft's price tables), not a confirmed charge; the UI says so. Actual
+  billing is only in the provider's console.
+* **Workflow AI Generate step is no longer a mock** when the node has a model: it calls the same `GenerationService`
+  (approval dialog in main, spending limit, ledger, provenance, reference image from the upstream file when the model can edit).
+  Declining stops that branch with nothing charged. Old nodes without a model still use the offline mock. Claude's plans
+  and prompt were updated (the "not enabled yet" warning is gone).
+* **Not verified:** a real OpenAI or Gemini image. The user saved both keys and the free connection tests passed in their own
+  app (2 of 2 and 4 of 4 models listed). I could not decrypt their keys from a second launched instance, so the real
+  generation test is theirs to run once in AI Generate (approval dialog); then the files and provenance can be inspected.
+  My launch also overwrote their stored "last test" status with a failure; pressing Test connection restores it.
+* Tests: lint 0, types 0, **174 passed / 14 skipped** (+3: `spending.test.ts`, 2 workflow AI step tests);
+  `smoke-generate-workflow.mjs` 7/7 (new, offline), `smoke-generate` 16/16, `smoke-claude-generate` 5/5, `smoke-workflow` 7/7.
+  The "over the limit" behaviour is covered by the unit test; the smoke profile has no key so it stops earlier.
 
 Phase 1 note: the old `integrationStatus().claude` field in `src/main/ipc.ts` still says "not
 configured in this build" (stale); Settings now shows Claude's real sign-in state instead.

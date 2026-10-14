@@ -183,12 +183,16 @@ export function registerIpc(d: IpcDeps): void {
         resolveImport: (p) => steps.resolveImport(p),
         applyStep: (s, inputs) => steps.applyStep(s, inputs),
         deliver: (inputs, presets) => steps.deliver(inputs, presets),
+        // Paid steps go through the same approval dialog, spending limit and ledger as AI Generate.
+        generateImage: async (job) => {
+          const r = await runGeneration(job, by);
+          const names = (await store.loadManifest()).assets;
+          return { assetIds: r.assetIds, names: r.assetIds.map((id) => names.find((a) => a.id === id)?.name ?? 'Generated image'), message: r.message };
+        },
       }).run(g, {
         signal: abort.signal,
         onEvent: emitWf,
         requestApproval: (nodeId) => new Promise<boolean | number[]>((resolve) => approvals.set(nodeId, resolve)),
-        // Paid generation inside workflows stays blocked until Phase 6: no consent path.
-        consentToBillable: undefined,
         reuse,
         isApproved: (id) => approvedIds.has(id),
         pause: {
@@ -399,6 +403,7 @@ export function registerIpc(d: IpcDeps): void {
         `Settings: ${Object.entries(r.settings).map(([k, v]) => `${k} ${v}`).join(', ')}`,
         r.references.length ? `Reference images sent to ${r.provider}: ${r.references.join(', ')}` : '',
         '',
+        r.limitUsd != null ? `Project spending limit: $${r.limitUsd.toFixed(2)} (about $${(r.spentUsd ?? 0).toFixed(2)} estimated so far).` : '',
         'Nothing is sent until you click Generate.',
       ].filter((l, i, a) => l !== '' || a[i - 1] !== '').join('\n'),
       buttons: ['Cancel', `Generate (${r.estimate.approximate ? '~' : ''}${formatUsd(r.estimate.amount)})`],
@@ -454,6 +459,9 @@ export function registerIpc(d: IpcDeps): void {
     return dto;
   };
   handle(IPC.genRun, z.tuple([jobSchema]), (job) => runGeneration(job, 'user'));
+  const spendingDto = async () => { const s = await (await d.project()).spending(); return { limitUsd: s.limitUsd, spentUsd: s.spentUsd, count: s.entries.length }; };
+  handle(IPC.genSpending, none, spendingDto);
+  handle(IPC.genSpendingSet, z.tuple([z.number().min(0).max(100000).nullable()]), async (limit) => { await (await d.project()).setSpendingLimit(limit); return spendingDto(); });
 
   // ---- Claude Creative Partner (Claude Agent SDK, this PC's Claude Code sign-in) ----
   // Claude's proposed workflow: held here, shown in the Workflow tab, only saved when the user applies it.

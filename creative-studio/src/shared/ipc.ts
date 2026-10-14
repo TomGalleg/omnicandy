@@ -114,6 +114,8 @@ export const IPC = {
   genRemoveKey: 'generate:remove-key',
   genTest: 'generate:test',
   genRun: 'generate:run',
+  genSpending: 'generate:spending',
+  genSpendingSet: 'generate:spending-set',
   genKeyPage: 'generate:key-page',
   genEvent: 'generate:event',
   deliverJobs: 'deliver:jobs',
@@ -337,6 +339,9 @@ export interface StudioApi {
     test(providerId: ProviderId): Promise<ProviderStatusDto[]>;
     /** Asks for approval in a native dialog (billable providers), then generates. */
     run(job: ImageJob): Promise<GenerateResultDto>;
+    /** The open project's spending limit (USD, null = none) and the estimated total of paid generation so far. Estimates, not confirmed charges. */
+    spending(): Promise<{ limitUsd: number | null; spentUsd: number; count: number }>;
+    setSpendingLimit(limitUsd: number | null): Promise<{ limitUsd: number | null; spentUsd: number; count: number }>;
     openKeyPage(providerId: ProviderId): Promise<void>;
     /** New generated images (from the Generate tab or Claude). */
     onResult(cb: (r: GenerateResultDto) => void): () => void;
