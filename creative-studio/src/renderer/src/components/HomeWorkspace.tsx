@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { briefFromPlan, PROJECT_KINDS, projectKindLabel, type ProjectKind, type ProjectPlan } from '@shared/projectPlan';
 import type { ProjectManifest, ProjectSummary, WorkspaceId } from '@shared/types';
 import type { WorkflowGraph } from '@shared/workflow';
+import type { PendingReference } from '@shared/ipc';
 import { formatBytes } from '../format';
 
 interface Props {
@@ -28,7 +29,7 @@ export function HomeWorkspace({ manifest, projectKey, onSwitched, onGoto, log }:
   const [answers, setAnswers] = useState('');
   const [plan, setPlan] = useState<ProjectPlan | null>(null);
   const [planning, setPlanning] = useState(false);
-  const [withRefs, setWithRefs] = useState(false);
+  const [refs, setRefs] = useState<PendingReference[]>([]);
   // Blank project
   const [blank, setBlank] = useState(false);
   const [newName, setNewName] = useState('');
@@ -71,8 +72,17 @@ export function HomeWorkspace({ manifest, projectKey, onSwitched, onGoto, log }:
     log('project', `Created "${plan.name}" from your description.`);
     onSwitched(key);
     const kind = plan.kind;
+    // Start the new project's chat with the planning exchange (saved inside the project folder).
+    void window.studio.claude.seed(request.trim(), `${plan.finishedOutput}\n\n${plan.summary}\n\n${plan.steps.map((s, i) => `${i + 1}. ${s}`).join('\n')}`);
     setPlan(null); setRequest(''); setAnswers(''); setLocation(null);
-    const imported = withRefs ? (await window.studio.importAssets()).imported.length : 0;
+    // Reference files are copied only now, after approval: into Assets/Originals, hashed, never modified.
+    let imported = 0;
+    if (refs.length) {
+      const r = await window.studio.references.import();
+      imported = r.imported.length;
+      setRefs([]);
+      log('project', `Imported ${imported} reference file${imported === 1 ? '' : 's'}${r.errors.length ? `; ${r.errors.length} failed: ${r.errors.join('; ')}` : ''}.`);
+    }
     onGoto(imported ? 'media' : workspaceFor(kind));
   });
 
@@ -102,7 +112,17 @@ export function HomeWorkspace({ manifest, projectKey, onSwitched, onGoto, log }:
           </button>
           {location && <button className="btn small ghost" type="button" aria-label="Use the default project folder" onClick={() => setLocation(null)}>✕</button>}
         </div>
-        <div className="asset-meta">Claude only plans first. Nothing is created, and nothing paid starts, until you approve.</div>
+        <div className="btn-row">
+          <button className="btn small" disabled={planning || busy || !!plan} onClick={() => void window.studio.references.pick().then(setRefs).catch((e) => setError(errText(e)))}>Add reference files…</button>
+          {refs.map((r) => (
+            <span key={r.id} className="chip" title={`${r.kind} · ${formatBytes(r.bytes)}`}>
+              {r.name}
+              <button className="btn small ghost" type="button" aria-label={`Remove ${r.name}`} disabled={planning || busy}
+                onClick={() => void window.studio.references.remove(r.id).then(setRefs)}>✕</button>
+            </span>
+          ))}
+        </div>
+        <div className="asset-meta">Claude only plans first. Nothing is created, copied or paid until you approve{refs.length ? `; your ${refs.length} reference file${refs.length === 1 ? '' : 's'} stay where they are until then` : ''}.</div>
         {blank && (
           <form className="new-project" onSubmit={(e) => { e.preventDefault(); void createBlank(); }}>
             <input aria-label="New project name" placeholder="Project name" value={newName} maxLength={80} onChange={(e) => setNewName(e.target.value)} />
@@ -139,7 +159,7 @@ export function HomeWorkspace({ manifest, projectKey, onSwitched, onGoto, log }:
                 <button className="btn small" disabled={planning || !answers.trim()} onClick={() => void makePlan()}>{planning ? 'Claude is thinking…' : 'Update the plan'}</button>
               </div>
             )}
-            <label className="plan-check"><input type="checkbox" checked={withRefs} onChange={(e) => setWithRefs(e.target.checked)} /> Add reference files right after creating</label>
+            {refs.length > 0 && <p className="asset-meta">On approval, {refs.length} reference file{refs.length === 1 ? '' : 's'} will be copied into the project's Assets/Originals (read-only, with checksum and origin).</p>}
             <div className="btn-row">
               <button className="btn primary" disabled={busy || planning} onClick={() => void approvePlan()}>Approve and create project</button>
               <button className="btn" disabled={busy || planning} onClick={() => setPlan(null)}>Change my request</button>

@@ -12,9 +12,10 @@ import { MockArtCraftAdapter, MockGenerationProvider } from '@shared/mocks';
 import { validateGraph } from '@shared/workflow';
 import { WorkflowRunner, type RunnerDeps } from '@shared/workflowRunner';
 import { probeAllArtCraftApps } from './artcraftProbe';
-import { IMPORTABLE_EXTENSIONS } from './media';
+import { IMPORTABLE_EXTENSIONS, kindForExtension } from './media';
 import { AppEditors } from './appEditors';
-import { ClaudePartner, defaultClaudeCli } from './claudePartner';
+import { randomUUID } from 'node:crypto';
+import { ClaudePartner, defaultClaudeCli, type PlanReference } from './claudePartner';
 import { LiveTaskController } from './liveTask';
 import { PhotoCraftCliAdapter } from './photocraftCli';
 import type { ProjectManager } from './projects';
@@ -358,10 +359,67 @@ export function registerIpc(d: IpcDeps): void {
     deliver: async () => deliver(),
     imageModels: async () => (await providerStatus()).filter((p) => p.configured),
     workDir: async () => (await d.project()).workDir('claude'),
+    // Bound to the project open when this partner is created, so a late save never lands in another project.
+    history: (() => {
+      const s = d.project();
+      return { load: async () => (await s).readClaudeHistory(), save: async (items) => (await s).writeClaudeHistory(items) };
+    })(),
   }));
-  handle(IPC.claudeState, none, () => claude().state());
+  handle(IPC.claudeState, none, async () => { await claude().ready(); return claude().state(); });
   handle(IPC.claudeSend, z.tuple([z.string().min(1).max(4000)]), (msg) => claude().send(msg));
-  handle(IPC.claudePlanProject, z.tuple([z.string().trim().min(3).max(4000)]), (req) => claude().planProject(req));
+
+  // ---- Reference files chosen on Home: held as paths in main, copied only after the plan is approved ----
+  const pendingRefs = new Map<string, { path: string; name: string; kind: string; bytes: number }>();
+  const IMAGE_TYPES: Record<string, 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp'> = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif', webp: 'image/webp' };
+  const refList = () => [...pendingRefs.entries()].map(([id, r]) => ({ id, name: r.name, kind: r.kind, bytes: r.bytes }));
+  handle(IPC.refsPick, none, async () => {
+    const win = d.window();
+    const o: Electron.OpenDialogOptions = {
+      title: 'Choose reference files (nothing is copied until you approve the plan)',
+      properties: ['openFile', 'multiSelections'], filters: [{ name: 'Supported media', extensions: IMPORTABLE_EXTENSIONS }],
+    };
+    const pick = await (win ? dialog.showOpenDialog(win, o) : dialog.showOpenDialog(o));
+    if (pick.canceled) return refList();
+    for (const p of pick.filePaths) {
+      if (pendingRefs.size >= 12) break;
+      if ([...pendingRefs.values()].some((r) => r.path === p)) continue;
+      const ext = path.extname(p).slice(1).toLowerCase();
+      const kind = kindForExtension(ext);
+      const st = await fs.stat(p).catch(() => null);
+      if (!kind || !st?.isFile()) continue;
+      pendingRefs.set(randomUUID(), { path: p, name: path.basename(p), kind, bytes: st.size });
+    }
+    return refList();
+  });
+  handle(IPC.refsRemove, z.tuple([z.string().max(64)]), (rid) => { pendingRefs.delete(rid); return refList(); });
+  handle(IPC.refsClear, none, () => { pendingRefs.clear(); });
+  handle(IPC.refsImport, none, async (): Promise<ImportResult> => {
+    const result: ImportResult = { imported: [], duplicates: [], errors: [] };
+    const store = await d.project();
+    for (const r of pendingRefs.values()) {
+      try {
+        const x = await store.importFile(r.path, { source: 'Reference file attached on Home before planning', role: 'reference', originalPath: r.path });
+        if (x.duplicateOf) result.duplicates.push({ name: x.asset.name, duplicateOf: x.duplicateOf });
+        else result.imported.push(x.asset);
+      } catch (err) { result.errors.push(`${r.name}: ${err instanceof Error ? err.message : String(err)}`); }
+    }
+    pendingRefs.clear();
+    return result;
+  });
+  handle(IPC.claudePlanProject, z.tuple([z.string().trim().min(3).max(4000)]), async (req) => {
+    const refs: PlanReference[] = [];
+    let shown = 0;
+    for (const r of pendingRefs.values()) {
+      const ref: PlanReference = { name: r.name, kind: r.kind, bytes: r.bytes };
+      const mt = IMAGE_TYPES[path.extname(r.name).slice(1).toLowerCase()];
+      if (mt && shown < 3 && r.bytes <= 3 * 1024 * 1024) {
+        try { ref.image = { mediaType: mt, data: (await fs.readFile(r.path)).toString('base64') }; shown++; } catch { /* described by name only */ }
+      }
+      refs.push(ref);
+    }
+    return claude().planProject(req, refs);
+  });
+  handle(IPC.claudeSeed, z.tuple([z.string().max(4000), z.string().max(4000)]), (u, c) => claude().seed(u, c));
   handle(IPC.setProjectMeta, z.tuple([z.object({
     objective: z.string().max(600).optional(),
     view: z.object({ workspace: z.enum(['home', 'media', 'edit', 'generate', 'workflow', 'effects', 'color', 'audio', 'deliver']), assetId: z.string().max(128).optional() }).optional(),

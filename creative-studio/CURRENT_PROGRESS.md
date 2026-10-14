@@ -20,7 +20,7 @@ Evidence for each integration (exact commands, versions and test results) is in
 still describes "Phase 2, steps 1–2"); this file and the audit are the current picture.
 
 **Resume here (new conversation):** follow Tomas's Master Development Instructions (phases 0–10).
-Phase 0 audit, Phase 1, Phase 2 and Phase 3 (3.1-3.4) are done (see "Master plan status" below). **Next: Phase 4 (Simplified / Advanced navigation), after Tomas's OK of Phase 3.** Keep work in small milestones and replies short.
+Phase 0 audit, Phase 1, Phase 2 and Phase 3 (3.1-3.4, plus the two gap fixes below) are done (see "Master plan status" below). **Next: Phase 4 (Simplified / Advanced navigation), after Tomas's OK of Phase 3.** Keep work in small milestones and replies short.
 
 ## Master plan status (Phase 0 audit, 2026-10-14)
 
@@ -41,7 +41,7 @@ typecheck 0, Vitest 135 passed / 14 skipped (opt-in live tests).
 | 3.1 | Prompt-first Project Home: prompt, Create with Claude, New blank project, Open existing, recent project cards with type/brief, search | **WORKING** (Templates button is disabled: Phase 8) | 2 | `smoke-projects.mjs` 13/13 |
 | 3.2 | AI-first creation: real Claude call returns name, type, finished output, apps, AI tools, steps, questions; user approves; project created in chosen/default folder; optional reference import; opens matching workspace | **WORKING** (one real Claude call verified) | 3.1 | `smoke-home-ai.mjs` 6/6 (real Claude, Sonnet 5.5) |
 | 3.3 | Blank project: name, type (5 categories), folder | **WORKING** | 3.1 | `projects.test.ts`, `smoke-projects.mjs` |
-| 3.4 | Project Overview: brief, objective, progress, latest artwork, items to review, recent versions/exports, Continue creating, workspace + selected file restored | **PARTIAL**: conversation history is not restored (Claude chat is in memory, reset per project) | 3.1 | `projects.test.ts`, screenshots 46-47 |
+| 3.4 | Project Overview: brief, objective, progress, latest artwork, items to review, recent versions/exports, Continue creating, workspace + selected file restored | **WORKING**: Claude chat is saved in the project folder and restored on reopen (see "Phase 3 gaps closed") | 3.1 | `projects.test.ts`, `projectStore.test.ts`, `smoke-home-ai.mjs`, screenshots 46-47 |
 | 4 | Simplified / Advanced navigation | NOT IMPLEMENTED | 1, 3 | smoke |
 | 5 | Claude builds and runs workflows (shared engine) | NOT IMPLEMENTED (Claude has no workflow tools) | 1.4 | real Claude run + `workflowRunner` tests |
 | 6 | Real Gemini / OpenAI image generation; spending limits; Workflow AI node | PARTIAL (mocked-HTTP tests only; Workflow AI node is MOCK) | user's keys + OK | one approved real call per provider |
@@ -126,12 +126,31 @@ Phase 3 (2026-10-14):
 * Overview: type chip, brief, Claude's objective (first plan step; it is not updated by Claude yet), progress
   checklist, latest artwork, "Waiting for your review" (new versions / AI images not yet approved), recent versions,
   workflow, recent exports, **Continue creating**. Nothing billable or destructive resumes on opening.
-* Not done: conversation history restore, Claude updating the objective itself, Templates (Phase 8), references
-  attached before the project exists (they are imported right after creating).
+* Not done: Claude updating the objective itself, Templates (Phase 8). (History restore and pre-creation references were added in "Phase 3 gaps closed".)
 * Tests: lint 0, types 0, **149 passed / 14 skipped** (+1 projects, +2 projectPlan); `smoke-projects.mjs` 13/13;
   `smoke-home-ai.mjs` 6/6 with real Claude (about one Sonnet call). Other smokes not re-run; the ones that type into
   "New project name" need the new "New blank project" step (only smoke-projects was updated).
   Screenshots: `46-home-claude-plan.png`, `47-project-overview-brief.png`, refreshed `40`, `41`.
+
+Phase 3 gaps closed (2026-10-14):
+* **Conversation history:** each project's Claude chat is saved to `<project>/Claude/conversation.json` (last 200
+  items, written atomically, debounced; never in app settings), so Move and Duplicate carry it. The Claude panel
+  restores it when the project is reopened. "New chat" clears the saved chat. A new session after reopening sends Claude
+  only a short deterministic summary (up to 8 earlier requests, 120 chars each) plus the last 6 messages (400 chars
+  each); no extra model call, and it is skipped while the live session continues. Approving a plan seeds the new
+  project's chat with the request and plan. Code: `src/shared/claudeHistory.ts`, `ClaudePartner.ready/seed`.
+* **Reference files:** **Add reference files...** on the Home prompt keeps only the chosen paths in main (renderer never
+  supplies paths; max 12). Claude sees names/types/sizes and up to 3 small images (each at most 3 MB) in the one planning
+  call. Nothing is copied until **Approve**; then they are imported to `Assets/Originals` (or Audio/Video/Documents)
+  as read-only files with SHA-256, `origin: imported`, `role: "reference"`, original path in provenance. They are
+  ordinary library files, so workflow Files steps and Claude (`list_files` flags `reference_from_user`) can use them as
+  source images. Duplicates (same hash) are not copied twice.
+* **Bug fixed on the way:** `ProjectStore.loadManifest` could create two manifest objects when first called
+  concurrently, silently losing an import (seen as a flaky smoke). Now one shared object.
+* Tests: lint 0, types 0, **153 passed / 14 skipped** (+3 claudeHistory, +1 projectStore); `smoke-home-ai.mjs` 11/11
+  (real Claude, Sonnet 5.5, 3 consecutive runs; now also covers reference import after approval and chat restore),
+  `smoke-projects.mjs` 13/13, `smoke-docks.mjs` 15/15. No generation was started. Not covered: the native file
+  dialog itself (stubbed in the smoke) and a UI test of Move/Duplicate carrying the chat (logic is a whole-folder copy).
 
 Phase 1 note: the old `integrationStatus().claude` field in `src/main/ipc.ts` still says "not
 configured in this build" (stale); Settings now shows Claude's real sign-in state instead.

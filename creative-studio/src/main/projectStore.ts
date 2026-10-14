@@ -13,6 +13,8 @@ import path from 'node:path';
 import { EDITOR_APPS, type EditorAppId } from '@shared/appEditors';
 import type { AssetRepository } from '@shared/contracts';
 import { MANIFEST_FILE } from '@shared/deliver';
+import type { ClaudeChatItem } from '@shared/claude';
+import { HISTORY_FILE, HISTORY_FOLDER, MAX_SAVED_ITEMS, parseHistory } from '@shared/claudeHistory';
 import type { Asset, AssetKind, AssetProvenance, ProjectManifest } from '@shared/types';
 import { emptyGraph, type WorkflowGraph } from '@shared/workflow';
 import { kindForExtension, sniffMedia } from './media';
@@ -84,7 +86,12 @@ export class ProjectStore implements AssetRepository {
   }
 
   async loadManifest(): Promise<ProjectManifest> {
-    if (!this.manifest) this.manifest = parseManifest(JSON.parse(await fs.readFile(this.manifestPath, 'utf8')));
+    // Concurrent first loads must share one manifest object: two parses would leave callers
+    // mutating different copies and silently lose whichever is persisted first.
+    if (!this.manifest) {
+      const parsed = parseManifest(JSON.parse(await fs.readFile(this.manifestPath, 'utf8')));
+      this.manifest ??= parsed;
+    }
     return structuredClone(this.manifest);
   }
 
@@ -183,6 +190,17 @@ export class ProjectStore implements AssetRepository {
     m.assets.push(asset);
     await this.persist();
     return { asset: structuredClone(asset) };
+  }
+
+  /** The project's saved Claude chat (`Claude/conversation.json`): travels with Move and Duplicate. */
+  async readClaudeHistory(): Promise<ClaudeChatItem[]> {
+    try { return parseHistory(JSON.parse(await fs.readFile(path.join(this.root, HISTORY_FOLDER, HISTORY_FILE), 'utf8'))); } catch { return []; }
+  }
+
+  async writeClaudeHistory(items: ClaudeChatItem[]): Promise<void> {
+    const dir = path.join(this.root, HISTORY_FOLDER);
+    await fs.mkdir(dir, { recursive: true });
+    await writeJsonAtomic(path.join(dir, HISTORY_FILE), { version: 1, items: items.slice(-MAX_SAVED_ITEMS) });
   }
 
   /** Scratch folder (or a subfolder) for tool output before it is registered. Inside the project root. */

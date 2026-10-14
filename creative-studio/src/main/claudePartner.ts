@@ -18,6 +18,7 @@ import type { GenerateResultDto, ProviderStatusDto } from '@shared/ipc';
 import { EDITOR_APPS, type EditorAppId } from '@shared/appEditors';
 import { presetsFor } from '@shared/deliver';
 import type { DeliverQueue } from './deliver';
+import { buildResumeContext } from '@shared/claudeHistory';
 import { parseProjectPlan, PROJECT_KINDS, type ProjectPlan } from '@shared/projectPlan';
 import type { LiveTaskController } from './liveTask';
 import type { ProjectStore } from './projectStore';
@@ -64,7 +65,12 @@ export interface ClaudePartnerDeps {
   imageModels: () => Promise<ProviderStatusDto[]>;
   /** The Deliver tab's export queue (same queue, presets and manifest as the UI). */
   deliver: () => Promise<DeliverQueue>;
+  /** The open project's saved chat (inside the project folder, never in app settings). */
+  history: { load: () => Promise<ClaudeChatItem[]>; save: (items: ClaudeChatItem[]) => Promise<void> };
 }
+
+/** A reference picture or file the user attached while planning (read only; nothing is copied). */
+export interface PlanReference { name: string; kind: string; bytes: number; image?: { mediaType: 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp'; data: string } }
 
 export class ClaudePartner {
   private model: ClaudeModelId = 'claude-opus-5-5';
@@ -77,10 +83,36 @@ export class ClaudePartner {
   private login: ClaudeState['login'] = { stage: 'idle', url: null, message: null };
   private loginPoll: ReturnType<typeof setInterval> | null = null;
 
+  private loaded: Promise<void> | null = null;
+  private saveTimer: ReturnType<typeof setTimeout> | null = null;
+
   constructor(private readonly d: ClaudePartnerDeps) {}
 
   state(): ClaudeState {
     return { status: this.status, model: this.model, items: this.items, signedIn: this.signedIn, costUsd: this.costUsd, login: this.login };
+  }
+
+  /** Loads this project's saved chat once (before the first state or message). */
+  ready(): Promise<void> {
+    return (this.loaded ??= this.d.history.load().then((saved) => {
+      if (!this.items.length) this.items = saved;
+    }).catch(() => { /* an unreadable history is simply empty */ }));
+  }
+
+  private persist(now = false) {
+    if (this.saveTimer) clearTimeout(this.saveTimer);
+    const run = () => { this.saveTimer = null; void this.d.history.save(this.items).catch(() => { /* chat still works */ }); };
+    if (now) run(); else this.saveTimer = setTimeout(run, 400);
+  }
+
+  /** Records the planning exchange as the start of a new project's chat (only when the chat is empty). */
+  async seed(user: string, claude: string): Promise<void> {
+    await this.ready();
+    if (this.items.length) return;
+    const at = new Date().toISOString();
+    this.items = [{ id: randomUUID(), role: 'user', text: user, at }, { id: randomUUID(), role: 'claude', text: claude, at }];
+    this.publish();
+    this.persist(true);
   }
 
   private publish() { this.d.emit(this.state()); }
@@ -89,6 +121,7 @@ export class ClaudePartner {
     if (role === 'error' && last?.role === 'error' && last.text === text) return; // same error reported twice
     this.items = [...this.items.slice(-199), { id: randomUUID(), role, text, at: new Date().toISOString() }];
     this.publish();
+    this.persist();
   }
 
   setModel(m: string) {
@@ -103,6 +136,7 @@ export class ClaudePartner {
     this.items = [];
     this.sessionId = null;
     this.publish();
+    this.persist(true);
   }
 
   /** Reads `claude auth status` (never prints or stores credentials). */
@@ -258,7 +292,7 @@ export class ClaudePartner {
         tool('list_files', 'Lists the files in the project library (name, kind, size).', {}, async () => {
           try {
             const m = await (await this.d.store()).loadManifest();
-            return text(JSON.stringify(m.assets.map((a) => ({ name: a.name, kind: a.kind, format: a.sourceFormat, size: a.width ? `${a.width}x${a.height}` : a.durationSec ? `${a.durationSec}s` : undefined, version: !!a.parentId })), null, 2));
+            return text(JSON.stringify(m.assets.map((a) => ({ name: a.name, kind: a.kind, format: a.sourceFormat, size: a.width ? `${a.width}x${a.height}` : a.durationSec ? `${a.durationSec}s` : undefined, version: !!a.parentId, ...(a.provenance.role === 'reference' ? { reference_from_user: true } : {}) })), null, 2));
           } catch (e) { return fail(e); }
         }),
         tool('list_image_models', 'Image generation models the user has set up (their own OpenAI / Google Gemini account), with settings and the estimated price per image at default settings.', {}, async () => {
@@ -325,7 +359,7 @@ New files: ${names.join(', ') || '(none)'}`);
    * One real Claude call that turns a described project into a creative plan. No tools, no project
    * files, no generation: it only returns text. Needs the Claude Code sign-in like the chat does.
    */
-  async planProject(request: string): Promise<ProjectPlan> {
+  async planProject(request: string, refs: PlanReference[] = []): Promise<ProjectPlan> {
     if (this.status === 'working') throw new Error('Claude is busy with another request. Wait for it to finish or stop it.');
     this.status = 'working';
     this.publish();
@@ -341,8 +375,22 @@ New files: ${names.join(', ') || '(none)'}`);
       const models = IMAGE_MODELS.filter((m) => ready.some((p) => p.id === m.provider && p.billable))
         .map((m) => `${m.label} (${m.id}, ${m.note})`);
       const { query } = await import('@anthropic-ai/claude-agent-sdk');
+      const intro = `Available AI image models: ${models.length ? models.join('; ') : 'none set up'}.\n\nThe user wants to create:\n${request}`
+        + (refs.length ? `\n\nThe user attached ${refs.length} reference file${refs.length === 1 ? '' : 's'} (kept on their PC; they are imported only after they approve your plan): ${refs.map((r) => `${r.name} (${r.kind}, ${Math.round(r.bytes / 1024)} KB${r.image ? ', shown below' : ''})`).join('; ')}. Take them into account in your plan.` : '');
+      const images = refs.filter((r) => r.image);
+      const prompt = images.length
+        ? (async function* () {
+          yield {
+            type: 'user' as const, parent_tool_use_id: null, session_id: '',
+            message: { role: 'user' as const, content: [
+              { type: 'text' as const, text: intro },
+              ...images.map((r) => ({ type: 'image' as const, source: { type: 'base64' as const, media_type: r.image!.mediaType, data: r.image!.data } })),
+            ] },
+          };
+        })()
+        : intro;
       const q = query({
-        prompt: `Available AI image models: ${models.length ? models.join('; ') : 'none set up'}.\n\nThe user wants to create:\n${request}`,
+        prompt,
         options: {
           model: this.model, systemPrompt: PLAN_PROMPT, tools: [], allowedTools: [], permissionMode: 'dontAsk',
           settingSources: [], maxTurns: 1, cwd: await this.d.workDir(), abortController: abort,
@@ -374,6 +422,9 @@ New files: ${names.join(', ') || '(none)'}`);
   /** Sends one message; Claude works until it answers. Streams activity and replies to the panel. */
   async send(message: string): Promise<void> {
     if (this.status === 'working') throw new Error('Claude is still working. Stop it or wait.');
+    await this.ready();
+    // A new session (project just reopened): give Claude a short summary and the last few messages, not the whole chat.
+    const resume = this.sessionId ? '' : buildResumeContext(this.items);
     this.add('user', message);
     this.status = 'working';
     this.publish();
@@ -383,7 +434,7 @@ New files: ${names.join(', ') || '(none)'}`);
       const { query } = await import('@anthropic-ai/claude-agent-sdk');
       const server = await this.tools();
       const q = query({
-        prompt: message,
+        prompt: resume ? `${resume}\n\nNew message from the user:\n${message}` : message,
         options: {
           model: this.model,
           systemPrompt: SYSTEM_PROMPT,
@@ -430,6 +481,7 @@ New files: ${names.join(', ') || '(none)'}`);
       try { (await this.d.live()).claudeDone(); } catch { /* no live doc */ }
       if (this.status === 'working') this.status = 'idle';
       this.publish();
+      this.persist(true);
     }
   }
 }

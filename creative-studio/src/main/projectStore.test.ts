@@ -46,6 +46,21 @@ describe('ProjectStore', () => {
     await expect(fs.writeFile(stored, 'overwrite')).rejects.toThrow(); // read-only
   });
 
+  it('keeps reference provenance and saves the Claude chat inside the project folder', async () => {
+    const src = path.join(FIXTURES, 'photocraft-smoke.png');
+    const s = await newStore();
+    const { asset } = await s.importFile(src, { source: 'Reference file attached on Home before planning', role: 'reference', originalPath: src });
+    const m = await new ProjectStore(s.root).loadManifest();
+    expect(m.assets[0]!.provenance).toMatchObject({ origin: 'imported', role: 'reference', originalPath: src });
+    expect(m.assets[0]!.sha256).toBe(asset.sha256);
+
+    expect(await s.readClaudeHistory()).toEqual([]);
+    const item = { id: 'a', role: 'user' as const, text: 'make a poster', at: '2026-10-14T00:00:00Z' };
+    await s.writeClaudeHistory([item]);
+    expect(await new ProjectStore(s.root).readClaudeHistory()).toEqual([item]);
+    expect((await fs.readdir(path.join(s.root, 'Claude'))).includes('conversation.json')).toBe(true);
+  });
+
   it('persists the manifest and reloads it after restart', async () => {
     const s = await newStore();
     const { asset } = await s.importFile(path.join(FIXTURES, 'dune-poster.svg'));

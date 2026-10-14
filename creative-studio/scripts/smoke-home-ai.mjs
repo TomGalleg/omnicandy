@@ -20,6 +20,11 @@ try {
   await win.evaluate(() => window.studio.claude.setModel('claude-sonnet-5-5'));
   await win.getByLabel('Describe what you would like to create')
     .fill('Make a short cinematic poster for a desert adventure film from my photo, with a bold title, ready for print.');
+  const fixture = path.join(root, 'fixtures', 'sample-project', 'photocraft-smoke.png');
+  await app.evaluate(({ dialog }, f) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [f] }); }, fixture);
+  await win.getByRole('button', { name: 'Add reference files…' }).click();
+  await win.getByRole('button', { name: 'Remove photocraft-smoke.png' }).waitFor({ timeout: 5000 });
+  check('a reference file is attached on Home (path only, nothing copied)', true);
   await win.getByRole('button', { name: 'Create with Claude' }).click();
   await win.getByRole('region', { name: "Claude's plan" }).waitFor({ timeout: 120000 });
   const planText = await win.getByRole('region', { name: "Claude's plan" }).textContent();
@@ -32,9 +37,22 @@ try {
   await win.waitForTimeout(1000);
   const landed = await win.locator('nav.workspaces button[aria-current=page]').textContent().catch(() => '');
   check('Approve opens the matching workspace (not Home)', !!landed && !/Home/.test(landed), landed ?? '');
+  for (let i = 0; i < 40 && !(await win.evaluate(() => window.studio.loadProject())).assets.length; i++) await win.waitForTimeout(500);
   const m = await win.evaluate(() => window.studio.loadProject());
   check('the project was created and opened with type, brief and objective', !!m.kind && /desert/i.test(m.brief ?? '') && !!m.objective, `${m.name} / ${m.kind}`);
-  check('no image was generated', m.assets.length === 0);
+  check('no image was generated', !m.assets.some((a) => a.provenance.origin === 'generated'));
+  const ref = m.assets.find((a) => a.provenance.role === 'reference');
+  check('the reference was imported only after approval, hashed, with provenance', !!ref && /^[0-9a-f]{64}$/.test(ref.sha256) && ref.provenance.origin === 'imported' && /Originals/.test(ref.relPath) && !!ref.provenance.originalPath, ref?.relPath ?? 'missing');
+  const chat = await win.evaluate(() => window.studio.claude.state());
+  check('the planning exchange became the project chat', chat.items.length >= 2 && chat.items[0].role === 'user', String(chat.items.length));
+  await win.waitForTimeout(800);
+  const key = await win.evaluate(() => window.studio.projects.current());
+  const list = await win.evaluate(() => window.studio.projects.list());
+  const folder = list.find((p) => p.id === key)?.folder;
+  check('the chat is saved inside the project folder', !!folder && fs.existsSync(path.join(folder, 'Claude', 'conversation.json')), folder ?? '');
+  await win.evaluate(async (k) => { const other = (await window.studio.projects.list()).find((p) => p.id !== k); await window.studio.projects.open(other.id); await window.studio.projects.open(k); }, key);
+  const again = await win.evaluate(() => window.studio.claude.state());
+  check('reopening the project restores the chat', again.items.length === chat.items.length && again.items[0].text === chat.items[0].text);
   await win.getByRole('button', { name: 'Home', exact: true }).click().catch(() => {});
   await win.waitForTimeout(500);
   await win.screenshot({ path: path.join(shots, '47-project-overview-brief.png') });

@@ -20,6 +20,10 @@ export interface AssetProvenance {
   requestedBy?: 'user' | 'claude';
   /** Library assets used as reference images. */
   referenceAssetIds?: string[];
+  /** 'reference' = attached on Home while planning; available as a source image to later steps. */
+  role?: 'reference';
+  /** Where the file came from on the user's PC when it was imported. */
+  originalPath?: string;
 }
 
 export interface Asset {

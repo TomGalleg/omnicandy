@@ -59,6 +59,11 @@ export const IPC = {
   claudeState: 'claude:state',
   claudeSend: 'claude:send',
   claudePlanProject: 'claude:plan-project',
+  claudeSeed: 'claude:seed',
+  refsPick: 'refs:pick',
+  refsRemove: 'refs:remove',
+  refsClear: 'refs:clear',
+  refsImport: 'refs:import',
   setProjectMeta: 'project:set-meta',
   claudeStop: 'claude:stop',
   claudeReset: 'claude:reset',
@@ -148,6 +153,8 @@ export interface ExternalEditDto {
   openedAt: string;
 }
 
+export interface PendingReference { id: string; name: string; kind: string; bytes: number }
+
 export interface ImportResult {
   imported: Asset[];
   duplicates: Array<{ name: string; duplicateOf: string }>;
@@ -160,6 +167,17 @@ export interface StudioApi {
   loadProject(): Promise<ProjectManifest>;
   /** Opens a native file dialog in main; the renderer never supplies paths. */
   importAssets(): Promise<ImportResult>;
+  /**
+   * Reference files for a new project, chosen on Home. Main keeps the paths (the renderer never
+   * supplies them); nothing is copied until `import` runs after the user approves the plan.
+   */
+  references: {
+    pick(): Promise<PendingReference[]>;
+    remove(id: string): Promise<PendingReference[]>;
+    clear(): Promise<void>;
+    /** Copies the pending files into the open project's originals (hashed, provenance, never modified). */
+    import(): Promise<ImportResult>;
+  };
   /** Saves where the user left off and Claude's current objective for the open project. */
   setProjectMeta(patch: ProjectMetaPatch): Promise<void>;
   setAssetRating(assetId: string, rating: number): Promise<ProjectManifest>;
@@ -221,6 +239,8 @@ export interface StudioApi {
     send(message: string): Promise<void>;
     /** One real Claude call: name, category, apps and steps for a described project. Starts no work and no paid generation. */
     planProject(request: string): Promise<ProjectPlan>;
+    /** Starts a new project's chat with the planning exchange (ignored when a chat already exists). */
+    seed(user: string, claude: string): Promise<void>;
     stop(): Promise<void>;
     reset(): Promise<ClaudeState>;
     setModel(model: string): Promise<ClaudeState>;

@@ -51,6 +51,8 @@ const assetSchema = z.object({
     estimatedCostUsd: z.number().nonnegative().optional(),
     requestedBy: z.enum(['user', 'claude']).optional(),
     referenceAssetIds: z.array(id).max(8).optional(),
+    role: z.literal('reference').optional(),
+    originalPath: z.string().max(1024).optional(),
   }),
   parentId: id.optional(),
 });
