@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  addEdge, applyEdgeChanges, applyNodeChanges, Background, Controls, Handle, MiniMap, Position, ReactFlow,
-  type Connection, type Edge, type EdgeChange, type IsValidConnection, type Node, type NodeChange, type NodeProps,
+  addEdge, applyEdgeChanges, applyNodeChanges, Background, Controls, Handle, MarkerType, MiniMap, Position, ReactFlow,
+  type Connection, type Edge, type EdgeChange, type IsValidConnection, type Node, type NodeChange, type NodeProps, type ReactFlowInstance,
 } from '@xyflow/react';
 import { EDITOR_APPS, type EditorAppId, type QuickEdit } from '@shared/appEditors';
 import { DELIVER_PRESETS, type DeliverGroup } from '@shared/deliver';
@@ -11,6 +11,7 @@ import type { Asset, ProjectManifest } from '@shared/types';
 import {
   NODE_SPECS, validateConnection, validateGraph, type NodeRunStatus, type WorkflowGraph, type WorkflowNodeType,
 } from '@shared/workflow';
+import { autoLayout } from '@shared/workflowLayout';
 import { exportPresetsOf, importAssetIds } from '@shared/workflowRunner';
 import { AssetThumb } from './AssetBrowser';
 
@@ -29,6 +30,14 @@ type StudioNodeData = {
 type StudioNode = Node<StudioNodeData, 'studio'>;
 
 const APP_IDS = Object.keys(EDITOR_APPS) as EditorAppId[];
+const STATUS_LABEL: Record<NodeRunStatus, string> = {
+  idle: 'ready', queued: 'waiting', running: 'running', awaiting_approval: 'needs you', completed: 'done', failed: 'failed', blocked: 'blocked', cancelled: 'cancelled',
+};
+const edgeStyle = { strokeWidth: 2 };
+const edgeMarker = { type: MarkerType.ArrowClosed, width: 16, height: 16 };
+
+const readKey = (k: string) => { try { return window.localStorage.getItem(k); } catch { return null; } };
+const writeKey = (k: string, v: string) => { try { window.localStorage.setItem(k, v); } catch { /* storage unavailable */ } };
 const GROUP_LABEL: Record<DeliverGroup, string> = { image: 'Pictures', vector: 'Vector art', audio: 'Audio', video: 'Video', design: 'Layouts' };
 
 const toGraph = (nodes: StudioNode[], edges: Edge[]): WorkflowGraph => ({
@@ -75,10 +84,10 @@ function summarize(kind: WorkflowNodeType, p: Record<string, string>, assets: As
 function StudioNodeView({ data, selected }: NodeProps<StudioNode>) {
   const spec = NODE_SPECS[data.kind];
   return (
-    <div className={`node${selected ? ' selected' : ''}`}>
+    <div className={`node${selected ? ' selected' : ''} is-${data.status ?? 'idle'}`} aria-current={data.status === 'running' ? 'step' : undefined}>
       <div className="node-head">
         <span>{spec.label} {data.mock && <span className="badge-mock">MOCK</span>}</span>
-        <span className={`node-status ${data.status ?? 'idle'}`}>{(data.status ?? 'idle').replace('_', ' ')}</span>
+        <span className={`node-status ${data.status ?? 'idle'}`}>{STATUS_LABEL[data.status ?? 'idle'] ?? data.status}</span>
       </div>
       <div className="node-body">
         <span>{data.summary}</span>
@@ -123,6 +132,14 @@ export function WorkflowEditor({ manifest, integrations, colorMode, log, onProje
   const [files, setFiles] = useState<RunFiles | null>(null);
   const [approval, setApproval] = useState<Approval | null>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const [flow, setFlow] = useState<ReactFlowInstance<StudioNode> | null>(null);
+  // Panels that can fold away to give the graph room; remembered.
+  const [showSettings, setShowSettings] = useState(() => readKey('cs-wf-settings') !== '0');
+  const [showFiles, setShowFiles] = useState(() => readKey('cs-wf-files') !== '0');
+  const [showMap, setShowMap] = useState(() => readKey('cs-wf-map') === '1');
+  useEffect(() => { writeKey('cs-wf-settings', showSettings ? '1' : '0'); writeKey('cs-wf-files', showFiles ? '1' : '0'); writeKey('cs-wf-map', showMap ? '1' : '0'); }, [showSettings, showFiles, showMap]);
+  // Readable names for log lines (the runner reports node ids).
+  const names = useRef<Record<string, string>>({});
 
   const assets = useMemo(() => manifest?.assets ?? [], [manifest]);
   const photocraftReal = integrations?.appAdapters.some((a) => a.id === 'photocraft' && !a.isMock) ?? false;
@@ -169,7 +186,7 @@ export function WorkflowEditor({ manifest, integrations, colorMode, log, onProje
       onProjectChanged();
     }
     if (ev.kind === 'node-status') {
-      if (ev.message) log('workflow', `${ev.nodeId}: ${ev.status}. ${ev.message}`);
+      if (ev.message) log('workflow', `${names.current[ev.nodeId] ?? 'Step'}: ${STATUS_LABEL[ev.status] ?? ev.status}. ${ev.message}`);
       if (ev.status !== 'awaiting_approval') setApproval((a) => (a?.nodeId === ev.nodeId ? null : a));
       setNodes((ns) => ns.map((n) => n.id === ev.nodeId ? {
         ...n,
@@ -191,6 +208,25 @@ export function WorkflowEditor({ manifest, integrations, colorMode, log, onProje
       },
     };
   }), [nodes, assets, isMockNode]);
+
+  useEffect(() => { names.current = Object.fromEntries(decorated.map((n) => [n.id, `${NODE_SPECS[n.data.kind].label} (${n.data.summary})`])); }, [decorated]);
+
+  // Connections into the running step move, so it is clear where the work is.
+  const shownEdges = useMemo(() => {
+    const status = new Map(nodes.map((n) => [n.id, n.data.status]));
+    return edges.map((e) => {
+      const into = status.get(e.target);
+      const active = into === 'running' || into === 'awaiting_approval';
+      return { ...e, animated: active, style: edgeStyle, markerEnd: edgeMarker, className: active ? 'active' : status.get(e.source) === 'completed' ? 'done' : undefined };
+    });
+  }, [edges, nodes]);
+
+  const fit = useCallback(() => void flow?.fitView({ padding: 0.15, duration: 250 }), [flow]);
+  const tidy = () => {
+    const pos = autoLayout(graph);
+    setNodes((ns) => ns.map((n) => (pos[n.id] ? { ...n, position: pos[n.id]! } : n)));
+    setTimeout(fit, 30);
+  };
 
   const selectedNode = nodes.find((n) => n.selected) ?? null;
   const updateParams = (id: string, patch: Record<string, string>) =>
@@ -239,9 +275,18 @@ export function WorkflowEditor({ manifest, integrations, colorMode, log, onProje
   return (
     <div className="wf">
       <div className="wf-toolbar">
-        {(Object.keys(NODE_SPECS) as WorkflowNodeType[]).map((k) => (
-          <button key={k} className="btn small" onClick={() => addNode(k)} disabled={running}>+ {NODE_SPECS[k].label}</button>
-        ))}
+        <span className="wf-add" role="group" aria-label="Add a step">
+          {(Object.keys(NODE_SPECS) as WorkflowNodeType[]).map((k) => (
+            <button key={k} className="btn small" onClick={() => addNode(k)} disabled={running}>+ {NODE_SPECS[k].label}</button>
+          ))}
+        </span>
+        <span className="wf-view" role="group" aria-label="View">
+          <button className="btn small ghost" onClick={fit} disabled={!nodes.length} title="Zoom to show the whole workflow">Fit workflow</button>
+          <button className="btn small ghost" onClick={tidy} disabled={!nodes.length || running} title="Line the steps up from left to right in the order they run">Tidy layout</button>
+          <button className="btn small ghost" aria-pressed={showSettings} onClick={() => setShowSettings((v) => !v)} title="Show or hide the settings of the selected step">Step settings</button>
+          <button className="btn small ghost" aria-pressed={showFiles} onClick={() => setShowFiles((v) => !v)} title="Show or hide the per-file results of the last run">File results</button>
+          <button className="btn small ghost" aria-pressed={showMap} onClick={() => setShowMap((v) => !v)} title="Show or hide the overview map">Map</button>
+        </span>
         <span className="spacer" />
         <span className={`wf-msg${message?.error ? ' error' : ''}`} role="status">
           {message?.text ?? (issues.length ? `${issues.length} issue${issues.length > 1 ? 's' : ''}: ${issues[0]}` : 'Workflow valid · autosaved')}
@@ -255,7 +300,10 @@ export function WorkflowEditor({ manifest, integrations, colorMode, log, onProje
           <div className="wf-canvas">
             <ReactFlow<StudioNode>
               nodes={decorated}
-              edges={edges}
+              edges={shownEdges}
+              onInit={setFlow}
+              fitViewOptions={{ padding: 0.15 }}
+              minZoom={0.2}
               nodeTypes={nodeTypes}
               onNodesChange={onNodesChange}
               onEdgesChange={onEdgesChange}
@@ -267,11 +315,12 @@ export function WorkflowEditor({ manifest, integrations, colorMode, log, onProje
             >
               <Background gap={18} />
               <Controls />
-              <MiniMap pannable zoomable />
+              {showMap && <MiniMap pannable zoomable />}
             </ReactFlow>
           </div>
           {approval && <ApprovalPanel approval={approval} assets={assets} />}
-          {files && files.names.length > 0 && (
+          {/* While a decision is waiting, the approval panel gets the room; the results table comes back afterwards. */}
+          {!approval && showFiles && files && files.names.length > 0 && (
             <div className="wf-files" aria-label="Files in this run">
               <table>
                 <thead><tr><th>File</th>{order.map((id) => <th key={id}>{decorated.find((n) => n.id === id)?.data.summary}</th>)}</tr></thead>
@@ -281,7 +330,7 @@ export function WorkflowEditor({ manifest, integrations, colorMode, log, onProje
                       <td title={name}>{name}</td>
                       {order.map((id) => {
                         const c = files.cells[id]?.[i];
-                        return <td key={id} className={`cell ${c?.status ?? 'idle'}`} title={c?.message}>{c ? (c.status === 'completed' ? '✓' : c.status === 'failed' ? '✕' : c.status === 'running' ? '…' : c.status) : '·'}{c?.status === 'failed' && c.message ? ` ${c.message}` : ''}</td>;
+                        return <td key={id} className={`cell ${c?.status ?? 'idle'}`} title={c?.message}>{c ? (c.status === 'completed' ? '✓' : c.status === 'failed' ? '✕' : c.status === 'running' ? '…' : STATUS_LABEL[c.status]) : '·'}{c?.status === 'failed' && c.message ? ` ${c.message}` : ''}</td>;
                       })}
                     </tr>
                   ))}
@@ -290,7 +339,7 @@ export function WorkflowEditor({ manifest, integrations, colorMode, log, onProje
             </div>
           )}
         </div>
-        {selectedNode && (
+        {selectedNode && showSettings && !approval && (
           <NodeInspector key={selectedNode.id} node={selectedNode} assets={assets} disabled={running} mock={isMockNode(selectedNode.data.kind, selectedNode.data.params)}
             onChange={(patch) => updateParams(selectedNode.id, patch)} />
         )}

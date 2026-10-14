@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Group, Panel, Separator, useDefaultLayout, usePanelRef, type PanelSize } from 'react-resizable-panels';
 import { EDITOR_APPS } from '@shared/appEditors';
 import type { IntegrationSnapshot } from '@shared/ipc';
+import { shouldShowTimeline } from '@shared/timeline';
 import type { AppProbeResult, ProjectManifest, WorkspaceId } from '@shared/types';
 import { AssetBrowser } from './components/AssetBrowser';
 import { BottomPanel, type LogEntry } from './components/BottomPanel';
@@ -43,6 +44,44 @@ function useDock(key: string, defaultOpen: boolean) {
     setOpen(!collapsed);
   }, [ref, key]);
   const toggle = useCallback(() => setOpen((o) => !o), []);
+  return { ref, open, toggle, onResize };
+}
+
+/** Height the bottom panel keeps when folded: just its header. */
+const BOTTOM_HEADER = 36;
+
+/**
+ * The bottom panel: a slim Activity strip by default, taller when it shows a timeline. Each context
+ * remembers its own height and whether it is folded down to its header.
+ */
+function useBottom(context: 'timeline' | 'activity') {
+  const ref = usePanelRef();
+  const key = `cs-bottom-${context}`;
+  const [open, setOpen] = useState(() => read(`${key}-open`) !== '0');
+  const ready = useRef(false);
+  useEffect(() => {
+    const p = ref.current;
+    if (!p) return;
+    ready.current = false;
+    if (read(`${key}-open`) === '0') { if (!p.isCollapsed()) p.collapse(); setOpen(false); } else {
+      if (p.isCollapsed()) p.expand();
+      p.resize(read(`${key}-size`) ?? (context === 'timeline' ? '26%' : '13%'));
+      setOpen(true);
+    }
+    ready.current = true;
+  }, [context, key, ref]);
+  const onResize = useCallback((size: PanelSize) => {
+    if (!ready.current) return;
+    const collapsed = ref.current?.isCollapsed() ?? false;
+    if (!collapsed && size.inPixels > BOTTOM_HEADER + 4) write(`${key}-size`, `${size.asPercentage.toFixed(1)}%`);
+    write(`${key}-open`, collapsed ? '0' : '1');
+    setOpen(!collapsed);
+  }, [ref, key]);
+  const toggle = useCallback(() => {
+    const p = ref.current;
+    if (!p) return;
+    if (p.isCollapsed()) p.expand(); else p.collapse();
+  }, [ref]);
   return { ref, open, toggle, onResize };
 }
 
@@ -141,7 +180,7 @@ export function App() {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [toggleMedia, toggleClaude]);
-  const center = useDefaultLayout({ id: 'cs-center', storage });
+  const bottom = useBottom(shouldShowTimeline(selected?.kind) ? 'timeline' : 'activity');
 
   return (
     <div className="app">
@@ -174,7 +213,7 @@ export function App() {
           </Panel>
           <Separator className="sep" />
           <Panel id="center" minSize="35">
-            <Group orientation="vertical" defaultLayout={center.defaultLayout} onLayoutChanged={center.onLayoutChanged}>
+            <Group orientation="vertical" onLayoutChanged={() => window.dispatchEvent(new Event('resize'))}>
               <Panel id="viewer" minSize="30">
                 <div className="center">
                   <WorkspaceView
@@ -196,8 +235,8 @@ export function App() {
                 </div>
               </Panel>
               <Separator className="sep" />
-              <Panel id="bottom" defaultSize="24" minSize={90} collapsible>
-                <BottomPanel selected={selected} log={log} liveApi={liveApi} manifest={manifest} />
+              <Panel id="bottom" defaultSize="13" minSize={90} collapsible collapsedSize={BOTTOM_HEADER} panelRef={bottom.ref} onResize={bottom.onResize}>
+                <BottomPanel selected={selected} log={log} liveApi={liveApi} manifest={manifest} open={bottom.open} onToggle={bottom.toggle} />
               </Panel>
             </Group>
           </Panel>

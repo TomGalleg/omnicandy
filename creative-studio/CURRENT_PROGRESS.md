@@ -1,6 +1,6 @@
 # CreateCraft: current progress (review package)
 
-Date: 2026-10-14 · Branch: `main` (local only, not pushed) · Last commit: `fab6ab7`
+Date: 2026-10-14 · Branch: `main` (local only, not pushed) · Last commit: Phase 1.3-1.4
 
 CreateCraft is a Windows desktop app (Electron + React + TypeScript) that embeds and drives the
 seven installed ArtCraft apps (PhotoCraft, VectorCraft, SoundCraft, FilmCraft, LightCraft,
@@ -20,9 +20,8 @@ Evidence for each integration (exact commands, versions and test results) is in
 still describes "Phase 2, steps 1–2"); this file and the audit are the current picture.
 
 **Resume here (new conversation):** follow Tomas's Master Development Instructions (phases 0–10).
-Phase 0 audit and Phase 1 items 1.1 and 1.2 are done (see "Master plan status" below). **Next: Phase 1.3
-(layout declutter) and 1.4 (Workflow Editor layout), after Tomas's OK.** Do not start Phase 2 until
-Phase 1 is approved. Keep work in small milestones and replies short.
+Phase 0 audit and all of Phase 1 (1.1 to 1.4) are done (see "Master plan status" below). **Next: Phase 2.1
+and 2.2 (project storage folder and folder layout), after Tomas's OK of Phase 1.** Keep work in small milestones and replies short.
 
 ## Master plan status (Phase 0 audit, 2026-10-14)
 
@@ -34,8 +33,8 @@ typecheck 0, Vitest 135 passed / 14 skipped (opt-in live tests).
 | 1.1 | Header status chips moved out of the header | **WORKING** | none | `scripts/smoke-docks.mjs` |
 | 1.1 | Settings dialog: Appearance, Integrations (ArtCraft, Claude, AI keys), Advanced diagnostics | **WORKING** | none | `smoke-docks.mjs` |
 | 1.2 | Vertical Media tab (far left) and Claude tab (left edge of Claude panel); collapse/expand, resize, remembered width and state, Ctrl+Shift+M / Ctrl+Shift+C, aria labels | **WORKING** | none | `smoke-docks.mjs` 15/15; embedded app follows: `smoke-live.mjs` |
-| 1.3 | Collapsible inspector, metadata in an expandable section, smaller Activity panel, plainer labels | NOT STARTED | 1.2 | screenshots + smoke |
-| 1.4 | Workflow Editor: collapsible side panels, Fit/auto layout, running-node highlight, approval expands | NOT STARTED | 1.2 | `smoke-workflow.mjs` + screenshots |
+| 1.3 | Collapsible inspector, metadata in an expandable section, smaller Activity panel, plainer labels | **WORKING** | 1.2 | `smoke-docks.mjs`; screenshots 01, 42-45 |
+| 1.4 | Workflow Editor: collapsible side panels, Fit/auto layout, running-node highlight, approval expands | **WORKING** | 1.2 | `smoke-workflow.mjs` 7/7, `workflowLayout.test.ts`; screenshots 95-96 |
 | 2 | User-selected project storage, project folder layout, open/move/duplicate/relink, virtual collections | NOT IMPLEMENTED (projects live in `%APPDATA%\creative-studio\projects`, `src/main/index.ts:49`) | 1 | new unit tests + `smoke-projects.mjs` |
 | 3 | Prompt-first Project Home, Claude creates projects, blank project types, overview | NOT IMPLEMENTED (Home lists projects; creation is name-only) | 2 | smoke + real Claude run |
 | 4 | Simplified / Advanced navigation | NOT IMPLEMENTED | 1, 3 | smoke |
@@ -52,6 +51,28 @@ windows, including the embedded app following the Claude and Media tabs; `smoke-
 (its stale "9 originals" check now accepts the current 11). Other smokes only had their header
 selectors updated (Settings button, `.side-tab.right`) and were not re-run. New screenshots:
 `docs/screenshots/40-45` (settings, side tabs).
+
+Phase 1.3-1.4 (2026-10-14):
+* Media dock: the Inspector is now **Details** and folds to its header (Hide/Show, remembered). Basic facts
+  (type, size, file size, derived from, prompt, added) stay visible; origin, source, settings, cost,
+  references, licensing, stored path, checksum (SHA-256) and the read-only note are under **More details**.
+  Kind labels are plain (Picture, Vector art, Sound, Video, Layout, App document); filter gained Layouts.
+* Bottom panel: a slim **Activity** strip by default (13%), taller (26%) when it shows a timeline; each
+  context remembers its own height and can be folded to its header (Hide/Show; when folded, the latest
+  activity line shows in the header). Log sources read as names (Project, Workflow, PhotoCraft...), and
+  workflow log lines name the step instead of its internal id. The old `cs-center` saved layout is no
+  longer used.
+* Workflow Editor: toolbar split into "Add a step" and "View" groups: **Fit workflow**, **Tidy layout**
+  (left-to-right by run order, `src/shared/workflowLayout.ts`), and toggles for Step settings, File results
+  and the Map (MiniMap now off by default); all remembered. Thicker connections with arrowheads; done
+  connections turn green, connections into the running step animate. The running step glows (pulse,
+  off for reduced motion), a step waiting for approval is outlined, statuses read "waiting / running /
+  needs you / done". While an approval is waiting, the approval panel gets the room (up to 62%) and the
+  settings and results panels step aside; they come back after the decision.
+* Tests: `npm run check` lint 0, types 0, **138 passed / 14 skipped** (+3 `workflowLayout.test.ts`);
+  `smoke-docks.mjs` 15/15; `smoke-workflow.mjs` 7/7 (real LightCraft headless run + approval).
+  `scripts/smoke.mjs` stops at its workflow part ("Approve" button never appears for its old demo graph);
+  it fails the same way on `bb89719` without these changes, so it is a stale smoke, not a regression.
 
 Phase 1 note: the old `integrationStatus().claude` field in `src/main/ipc.ts` still says "not
 configured in this build" (stale); Settings now shows Claude's real sign-in state instead.

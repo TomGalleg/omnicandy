@@ -11,8 +11,17 @@ export interface LogEntry {
   message: string;
 }
 
+/** Plain names for where a log line came from. */
+const SOURCE_LABEL: Record<string, string> = {
+  project: 'Project', artcraft: 'ArtCraft', import: 'Import', workflow: 'Workflow', generate: 'AI Generate', deliver: 'Deliver',
+  photocraft: 'PhotoCraft', vectorcraft: 'VectorCraft', soundcraft: 'SoundCraft', filmcraft: 'FilmCraft',
+  lightcraft: 'LightCraft', effectcraft: 'EffectCraft', designcraft: 'DesignCraft',
+};
+
 /** Context-sensitive bottom area: a timeline only for time-based media, otherwise the activity log. */
-export function BottomPanel({ selected, log, liveApi, manifest }: { selected: Asset | null; log: LogEntry[]; liveApi: LiveApi; manifest?: ProjectManifest | null }) {
+export function BottomPanel({ selected, log, liveApi, manifest, open = true, onToggle }: {
+  selected: Asset | null; log: LogEntry[]; liveApi: LiveApi; manifest?: ProjectManifest | null; open?: boolean; onToggle?: () => void;
+}) {
   const timeline = shouldShowTimeline(selected?.kind);
   const live = liveApi.live;
   const liveApp = !!selected && live?.status === 'ready' && live.asset?.id === selected.id && (live.appId === 'filmcraft' || live.appId === 'soundcraft') ? live.appId : null;
@@ -22,10 +31,14 @@ export function BottomPanel({ selected, log, liveApi, manifest }: { selected: As
   return (
     <section className="pane" aria-label={timeline ? 'Timeline' : 'Activity'}>
       <div className="pane-header">
-        {timeline ? `Timeline · ${selected!.name}` : 'Activity'}
-        {timeline && <span className="asset-meta" style={{ textTransform: 'none', letterSpacing: 0 }}>{hint}</span>}
+        <span className="bottom-title">{timeline ? `Timeline · ${selected!.name}` : 'Activity'}
+          {!timeline && !open && log.length > 0 && <span className="asset-meta bottom-latest">{log[log.length - 1]!.message}</span>}
+        </span>
+        {timeline && open && <span className="asset-meta bottom-hint">{hint}</span>}
+        {onToggle && <button className="btn small ghost" aria-expanded={open} aria-controls="bottom-body" onClick={onToggle}
+          title={open ? `Hide the ${timeline ? 'timeline' : 'activity list'}` : `Show the ${timeline ? 'timeline' : 'activity list'}`}>{open ? 'Hide' : 'Show'}</button>}
       </div>
-      <div className="pane-body">
+      <div className="pane-body" id="bottom-body" hidden={!open}>
         {timeline ? (liveApp ? <LiveTimeline liveApi={liveApi} app={liveApp} assetId={selected!.id} assets={manifest?.assets ?? []} /> : <Timeline asset={selected!} />) : <ActivityLog log={log} />}
       </div>
     </section>
@@ -39,7 +52,7 @@ function ActivityLog({ log }: { log: LogEntry[] }) {
       {[...log].reverse().map((e, i) => (
         <div className="log-row" key={log.length - i}>
           <time>{e.at.toLocaleTimeString()}</time>
-          <span>{e.source}</span>
+          <span>{SOURCE_LABEL[e.source] ?? e.source}</span>
           <span>{e.message}</span>
         </div>
       ))}
