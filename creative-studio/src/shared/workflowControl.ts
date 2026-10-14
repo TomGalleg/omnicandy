@@ -135,6 +135,12 @@ export interface WorkflowTemplate {
   createdAt: string;
   /** The graph with the file choices removed: a template says what to do, not to which files. */
   graph: WorkflowGraph;
+  /** Built-in starter templates only (read-only; user templates leave these out). */
+  builtin?: boolean;
+  kind?: string;
+  status?: 'ready' | 'paid' | 'partial';
+  needs?: string;
+  costNote?: string;
 }
 
 export function templateGraph(g: WorkflowGraph): WorkflowGraph {

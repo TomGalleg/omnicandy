@@ -34,7 +34,7 @@ try {
     && (await win.getByLabel('Describe what you would like to create').count()) === 1
     && (await win.getByRole('button', { name: 'Create with Claude' }).isDisabled())
     && (await win.getByRole('button', { name: 'Open existing project…' }).count()) === 1
-    && (await win.getByRole('button', { name: /^Templates/ }).isDisabled()));
+    && (await win.getByRole('button', { name: /^Templates/ }).isEnabled()));
   await win.getByRole('button', { name: 'New blank project' }).click();
   check('blank project offers the five categories',
     (await win.getByLabel('Project type').locator('option').allTextContents()).join('|') === 'Image / Photography|Graphic Design|Video / Animation|Audio|Mixed Media');

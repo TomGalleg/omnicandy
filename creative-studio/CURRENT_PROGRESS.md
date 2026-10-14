@@ -20,7 +20,7 @@ Evidence for each integration (exact commands, versions and test results) is in
 still describes "Phase 2, steps 1–2"); this file and the audit are the current picture.
 
 **Resume here (new conversation):** follow Tomas's Master Development Instructions (phases 0–10).
-Phase 0 audit, Phase 1, Phase 2 and Phase 3 (3.1-3.4, plus the two gap fixes below) are done (see "Master plan status" below). Phase 4 (Simplified / Advanced navigation) is done too. Phase 5 (parts 1 and 2: Claude builds, runs and monitors workflows on the shared engine; pause, manual control, rerun of affected steps, versions, templates) is done; Phase 6 (real image generation, spending limit, Workflow AI step) is done and verified; **Phase 7 (AI video) is done for Veo and verified; Runway and Luma are not built.** Keep work in small milestones and replies short.
+Phase 0 audit, Phase 1, Phase 2 and Phase 3 (3.1-3.4, plus the two gap fixes below) are done (see "Master plan status" below). Phase 4 (Simplified / Advanced navigation) is done too. Phase 5 (parts 1 and 2: Claude builds, runs and monitors workflows on the shared engine; pause, manual control, rerun of affected steps, versions, templates) is done; Phase 6 (real image generation, spending limit, Workflow AI step) is done and verified; **Phase 7 (AI video) is done for Veo and verified; Runway and Luma are not built; Phase 8 (templates) is done.** Keep work in small milestones and replies short.
 
 ## Master plan status (Phase 0 audit, 2026-10-14)
 
@@ -38,7 +38,7 @@ typecheck 0, Vitest 135 passed / 14 skipped (opt-in live tests).
 | 2.2 | Self-contained project folder layout (Assets/, Versions/, Exports/, Workflows/, per-app folders...) | **WORKING** for new projects; older projects keep their layout | 2.1 | `projectStore.test.ts`, `projects.test.ts` |
 | 2.3 | Open existing project from any folder, Duplicate, verified Move, Locate a missing project | **WORKING** (relink of individual missing files: n/a, files are copied into the project) | 2.1 | `projects.test.ts` |
 | 2.4 | Virtual collections (All, Originals, AI, Favorites, Versions, Workflows, Deliverables) | **WORKING** | 2.2 | `collections.test.ts` |
-| 3.1 | Prompt-first Project Home: prompt, Create with Claude, New blank project, Open existing, recent project cards with type/brief, search | **WORKING** (Templates button is disabled: Phase 8) | 2 | `smoke-projects.mjs` 13/13 |
+| 3.1 | Prompt-first Project Home: prompt, Create with Claude, New blank project, Open existing, recent project cards with type/brief, search | **WORKING** (Templates button enabled in Phase 8) | 2 | `smoke-projects.mjs` 13/13 |
 | 3.2 | AI-first creation: real Claude call returns name, type, finished output, apps, AI tools, steps, questions; user approves; project created in chosen/default folder; optional reference import; opens matching workspace | **WORKING** (one real Claude call verified) | 3.1 | `smoke-home-ai.mjs` 6/6 (real Claude, Sonnet 5.5) |
 | 3.3 | Blank project: name, type (5 categories), folder | **WORKING** | 3.1 | `projects.test.ts`, `smoke-projects.mjs` |
 | 3.4 | Project Overview: brief, objective, progress, latest artwork, items to review, recent versions/exports, Continue creating, workspace + selected file restored | **WORKING**: Claude chat is saved in the project folder and restored on reopen (see "Phase 3 gaps closed") | 3.1 | `projects.test.ts`, `projectStore.test.ts`, `smoke-home-ai.mjs`, screenshots 46-47 |
@@ -46,7 +46,7 @@ typecheck 0, Vitest 135 passed / 14 skipped (opt-in live tests).
 | 5 | Claude builds and runs workflows (shared engine) | **WORKING** (paid AI Generate steps stay blocked until Phase 6) | 1.4 | `workflowPlan.test.ts`, `workflowControl.test.ts`, `workflowVersions.test.ts`, `smoke-claude-workflow.mjs` 9/9, `smoke-workflow-control.mjs` 32/32 (real Claude + real PhotoCraft) |
 | 6 | Real Gemini / OpenAI image generation; spending limits; Workflow AI node | **WORKING / VERIFIED** (2026-10-14): one approved real image from each provider (OpenAI `gpt-image-2.5-flare`, Gemini `gemini-nano-banana-2.1`), 1024x1024, in the library with prompt/model/estimate; spending limit + ledger; Workflow AI step on the real path. Costs are estimates, not confirmed charges. | user's keys + OK | done |
 | 7 | AI video providers (Veo, Runway, Luma) | **WORKING / VERIFIED (Veo)** 2026-10-14: one approved real clip (Veo 3.1 Lite, 16:9, 4 s, 720p, est. $0.20) came back as a 1280x720 4 s mp4 in the library with provenance and ledger entry. Runway built but not live-tested; Luma not built. | 6 | one approved real Veo clip |
-| 8 | Templates | NOT IMPLEMENTED | 5 | smoke |
+| 8 | Templates | **WORKING** (2026-10-14): nine built-in templates on the shared workflow engine, Home Templates panel, Claude recommendation, user templates. Not run end to end with real files in this phase. | 5 | `templates.test.ts`, `smoke-templates.mjs` 6/6 |
 | 9 | README / docs refresh, status vocabulary | PARTIAL (README out of date) | any | review |
 | 10 | Installer, first run, backup, recovery | NOT IMPLEMENTED | 2 | manual |
 
@@ -280,6 +280,25 @@ Phase 7 (2026-10-14):
 * Tests: lint 0, types 0, **181 passed / 14 skipped** (+7 `videoGeneration.test.ts`: price and rules, request mapping, decline sends
   nothing, spending limit, full job to library asset + ledger, restart resume, failure and stop-waiting); `smoke-generate` 16/16,
   `smoke-generate-workflow` 7/7, `smoke-docks` 15/15. No paid call was made.
+
+Phase 8 (2026-10-14):
+* **Nine built-in templates** (`src/shared/templates.ts`), each a real `WorkflowGraph` built through the same planner checks as Claude's workflows
+  (apps, edits, presets, models validated) with file choices left empty: Cinematic poster, Photo restoration, Image enhancement, AI image variations,
+  Animated artwork, Short cinematic video, Video sequence with music, Logo and vector illustration, Photo book or publication. Every one has an approval step.
+* **Honest labels:** *Ready* (local ArtCraft apps only: Cinematic poster, Image enhancement), *Uses paid AI (asks first)* (AI image variations: Gemini
+  Nano Banana 2.1, 3 images; the Workflow AI step keeps the approval dialog and project spending limit; nothing starts on its own) and *Partly manual*
+  (limits stated on the card). Limits: restoration is tone/clarity/sharpen only (no scratch repair); animated artwork and the two video templates need a
+  clip (no workflow video-generation step; Veo clips are made in AI Generate with their own approval); the sequence-with-music template only prepares
+  clips, joining clips and music is done on the FilmCraft timeline by you or Claude; logo/vector needs an existing SVG (no raster-to-vector, no logo
+  drawing); photo book is one DesignCraft layout per run (text replace, PDF/PNG), not page assembly.
+* **UI:** Home **Templates** button opens a panel with the templates (plus templates saved in the open project); **Start a project with this** creates
+  a project of the right type, fills in the workflow and opens the Workflow tab. Built-ins also appear in the Workflow tab's Templates list (Use).
+  **Saving your own** is the existing Phase 5 feature (workflow must have run successfully and be unchanged). Claude's project plan now has an optional
+  `template` id (validated against the catalogue); the plan card shows a ticked "Start from Claude's recommended template" that is applied on approval.
+* **Tests:** lint 0, types 0, **186 passed / 14 skipped** (+3 `templates.test.ts`; one `videoGeneration` test failed once under full-suite load and
+  passes alone and on re-run); `smoke-templates.mjs` 6/6 (new, offline), `smoke-projects.mjs` 13/13 (Templates check updated), `smoke-workflow.mjs` 7/7.
+  Not run: a template applied to real files end to end, and the Claude recommendation live (needs one real Claude call; no paid generation was made).
+  Screenshots `97-templates-home.png`, `98-template-applied.png`.
 
 Phase 1 note: the old `integrationStatus().claude` field in `src/main/ipc.ts` still says "not
 configured in this build" (stale); Settings now shows Claude's real sign-in state instead.

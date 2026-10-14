@@ -10,6 +10,7 @@ import { resolveTheme } from '@shared/theme';
 import type { AppearanceSettings } from '@shared/types';
 import { MockArtCraftAdapter, MockGenerationProvider } from '@shared/mocks';
 import { validateGraph, type WorkflowGraph, type WorkflowRunEvent } from '@shared/workflow';
+import { builtinTemplates } from '@shared/templates';
 import { affectedNodes, reusableOutputs, RunMonitor, sameAsRun, templateGraph, templateSlug, type RunOutputs, type WorkflowTemplate } from '@shared/workflowControl';
 import { changeStep, type StepChange, type WorkflowPlan } from '@shared/workflowPlan';
 import { exportPresetsOf, importAssetIds, WorkflowRunner, type RunnerDeps } from '@shared/workflowRunner';
@@ -259,12 +260,12 @@ export function registerIpc(d: IpcDeps): void {
     await store.saveWorkflowTemplate(t);
     return t;
   };
-  handle(IPC.workflowTemplates, none, async () => (await d.project()).listWorkflowTemplates());
+  handle(IPC.workflowTemplates, none, async () => [...(await (await d.project()).listWorkflowTemplates()), ...builtinTemplates()]);
   handle(IPC.workflowTemplateSave, z.tuple([z.string().min(1).max(80), z.string().max(400)]), (name, desc) => makeTemplate(name, desc));
   handle(IPC.workflowTemplateUse, z.tuple([z.string().max(128)]), async (id) => {
     if (running) throw new Error('A workflow is running. Cancel it first.');
     const store = await d.project();
-    const t = (await store.listWorkflowTemplates()).find((x) => x.id === id);
+    const t = [...(await store.listWorkflowTemplates()), ...builtinTemplates()].find((x) => x.id === id);
     if (!t) throw new Error('That template no longer exists.');
     await store.snapshotWorkflow('Before using a template');
     await store.saveWorkflow(t.graph);

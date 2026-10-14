@@ -3,6 +3,7 @@ import { briefFromPlan, PROJECT_KINDS, projectKindLabel, type ProjectKind, type 
 import type { ProjectManifest, ProjectSummary, WorkspaceId } from '@shared/types';
 import type { WorkflowGraph } from '@shared/workflow';
 import type { PendingReference } from '@shared/ipc';
+import type { WorkflowTemplate } from '@shared/workflowControl';
 import { formatBytes } from '../format';
 
 interface Props {
@@ -35,6 +36,10 @@ export function HomeWorkspace({ manifest, projectKey, onSwitched, onGoto, log }:
   const [newName, setNewName] = useState('');
   const [blankKind, setBlankKind] = useState<ProjectKind>('mixed');
   const [search, setSearch] = useState('');
+  // Templates
+  const [showTemplates, setShowTemplates] = useState(false);
+  const [templates, setTemplates] = useState<WorkflowTemplate[]>([]);
+  const [useRecommended, setUseRecommended] = useState(true);
 
   const reload = useCallback(() => { void window.studio.projects.list().then(setProjects); }, []);
   useEffect(reload, [reload, projectKey, manifest?.updatedAt]);
@@ -57,6 +62,23 @@ export function HomeWorkspace({ manifest, projectKey, onSwitched, onGoto, log }:
     onSwitched(key);
   });
 
+  const openTemplates = () => {
+    setShowTemplates((v) => !v);
+    void window.studio.listWorkflowTemplates().then(setTemplates).catch((e) => setError(errText(e)));
+  };
+  /** A new project whose workflow is the template (file choices stay empty; nothing runs or bills). */
+  const startFromTemplate = (t: WorkflowTemplate) => run(async () => {
+    const meta = { kind: (t.kind ?? 'mixed') as ProjectKind, brief: `${t.name}: ${t.description}${t.needs ? `
+
+Needs: ${t.needs}` : ''}`, objective: t.description };
+    const key = await window.studio.projects.create(t.name, location ?? undefined, meta);
+    await window.studio.projects.open(key);
+    await window.studio.useWorkflowTemplate(t.id);
+    setShowTemplates(false); setLocation(null);
+    log('project', `Created "${t.name}" from a template. Import your files, pick them in the Files step, then run the workflow.`);
+    onSwitched(key);
+    onGoto('workflow');
+  });
   /** One real Claude call. Nothing is created and nothing paid starts until the plan is approved. */
   const makePlan = async () => {
     const text = [request.trim(), answers.trim() && `My answers to your questions: ${answers.trim()}`].filter(Boolean).join('\n\n');
@@ -72,6 +94,8 @@ export function HomeWorkspace({ manifest, projectKey, onSwitched, onGoto, log }:
     log('project', `Created "${plan.name}" from your description.`);
     onSwitched(key);
     const kind = plan.kind;
+    const tpl = useRecommended && plan.template ? plan.template : null;
+    if (tpl) await window.studio.useWorkflowTemplate(tpl);
     // Start the new project's chat with the planning exchange (saved inside the project folder).
     void window.studio.claude.seed(request.trim(), `${plan.finishedOutput}\n\n${plan.summary}\n\n${plan.steps.map((s, i) => `${i + 1}. ${s}`).join('\n')}`);
     setPlan(null); setRequest(''); setAnswers(''); setLocation(null);
@@ -83,7 +107,7 @@ export function HomeWorkspace({ manifest, projectKey, onSwitched, onGoto, log }:
       setRefs([]);
       log('project', `Imported ${imported} reference file${imported === 1 ? '' : 's'}${r.errors.length ? `; ${r.errors.length} failed: ${r.errors.join('; ')}` : ''}.`);
     }
-    onGoto(imported ? 'media' : workspaceFor(kind));
+    onGoto(imported ? 'media' : tpl ? 'workflow' : workspaceFor(kind));
   });
 
   const q = search.trim().toLowerCase();
@@ -105,7 +129,7 @@ export function HomeWorkspace({ manifest, projectKey, onSwitched, onGoto, log }:
           <button className="btn" disabled={busy} onClick={() => setBlank((v) => !v)}>New blank project</button>
           <button className="btn" disabled={busy}
             onClick={() => void run(async () => { const key = await window.studio.projects.openExisting(); if (key) { await window.studio.projects.open(key); onSwitched(key); } })}>Open existing project…</button>
-          <button className="btn" disabled title="Reusable creative templates arrive in a later update">Templates (coming later)</button>
+          <button className="btn" disabled={busy} aria-pressed={showTemplates} onClick={openTemplates}>Templates</button>
           <button className="btn small ghost" type="button" disabled={busy} title={location ?? 'Uses the project folder from Settings'}
             onClick={() => void window.studio.projects.pickFolder().then((d) => { if (d) setLocation(d); })}>
             {folderLabel ? `Save in: ${folderLabel}` : 'Default folder · Choose…'}
@@ -133,6 +157,24 @@ export function HomeWorkspace({ manifest, projectKey, onSwitched, onGoto, log }:
           </form>
         )}
         {error && <div className="wf-msg error" role="alert">{error}</div>}
+        {showTemplates && (
+          <div className="plan-card panel-card" role="region" aria-label="Creative templates">
+            <h3>Templates</h3>
+            <p className="asset-meta">Each template is a real workflow you can edit. Starting one only creates a project and fills in the steps: you choose the files, and nothing runs or bills until you start it and approve any price.</p>
+            <ul className="template-list">
+              {templates.map((t) => (
+                <li key={t.id} className="template-item">
+                  <strong>{t.name}</strong>
+                  {' '}<span className={`chip ${t.status === 'ready' ? 'real' : ''}`}>{t.builtin ? ({ ready: 'Ready: local apps only', paid: 'Uses paid AI (asks first)', partial: 'Partly manual' } as Record<string, string>)[t.status ?? 'partial'] : 'Saved by you'}</span>
+                  <div>{t.description}</div>
+                  {t.needs && <div className="asset-meta">{t.needs}</div>}
+                  <div className="btn-row"><button className="btn small primary" disabled={busy} onClick={() => void startFromTemplate(t)}>Start a project with this</button></div>
+                </li>
+              ))}
+            </ul>
+            <p className="asset-meta">Your own templates: finish a workflow successfully, then Workflow tab → Templates → Save. They appear here while that project is open.</p>
+          </div>
+        )}
         {plan && (
           <div className="plan-card panel-card" role="region" aria-label="Claude's plan">
             <h3>Claude's plan</h3>
@@ -150,6 +192,10 @@ export function HomeWorkspace({ manifest, projectKey, onSwitched, onGoto, log }:
             <p>{plan.summary}</p>
             {plan.apps.length > 0 && <p><strong>Apps:</strong> {plan.apps.join(', ')}</p>}
             {plan.aiTools.length > 0 && <p><strong>AI tools:</strong> {plan.aiTools.join('; ')} <span className="asset-meta">(every paid image shows its price and asks first)</span></p>}
+            {plan.template && templates.length >= 0 && (
+              <label className="plan-field"><span><input type="checkbox" checked={useRecommended} onChange={(e) => setUseRecommended(e.target.checked)} />{' '}
+                Start from Claude's recommended template: <strong>{plan.template.replace(/^builtin-/, '').replace(/-/g, ' ')}</strong> (you can edit it; nothing runs or bills on its own)</span></label>
+            )}
             <ol className="plan-steps">{plan.steps.map((st, i) => <li key={i}>{st}</li>)}</ol>
             {plan.questions.length > 0 && (
               <div className="plan-questions">

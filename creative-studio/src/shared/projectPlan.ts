@@ -23,6 +23,8 @@ export const projectPlanSchema = z.object({
   aiTools: z.array(short(200)).max(5).default([]),
   steps: z.array(short(240)).min(1).max(8),
   questions: z.array(short(240)).max(3).default([]),
+  /** Id of a built-in template that fits (or null). Only a recommendation: nothing is applied until approval. */
+  template: z.string().trim().max(80).nullish(),
 });
 export type ProjectPlan = z.infer<typeof projectPlanSchema>;
 

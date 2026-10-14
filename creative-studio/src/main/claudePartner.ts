@@ -22,6 +22,7 @@ import { buildWorkflowPlan, workflowCatalog, type PlanContext, type StepChange, 
 import type { RunSnapshot } from '@shared/workflowControl';
 import type { DeliverQueue } from './deliver';
 import { buildResumeContext } from '@shared/claudeHistory';
+import { builtinTemplates, templateCatalogForClaude } from '@shared/templates';
 import { parseProjectPlan, PROJECT_KINDS, type ProjectPlan } from '@shared/projectPlan';
 import type { LiveTaskController } from './liveTask';
 import type { ProjectStore } from './projectStore';
@@ -52,7 +53,8 @@ const PLAN_PROMPT = `You are Claude, the Creative Partner inside CreateCraft. Th
 "apps": which ArtCraft apps to use, from PhotoCraft (photos), VectorCraft (vector art), SoundCraft (audio), FilmCraft (video timeline), LightCraft (light and colour), EffectCraft (effects and titles), DesignCraft (page layouts);
 "aiTools": AI image generation tools worth using, only from the list of available models you are given (an empty list when none is needed or none are set up); say what each is for;
 "steps": 3 to 6 short steps in plain language;
-"questions": at most 2 essential questions you still need answered (usually none).
+"questions": at most 2 essential questions you still need answered (usually none);
+"template": the id of ONE template from the list you are given if it clearly fits the project, otherwise null. Never invent an id.
 Do not start any work and do not mention software internals, node graphs or file formats unless the user did. Write in the user's language.`;
 
 const TOOL_NAMES = ['get_status', 'look_at_document', 'apply_edit', 'photocraft_command', 'undo', 'save_version', 'list_files', 'open_file', 'list_image_models', 'generate_image', 'list_video_models', 'generate_video', 'list_export_formats', 'export_file', 'timeline_add', 'timeline_move_clip', 'timeline_remove_clip', 'workflow_catalog', 'plan_workflow', 'workflow_status', 'run_workflow', 'rerun_workflow', 'pause_workflow', 'resume_workflow', 'cancel_workflow', 'change_workflow_step', 'list_workflow_versions', 'restore_workflow_version', 'save_workflow_template'];
@@ -522,7 +524,10 @@ New files: ${names.join(', ') || '(none)'}`);
       const models = IMAGE_MODELS.filter((m) => ready.some((p) => p.id === m.provider && p.billable))
         .map((m) => `${m.label} (${m.id}, ${m.note})`);
       const { query } = await import('@anthropic-ai/claude-agent-sdk');
-      const intro = `Available AI image models: ${models.length ? models.join('; ') : 'none set up'}.\n\nThe user wants to create:\n${request}`
+      const intro = `Templates you may recommend:
+${templateCatalogForClaude()}
+
+Available AI image models: ${models.length ? models.join('; ') : 'none set up'}.\n\nThe user wants to create:\n${request}`
         + (refs.length ? `\n\nThe user attached ${refs.length} reference file${refs.length === 1 ? '' : 's'} (kept on their PC; they are imported only after they approve your plan): ${refs.map((r) => `${r.name} (${r.kind}, ${Math.round(r.bytes / 1024)} KB${r.image ? ', shown below' : ''})`).join('; ')}. Take them into account in your plan.` : '');
       const images = refs.filter((r) => r.image);
       const prompt = images.length
@@ -554,7 +559,9 @@ New files: ${names.join(', ') || '(none)'}`);
           if (m.is_error) throw new Error('Claude could not make a plan right now. Try again in a moment.');
         }
       }
-      return parseProjectPlan(said);
+      const parsed = parseProjectPlan(said);
+      if (parsed.template && !builtinTemplates().some((t) => t.id === parsed.template)) parsed.template = null;
+      return parsed;
     } catch (e) {
       if (abort.signal.aborted) throw new Error('Planning was cancelled.');
       if (e instanceof Error && /not logged in|\/login/i.test(e.message)) throw signedOut();
