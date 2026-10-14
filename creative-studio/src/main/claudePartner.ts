@@ -17,7 +17,8 @@ import { estimateCost, formatUsd, IMAGE_MODELS, modelById, providerById, type Im
 import type { GenerateResultDto, ProviderStatusDto } from '@shared/ipc';
 import { EDITOR_APPS, type EditorAppId } from '@shared/appEditors';
 import { presetsFor } from '@shared/deliver';
-import { buildWorkflowPlan, workflowCatalog, type PlanContext, type WorkflowPlan } from '@shared/workflowPlan';
+import { buildWorkflowPlan, workflowCatalog, type PlanContext, type StepChange, type WorkflowPlan } from '@shared/workflowPlan';
+import type { RunSnapshot } from '@shared/workflowControl';
 import type { DeliverQueue } from './deliver';
 import { buildResumeContext } from '@shared/claudeHistory';
 import { parseProjectPlan, PROJECT_KINDS, type ProjectPlan } from '@shared/projectPlan';
@@ -38,7 +39,9 @@ To deliver finished files (JPEG for the web, PDF, MP4, WAV, GIF and so on), use 
 
 You can also create new pictures with generate_image (OpenAI or Google Gemini, using the user's own account). It costs the user money: only generate when they ask for it, keep the count low, and say which model you will use. CreateCraft shows the user the price and asks them to approve every call; if they cancel, accept it and do not ask again unless they bring it up. New images are added to the library as new files; open one with open_file to edit it.
 
-When the user wants a repeatable multi-step process (for example edit many photos and export them), build a workflow with plan_workflow instead of editing files yourself: read list_files, list_image_models and workflow_catalog, then propose it. The user decides whether to use it. Plan only: you cannot save or run workflows. Explain the plan in plain words, say what it costs and what they will be asked to approve, and be honest about warnings.`;
+When the user wants a repeatable multi-step process (for example edit many photos and export them), build a workflow with plan_workflow instead of editing files yourself: read list_files, list_image_models and workflow_catalog, then propose it. The user decides whether to use it. Explain the plan in plain words, say what it costs and what they will be asked to approve, and be honest about warnings.
+
+Once the user has applied a workflow, you can run and look after it with the workflow tools. workflow_status shows the steps, who has control, progress, problems and what is waiting for the user (use wait_seconds to watch a running workflow). run_workflow and rerun_workflow only start after the user approves in a dialog. rerun_workflow runs again only the steps a change affects. change_workflow_step changes one step (the rest keeps its results). pause_workflow stops between steps. You never approve or reject results: that is the user's decision in the Workflow tab; tell them what is waiting. If the user takes manual control, do not try to change or start anything until they give it back. Approved results are protected: a rerun never asks about them again and never replaces them. Previous workflow versions are listed with list_workflow_versions and restored with restore_workflow_version. After a successful run you can save the workflow as a reusable template with save_workflow_template if the user wants that. Paid image generation inside workflows is not enabled: a step that would charge money stops and sends nothing.`;
 
 const PLAN_PROMPT = `You are Claude, the Creative Partner inside CreateCraft. The user describes a creative project in their own words. Answer with ONE JSON object and nothing else (no code fence, no commentary) with these keys:
 "name": a short project name (max 60 characters);
@@ -51,7 +54,21 @@ const PLAN_PROMPT = `You are Claude, the Creative Partner inside CreateCraft. Th
 "questions": at most 2 essential questions you still need answered (usually none).
 Do not start any work and do not mention software internals, node graphs or file formats unless the user did. Write in the user's language.`;
 
-const TOOL_NAMES = ['get_status', 'look_at_document', 'apply_edit', 'photocraft_command', 'undo', 'save_version', 'list_files', 'open_file', 'list_image_models', 'generate_image', 'list_export_formats', 'export_file', 'timeline_add', 'timeline_move_clip', 'timeline_remove_clip', 'workflow_catalog', 'plan_workflow'];
+const TOOL_NAMES = ['get_status', 'look_at_document', 'apply_edit', 'photocraft_command', 'undo', 'save_version', 'list_files', 'open_file', 'list_image_models', 'generate_image', 'list_export_formats', 'export_file', 'timeline_add', 'timeline_move_clip', 'timeline_remove_clip', 'workflow_catalog', 'plan_workflow', 'workflow_status', 'run_workflow', 'rerun_workflow', 'pause_workflow', 'resume_workflow', 'cancel_workflow', 'change_workflow_step', 'list_workflow_versions', 'restore_workflow_version', 'save_workflow_template'];
+
+export interface WorkflowControlApi {
+  /** Snapshot of the run (waits up to `waitSeconds` for it to finish, pause or need the user). */
+  status(waitSeconds: number): Promise<{ run: RunSnapshot; steps: Array<{ id: string; label: string }>; changedSinceRun: string[] | null; templateReady: boolean }>;
+  /** Asks the user (native dialog) and then starts the run in the background; rejects if they say no or control is theirs. */
+  start(mode: 'run' | 'rerun', from?: string): Promise<string>;
+  pause(): Promise<string>;
+  resume(): Promise<string>;
+  cancel(): Promise<string>;
+  changeStep(nodeId: string, change: StepChange): Promise<string>;
+  versions(): Promise<Array<{ id: string; savedAt: string; reason: string; steps: number }>>;
+  restore(id: string): Promise<string>;
+  saveTemplate(name: string, description: string): Promise<string>;
+}
 
 export interface ClaudePartnerDeps {
   live: () => Promise<LiveTaskController>;
@@ -70,6 +87,8 @@ export interface ClaudePartnerDeps {
   deliver: () => Promise<DeliverQueue>;
   /** Workflow planning: the library and provider status to validate against, and where a validated plan goes (shown to the user; never saved or run by Claude). */
   workflowPlan: { context: () => Promise<PlanContext>; propose: (plan: WorkflowPlan) => void };
+  /** Runs, monitoring and changes to the saved workflow: the same engine and rules as the Workflow tab. */
+  workflowControl: WorkflowControlApi;
   /** The open project's saved chat (inside the project folder, never in app settings). */
   history: { load: () => Promise<ClaudeChatItem[]>; save: (items: ClaudeChatItem[]) => Promise<void> };
 }
@@ -332,6 +351,54 @@ Waits for the user: ${r.plan.approvals.join(' ') || 'nothing'}
 Warnings: ${r.plan.warnings.join(' ') || 'none'}
 Now explain the plan to the user in plain language, including cost and what they must approve.`);
           } catch (e) { return fail(e); }
+        }),
+        tool('workflow_status', 'The saved workflow and its run: steps (ids and labels), state (idle, running, paused, waiting-for-you, finished), who has control, per-step status and message, problems per file, what is waiting for the user, and which steps changed since the last run. wait_seconds (0-60) waits for the run to finish, pause or need the user.', {
+          wait_seconds: z.number().int().min(0).max(60).optional(),
+        }, async ({ wait_seconds }) => {
+          try { return text(JSON.stringify(await this.d.workflowControl.status(wait_seconds ?? 0), null, 2)); } catch (e) { return fail(e); }
+        }),
+        tool('run_workflow', 'Runs the saved workflow from the start, in the background. The user is asked to approve in a dialog first; if they decline, accept it. Does not wait: use workflow_status to follow progress. Paid generation never runs.', {}, async () => {
+          try { const m = await this.d.workflowControl.start('run'); activity('Started the workflow'); return text(m); } catch (e) { return fail(e); }
+        }),
+        tool('rerun_workflow', 'Runs again only the steps affected by changes since the last run (and what comes after them); every other step keeps its results. Optionally from one step id. The user approves in a dialog first.', {
+          from_step: z.string().max(128).optional().describe('Step id from workflow_status to rerun from.'),
+        }, async ({ from_step }) => {
+          try { const m = await this.d.workflowControl.start('rerun', from_step); activity('Started a rerun of the changed steps'); return text(m); } catch (e) { return fail(e); }
+        }),
+        tool('pause_workflow', 'Pauses the running workflow before its next step (a step that is running finishes first).', {}, async () => {
+          try { return text(await this.d.workflowControl.pause()); } catch (e) { return fail(e); }
+        }),
+        tool('resume_workflow', 'Continues a paused workflow.', {}, async () => {
+          try { return text(await this.d.workflowControl.resume()); } catch (e) { return fail(e); }
+        }),
+        tool('cancel_workflow', 'Stops the running workflow. Finished steps keep their results.', {}, async () => {
+          try { return text(await this.d.workflowControl.cancel()); } catch (e) { return fail(e); }
+        }),
+        tool('change_workflow_step', 'Changes one step of the saved workflow (not while it runs unless paused). Fields allowed depend on the step type: import: files; artcraftEdit: app, edit, edit_settings; approval: note; export: presets; aiGenerate: prompt. The previous version is kept; use rerun_workflow afterwards to redo only what is affected.', {
+          step_id: z.string().min(1).max(128),
+          files: z.array(z.string().max(512)).max(100).optional(),
+          app: z.string().max(32).optional(),
+          edit: z.string().max(64).optional(),
+          edit_settings: z.record(z.string().max(64), z.union([z.string().max(200), z.number()])).optional(),
+          note: z.string().max(300).optional(),
+          presets: z.array(z.string().max(64)).max(10).optional(),
+          prompt: z.string().max(4000).optional(),
+        }, async ({ step_id, ...change }) => {
+          try { const m = await this.d.workflowControl.changeStep(step_id, change); activity(`Changed a workflow step: ${m}`); return text(m); } catch (e) { return fail(e); }
+        }),
+        tool('list_workflow_versions', 'Earlier versions of this workflow (kept automatically before each run, change, restore and plan).', {}, async () => {
+          try { return text(JSON.stringify(await this.d.workflowControl.versions(), null, 2)); } catch (e) { return fail(e); }
+        }),
+        tool('restore_workflow_version', 'Restores an earlier workflow version by id (the current one is kept first). Not while it runs.', {
+          version_id: z.string().min(1).max(128),
+        }, async ({ version_id }) => {
+          try { const m = await this.d.workflowControl.restore(version_id); activity('Restored an earlier workflow version'); return text(m); } catch (e) { return fail(e); }
+        }),
+        tool('save_workflow_template', 'Saves the workflow as a reusable template (steps and settings; file choices are left out). Only works after a successful run of the workflow as it is now.', {
+          name: z.string().min(1).max(80),
+          description: z.string().max(400).optional(),
+        }, async ({ name, description }) => {
+          try { const m = await this.d.workflowControl.saveTemplate(name, description ?? ''); activity(`Saved workflow template: ${name}`); return text(m); } catch (e) { return fail(e); }
         }),
         tool('list_image_models', 'Image generation models the user has set up (their own OpenAI / Google Gemini account), with settings and the estimated price per image at default settings.', {}, async () => {
           try {

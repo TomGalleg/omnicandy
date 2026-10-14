@@ -6,7 +6,7 @@ import type { ClaudeState } from '@shared/claude';
 import type { GenerateResultDto } from '@shared/ipc';
 import type { DeliverJob } from '@shared/deliver';
 import type { LiveSnapshot } from '@shared/live';
-import type { WorkflowRunEvent } from '@shared/workflow';
+import type { WorkflowGraph, WorkflowRunEvent } from '@shared/workflow';
 import type { WorkflowPlan } from '@shared/workflowPlan';
 
 const api: StudioApi = {
@@ -26,6 +26,22 @@ const api: StudioApi = {
   runWorkflow: (g) => ipcRenderer.invoke(IPC.runWorkflow, g),
   answerApproval: (nodeId, approved) => ipcRenderer.invoke(IPC.answerApproval, nodeId, approved),
   cancelWorkflow: () => ipcRenderer.invoke(IPC.cancelWorkflow),
+  rerunWorkflow: (g, from) => ipcRenderer.invoke(IPC.rerunWorkflow, g, from ?? null),
+  workflowAffected: (g) => ipcRenderer.invoke(IPC.workflowAffected, g),
+  pauseWorkflow: () => ipcRenderer.invoke(IPC.pauseWorkflow),
+  resumeWorkflow: () => ipcRenderer.invoke(IPC.resumeWorkflow),
+  setWorkflowControl: (who) => ipcRenderer.invoke(IPC.setWorkflowControl, who),
+  workflowRunState: () => ipcRenderer.invoke(IPC.workflowRunState),
+  listWorkflowVersions: () => ipcRenderer.invoke(IPC.workflowVersions),
+  restoreWorkflowVersion: (id) => ipcRenderer.invoke(IPC.workflowRestore, id),
+  listWorkflowTemplates: () => ipcRenderer.invoke(IPC.workflowTemplates),
+  saveWorkflowTemplate: (name, description) => ipcRenderer.invoke(IPC.workflowTemplateSave, name, description),
+  useWorkflowTemplate: (id) => ipcRenderer.invoke(IPC.workflowTemplateUse, id),
+  onWorkflowChanged: (cb) => {
+    const listener = (_e: IpcRendererEvent, g: WorkflowGraph) => cb(g);
+    ipcRenderer.on(IPC.workflowChanged, listener);
+    return () => ipcRenderer.removeListener(IPC.workflowChanged, listener);
+  },
   getWorkflowPlan: () => ipcRenderer.invoke(IPC.workflowPlanGet),
   applyWorkflowPlan: () => ipcRenderer.invoke(IPC.workflowPlanApply),
   dismissWorkflowPlan: () => ipcRenderer.invoke(IPC.workflowPlanDismiss),

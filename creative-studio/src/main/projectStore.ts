@@ -17,6 +17,7 @@ import type { ClaudeChatItem } from '@shared/claude';
 import { HISTORY_FILE, HISTORY_FOLDER, MAX_SAVED_ITEMS, parseHistory } from '@shared/claudeHistory';
 import type { Asset, AssetKind, AssetProvenance, ProjectManifest } from '@shared/types';
 import { emptyGraph, type WorkflowGraph } from '@shared/workflow';
+import type { WorkflowTemplate } from '@shared/workflowControl';
 import { kindForExtension, sniffMedia } from './media';
 import { parseManifest, parseWorkflow } from './schemas';
 
@@ -47,6 +48,8 @@ function v2Folder(folder: StoreFolder, kind: AssetKind): string {
   if (kind === 'design' || kind === 'project') return 'Assets/Documents';
   return 'Assets/Originals';
 }
+
+export interface WorkflowVersionInfo { id: string; savedAt: string; reason: string; steps: number }
 
 export class ProjectStore implements AssetRepository {
   private manifest: ProjectManifest | null = null;
@@ -294,6 +297,73 @@ export class ProjectStore implements AssetRepository {
     }
     await this.saveWorkflow(g);
     return { backedUp };
+  }
+
+  // ---- Workflow versions (a snapshot per run start, Claude change or restore) and templates ----
+  private async wfDir(sub: string) {
+    const d = path.join(path.dirname(await this.workflowPath()), sub);
+    await fs.mkdir(d, { recursive: true });
+    return d;
+  }
+
+  /** Keeps the current workflow as a version (skipped when identical to the newest one). */
+  async snapshotWorkflow(reason: string, g?: WorkflowGraph): Promise<WorkflowVersionInfo | null> {
+    const graph = g ?? (await this.loadWorkflow());
+    if (!graph.nodes.length) return null;
+    const dir = await this.wfDir('history');
+    const list = await this.listWorkflowVersions();
+    const newest = list[0];
+    if (newest) {
+      const cur = JSON.parse(await fs.readFile(path.join(dir, `${newest.id}.json`), 'utf8')) as { graph: WorkflowGraph };
+      if (JSON.stringify(cur.graph) === JSON.stringify(graph)) return null;
+    }
+    const savedAt = new Date().toISOString();
+    const id = `v-${savedAt.replace(/[:.]/g, '-')}`;
+    await writeJsonAtomic(path.join(dir, `${id}.json`), { savedAt, reason, graph });
+    for (const old of list.slice(49)) await fs.rm(path.join(dir, `${old.id}.json`), { force: true });
+    return { id, savedAt, reason, steps: graph.nodes.length };
+  }
+
+  /** Newest first. */
+  async listWorkflowVersions(): Promise<WorkflowVersionInfo[]> {
+    const dir = await this.wfDir('history');
+    const out: WorkflowVersionInfo[] = [];
+    for (const f of (await fs.readdir(dir)).filter((x) => /^v-.*\.json$/.test(x))) {
+      try {
+        const v = JSON.parse(await fs.readFile(path.join(dir, f), 'utf8')) as { savedAt: string; reason: string; graph: WorkflowGraph };
+        out.push({ id: f.slice(0, -5), savedAt: v.savedAt, reason: v.reason, steps: v.graph.nodes.length });
+      } catch { /* skip an unreadable version */ }
+    }
+    return out.sort((a, b) => b.savedAt.localeCompare(a.savedAt));
+  }
+
+  async readWorkflowVersion(id: string): Promise<WorkflowGraph> {
+    if (!/^v-[\w-]+$/.test(id)) throw new Error('Unknown workflow version.');
+    const raw = JSON.parse(await fs.readFile(path.join(await this.wfDir('history'), `${id}.json`), 'utf8').catch(() => { throw new Error('That workflow version no longer exists.'); })) as { graph: unknown };
+    return parseWorkflow(raw.graph);
+  }
+
+  async saveWorkflowTemplate(t: WorkflowTemplate): Promise<void> {
+    await writeJsonAtomic(path.join(await this.wfDir('templates'), `${t.id}.json`), t);
+  }
+
+  async listWorkflowTemplates(): Promise<WorkflowTemplate[]> {
+    const dir = await this.wfDir('templates');
+    const out: WorkflowTemplate[] = [];
+    for (const f of (await fs.readdir(dir)).filter((x) => x.endsWith('.json'))) {
+      try {
+        const t = JSON.parse(await fs.readFile(path.join(dir, f), 'utf8')) as WorkflowTemplate;
+        out.push({ ...t, graph: parseWorkflow(t.graph) });
+      } catch { /* skip an unreadable template */ }
+    }
+    return out.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  }
+
+  async setAssetApproval(assetIds: string[], state: Asset['approval']): Promise<void> {
+    await this.loadManifest();
+    let changed = false;
+    for (const a of this.manifest!.assets) if (assetIds.includes(a.id) && a.approval !== state) { a.approval = state; changed = true; }
+    if (changed) await this.persist();
   }
 
   async saveWorkflow(g: WorkflowGraph): Promise<void> {

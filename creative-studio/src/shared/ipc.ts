@@ -12,6 +12,7 @@ import type { EditorAppId } from './appEditors';
 import type { DeliverJob, DeliverRecord } from './deliver';
 import type { WorkflowGraph, WorkflowRunEvent } from './workflow';
 import type { WorkflowPlan } from './workflowPlan';
+import type { RunSnapshot, WorkflowTemplate } from './workflowControl';
 
 export interface StorageDto {
   defaultDir: string;
@@ -35,6 +36,18 @@ export const IPC = {
   workflowPickFolder: 'workflow:pick-folder',
   workflowEvent: 'workflow:event',
   workflowPlan: 'workflow:plan',
+  rerunWorkflow: 'workflow:rerun',
+  workflowAffected: 'workflow:affected',
+  pauseWorkflow: 'workflow:pause',
+  resumeWorkflow: 'workflow:resume',
+  setWorkflowControl: 'workflow:control',
+  workflowRunState: 'workflow:run-state',
+  workflowVersions: 'workflow:versions',
+  workflowRestore: 'workflow:restore',
+  workflowTemplates: 'workflow:templates',
+  workflowTemplateSave: 'workflow:template-save',
+  workflowTemplateUse: 'workflow:template-use',
+  workflowChanged: 'workflow:changed',
   workflowPlanGet: 'workflow:plan-get',
   workflowPlanApply: 'workflow:plan-apply',
   workflowPlanDismiss: 'workflow:plan-dismiss',
@@ -192,6 +205,23 @@ export interface StudioApi {
   /** true = approve every file, false = reject, or the indexes of the approved files. */
   answerApproval(nodeId: string, approved: boolean | number[]): Promise<void>;
   cancelWorkflow(): Promise<void>;
+  /** Runs again only what a change affects (or `fromNodeId` and what follows); everything else keeps its earlier results. */
+  rerunWorkflow(g: WorkflowGraph, fromNodeId?: string): Promise<{ ok: boolean; cancelled: boolean }>;
+  /** Which steps would rerun for this graph, and whether it can become a template. */
+  workflowAffected(g: WorkflowGraph): Promise<{ hasRun: boolean; affected: string[]; templateReady: boolean }>;
+  /** Pauses between steps (never in the middle of one). */
+  pauseWorkflow(): Promise<void>;
+  resumeWorkflow(): Promise<void>;
+  /** 'user' = manual control: the run pauses and Claude may not change or start anything until it is given back. */
+  setWorkflowControl(who: 'user' | 'claude'): Promise<RunSnapshot>;
+  workflowRunState(): Promise<RunSnapshot>;
+  listWorkflowVersions(): Promise<Array<{ id: string; savedAt: string; reason: string; steps: number }>>;
+  restoreWorkflowVersion(id: string): Promise<WorkflowGraph>;
+  listWorkflowTemplates(): Promise<WorkflowTemplate[]>;
+  saveWorkflowTemplate(name: string, description: string): Promise<WorkflowTemplate>;
+  useWorkflowTemplate(id: string): Promise<WorkflowGraph>;
+  /** The workflow was replaced from outside the editor (Claude changed a step, a version was restored). */
+  onWorkflowChanged(cb: (g: WorkflowGraph) => void): () => void;
   /** Claude's proposed workflow (validated; not saved). Applying replaces the workflow and keeps a backup of the old one. */
   getWorkflowPlan(): Promise<WorkflowPlan | null>;
   applyWorkflowPlan(): Promise<WorkflowGraph>;

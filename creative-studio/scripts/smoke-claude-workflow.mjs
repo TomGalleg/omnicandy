@@ -45,7 +45,7 @@ try {
   await win.locator('.wf-plan').waitFor({ timeout: 5000 });
   await win.screenshot({ path: path.join(shots, '53-claude-workflow-plan.png') });
   await win.getByRole('button', { name: /Use this workflow|Replace my workflow/ }).click();
-  await win.locator('.react-flow__node').first().waitFor({ timeout: 5000 });
+  await win.locator('.wf-plan').waitFor({ state: 'detached', timeout: 10000 });
   const wfNow = await win.evaluate(() => window.studio.loadWorkflow());
   check('Use this workflow saves the plan', wfNow.nodes.length === plan?.graph.nodes.length, `${wfNow.nodes.length} nodes`);
   const after = await win.evaluate(() => window.studio.loadProject());

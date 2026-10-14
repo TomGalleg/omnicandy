@@ -101,7 +101,7 @@ describe.skipIf(!installed)('PhotoCraftCliAdapter (real photocraft-cli)', () => 
     graph.nodes.find((n) => n.id === 'n-edit')!.params = { appId: 'photocraft', command: 'image.adjustments.photoFilter', commandParams: '{"filter":"warming85","density":40}' };
     const events: WorkflowRunEvent[] = [];
     const r = await runner.run(graph, { onEvent: (e) => events.push(e), requestApproval: async () => true });
-    expect(r).toEqual({ ok: true, cancelled: false });
+    expect(r).toMatchObject({ ok: true, cancelled: false });
     expect(events[0]).toMatchObject({ kind: 'run-started', mock: true }); // AI Generate node is still mock
     const exp = events.find((e) => e.kind === 'node-status' && e.nodeId === 'n-export' && e.status === 'completed');
     expect(exp && 'message' in exp ? exp.message : '').toMatch(/^Exported exports\/harbor-landscape-photo-filter-warming.*\.png$/);

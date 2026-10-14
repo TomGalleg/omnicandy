@@ -231,6 +231,8 @@ export type WorkflowRunEvent =
   /** An Approval step is waiting: these files (with their latest version) need your decision. */
   | { kind: 'approval-request'; runId: string; nodeId: string; note: string; items: Array<{ item: number; name: string; assetId: string }> }
   | { kind: 'item-status'; runId: string; nodeId: string; item: number; name: string; status: NodeRunStatus; message?: string; assetId?: string }
+  /** The run reached a pause point (or continued): it waits between steps, never in the middle of one. */
+  | { kind: 'run-paused'; runId: string; paused: boolean }
   | { kind: 'run-finished'; runId: string; ok: boolean; cancelled: boolean };
 
 export function emptyGraph(): WorkflowGraph {

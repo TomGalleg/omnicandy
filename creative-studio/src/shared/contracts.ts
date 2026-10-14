@@ -60,11 +60,24 @@ export interface WorkflowRunOptions {
   /** Explicit consent for billable calls. Undefined means no consent. */
   consentToBillable?: (nodeId: string, estimate: string) => Promise<boolean>;
   signal?: AbortSignal;
+  /** Outputs kept from an earlier run: those steps are not run again (rerun of only what changed). */
+  reuse?: Record<string, Array<{ name: string; refs: string[] | null }>>;
+  /** Pause between steps: `isPaused()` is checked before each step, then `wait()` holds until resumed. */
+  pause?: { isPaused(): boolean; wait(signal?: AbortSignal): Promise<void> };
+  /** True for an asset the user already approved: an Approval step does not ask about it again. */
+  isApproved?: (assetId: string) => boolean;
+}
+
+export interface WorkflowRunResult {
+  ok: boolean;
+  cancelled: boolean;
+  /** What each step that finished produced (for reuse by a later rerun). */
+  outputs?: Record<string, Array<{ name: string; refs: string[] | null }>>;
 }
 
 export interface WorkflowExecutor {
   readonly isMock: boolean;
-  run(graph: WorkflowGraph, options: WorkflowRunOptions): Promise<{ ok: boolean; cancelled: boolean }>;
+  run(graph: WorkflowGraph, options: WorkflowRunOptions): Promise<WorkflowRunResult>;
 }
 
 export interface WindowCaptureSource {

@@ -20,7 +20,7 @@ Evidence for each integration (exact commands, versions and test results) is in
 still describes "Phase 2, steps 1–2"); this file and the audit are the current picture.
 
 **Resume here (new conversation):** follow Tomas's Master Development Instructions (phases 0–10).
-Phase 0 audit, Phase 1, Phase 2 and Phase 3 (3.1-3.4, plus the two gap fixes below) are done (see "Master plan status" below). Phase 4 (Simplified / Advanced navigation) is done too. Phase 5 part 1 (Claude builds workflow plans) is done; **next: Phase 5 part 2 (execution monitoring, rerun of affected nodes, save as template), after Tomas's OK.** Keep work in small milestones and replies short.
+Phase 0 audit, Phase 1, Phase 2 and Phase 3 (3.1-3.4, plus the two gap fixes below) are done (see "Master plan status" below). Phase 4 (Simplified / Advanced navigation) is done too. Phase 5 (parts 1 and 2: Claude builds, runs and monitors workflows on the shared engine; pause, manual control, rerun of affected steps, versions, templates) is done; **next: Phase 6 (real Gemini/OpenAI generation inside workflows, spending limits), only after Tomas's OK.** Keep work in small milestones and replies short.
 
 ## Master plan status (Phase 0 audit, 2026-10-14)
 
@@ -43,7 +43,7 @@ typecheck 0, Vitest 135 passed / 14 skipped (opt-in live tests).
 | 3.3 | Blank project: name, type (5 categories), folder | **WORKING** | 3.1 | `projects.test.ts`, `smoke-projects.mjs` |
 | 3.4 | Project Overview: brief, objective, progress, latest artwork, items to review, recent versions/exports, Continue creating, workspace + selected file restored | **WORKING**: Claude chat is saved in the project folder and restored on reopen (see "Phase 3 gaps closed") | 3.1 | `projects.test.ts`, `projectStore.test.ts`, `smoke-home-ai.mjs`, screenshots 46-47 |
 | 4 | Simplified / Advanced navigation | **WORKING** | 1, 3 | `navigation.test.ts`, `smoke-nav.mjs` 7/7 |
-| 5 | Claude builds and runs workflows (shared engine) | **PARTIAL**: part 1 (Claude builds and explains a validated plan) WORKING; part 2 (run monitoring, rerun affected nodes, templates) NOT IMPLEMENTED | 1.4 | `workflowPlan.test.ts`, `smoke-claude-workflow.mjs` 9/9 (real Claude) |
+| 5 | Claude builds and runs workflows (shared engine) | **WORKING** (paid AI Generate steps stay blocked until Phase 6) | 1.4 | `workflowPlan.test.ts`, `workflowControl.test.ts`, `workflowVersions.test.ts`, `smoke-claude-workflow.mjs` 9/9, `smoke-workflow-control.mjs` 32/32 (real Claude + real PhotoCraft) |
 | 6 | Real Gemini / OpenAI image generation; spending limits; Workflow AI node | PARTIAL (mocked-HTTP tests only; Workflow AI node is MOCK) | user's keys + OK | one approved real call per provider |
 | 7 | AI video providers (Veo, Runway, Luma) | NOT IMPLEMENTED | 6 | per provider |
 | 8 | Templates | NOT IMPLEMENTED | 5 | smoke |
@@ -193,6 +193,40 @@ Phase 5 part 1 (2026-10-14):
   real Claude, Sonnet 5.5: plan appeared, nothing saved until applied, nothing generated, no ArtCraft window).
   Screenshots `53-claude-workflow-plan.png`, `54-claude-workflow-applied.png`.
 
+Phase 5 part 2 (2026-10-14):
+* **One engine, two drivers.** The editor and Claude both go through the same run controller in main (`ipc.ts startRun`);
+  nothing is duplicated. Claude's tools: `workflow_status` (steps, state, per-step status, problems per file, what waits for
+  the user, which steps changed; `wait_seconds` to watch), `run_workflow` / `rerun_workflow` (a native dialog asks the user
+  first, Cancel is the default; the run then goes in the background), `pause_workflow`, `resume_workflow`, `cancel_workflow`,
+  `change_workflow_step` (same validation as planning), `list_workflow_versions`, `restore_workflow_version`,
+  `save_workflow_template`. Claude has no tool to approve or reject results: that stays with the user.
+* **User controls** (Workflow tab): Pause / Resume (holds before the next step, never mid-step), **Take manual control**
+  (pauses; Claude cannot change, run or resume anything until **Give control back to Claude**), Cancel, edit steps while
+  paused then **Apply changes and continue** (finished steps keep results; only affected steps run again), per-step
+  **Rerun from this step**, **Rerun N changed steps** (changed steps + what follows; shown as "will rerun" on the nodes),
+  Approve / reject per file (as before), banner when Claude is running it.
+* **Rerun of affected steps only:** `src/shared/workflowControl.ts` (`changedNodes`, `affectedNodes`, `reusableOutputs`);
+  the runner takes `reuse` (kept steps are reported "Kept from the earlier run") and returns each finished step's outputs.
+  A step is kept only if everything upstream is kept. Moving a node counts as no change.
+* **Approved assets are protected:** approving marks the files `approved` (rejecting marks `rejected`) in the manifest. A
+  rerun never asks about an already approved file again; reruns only add new versions, so approved versions are never
+  overwritten (there is no delete path for versions in the app).
+* **Versions:** `Workflows/history/v-<time>.json` is written before each run, plan apply, Claude change, template use and
+  restore (identical consecutive graphs are not duplicated; last 50 kept). **Versions** panel restores one (the current one is
+  kept first). **Templates:** `Workflows/templates/<id>.json`; only a workflow that ran successfully and is unchanged since can
+  be saved; file choices are dropped; **Use** puts it in place (previous workflow kept as a version).
+* **Honest limits:** paid generation is still blocked inside workflows (Phase 6); a run Claude starts is monitored through
+  main's event stream, so it is not resumable after an app restart (state is in memory; versions and templates are on disk);
+  templates have no gallery/starters yet (Phase 8); change_workflow_step edits one step's settings (no adding/removing steps:
+  Claude proposes a new plan for that); the UI warns nothing about a rerun that has no earlier run (it just runs everything).
+* Tests: lint 0, types 0, **171 passed / 14 skipped** (+10: `workflowControl.test.ts` 9, `workflowVersions.test.ts` 1);
+  `smoke-workflow-control.mjs` 32/32 (new; real Claude Sonnet 5.5 and real PhotoCraft headless: pause/resume, approval,
+  rerun kept steps and made no new versions, changed edit asked again while the earlier approval stayed, versions, template,
+  Claude run via dialog, monitor, change step, rerun, template, refusal under manual control, no paid generation);
+  `smoke-workflow` 7/7, `smoke-claude-workflow` 9/9 (its "use plan" wait now waits for the apply instead of racing),
+  `smoke-docks` 15/15, `smoke-nav` 7/7. Two existing runner tests now use `toMatchObject` because the run result also
+  carries `outputs`. Screenshots `55`-`59`. Not re-run: the other older smokes (they do not touch the changed paths).
+
 Phase 1 note: the old `integrationStatus().claude` field in `src/main/ipc.ts` still says "not
 configured in this build" (stale); Settings now shows Claude's real sign-in state instead.
 
@@ -295,7 +329,7 @@ multi-clip video with music and crossfades; export a layout to PDF; audio fade i
 Claude correctly refuses to discard unsaved edits without permission. Total Claude usage for all
 verification runs today: about $5.
 
-Claude can propose workflows (`workflow_catalog`, `plan_workflow`) for the user to apply; it cannot run them yet (Phase 5 part 2).
+Claude can propose workflows (`workflow_catalog`, `plan_workflow`) for the user to apply, and after the user's approval run, monitor, pause, change and rerun them (see Phase 5 part 2).
 
 ## 8. Workflow node execution
 

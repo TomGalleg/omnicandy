@@ -237,3 +237,79 @@ export function workflowCatalog() {
     connection_rules: 'Connect steps with from/to keys. A step has one input; approval and export accept anything; import and aiGenerate (reference) have no required input. No cycles.',
   };
 }
+
+// ---- Changing one step of an existing workflow (same checks as planning) ----
+
+export interface StepChange {
+  /** import: exact library file names. */
+  files?: string[];
+  app?: string;
+  edit?: string;
+  edit_settings?: Record<string, unknown>;
+  note?: string;
+  presets?: string[];
+  /** aiGenerate: the prompt only (paid generation stays blocked in workflows). */
+  prompt?: string;
+}
+
+export type StepChangeResult = { ok: true; graph: WorkflowGraph; summary: string } | { ok: false; issue: string };
+
+export function changeStep(graph: WorkflowGraph, nodeId: string, c: StepChange, ctx: PlanContext): StepChangeResult {
+  const node = graph.nodes.find((n) => n.id === nodeId);
+  if (!node) return { ok: false, issue: `There is no step "${nodeId}". Use the step ids from workflow_status.` };
+  const params = { ...node.params };
+  const allowed: Record<WorkflowNodeType, Array<keyof StepChange>> = {
+    import: ['files'], artcraftEdit: ['app', 'edit', 'edit_settings'], approval: ['note'], export: ['presets'], aiGenerate: ['prompt'],
+  };
+  const given = (Object.keys(c) as Array<keyof StepChange>).filter((k) => c[k] !== undefined);
+  if (!given.length) return { ok: false, issue: 'Nothing to change was given.' };
+  const wrong = given.filter((k) => !allowed[node.type].includes(k));
+  if (wrong.length) return { ok: false, issue: `A ${NODE_SPECS[node.type].label} step can't take ${wrong.join(', ')}. It accepts: ${allowed[node.type].join(', ')}.` };
+  let summary = '';
+  switch (node.type) {
+    case 'import': {
+      const found = (c.files ?? []).map((n) => ({ n, a: ctx.assets.find((x) => x.name === n) }));
+      const missing = found.filter((f) => !f.a).map((f) => f.n);
+      if (missing.length) return { ok: false, issue: `No library file named ${missing.map((m) => `"${m}"`).join(', ')}.` };
+      if (!found.length) return { ok: false, issue: 'List at least one library file.' };
+      params.mode = 'files'; params.assetIds = JSON.stringify(found.map((f) => f.a!.id)); params.assetId = '';
+      summary = `Files: ${found.length} file${found.length === 1 ? '' : 's'}`;
+      break;
+    }
+    case 'artcraftEdit': {
+      const appId = (c.app ?? params.appId ?? '') as EditorAppId;
+      const app = EDITOR_APPS[appId];
+      if (!app) return { ok: false, issue: `Unknown app "${appId}".` };
+      const editChanged = c.edit !== undefined || c.app !== undefined;
+      const opId = c.edit ?? (c.app !== undefined && c.app !== params.appId ? '' : params.opId ?? '');
+      const op = app.quickEdits.find((q) => q.id === opId);
+      if (!op) return { ok: false, issue: `${app.name} has no edit "${opId}". Choose from: ${app.quickEdits.map((q) => q.id).join(', ')}.` };
+      let current: Record<string, unknown> = {};
+      try { current = JSON.parse(params.values || '{}') as Record<string, unknown>; } catch { /* defaults */ }
+      const chk = checkEditValues(op, c.edit_settings ?? (editChanged ? {} : current));
+      if (!chk.ok) return { ok: false, issue: chk.reason };
+      params.appId = app.id; params.opId = op.id; params.values = JSON.stringify(chk.values); params.command = ''; params.commandParams = '';
+      summary = `${app.name}: ${op.label}`;
+      break;
+    }
+    case 'approval': params.note = (c.note ?? '').slice(0, 300); summary = `Approval note: ${params.note || '(none)'}`; break;
+    case 'export': {
+      const ids = c.presets ?? [];
+      const bad = ids.filter((p) => !presetById(p));
+      if (!ids.length || bad.length) return { ok: false, issue: bad.length ? `Unknown export preset ${bad.join(', ')} (see list_export_formats).` : 'List at least one export preset.' };
+      params.presets = ids.join(','); params.format = '';
+      summary = `Export: ${ids.map((p) => presetById(p)!.label).join(', ')}`;
+      break;
+    }
+    case 'aiGenerate': {
+      const prompt = (c.prompt ?? '').trim();
+      if (!prompt) return { ok: false, issue: 'A prompt is needed.' };
+      params.prompt = prompt.slice(0, 4000); summary = 'Prompt changed';
+      break;
+    }
+  }
+  const next: WorkflowGraph = { ...graph, nodes: graph.nodes.map((n) => (n.id === nodeId ? { ...n, params } : n)) };
+  const issues = validateGraph(next);
+  if (issues.length) return { ok: false, issue: issues.map((i) => i.message).join(' ') };
+  return { ok: true, graph: next, summary };
+}

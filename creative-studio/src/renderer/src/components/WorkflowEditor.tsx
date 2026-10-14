@@ -12,6 +12,7 @@ import {
   NODE_SPECS, validateConnection, validateGraph, type NodeRunStatus, type WorkflowGraph, type WorkflowNodeType,
 } from '@shared/workflow';
 import { autoLayout } from '@shared/workflowLayout';
+import type { RunSnapshot, WorkflowTemplate } from '@shared/workflowControl';
 import type { WorkflowPlan } from '@shared/workflowPlan';
 import { exportPresetsOf, importAssetIds } from '@shared/workflowRunner';
 import { AssetThumb } from './AssetBrowser';
@@ -27,6 +28,10 @@ type StudioNodeData = {
   mock?: boolean;
   previewAssetId?: string;
   onApprove?: (approved: boolean) => void;
+  /** The result of this step is approved by the user (kept as is by reruns). */
+  approvedOut?: boolean;
+  /** The step would run again with the next rerun. */
+  stale?: boolean;
 };
 type StudioNode = Node<StudioNodeData, 'studio'>;
 
@@ -85,9 +90,9 @@ function summarize(kind: WorkflowNodeType, p: Record<string, string>, assets: As
 function StudioNodeView({ data, selected }: NodeProps<StudioNode>) {
   const spec = NODE_SPECS[data.kind];
   return (
-    <div className={`node${selected ? ' selected' : ''} is-${data.status ?? 'idle'}`} aria-current={data.status === 'running' ? 'step' : undefined}>
+    <div className={`node${selected ? ' selected' : ''} is-${data.status ?? 'idle'}${data.stale ? ' stale' : ''}`} aria-current={data.status === 'running' ? 'step' : undefined}>
       <div className="node-head">
-        <span>{spec.label} {data.mock && <span className="badge-mock">MOCK</span>}</span>
+        <span>{spec.label} {data.mock && <span className="badge-mock">MOCK</span>}{data.approvedOut && <span className="badge-ok" title="You approved this result. Reruns keep it and do not ask again.">approved</span>}{data.stale && <span className="badge-stale" title="Changed since the last run: it runs again with the next rerun.">will rerun</span>}</span>
         <span className={`node-status ${data.status ?? 'idle'}`}>{STATUS_LABEL[data.status ?? 'idle'] ?? data.status}</span>
       </div>
       <div className="node-body">
@@ -133,6 +138,14 @@ export function WorkflowEditor({ manifest, integrations, colorMode, log, onProje
   const [files, setFiles] = useState<RunFiles | null>(null);
   const [approval, setApproval] = useState<Approval | null>(null);
   const [plan, setPlan] = useState<WorkflowPlan | null>(null);
+  // Run control shared with Claude: the run as the engine reports it, what a rerun would redo, versions and templates.
+  const [runState, setRunState] = useState<RunSnapshot | null>(null);
+  const [aff, setAff] = useState<{ hasRun: boolean; affected: string[]; templateReady: boolean }>({ hasRun: false, affected: [], templateReady: false });
+  const [panel, setPanel] = useState<null | 'versions' | 'templates'>(null);
+  const [versions, setVersions] = useState<Array<{ id: string; savedAt: string; reason: string; steps: number }>>([]);
+  const [templates, setTemplates] = useState<WorkflowTemplate[]>([]);
+  const [tplName, setTplName] = useState('');
+  const runPromise = useRef<Promise<unknown> | null>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const [flow, setFlow] = useState<ReactFlowInstance<StudioNode> | null>(null);
   // Panels that can fold away to give the graph room; remembered.
@@ -174,6 +187,20 @@ export function WorkflowEditor({ manifest, integrations, colorMode, log, onProje
   };
 
   const graph = useMemo(() => toGraph(nodes, edges), [nodes, edges]);
+  const loadGraph = useCallback((g: WorkflowGraph) => {
+    clearTimeout(saveTimer.current);
+    setNodes(g.nodes.map((n) => ({ id: n.id, type: 'studio', position: n.position, data: { kind: n.type, params: n.params } })));
+    setEdges(g.edges.map((e) => ({ ...e })));
+    setFiles(null);
+    setTimeout(() => flow?.fitView({ padding: 0.2 }), 50);
+  }, [flow]);
+  const refreshRun = useCallback(() => { void window.studio.workflowRunState().then(setRunState); }, []);
+  useEffect(() => { refreshRun(); }, [refreshRun]);
+  // Claude (or a restored version) changed the saved workflow: show it.
+  useEffect(() => window.studio.onWorkflowChanged((g) => { loadGraph(g); setMessage({ text: 'The workflow was changed (by Claude or by restoring a version). Your previous workflow is kept under Versions.' }); }), [loadGraph]);
+  const busy = running || (!!runState && ['running', 'paused', 'waiting-for-you'].includes(runState.state));
+  const paused = runState?.state === 'paused';
+  const control = runState?.control ?? 'claude';
 
   // Debounced autosave of structure/params/positions (run status is not persisted).
   const structureKey = JSON.stringify(graph);
@@ -188,7 +215,12 @@ export function WorkflowEditor({ manifest, integrations, colorMode, log, onProje
   }, [structureKey, loaded]);
 
   useEffect(() => window.studio.onWorkflowEvent((ev) => {
-    if (ev.kind === 'run-started') log('workflow', `Run ${ev.runId} started${ev.mock ? ' (some steps are MOCK)' : ''}.`);
+    if (ev.kind === 'run-started') {
+      log('workflow', `Run ${ev.runId} started${ev.mock ? ' (some steps are MOCK)' : ''}.`);
+      setNodes((ns) => ns.map((n) => ({ ...n, data: { ...n.data, status: 'idle', message: undefined, outputRef: undefined } })));
+      setFiles(null);
+    }
+    if (ev.kind === 'run-started' || ev.kind === 'run-paused' || ev.kind === 'approval-request' || ev.kind === 'run-finished') refreshRun();
     if (ev.kind === 'run-items') setFiles({ names: ev.names, cells: {} });
     if (ev.kind === 'item-status') {
       setFiles((f) => f && { ...f, cells: { ...f.cells, [ev.nodeId]: { ...f.cells[ev.nodeId], [ev.item]: { status: ev.status, message: ev.message } } } });
@@ -211,7 +243,7 @@ export function WorkflowEditor({ manifest, integrations, colorMode, log, onProje
         data: { ...n.data, status: ev.status, message: ev.message, outputRef: ev.outputRef ?? (ev.status === 'queued' ? undefined : n.data.outputRef) },
       } : n));
     }
-  }), [log, onProjectChanged]);
+  }), [log, onProjectChanged, refreshRun]);
 
   const decorated = useMemo(() => nodes.map((n) => {
     const out = n.data.outputRef?.startsWith('asset:') ? n.data.outputRef.slice(6) : undefined;
@@ -221,11 +253,13 @@ export function WorkflowEditor({ manifest, integrations, colorMode, log, onProje
       data: {
         ...n.data,
         mock: isMockNode(n.data.kind, n.data.params),
+        approvedOut: !!out && assets.find((a) => a.id === out)?.approval === 'approved' && (n.data.kind === 'approval' || n.data.kind === 'artcraftEdit'),
+        stale: !busy && aff.hasRun && aff.affected.includes(n.id) && aff.affected.length < nodes.length,
         summary: summarize(n.data.kind, n.data.params, assets),
         previewAssetId: n.data.kind === 'import' ? previewFor(assets, out ?? first) : n.data.kind === 'artcraftEdit' ? previewFor(assets, out) : undefined,
       },
     };
-  }), [nodes, assets, isMockNode]);
+  }), [nodes, assets, isMockNode, aff, busy]);
 
   useEffect(() => { names.current = Object.fromEntries(decorated.map((n) => [n.id, `${NODE_SPECS[n.data.kind].label} (${n.data.summary})`])); }, [decorated]);
 
@@ -278,15 +312,44 @@ export function WorkflowEditor({ manifest, integrations, colorMode, log, onProje
   });
   const issues = [...validateGraph(graph).map((i) => i.message), ...opIssues];
 
-  const run = async () => {
+  // What a rerun would redo (the steps changed since the last run and what follows them).
+  useEffect(() => {
+    if (!loaded) return;
+    const t = setTimeout(() => { void window.studio.workflowAffected(graph).then(setAff).catch(() => undefined); }, 350);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [structureKey, loaded, runState?.state]);
+
+  const start = async (kind: 'run' | 'rerun', from?: string) => {
     if (issues.length) { setMessage({ text: issues.join(' · '), error: true }); return; }
     setNodes((ns) => ns.map((n) => ({ ...n, data: { ...n.data, status: 'idle', message: undefined, outputRef: undefined } })));
     setFiles(null);
-    setMessage({ text: 'Running in the background: app steps add new versions, exports go to the Deliver tab. No app windows open.' });
+    setMessage({ text: kind === 'rerun' ? 'Running again only what changed; the other steps keep their results.' : 'Running in the background: app steps add new versions, exports go to the Deliver tab. No app windows open.' });
     setRunning(true);
-    try { await window.studio.runWorkflow(graph); } catch (e) { setMessage({ text: String(e), error: true }); setRunning(false); }
+    try {
+      await window.studio.saveWorkflow(graph);
+      const p = kind === 'rerun' ? window.studio.rerunWorkflow(graph, from) : window.studio.runWorkflow(graph);
+      runPromise.current = p;
+      await p;
+    } catch (e) { setMessage({ text: String(e), error: true }); setRunning(false); }
   };
+  const run = () => start('run');
+  /** While paused with edits: stop here (finished steps keep their results), then run only what the edits affect. */
+  const applyAndContinue = async () => {
+    const p = runPromise.current;
+    await window.studio.cancelWorkflow();
+    await Promise.resolve(p).catch(() => undefined);
+    await start('rerun');
+  };
+  const takeControl = (who: 'user' | 'claude') => { void window.studio.setWorkflowControl(who).then(setRunState); };
+  const openPanel = (which: 'versions' | 'templates') => {
+    setPanel((cur) => (cur === which ? null : which));
+    void window.studio.listWorkflowVersions().then(setVersions);
+    void window.studio.listWorkflowTemplates().then(setTemplates);
+  };
+  const flash = (text: string, error = false) => setMessage({ text, error });
 
+  const rerunnable = aff.hasRun && aff.affected.length > 0 && aff.affected.length < nodes.length;
   const anyMock = nodes.some((n) => isMockNode(n.data.kind, n.data.params));
   const order = nodes.map((n) => n.id).filter((id) => files?.cells[id]);
 
@@ -295,12 +358,12 @@ export function WorkflowEditor({ manifest, integrations, colorMode, log, onProje
       <div className="wf-toolbar">
         <span className="wf-add" role="group" aria-label="Add a step">
           {(Object.keys(NODE_SPECS) as WorkflowNodeType[]).map((k) => (
-            <button key={k} className="btn small" onClick={() => addNode(k)} disabled={running}>+ {NODE_SPECS[k].label}</button>
+            <button key={k} className="btn small" onClick={() => addNode(k)} disabled={busy && !paused}>+ {NODE_SPECS[k].label}</button>
           ))}
         </span>
         <span className="wf-view" role="group" aria-label="View">
           <button className="btn small ghost" onClick={fit} disabled={!nodes.length} title="Zoom to show the whole workflow">Fit workflow</button>
-          <button className="btn small ghost" onClick={tidy} disabled={!nodes.length || running} title="Line the steps up from left to right in the order they run">Tidy layout</button>
+          <button className="btn small ghost" onClick={tidy} disabled={!nodes.length || busy} title="Line the steps up from left to right in the order they run">Tidy layout</button>
           <button className="btn small ghost" aria-pressed={showSettings} onClick={() => setShowSettings((v) => !v)} title="Show or hide the settings of the selected step">Step settings</button>
           <button className="btn small ghost" aria-pressed={showFiles} onClick={() => setShowFiles((v) => !v)} title="Show or hide the per-file results of the last run">File results</button>
           <button className="btn small ghost" aria-pressed={showMap} onClick={() => setShowMap((v) => !v)} title="Show or hide the overview map">Map</button>
@@ -309,10 +372,61 @@ export function WorkflowEditor({ manifest, integrations, colorMode, log, onProje
         <span className={`wf-msg${message?.error ? ' error' : ''}`} role="status">
           {message?.text ?? (issues.length ? `${issues.length} issue${issues.length > 1 ? 's' : ''}: ${issues[0]}` : 'Workflow valid · autosaved')}
         </span>
-        {running
-          ? <button className="btn small danger" onClick={() => void window.studio.cancelWorkflow()}>Cancel run</button>
-          : <button className="btn small primary" onClick={() => void run()} disabled={!nodes.length}>Run {anyMock && <span className="badge-mock">PARTLY MOCK</span>}</button>}
+        <button className="btn small ghost" aria-pressed={panel === 'versions'} onClick={() => openPanel('versions')} disabled={busy && !paused} title="Earlier versions of this workflow">Versions</button>
+        <button className="btn small ghost" aria-pressed={panel === 'templates'} onClick={() => openPanel('templates')} disabled={busy && !paused} title="Save this workflow as a template, or start from one">Templates</button>
+        <button className="btn small ghost" aria-pressed={control === 'user'} onClick={() => takeControl(control === 'user' ? 'claude' : 'user')}
+          title={control === 'user' ? 'Let Claude change and run the workflow again (with your approval)' : 'Pause and stop Claude from changing or running anything'}>
+          {control === 'user' ? 'Give control back to Claude' : 'Take manual control'}
+        </button>
+        {busy ? (
+          <>
+            {paused
+              ? <button className="btn small" onClick={() => void window.studio.resumeWorkflow()}>Resume</button>
+              : <button className="btn small" onClick={() => void window.studio.pauseWorkflow()} title="Stops before the next step; the step in progress finishes first">Pause</button>}
+            <button className="btn small danger" onClick={() => void window.studio.cancelWorkflow()}>Cancel run</button>
+          </>
+        ) : (
+          <>
+            {rerunnable && <button className="btn small" onClick={() => void start('rerun')} title="Runs again only the changed steps and what follows; the rest keeps its results">Rerun {aff.affected.length} changed step{aff.affected.length === 1 ? '' : 's'}</button>}
+            <button className="btn small primary" onClick={() => void run()} disabled={!nodes.length}>Run {anyMock && <span className="badge-mock">PARTLY MOCK</span>}</button>
+          </>
+        )}
       </div>
+      {(runState?.startedBy === 'claude' && busy) || paused || control === 'user' ? (
+        <div className="wf-banner" role="status">
+          {runState?.startedBy === 'claude' && busy && !paused && <span>Claude is running this workflow. You can pause it or take control at any time.</span>}
+          {paused && <span>Paused before the next step. You can change steps now, then <button className="btn small" onClick={() => void applyAndContinue()}>Apply changes and continue</button> (only affected steps run again) or <button className="btn small" onClick={() => void window.studio.resumeWorkflow()}>Resume as it was</button>.</span>}
+          {control === 'user' && <span>You have manual control: Claude will not change or run anything until you give it back.</span>}
+        </div>
+      ) : null}
+      {panel === 'versions' && (
+        <section className="wf-plan" aria-label="Workflow versions">
+          <header><strong>Earlier versions of this workflow</strong></header>
+          {versions.length === 0 ? <p className="muted">None yet. A version is kept before each run, change by Claude, template and restore.</p> : (
+            <ul>{versions.map((v) => (
+              <li key={v.id}>{new Date(v.savedAt).toLocaleString()} · {v.reason} · {v.steps} step{v.steps === 1 ? '' : 's'}{' '}
+                <button className="btn small" disabled={busy} onClick={() => void window.studio.restoreWorkflowVersion(v.id).then(() => { setPanel(null); flash('Restored. The version it replaced is kept under Versions.'); }).catch((e: unknown) => flash(String(e instanceof Error ? e.message : e), true))}>Restore</button>
+              </li>
+            ))}</ul>
+          )}
+        </section>
+      )}
+      {panel === 'templates' && (
+        <section className="wf-plan" aria-label="Workflow templates">
+          <header><strong>Templates</strong></header>
+          <p className="btn-row">
+            <input aria-label="Template name" placeholder="Template name" value={tplName} onChange={(e) => setTplName(e.target.value)} maxLength={80} />
+            <button className="btn small primary" disabled={!tplName.trim() || !aff.templateReady}
+              onClick={() => void window.studio.saveWorkflowTemplate(tplName.trim(), '').then((t) => { setTplName(''); setTemplates((x) => [t, ...x]); flash(`Saved the template "${t.name}".`); }).catch((e: unknown) => flash(String(e instanceof Error ? e.message : e), true))}>Save this workflow as a template</button>
+          </p>
+          {!aff.templateReady && <p className="muted">A template can be saved after this workflow has run successfully and not changed since.</p>}
+          {templates.length > 0 && <ul>{templates.map((t) => (
+            <li key={t.id}><b>{t.name}</b>{t.description ? ` — ${t.description}` : ''} · {t.graph.nodes.length} steps{' '}
+              <button className="btn small" disabled={busy} onClick={() => void window.studio.useWorkflowTemplate(t.id).then(() => { setPanel(null); flash('Template in place: choose the files in the Files step. Your previous workflow is kept under Versions.'); }).catch((e: unknown) => flash(String(e instanceof Error ? e.message : e), true))}>Use</button>
+            </li>
+          ))}</ul>}
+        </section>
+      )}
       {plan && (
         <section className="wf-plan" aria-label="Claude's proposed workflow">
           <header><strong>Claude proposes: {plan.title}</strong></header>
@@ -322,7 +436,7 @@ export function WorkflowEditor({ manifest, integrations, colorMode, log, onProje
           {plan.approvals.length > 0 && <p><b>You will be asked:</b> {plan.approvals.join(' ')}</p>}
           {plan.warnings.length > 0 && <ul className="wf-plan-warn">{plan.warnings.map((w) => <li key={w}>{w}</li>)}</ul>}
           <footer>
-            <button className="btn small primary" onClick={applyPlan} disabled={running}>{nodes.length ? 'Replace my workflow with this' : 'Use this workflow'}</button>
+            <button className="btn small primary" onClick={applyPlan} disabled={busy}>{nodes.length ? 'Replace my workflow with this' : 'Use this workflow'}</button>
             <button className="btn small ghost" onClick={() => void window.studio.dismissWorkflowPlan()}>Dismiss</button>
             <span className="muted">Nothing runs or is charged until you press Run.</span>
           </footer>
@@ -373,7 +487,7 @@ export function WorkflowEditor({ manifest, integrations, colorMode, log, onProje
           )}
         </div>
         {selectedNode && showSettings && !approval && (
-          <NodeInspector key={selectedNode.id} node={selectedNode} assets={assets} disabled={running} mock={isMockNode(selectedNode.data.kind, selectedNode.data.params)}
+          <NodeInspector key={selectedNode.id} node={selectedNode} assets={assets} disabled={busy && !paused} canRerun={!busy && aff.hasRun} onRerunFrom={() => void start('rerun', selectedNode.id)} mock={isMockNode(selectedNode.data.kind, selectedNode.data.params)}
             onChange={(patch) => updateParams(selectedNode.id, patch)} />
         )}
       </div>
@@ -408,8 +522,8 @@ function ApprovalPanel({ approval, assets }: { approval: Approval; assets: Asset
   );
 }
 
-function NodeInspector({ node, assets, disabled, mock, onChange }: {
-  node: StudioNode; assets: Asset[]; disabled: boolean; mock: boolean; onChange: (patch: Record<string, string>) => void;
+function NodeInspector({ node, assets, disabled, mock, onChange, canRerun, onRerunFrom }: {
+  node: StudioNode; assets: Asset[]; disabled: boolean; mock: boolean; onChange: (patch: Record<string, string>) => void; canRerun: boolean; onRerunFrom: () => void;
 }) {
   const p = node.data.params;
   return (
@@ -432,6 +546,7 @@ function NodeInspector({ node, assets, disabled, mock, onChange }: {
             <small className="asset-meta">Only the MOCK provider exists here: nothing is generated, no network call, $0.</small>
           </>
         )}
+        {canRerun && node.data.kind !== 'import' && <button className="btn small" onClick={onRerunFrom} title="Runs this step and what follows again; earlier steps keep their results">Rerun from this step</button>}
         <small className="asset-meta">Delete key removes the selected node or connection.</small>
       </div>
     </aside>

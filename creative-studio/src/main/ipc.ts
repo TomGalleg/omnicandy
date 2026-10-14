@@ -9,9 +9,10 @@ import { formatUsd, MAX_PROMPT, PROVIDERS } from '@shared/generation';
 import { resolveTheme } from '@shared/theme';
 import type { AppearanceSettings } from '@shared/types';
 import { MockArtCraftAdapter, MockGenerationProvider } from '@shared/mocks';
-import { validateGraph } from '@shared/workflow';
-import type { WorkflowPlan } from '@shared/workflowPlan';
-import { WorkflowRunner, type RunnerDeps } from '@shared/workflowRunner';
+import { validateGraph, type WorkflowGraph, type WorkflowRunEvent } from '@shared/workflow';
+import { affectedNodes, reusableOutputs, RunMonitor, sameAsRun, templateGraph, templateSlug, type RunOutputs, type WorkflowTemplate } from '@shared/workflowControl';
+import { changeStep, type StepChange, type WorkflowPlan } from '@shared/workflowPlan';
+import { exportPresetsOf, importAssetIds, WorkflowRunner, type RunnerDeps } from '@shared/workflowRunner';
 import { probeAllArtCraftApps } from './artcraftProbe';
 import { IMPORTABLE_EXTENSIONS, kindForExtension } from './media';
 import { AppEditors } from './appEditors';
@@ -79,7 +80,13 @@ export function registerIpc(d: IpcDeps): void {
     };
   })());
 
-  let running: { abort: AbortController; approvals: Map<string, (ok: boolean | number[]) => void> } | null = null;
+  interface RunCtl { abort: AbortController; approvals: Map<string, (ok: boolean | number[]) => void>; resumers: Array<() => void>; paused: boolean; by: 'user' | 'claude'; items: Map<string, Array<{ item: number; name: string; assetId: string }>> }
+  let running: RunCtl | null = null;
+  /** The last finished run: what each step produced, so a change only reruns what it affects. */
+  let lastRun: { graph: WorkflowGraph; outputs: RunOutputs; ok: boolean } | null = null;
+  let control: 'user' | 'claude' = 'claude';
+  const monitor = new RunMonitor();
+  const watchers = new Set<() => void>();
 
   handle(IPC.getAppearance, none, () => d.settings.load());
   handle(IPC.setAppearance, z.tuple([z.unknown()]), async (raw) => {
@@ -133,35 +140,130 @@ export function registerIpc(d: IpcDeps): void {
     return { ok: true as const };
   });
 
-  handle(IPC.runWorkflow, z.tuple([z.unknown()]), async (raw) => {
+  // ---- Workflow run control: one engine, shared by the visual editor and Claude ----
+  const emitWf = (ev: WorkflowRunEvent) => {
+    if (ev.kind === 'approval-request' && running) running.items.set(ev.nodeId, ev.items);
+    monitor.event(ev);
+    d.window()?.webContents.send(IPC.workflowEvent, ev);
+    for (const w of [...watchers]) w();
+  };
+  const sendWfChanged = (g: WorkflowGraph) => { for (const w of BrowserWindow.getAllWindows()) if (!w.isDestroyed()) w.webContents.send(IPC.workflowChanged, g); };
+  const describeNode = (n: WorkflowGraph['nodes'][number], assets: Array<{ id: string; name: string }>): string => {
+    const p = n.params;
+    switch (n.type) {
+      case 'import': { const ids = importAssetIds(p); return ids.length ? `Files (${ids.length === 1 ? assets.find((a) => a.id === ids[0])?.name ?? '1 file' : `${ids.length} files`})` : 'Files'; }
+      case 'artcraftEdit': { const app = EDITOR_APPS[p.appId as EditorAppId]; return `${app?.name ?? 'App'}: ${app?.quickEdits.find((o) => o.id === p.opId)?.label ?? p.command ?? 'edit'}`; }
+      case 'approval': return `Approval${p.note ? ` (${p.note})` : ''}`;
+      case 'export': return `Export (${exportPresetsOf(p).join(', ') || 'no format'})`;
+      case 'aiGenerate': return 'AI Generate';
+    }
+  };
+  const startRun = async (g: WorkflowGraph, by: 'user' | 'claude', opts: { changedOnly?: boolean; from?: string } = {}) => {
     if (running) throw new Error('A run is already in progress.');
-    const g = parseWorkflow(raw);
     const issues = validateGraph(g);
     if (issues.length) throw new Error(issues.map((i) => i.message).join('\n'));
+    const store = await d.project();
+    const assets = (await store.loadManifest()).assets;
+    const approvedIds = new Set(assets.filter((a) => a.approval === 'approved').map((a) => a.id));
+    let reuse: RunOutputs | undefined;
+    if (opts.changedOnly && lastRun) reuse = reusableOutputs(g, lastRun.outputs, affectedNodes(lastRun.graph, g, opts.from));
+    await store.snapshotWorkflow(by === 'claude' ? 'Before a run Claude started' : 'Before a run', g);
     const abort = new AbortController();
     const approvals = new Map<string, (ok: boolean | number[]) => void>();
-    running = { abort, approvals };
-    abort.signal.addEventListener('abort', () => { for (const r of approvals.values()) r(false); });
+    const ctl: RunCtl = { abort, approvals, resumers: [], paused: false, by, items: new Map() };
+    running = ctl;
+    abort.signal.addEventListener('abort', () => { for (const r of approvals.values()) r(false); for (const r of ctl.resumers.splice(0)) r(); });
+    monitor.begin(g, by, (id) => describeNode(g.nodes.find((n) => n.id === id)!, assets), control);
     // Real side effects for this run: app edits in the background (no windows) and Deliver exports.
-    const steps = new WorkflowSteps({ store: await d.project(), installDir: (app) => PFdir(EDITOR_APPS[app].name), deliver: () => deliver() });
+    const steps = new WorkflowSteps({ store, installDir: (app) => PFdir(EDITOR_APPS[app].name), deliver: () => deliver() });
     try {
       const base = await runnerDeps();
-      return await new WorkflowRunner({
+      const r = await new WorkflowRunner({
         ...base,
         resolveImport: (p) => steps.resolveImport(p),
         applyStep: (s, inputs) => steps.applyStep(s, inputs),
         deliver: (inputs, presets) => steps.deliver(inputs, presets),
       }).run(g, {
         signal: abort.signal,
-        onEvent: (ev) => d.window()?.webContents.send(IPC.workflowEvent, ev),
+        onEvent: emitWf,
         requestApproval: (nodeId) => new Promise<boolean | number[]>((resolve) => approvals.set(nodeId, resolve)),
-        // No consent path in Phase 1: any billable provider is refused.
+        // Paid generation inside workflows stays blocked until Phase 6: no consent path.
         consentToBillable: undefined,
+        reuse,
+        isApproved: (id) => approvedIds.has(id),
+        pause: {
+          isPaused: () => ctl.paused,
+          wait: (signal) => new Promise<void>((res) => { ctl.resumers.push(res); signal?.addEventListener('abort', () => res(), { once: true }); }),
+        },
       });
+      lastRun = { graph: g, outputs: r.outputs ?? {}, ok: r.ok && !r.cancelled };
+      return { ok: r.ok, cancelled: r.cancelled };
     } finally {
       running = null;
       await steps.close();
+      for (const w of [...watchers]) w();
     }
+  };
+  handle(IPC.runWorkflow, z.tuple([z.unknown()]), async (raw) => startRun(parseWorkflow(raw), 'user'));
+  /** Runs again only the steps a change affects (or `from` and what follows); the rest keeps its earlier results. */
+  handle(IPC.rerunWorkflow, z.tuple([z.unknown(), z.string().max(128).nullable()]), async (raw, from) => startRun(parseWorkflow(raw), 'user', { changedOnly: true, from: from ?? undefined }));
+  handle(IPC.workflowAffected, z.tuple([z.unknown()]), async (raw) => {
+    const g = parseWorkflow(raw);
+    if (!lastRun) return { hasRun: false, affected: [] as string[], templateReady: false };
+    return { hasRun: true, affected: [...affectedNodes(lastRun.graph, g)].filter((id) => g.nodes.some((n) => n.id === id)), templateReady: lastRun.ok && sameAsRun(lastRun.graph, g) };
+  });
+  const setPaused = (paused: boolean) => {
+    if (!running) throw new Error('No workflow is running.');
+    if (running.paused === paused) return;
+    running.paused = paused;
+    if (!paused) for (const r of running.resumers.splice(0)) r();
+    emitWf({ kind: 'run-paused', runId: monitor.snapshot().runId ?? '', paused });
+  };
+  handle(IPC.pauseWorkflow, none, () => setPaused(true));
+  handle(IPC.resumeWorkflow, none, () => setPaused(false));
+  /** Manual control: the run pauses between steps and Claude may not change or start anything until it is given back. */
+  handle(IPC.setWorkflowControl, z.tuple([z.enum(['user', 'claude'])]), (who) => {
+    control = who;
+    monitor.setControl(who);
+    if (who === 'user' && running && !running.paused) setPaused(true);
+    for (const w of [...watchers]) w();
+    return monitor.snapshot();
+  });
+  handle(IPC.workflowRunState, none, async () => monitor.snapshot());
+  handle(IPC.workflowVersions, none, async () => (await d.project()).listWorkflowVersions());
+  const restoreVersion = async (id: string) => {
+    if (running) throw new Error('A workflow is running. Pause or cancel it first.');
+    const store = await d.project();
+    const g = await store.readWorkflowVersion(id);
+    await store.snapshotWorkflow('Before restoring an earlier version');
+    await store.saveWorkflow(g);
+    sendWfChanged(g);
+    return g;
+  };
+  handle(IPC.workflowRestore, z.tuple([z.string().max(128)]), (id) => restoreVersion(id));
+  const makeTemplate = async (name: string, description: string) => {
+    const store = await d.project();
+    const g = await store.loadWorkflow();
+    if (!lastRun?.ok || !sameAsRun(lastRun.graph, g)) throw new Error('Only a workflow that has run successfully (and not changed since) can be saved as a template. Run it first.');
+    const base = templateSlug(name);
+    const have = new Set((await store.listWorkflowTemplates()).map((t) => t.id));
+    let id = base;
+    for (let i = 2; have.has(id); i++) id = `${base}-${i}`;
+    const t: WorkflowTemplate = { id, name: name.trim().slice(0, 80), description: description.trim().slice(0, 400), createdAt: new Date().toISOString(), graph: templateGraph(g) };
+    await store.saveWorkflowTemplate(t);
+    return t;
+  };
+  handle(IPC.workflowTemplates, none, async () => (await d.project()).listWorkflowTemplates());
+  handle(IPC.workflowTemplateSave, z.tuple([z.string().min(1).max(80), z.string().max(400)]), (name, desc) => makeTemplate(name, desc));
+  handle(IPC.workflowTemplateUse, z.tuple([z.string().max(128)]), async (id) => {
+    if (running) throw new Error('A workflow is running. Cancel it first.');
+    const store = await d.project();
+    const t = (await store.listWorkflowTemplates()).find((x) => x.id === id);
+    if (!t) throw new Error('That template no longer exists.');
+    await store.snapshotWorkflow('Before using a template');
+    await store.saveWorkflow(t.graph);
+    sendWfChanged(t.graph);
+    return t.graph;
   });
   handle(IPC.workflowPickFolder, none, async () => {
     const win = d.window();
@@ -169,9 +271,15 @@ export function registerIpc(d: IpcDeps): void {
     const r = await (win ? dialog.showOpenDialog(win, o) : dialog.showOpenDialog(o));
     return r.canceled ? null : r.filePaths[0] ?? null;
   });
-  handle(IPC.answerApproval, z.tuple([z.string().max(128), z.union([z.boolean(), z.array(z.number().int().min(0).max(10_000)).max(10_000)])]), (nodeId, approved) => {
+  handle(IPC.answerApproval, z.tuple([z.string().max(128), z.union([z.boolean(), z.array(z.number().int().min(0).max(10_000)).max(10_000)])]), async (nodeId, approved) => {
     const r = running?.approvals.get(nodeId);
     if (!r) throw new Error('No approval pending for that node.');
+    // The decision is kept on the files themselves: approved results are not asked about again.
+    const items = running!.items.get(nodeId) ?? [];
+    const yes = new Set(approved === true ? items.map((i) => i.item) : Array.isArray(approved) ? approved : []);
+    const store = await d.project();
+    await store.setAssetApproval(items.filter((i) => yes.has(i.item)).map((i) => i.assetId), 'approved');
+    await store.setAssetApproval(items.filter((i) => !yes.has(i.item)).map((i) => i.assetId), 'rejected');
     running!.approvals.delete(nodeId);
     r(approved);
   });
@@ -350,7 +458,7 @@ export function registerIpc(d: IpcDeps): void {
   // ---- Claude Creative Partner (Claude Agent SDK, this PC's Claude Code sign-in) ----
   // Claude's proposed workflow: held here, shown in the Workflow tab, only saved when the user applies it.
   let pendingPlan: WorkflowPlan | null = null;
-  resetters.push(() => { pendingPlan = null; });
+  resetters.push(() => { pendingPlan = null; lastRun = null; control = 'claude'; monitor.reset(); });
   const sendPlan = (p: WorkflowPlan | null) => { for (const w of BrowserWindow.getAllWindows()) if (!w.isDestroyed()) w.webContents.send(IPC.workflowPlan, p); };
   handle(IPC.workflowPlanGet, none, async () => pendingPlan);
   handle(IPC.workflowPlanDismiss, none, async () => { pendingPlan = null; sendPlan(null); });
@@ -360,6 +468,7 @@ export function registerIpc(d: IpcDeps): void {
     const g = parseWorkflow(pendingPlan.graph);
     const issues = validateGraph(g);
     if (issues.length) throw new Error(issues.map((i) => i.message).join('\n'));
+    await (await d.project()).snapshotWorkflow('Before using the plan Claude proposed');
     await (await d.project()).replaceWorkflow(g);
     pendingPlan = null;
     sendPlan(null);
@@ -386,6 +495,104 @@ export function registerIpc(d: IpcDeps): void {
         };
       },
       propose: (p) => { pendingPlan = p; sendPlan(p); },
+    },
+    workflowControl: {
+      status: async (waitSeconds) => {
+        const deadline = Date.now() + waitSeconds * 1000;
+        const settled = () => { const st = monitor.snapshot().state; return st !== 'running'; };
+        while (waitSeconds > 0 && !settled() && Date.now() < deadline) {
+          await new Promise<void>((res) => { const t = setTimeout(done, Math.min(2000, deadline - Date.now())); function done() { clearTimeout(t); watchers.delete(done); res(); } watchers.add(done); });
+        }
+        const store = await d.project();
+        const g = await store.loadWorkflow();
+        const assets = (await store.loadManifest()).assets;
+        return {
+          run: monitor.snapshot(),
+          steps: g.nodes.map((n) => ({ id: n.id, label: describeNode(n, assets) })),
+          changedSinceRun: lastRun ? [...affectedNodes(lastRun.graph, g)].filter((id) => g.nodes.some((n) => n.id === id)) : null,
+          templateReady: !!lastRun && lastRun.ok && sameAsRun(lastRun.graph, g),
+        };
+      },
+      start: async (mode, from) => {
+        if (control === 'user') throw new Error('The user has taken manual control of the workflow. Do not start runs until they give it back.');
+        if (running) throw new Error('A run is already in progress.');
+        const store = await d.project();
+        const g = await store.loadWorkflow();
+        if (!g.nodes.length) throw new Error('There is no workflow yet. Propose one with plan_workflow and let the user apply it.');
+        const issues = validateGraph(g);
+        if (issues.length) throw new Error(`The workflow has problems: ${issues.map((i) => i.message).join(' ')}`);
+        const assets = (await store.loadManifest()).assets;
+        let rerunSteps: string[] = [];
+        if (mode === 'rerun') {
+          if (!lastRun) throw new Error('There is no earlier run to build on. Use run_workflow.');
+          rerunSteps = [...affectedNodes(lastRun.graph, g, from)].filter((id) => g.nodes.some((n) => n.id === id));
+          if (!rerunSteps.length) throw new Error('Nothing has changed since the last run, so there is nothing to rerun.');
+        }
+        const list = (mode === 'rerun' ? g.nodes.filter((n) => rerunSteps.includes(n.id)) : g.nodes).map((n) => `• ${describeNode(n, assets)}`);
+        const paid = g.nodes.filter((n) => n.type === 'aiGenerate' && (PROVIDERS.find((p) => p.id === n.params.providerId)?.billable ?? false));
+        const options: Electron.MessageBoxOptions = {
+          type: 'question',
+          title: 'Claude wants to run the workflow',
+          message: mode === 'rerun' ? 'Claude is asking to run again only the steps that changed.' : 'Claude is asking to run your workflow.',
+          detail: [
+            list.join('\n'),
+            '',
+            'App steps run in the background and add new versions; originals are never changed. You can pause, take control or cancel at any time, and you approve results in the Workflow tab.',
+            paid.length ? 'Paid image generation steps will not run (they stay blocked until paid generation is enabled); nothing is charged.' : 'No paid generation is involved.',
+          ].join('\n'),
+          buttons: ['Cancel', 'Run'],
+          defaultId: 0, cancelId: 0, noLink: true,
+        };
+        const win = d.window();
+        const res = win && !win.isDestroyed() ? await dialog.showMessageBox(win, options) : await dialog.showMessageBox(options);
+        if (res.response !== 1) throw new Error('The user did not approve the run. Nothing was started.');
+        void startRun(g, 'claude', { changedOnly: mode === 'rerun', from }).catch((e: unknown) => {
+          emitWf({ kind: 'run-finished', runId: monitor.snapshot().runId ?? '', ok: false, cancelled: false });
+          console.error('Workflow run failed to start:', e);
+        });
+        // startRun registers `running` after a few awaits; wait until the run is visible to status.
+        for (let i = 0; i < 50 && !running; i++) await new Promise((r) => setTimeout(r, 20));
+        return mode === 'rerun' ? `Started: rerunning ${rerunSteps.length} step${rerunSteps.length === 1 ? '' : 's'}; the rest keeps its earlier results. Follow it with workflow_status.` : 'Started. Follow it with workflow_status; tell the user when a step needs their approval.';
+      },
+      pause: async () => {
+        if (control === 'user') throw new Error('The user has manual control.');
+        setPaused(true);
+        return 'Paused: it stops before the next step.';
+      },
+      resume: async () => {
+        if (control === 'user') throw new Error('The user has manual control; they decide when it continues.');
+        setPaused(false);
+        return 'Continuing.';
+      },
+      cancel: async () => {
+        if (!running) throw new Error('No workflow is running.');
+        running.abort.abort();
+        return 'Cancelled. Finished steps keep their results.';
+      },
+      changeStep: async (nodeId, change) => {
+        if (control === 'user') throw new Error('The user has taken manual control of the workflow. Do not change it until they give it back.');
+        if (running && !running.paused) throw new Error('The workflow is running. Pause it first.');
+        const store = await d.project();
+        const g = await store.loadWorkflow();
+        const m = await store.loadManifest();
+        const r = changeStep(g, nodeId, change as StepChange, { assets: m.assets.map((a) => ({ id: a.id, name: a.name, sourceFormat: a.sourceFormat })), configuredProviders: [] });
+        if (!r.ok) throw new Error(r.issue);
+        await store.snapshotWorkflow('Before Claude changed a step', g);
+        await store.saveWorkflow(r.graph);
+        sendWfChanged(r.graph);
+        const stale = lastRun ? [...affectedNodes(lastRun.graph, r.graph)].filter((id) => r.graph.nodes.some((n) => n.id === id)) : [];
+        return `Changed. ${r.summary}. ${stale.length ? `${stale.length} step${stale.length === 1 ? '' : 's'} would need to run again (rerun_workflow).` : 'Run the workflow to use it.'}`;
+      },
+      versions: async () => (await d.project()).listWorkflowVersions(),
+      restore: async (id) => {
+        if (control === 'user') throw new Error('The user has taken manual control of the workflow.');
+        const g = await restoreVersion(id);
+        return `Restored (${g.nodes.length} steps). The version it replaced was kept.`;
+      },
+      saveTemplate: async (name, description) => {
+        const t = await makeTemplate(name, description);
+        return `Saved the template "${t.name}" in the project's Workflows/templates folder (file choices are left out).`;
+      },
     },
     // Bound to the project open when this partner is created, so a late save never lands in another project.
     history: (() => {

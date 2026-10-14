@@ -4,7 +4,7 @@
 // command-line engines, the Deliver queue) or explicitly labelled mocks. A file that fails a step
 // stops there; the other files carry on. Billable providers are refused without explicit consent.
 
-import type { AppAdapter, GenerationProvider, WorkflowExecutor, WorkflowRunOptions } from './contracts';
+import type { AppAdapter, GenerationProvider, WorkflowExecutor, WorkflowRunOptions, WorkflowRunResult } from './contracts';
 import { topologicalOrder, validateGraph, type NodeRunStatus, type WorkflowGraph } from './workflow';
 
 export interface StepRequest { appId: string; opId: string; values: Record<string, unknown> }
@@ -66,15 +66,19 @@ export class WorkflowRunner implements WorkflowExecutor {
   readonly isMock = false;
   constructor(private readonly deps: RunnerDeps) {}
 
-  async run(graph: WorkflowGraph, o: WorkflowRunOptions): Promise<{ ok: boolean; cancelled: boolean }> {
+  async run(graph: WorkflowGraph, o: WorkflowRunOptions): Promise<WorkflowRunResult> {
     const runId = this.deps.newRunId?.() ?? `run-${Date.now()}`;
     const emit = (nodeId: string, status: NodeRunStatus, message?: string, outputRef?: string) =>
       o.onEvent({ kind: 'node-status', runId, nodeId, status, message, outputRef });
     const emitItem = (nodeId: string, item: number, name: string, status: NodeRunStatus, message?: string, assetId?: string) =>
       o.onEvent({ kind: 'item-status', runId, nodeId, item, name, status, message, assetId });
-    const finish = (ok: boolean, cancelled: boolean) => {
+    const outputs = new Map<string, Item[]>();
+    const halted = new Set<string>(); // nodes that did not complete; their descendants are blocked
+    const finish = (ok: boolean, cancelled: boolean): WorkflowRunResult => {
       o.onEvent({ kind: 'run-finished', runId, ok, cancelled });
-      return { ok, cancelled };
+      const kept: Record<string, Item[]> = {};
+      for (const [k, v] of outputs) if (!halted.has(k)) kept[k] = v;
+      return { ok, cancelled, outputs: kept };
     };
 
     o.onEvent({ kind: 'run-started', runId, mock: graphUsesMocks(graph, this.deps) });
@@ -87,14 +91,26 @@ export class WorkflowRunner implements WorkflowExecutor {
     const order = topologicalOrder(graph);
     for (const id of order) emit(id, 'queued');
 
-    const outputs = new Map<string, Item[]>();
-    const halted = new Set<string>(); // nodes that did not complete; their descendants are blocked
     let anyFailed = false;
     const cancelFrom = (id: string) => { for (const rest of order.slice(order.indexOf(id))) emit(rest, 'cancelled'); return finish(false, true); };
 
     for (const id of order) {
       if (o.signal?.aborted) return cancelFrom(id);
+      if (o.pause?.isPaused()) {
+        o.onEvent({ kind: 'run-paused', runId, paused: true });
+        await o.pause.wait(o.signal);
+        if (o.signal?.aborted) return cancelFrom(id);
+        o.onEvent({ kind: 'run-paused', runId, paused: false });
+      }
       const node = graph.nodes.find((n) => n.id === id)!;
+      const kept = o.reuse?.[id];
+      if (kept) {
+        // Not affected by the change: keep what the earlier run produced.
+        outputs.set(id, kept.map((k) => ({ name: k.name, refs: k.refs ? [...k.refs] : null })));
+        if (node.type === 'import') o.onEvent({ kind: 'run-items', runId, names: kept.map((k) => k.name) });
+        emit(id, 'completed', 'Kept from the earlier run (nothing upstream changed).', kept.find((k) => k.refs)?.refs?.[0] ? `asset:${kept.find((k) => k.refs)!.refs![0]}` : undefined);
+        continue;
+      }
       const upstream = graph.edges.filter((e) => e.target === id).map((e) => e.source);
       if (upstream.some((u) => halted.has(u))) {
         halted.add(id);
@@ -193,13 +209,20 @@ export class WorkflowRunner implements WorkflowExecutor {
             break;
           }
           case 'approval': {
-            const waiting = live.map(({ it, i }) => ({ item: i, name: it.name, assetId: it.refs![0]! }));
-            emit(id, 'awaiting_approval', node.params.note || 'Waiting for your approval.');
-            o.onEvent({ kind: 'approval-request', runId, nodeId: id, note: node.params.note || '', items: waiting });
-            const answer = await o.requestApproval(id, node.params.note || 'Approve to continue', waiting);
-            if (o.signal?.aborted) return cancelFrom(id);
-            const approved = new Set(answer === true ? waiting.map((w) => w.item) : Array.isArray(answer) ? answer : []);
+            const all = live.map(({ it, i }) => ({ item: i, name: it.name, assetId: it.refs![0]! }));
+            // A result the user already approved stays approved; they are only asked about the rest.
+            const before = all.filter((w) => o.isApproved?.(w.assetId));
+            const waiting = all.filter((w) => !before.includes(w));
+            const approved = new Set<number>(before.map((w) => w.item));
+            if (waiting.length) {
+              emit(id, 'awaiting_approval', node.params.note || 'Waiting for your approval.');
+              o.onEvent({ kind: 'approval-request', runId, nodeId: id, note: node.params.note || '', items: waiting });
+              const answer = await o.requestApproval(id, node.params.note || 'Approve to continue', waiting);
+              if (o.signal?.aborted) return cancelFrom(id);
+              for (const n of answer === true ? waiting.map((w) => w.item) : Array.isArray(answer) ? answer : []) approved.add(n);
+            }
             const out = input.map((it, i) => ({ name: it.name, refs: approved.has(i) ? it.refs : null }));
+            for (const w of before) emitItem(id, w.item, w.name, 'completed', 'Already approved; kept.', w.assetId);
             for (const w of waiting) emitItem(id, w.item, w.name, approved.has(w.item) ? 'completed' : 'failed', approved.has(w.item) ? 'Approved.' : 'Rejected.', w.assetId);
             outputs.set(id, out);
             if (!approved.size) {
@@ -207,7 +230,7 @@ export class WorkflowRunner implements WorkflowExecutor {
               emit(id, 'failed', 'Rejected. Downstream steps will not run.');
               continue;
             }
-            emit(id, 'completed', approved.size === waiting.length ? 'Approved.' : `Approved ${approved.size} of ${waiting.length} files.`, waiting[0] ? `asset:${waiting[0].assetId}` : undefined);
+            emit(id, 'completed', approved.size === all.length ? 'Approved.' : `Approved ${approved.size} of ${all.length} files.`, all[0] ? `asset:${all[0].assetId}` : undefined);
             break;
           }
           case 'export': {

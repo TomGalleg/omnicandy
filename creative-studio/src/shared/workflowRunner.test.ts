@@ -22,7 +22,7 @@ describe('WorkflowRunner', () => {
     const { ex, photocraft } = setup();
     const events: WorkflowRunEvent[] = [];
     const r = await ex.run(demoGraph('a1'), { onEvent: (e) => events.push(e), requestApproval: async () => true });
-    expect(r).toEqual({ ok: true, cancelled: false });
+    expect(r).toMatchObject({ ok: true, cancelled: false });
     expect(events[0]).toEqual({ kind: 'run-started', runId: 'r1', mock: true });
     expect(finalStatus(events)).toEqual({ 'n-import': 'completed', 'n-gen': 'completed', 'n-edit': 'completed', 'n-approve': 'completed', 'n-export': 'completed' });
     expect(events.some((e) => e.kind === 'node-status' && e.nodeId === 'n-approve' && e.status === 'awaiting_approval')).toBe(true);
@@ -81,7 +81,7 @@ describe('WorkflowRunner', () => {
       onEvent: (e) => events.push(e),
       requestApproval: async () => { abort.abort(); return true; },
     });
-    expect(r).toEqual({ ok: false, cancelled: true });
+    expect(r).toMatchObject({ ok: false, cancelled: true });
     expect(finalStatus(events)['n-export']).toBe('cancelled');
     expect(events.some((e) => e.kind === 'node-status' && e.nodeId === 'n-export' && e.status === 'completed')).toBe(false);
     expect(photocraft.log).toHaveLength(1);
@@ -128,7 +128,7 @@ describe('WorkflowRunner batches', () => {
       onEvent: (e) => events.push(e),
       requestApproval: async (_id, _s, items) => { seen = items; return true; },
     });
-    expect(r).toEqual({ ok: false, cancelled: false }); // one file failed
+    expect(r).toMatchObject({ ok: false, cancelled: false }); // one file failed
     expect(calls).toEqual(['photocraft:a', 'photocraft:bad', 'photocraft:c', 'lightcraft:a+warm', 'lightcraft:c+warm', 'export:a+warm+look', 'export:c+warm+look']);
     expect(seen).toEqual([{ item: 0, name: 'a.jpg', assetId: 'a+warm+look' }, { item: 2, name: 'c.jpg', assetId: 'c+warm+look' }]);
     expect(events.find((e) => e.kind === 'run-items')).toMatchObject({ names: ['a.jpg', 'bad.jpg', 'c.jpg'] });
