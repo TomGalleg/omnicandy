@@ -73,6 +73,10 @@ export const IPC = {
   projectsRemove: 'projects:remove',
   projectsReveal: 'projects:reveal',
   projectsStorage: 'projects:storage',
+  projectsAddExisting: 'projects:add-existing',
+  projectsLocate: 'projects:locate',
+  projectsDuplicate: 'projects:duplicate',
+  projectsMove: 'projects:move',
   projectsPickFolder: 'projects:pick-folder',
   projectsSetDefaultDir: 'projects:set-default-dir',
   projectsRevealDefault: 'projects:reveal-default',
@@ -237,6 +241,14 @@ export interface StudioApi {
     /** Changes where NEW projects go (null = built-in folder). Existing projects are never moved. */
     setDefaultDir(dir: string | null): Promise<StorageDto>;
     revealDefaultDir(): Promise<void>;
+    /** Native dialog: pick an existing project folder (from any drive) and add it; returns its key, or null if cancelled. */
+    openExisting(): Promise<string | null>;
+    /** Reconnects a project whose folder went missing; asks for the folder. False if cancelled. */
+    locate(key: string): Promise<boolean>;
+    /** Full copy under a new name; asks for the destination folder. Returns the new key, or null if cancelled. */
+    duplicate(key: string): Promise<string | null>;
+    /** Verified move to another folder; asks for it. The old folder goes to the Recycle Bin only after the copy is checked. */
+    move(key: string): Promise<boolean>;
     /** Switches the open project (refused while a task, workflow or Claude is busy). */
     open(key: string): Promise<void>;
     rename(key: string, name: string): Promise<void>;

@@ -20,8 +20,7 @@ Evidence for each integration (exact commands, versions and test results) is in
 still describes "Phase 2, steps 1–2"); this file and the audit are the current picture.
 
 **Resume here (new conversation):** follow Tomas's Master Development Instructions (phases 0–10).
-Phase 0 audit, all of Phase 1 and Phase 2.1-2.2 are done (see "Master plan status" below). **Next: Phase 2.3
-and 2.4 (move/rename/duplicate/relink projects, virtual collections), after Tomas's OK of 2.1-2.2.** Keep work in small milestones and replies short.
+Phase 0 audit, all of Phase 1 and Phase 2 (2.1-2.4) is done (see "Master plan status" below). **Next: Phase 3 (Project Home, prompt-first creation), after Tomas's OK of Phase 2.** Keep work in small milestones and replies short.
 
 ## Master plan status (Phase 0 audit, 2026-10-14)
 
@@ -37,8 +36,8 @@ typecheck 0, Vitest 135 passed / 14 skipped (opt-in live tests).
 | 1.4 | Workflow Editor: collapsible side panels, Fit/auto layout, running-node highlight, approval expands | **WORKING** | 1.2 | `smoke-workflow.mjs` 7/7, `workflowLayout.test.ts`; screenshots 95-96 |
 | 2.1 | Default project folder in Settings, Projects & Storage (Browse, Open folder, write check, free space, per-project folder when creating) | **WORKING** | 1 | `projects.test.ts`, `smoke-projects.mjs` |
 | 2.2 | Self-contained project folder layout (Assets/, Versions/, Exports/, Workflows/, per-app folders...) | **WORKING** for new projects; older projects keep their layout | 2.1 | `projectStore.test.ts`, `projects.test.ts` |
-| 2.3 | Open from any folder, move, rename folder, duplicate, locate/relink | NOT IMPLEMENTED | 2.1 | new unit tests |
-| 2.4 | Virtual collections (All, Originals, AI, Favorites, Versions, Workflows, Deliverables) | NOT IMPLEMENTED | 2.2 | smoke |
+| 2.3 | Open existing project from any folder, Duplicate, verified Move, Locate a missing project | **WORKING** (relink of individual missing files: n/a, files are copied into the project) | 2.1 | `projects.test.ts` |
+| 2.4 | Virtual collections (All, Originals, AI, Favorites, Versions, Workflows, Deliverables) | **WORKING** | 2.2 | `collections.test.ts` |
 | 3 | Prompt-first Project Home, Claude creates projects, blank project types, overview | NOT IMPLEMENTED (Home lists projects; creation is name-only) | 2 | smoke + real Claude run |
 | 4 | Simplified / Advanced navigation | NOT IMPLEMENTED | 1, 3 | smoke |
 | 5 | Claude builds and runs workflows (shared engine) | NOT IMPLEMENTED (Claude has no workflow tools) | 1.4 | real Claude run + `workflowRunner` tests |
@@ -95,6 +94,20 @@ Phase 2.1-2.2 (2026-10-14):
 * Tests: `npm run check` lint 0, types 0, **142 passed / 14 skipped** (+3 projects, +1 legacy layout);
   `smoke-projects.mjs` 10/10 on a fresh build. Live-app and workflow smokes not re-run (not touched
   beyond the live work-folder path; do it with 2.3).
+
+Phase 2.3-2.4 (2026-10-14):
+* Home: **Open existing...** (pick any project folder; added to the list, nothing copied), **Duplicate...**
+  (full copy with new identity and name "<name> copy", into a folder you pick), **Move...** (copy, check size
+  and SHA-256 of every file under a `.moving` name, rename into place, register, then old folder to the
+  Recycle Bin; any failure leaves the original; refused for the open project and the Sample Project),
+  **Locate...** for a registered project whose folder is gone (shown as "Folder not found", same
+  project identity needed). Rename still renames the project, not its folder.
+* Media dock: **Collection** selector with counts: All Assets, Originals (imported, not AI), AI Generations
+  (provider-made), Favorites (4+ stars), Versions, Workflows (made by workflow runs), Deliverables
+  (lists the Exports folder). Computed from the manifest (`src/shared/collections.ts`); no files move.
+* Not done: AI tagging (no AI integration for it yet); no dedicated UI test of the Browse dialogs
+  (native dialogs; logic covered by unit tests).
+* Tests: lint 0, types 0, **146 passed / 14 skipped**; `smoke-projects.mjs` 10/10, `smoke-docks.mjs` 15/15.
 
 Phase 1 note: the old `integrationStatus().claude` field in `src/main/ipc.ts` still says "not
 configured in this build" (stale); Settings now shows Claude's real sign-in state instead.

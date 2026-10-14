@@ -57,6 +57,8 @@ export interface ProjectSummary {
   id: string;
   /** The project's folder on disk. */
   folder: string;
+  /** The folder can't be found (drive disconnected or folder moved): Locate it to reconnect. */
+  missing?: boolean;
   name: string;
   assetCount: number;
   originals: number;

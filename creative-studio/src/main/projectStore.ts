@@ -70,6 +70,15 @@ export class ProjectStore implements AssetRepository {
     return this.manifest;
   }
 
+  /** Gives a copied project its own identity and name (used by Duplicate). */
+  async regenerateIdentity(name: string): Promise<void> {
+    await this.loadManifest();
+    this.manifest!.id = randomUUID();
+    this.manifest!.name = name;
+    this.manifest!.createdAt = new Date().toISOString();
+    await this.persist();
+  }
+
   async exists(): Promise<boolean> {
     return fs.access(this.manifestPath).then(() => true, () => false);
   }

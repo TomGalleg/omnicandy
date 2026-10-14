@@ -423,14 +423,36 @@ export function registerIpc(d: IpcDeps): void {
   handle(IPC.projectsList, none, () => d.projects.list());
   handle(IPC.projectsCurrent, none, () => d.projects.currentKey());
   const folderPath = z.string().min(3).max(1024);
+  const projectKeyRe = z.string().regex(/^[A-Za-z0-9_-]{1,64}$/);
   handle(IPC.projectsCreate, z.union([z.tuple([z.string().max(80)]), z.tuple([z.string().max(80), folderPath.optional()])]), (name, parentDir?: string) => d.projects.create(name, parentDir));
   handle(IPC.projectsStorage, none, () => d.projects.storageInfo());
-  handle(IPC.projectsPickFolder, none, async () => {
+  const pickFolder = async (title: string): Promise<string | null> => {
     const win = d.window();
     const start = (await d.projects.storageInfo()).defaultDir;
-    const o: Electron.OpenDialogOptions = { title: 'Choose a folder for projects', defaultPath: start, properties: ['openDirectory', 'createDirectory'] };
+    const o: Electron.OpenDialogOptions = { title, defaultPath: start, properties: ['openDirectory', 'createDirectory'] };
     const r = await (win ? dialog.showOpenDialog(win, o) : dialog.showOpenDialog(o));
     return r.canceled || !r.filePaths[0] ? null : r.filePaths[0];
+  };
+  handle(IPC.projectsPickFolder, none, () => pickFolder('Choose a folder for projects'));
+  handle(IPC.projectsAddExisting, none, async () => {
+    const dir = await pickFolder('Choose a CreateCraft project folder (it contains project.json)');
+    return dir ? d.projects.addExisting(dir) : null;
+  });
+  handle(IPC.projectsLocate, z.tuple([projectKeyRe]), async (key) => {
+    const dir = await pickFolder('Choose the project\'s folder');
+    if (!dir) return false;
+    await d.projects.relocate(key, dir);
+    return true;
+  });
+  handle(IPC.projectsDuplicate, z.tuple([projectKeyRe]), async (key) => {
+    const dir = await pickFolder('Choose where to put the copy');
+    return dir ? d.projects.duplicate(key, dir) : null;
+  });
+  handle(IPC.projectsMove, z.tuple([projectKeyRe]), async (key) => {
+    const dir = await pickFolder('Choose the folder to move the project into');
+    if (!dir) return false;
+    await d.projects.move(key, dir);
+    return true;
   });
   handle(IPC.projectsSetDefaultDir, z.tuple([folderPath.nullable()]), (dir) => d.projects.setDefaultDir(dir));
   handle(IPC.projectsRevealDefault, none, async () => { await shell.openPath((await d.projects.storageInfo()).defaultDir); });

@@ -58,6 +58,8 @@ export function HomeWorkspace({ manifest, projectKey, onSwitched, onGoto, log }:
             </button>
             {location && <button className="btn small ghost" type="button" aria-label="Use the default project folder" onClick={() => setLocation(null)}>✕</button>}
             <button className="btn primary" type="submit" disabled={busy}>New project</button>
+            <button className="btn small" type="button" disabled={busy}
+              onClick={() => void run(async () => { const key = await window.studio.projects.openExisting(); if (key) { await window.studio.projects.open(key); onSwitched(key); } })}>Open existing…</button>
           </form>
         </div>
         {error && <div className="wf-msg error" role="alert">{error}</div>}
@@ -76,11 +78,15 @@ export function HomeWorkspace({ manifest, projectKey, onSwitched, onGoto, log }:
                 ) : (
                   <strong className="project-name-line" title={p.name}>{p.name}{p.isOpen && <span className="chip real">Open</span>}</strong>
                 )}
-                <span className="asset-meta">{p.originals} file{p.originals === 1 ? '' : 's'} · {p.versions} version{p.versions === 1 ? '' : 's'} · edited {when(p.updatedAt)}</span>
+                <span className="asset-meta" title={p.folder}>{p.missing ? `Folder not found: ${p.folder}` : `${p.originals} file${p.originals === 1 ? '' : 's'} · ${p.versions} version${p.versions === 1 ? '' : 's'} · edited ${when(p.updatedAt)}`}</span>
                 <div className="btn-row">
-                  {!p.isOpen && <button className="btn small primary" disabled={busy} onClick={() => void open(p)}>Open</button>}
-                  <button className="btn small" disabled={busy} onClick={() => setRenaming({ key: p.id, name: p.name })}>Rename</button>
-                  <button className="btn small" onClick={() => void window.studio.projects.reveal(p.id)}>Show folder</button>
+                  {!p.isOpen && !p.missing && <button className="btn small primary" disabled={busy} onClick={() => void open(p)}>Open</button>}
+                  {p.missing && <button className="btn small primary" disabled={busy} onClick={() => void run(async () => { await window.studio.projects.locate(p.id); })}>Locate…</button>}
+                  {!p.missing && <button className="btn small" disabled={busy} onClick={() => setRenaming({ key: p.id, name: p.name })}>Rename</button>}
+                  {!p.missing && <button className="btn small" onClick={() => void window.studio.projects.reveal(p.id)}>Show folder</button>}
+                  {!p.missing && <button className="btn small" disabled={busy} onClick={() => void run(async () => { await window.studio.projects.duplicate(p.id); })}>Duplicate…</button>}
+                  {!p.missing && !p.isOpen && !p.isSample && <button className="btn small" disabled={busy} title="Copies and checks every file before the old folder is removed"
+                    onClick={() => void run(async () => { await window.studio.projects.move(p.id); })}>Move…</button>}
                   {!p.isOpen && !p.isSample && (
                     <button className="btn small danger" disabled={busy}
                       onClick={() => { if (window.confirm(`Move "${p.name}" to the Recycle Bin? You can restore it from there.`)) void run(() => window.studio.projects.remove(p.id)); }}>Remove</button>

@@ -123,4 +123,57 @@ describe('ProjectManager', () => {
     expect(await pm.folder(key)).toBe(path.join(parent, 'One-off'));
     expect((await pm.storageInfo()).isCustom).toBe(false);
   });
+
+  it('opens an existing project from any folder, duplicates it, and locates a missing one', async () => {
+    const pm = make();
+    await pm.current();
+    const elsewhere = path.join(tmp, 'USB');
+    const k1 = await pm.create('Travel', elsewhere);
+    const store = await pm.open(k1);
+    await store.importFile(path.join(FIXTURES, 'dune-poster.svg'));
+    const dir = await pm.folder(k1);
+
+    const fresh = new ProjectManager(path.join(tmp, 'projects2'), FIXTURES, path.join(tmp, 'projects2.json'), async () => {});
+    const k2 = await fresh.addExisting(dir);
+    expect((await fresh.list()).find((p) => p.id === k2)).toMatchObject({ name: 'Travel', originals: 1, folder: dir });
+    expect(await fresh.addExisting(dir)).toBe(k2); // same folder, same key
+    await expect(fresh.addExisting(tmp)).rejects.toThrow(/not a CreateCraft project/);
+
+    const dupKey = await pm.duplicate(k1, elsewhere);
+    const dup = (await pm.list()).find((p) => p.id === dupKey)!;
+    expect(dup).toMatchObject({ name: 'Travel copy', originals: 1 });
+    expect(dup.folder).not.toBe(dir);
+    const srcM = await (await pm.storeFor(k1)).loadManifest();
+    const dupM = await (await pm.storeFor(dupKey)).loadManifest();
+    expect(dupM.id).not.toBe(srcM.id);
+    expect(dupM.assets[0]!.sha256).toBe(srcM.assets[0]!.sha256);
+
+    // The folder goes missing (drive unplugged), then is found again elsewhere.
+    await pm.open(SAMPLE_KEY);
+    const moved = path.join(tmp, 'Elsewhere2', 'Travel');
+    await fs.mkdir(path.dirname(moved), { recursive: true });
+    await fs.rename(dir, moved);
+    expect((await pm.list()).find((p) => p.id === k1)).toMatchObject({ missing: true });
+    await pm.relocate(k1, moved);
+    expect((await pm.list()).find((p) => p.id === k1)).toMatchObject({ name: 'Travel', originals: 1 });
+  });
+
+  it('moves a project with verification, leaving the original until the copy is registered', async () => {
+    const pm = make();
+    await pm.current();
+    const key = await pm.create('Mover');
+    const store = await pm.open(key);
+    await store.importFile(path.join(FIXTURES, 'dune-poster.svg'));
+    await expect(pm.move(key, path.join(tmp, 'X'))).rejects.toThrow(/Open another project/);
+    await pm.open(SAMPLE_KEY);
+    const src = await pm.folder(key);
+    const dest = await pm.move(key, path.join(tmp, 'Archive'));
+    expect(dest).toBe(path.join(tmp, 'Archive', key));
+    expect(await pm.folder(key)).toBe(dest);
+    expect(trashed).toContain(src);
+    expect(await fs.access(`${dest}.moving`).then(() => true, () => false)).toBe(false);
+    const m = await (await pm.storeFor(key)).loadManifest();
+    expect(m.assets).toHaveLength(1);
+    await expect(pm.move(key, path.join(tmp, 'Archive'))).rejects.toThrow(/already in that folder/);
+  });
 });

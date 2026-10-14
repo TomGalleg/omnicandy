@@ -9,7 +9,7 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import type { ProjectSummary } from '@shared/types';
 import { emptyGraph } from '@shared/workflow';
-import { ProjectStore } from './projectStore';
+import { ProjectStore, sha256File } from './projectStore';
 import { ensureSampleProject } from './sampleProject';
 
 const KEY = /^[A-Za-z0-9_-]{1,64}$/;
@@ -44,6 +44,40 @@ export async function checkWritableFolder(dir: string): Promise<void> {
   } catch {
     throw new Error(`CreateCraft can't write to "${dir}". Pick a folder you have permission to change, or reconnect the drive.`);
   }
+}
+
+async function* walk(dir: string, rel = ''): AsyncGenerator<{ rel: string; dir: boolean }> {
+  for (const e of await fs.readdir(path.join(dir, rel), { withFileTypes: true })) {
+    const r = rel ? `${rel}/${e.name}` : e.name;
+    yield { rel: r, dir: e.isDirectory() };
+    if (e.isDirectory()) yield* walk(dir, r);
+  }
+}
+
+/** Copies a folder tree and verifies every file (size and SHA-256) before returning. Stored files stay read-only. */
+async function copyVerified(src: string, dest: string): Promise<void> {
+  await fs.mkdir(dest, { recursive: true });
+  const files: string[] = [];
+  for await (const e of walk(src)) {
+    const to = path.join(dest, ...e.rel.split('/'));
+    if (e.dir) { await fs.mkdir(to, { recursive: true }); continue; }
+    await fs.copyFile(path.join(src, ...e.rel.split('/')), to);
+    files.push(e.rel);
+  }
+  for (const rel of files) {
+    const a = path.join(src, ...rel.split('/'));
+    const b = path.join(dest, ...rel.split('/'));
+    if ((await fs.stat(a)).size !== (await fs.stat(b)).size || (await sha256File(a)) !== (await sha256File(b))) {
+      throw new Error(`The copy of "${rel}" did not match the original. Nothing was changed.`);
+    }
+  }
+}
+
+async function rmWritable(dir: string) {
+  try {
+    for await (const e of walk(dir)) if (!e.dir) await fs.chmod(path.join(dir, ...e.rel.split('/')), 0o666).catch(() => {});
+  } catch { /* folder missing */ }
+  await fs.rm(dir, { recursive: true, force: true }).catch(() => {});
 }
 
 export class ProjectManager {
@@ -148,7 +182,12 @@ export class ProjectManager {
           createdAt: m.createdAt, updatedAt: m.updatedAt, thumbAssetId: thumb?.id ?? null,
           isOpen: e.name === this.storeKey, isSample: e.name === SAMPLE_KEY, folder: dir,
         });
-      } catch { /* not a project folder */ }
+      } catch {
+        // A registered project whose folder is gone (drive unplugged, folder moved): keep it listed so it can be located again.
+        if (st.locations[name]) {
+          out.push({ id: name, name: path.basename(dir), folder: dir, missing: true, assetCount: 0, originals: 0, versions: 0, createdAt: '', updatedAt: '', thumbAssetId: null, isOpen: false, isSample: false });
+        }
+      }
     }
     const rank = (k: string) => { const i = st.recent.indexOf(k); return i < 0 ? 1e6 : i; };
     return out.sort((a, b) => Number(b.isOpen) - Number(a.isOpen) || rank(a.id) - rank(b.id) || b.updatedAt.localeCompare(a.updatedAt));
@@ -204,6 +243,82 @@ export class ProjectManager {
   }
 
   async folder(key: string): Promise<string> { return this.dirOf(key); }
+
+  /** Registers an existing project folder (from any drive) so it appears in the list; returns its key. */
+  async addExisting(dir: string): Promise<string> {
+    const abs = path.resolve(dir);
+    if (!(await new ProjectStore(abs).exists())) throw new Error('That folder is not a CreateCraft project (no project.json).');
+    const st = await this.readState();
+    const known = Object.entries(st.locations).find(([, v]) => path.resolve(v).toLowerCase() === abs.toLowerCase());
+    if (known) return known[0];
+    if (path.resolve(path.dirname(abs)).toLowerCase() === path.resolve(this.baseDir).toLowerCase() && KEY.test(path.basename(abs))) return path.basename(abs);
+    const m = await new ProjectStore(abs).loadManifest();
+    const clash = (await this.list()).find((p) => !p.missing && p.folder !== abs && p.id && m.id && p.id === m.id);
+    if (clash) throw new Error('A project with this identity is already in the list.');
+    const key = `p-${randomUUID().slice(0, 8)}`;
+    await this.writeState({ ...st, locations: { ...st.locations, [key]: abs } });
+    return key;
+  }
+
+  /** Points a missing project at the folder where it now lives (must be the same project). */
+  async relocate(key: string, dir: string): Promise<void> {
+    const st = await this.readState();
+    if (!st.locations[key]) throw new Error('This project is stored in the default location and does not need locating.');
+    const target = new ProjectStore(path.resolve(dir));
+    if (!(await target.exists())) throw new Error('That folder is not a CreateCraft project (no project.json).');
+    await this.writeState({ ...st, locations: { ...st.locations, [key]: path.resolve(dir) } });
+  }
+
+  /** A full independent copy in `parentDir` (or beside the default), under a new name and identity. */
+  async duplicate(key: string, parentDir?: string): Promise<string> {
+    const src = await this.dirOf(key);
+    const srcStore = await this.storeFor(key);
+    const m = await srcStore.loadManifest();
+    const st = await this.readState();
+    const parent = parentDir ?? st.defaultDir ?? path.dirname(src);
+    await checkWritableFolder(parent);
+    const name = `${m.name} copy`.slice(0, 80);
+    const base = folderNameFor(name);
+    let dest = path.join(parent, base);
+    for (let i = 2; await fs.access(dest).then(() => true, () => false); i++) dest = path.join(parent, `${base} ${i}`);
+    await copyVerified(src, dest);
+    const newKey = `p-${randomUUID().slice(0, 8)}`;
+    const copy = new ProjectStore(dest);
+    await copy.regenerateIdentity(name);
+    const st2 = await this.readState();
+    await this.writeState({ ...st2, locations: { ...st2.locations, [newKey]: dest } });
+    return newKey;
+  }
+
+  /**
+   * Moves a project to a new parent folder. The files are copied and checked (size and SHA-256)
+   * under a temporary name, switched over atomically, and only then is the old folder sent to the
+   * Recycle Bin. If anything fails or is interrupted, the original is untouched.
+   */
+  async move(key: string, parentDir: string): Promise<string> {
+    if (key === this.storeKey) throw new Error('Open another project first, then move this one.');
+    if (key === SAMPLE_KEY) throw new Error('The Sample Project stays where it is.');
+    const src = await this.dirOf(key);
+    await this.storeFor(key);
+    await checkWritableFolder(parentDir);
+    const dest = path.join(path.resolve(parentDir), path.basename(src));
+    if (path.resolve(dest).toLowerCase() === path.resolve(src).toLowerCase()) throw new Error('The project is already in that folder.');
+    if (path.resolve(dest).toLowerCase().startsWith(path.resolve(src).toLowerCase() + path.sep)) throw new Error('Choose a folder outside the project.');
+    if (await fs.access(dest).then(() => true, () => false)) throw new Error(`A folder named "${path.basename(src)}" already exists there.`);
+    const tmp = `${dest}.moving`;
+    await fs.rm(tmp, { recursive: true, force: true });
+    try {
+      await copyVerified(src, tmp);
+      await fs.rename(tmp, dest);
+    } catch (e) {
+      await rmWritable(tmp);
+      throw e;
+    }
+    const st = await this.readState();
+    await this.writeState({ ...st, locations: { ...st.locations, [key]: dest } });
+    await this.trash(src).catch(() => { /* the copy is in place and registered; a leftover original is harmless */ });
+    return dest;
+  }
 
   async storageInfo(): Promise<StorageInfo> {
     const st = await this.readState();

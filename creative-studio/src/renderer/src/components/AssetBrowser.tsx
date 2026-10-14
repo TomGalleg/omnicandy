@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { COLLECTIONS, collectionCounts, inCollection, type CollectionId } from '@shared/collections';
 import { Group, Panel, Separator, usePanelRef } from 'react-resizable-panels';
 import type { Asset, AssetKind, ProjectManifest } from '@shared/types';
 import { formatBytes, formatDims } from '../format';
@@ -36,6 +37,9 @@ export function AssetThumb({ asset, rendition }: { asset: Asset; rendition?: Ass
 export function AssetBrowser({ manifest, selectedId, onSelect, onManifest, log }: Props) {
   const [query, setQuery] = useState('');
   const [kind, setKind] = useState<'all' | AssetKind>('all');
+  const [collection, setCollection] = useState<CollectionId>('all');
+  const [exportsList, setExports] = useState<Array<{ name: string; bytes: number; modified: string }>>([]);
+  useEffect(() => { void window.studio.listExports().then(setExports).catch(() => setExports([])); }, [manifest?.updatedAt]);
   const [busy, setBusy] = useState(false);
   // The details panel under the grid can be folded down to its header; remembered.
   const detailsRef = usePanelRef();
@@ -51,9 +55,11 @@ export function AssetBrowser({ manifest, selectedId, onSelect, onManifest, log }
   const assets = useMemo(() => {
     const q = query.trim().toLowerCase();
     return (manifest?.assets ?? []).filter((a) =>
+      inCollection(a, collection) &&
       (kind === 'all' || a.kind === kind) &&
       (!q || a.name.toLowerCase().includes(q) || a.sourceFormat.includes(q) || a.provenance.source.toLowerCase().includes(q)));
-  }, [manifest, query, kind]);
+  }, [manifest, query, kind, collection]);
+  const counts = useMemo(() => collectionCounts(manifest?.assets ?? [], exportsList.length), [manifest, exportsList]);
 
   const selected = manifest?.assets.find((a) => a.id === selectedId) ?? null;
 
@@ -85,6 +91,9 @@ export function AssetBrowser({ manifest, selectedId, onSelect, onManifest, log }
             <button className="btn small" onClick={doImport} disabled={busy}>{busy ? 'Importing…' : 'Import…'}</button>
           </div>
           <div className="asset-tools">
+            <select aria-label="Collection" title={COLLECTIONS.find((c) => c.id === collection)?.hint} value={collection} onChange={(e) => setCollection(e.target.value as CollectionId)}>
+              {COLLECTIONS.map((c) => <option key={c.id} value={c.id}>{c.label} ({counts[c.id]})</option>)}
+            </select>
             <input type="search" placeholder="Search files" aria-label="Search files" value={query} onChange={(e) => setQuery(e.target.value)} />
             <select aria-label="Filter by kind" value={kind} onChange={(e) => setKind(e.target.value as typeof kind)}>
               <option value="all">All</option>
@@ -98,14 +107,21 @@ export function AssetBrowser({ manifest, selectedId, onSelect, onManifest, log }
           </div>
           <div className="pane-body">
             <div className="asset-grid" role="listbox" aria-label="Assets">
-              {assets.map((a) => (
+              {collection === 'deliverables' && (
+                <div className="asset-meta" style={{ gridColumn: '1 / -1' }}>
+                  {exportsList.length === 0 ? 'Nothing exported yet. Use the Deliver tab.' : exportsList.map((e) => (
+                    <div key={e.name}><button className="btn small ghost" onClick={() => void window.studio.revealExport(e.name)}>{e.name}</button> {formatBytes(e.bytes)}</div>
+                  ))}
+                </div>
+              )}
+              {collection !== 'deliverables' && assets.map((a) => (
                 <button key={a.id} role="option" className="asset" aria-selected={a.id === selectedId} onClick={() => onSelect(a.id)}>
                   <AssetThumb asset={a} rendition={a.sourceFormat === 'pcraft' || a.sourceFormat === 'designcraft' ? manifest?.assets.find((x) => x.parentId === a.id && x.kind === 'image') : undefined} />
                   <span className="asset-name" title={a.name}>{a.name}</span>
                   <span className="asset-meta">{KIND_LABEL[a.kind]} · {formatDims(a) || formatBytes(a.bytes)}</span>
                 </button>
               ))}
-              {manifest && assets.length === 0 && <p className="asset-meta">No files match.</p>}
+              {manifest && collection !== 'deliverables' && assets.length === 0 && <p className="asset-meta">No files match.</p>}
             </div>
           </div>
         </section>
