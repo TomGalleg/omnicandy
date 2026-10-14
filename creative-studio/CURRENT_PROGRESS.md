@@ -20,7 +20,7 @@ Evidence for each integration (exact commands, versions and test results) is in
 still describes "Phase 2, steps 1–2"); this file and the audit are the current picture.
 
 **Resume here (new conversation):** follow Tomas's Master Development Instructions (phases 0–10).
-Phase 0 audit, Phase 1, Phase 2 and Phase 3 (3.1-3.4, plus the two gap fixes below) are done (see "Master plan status" below). Phase 4 (Simplified / Advanced navigation) is done too. Phase 5 (parts 1 and 2: Claude builds, runs and monitors workflows on the shared engine; pause, manual control, rerun of affected steps, versions, templates) is done; **next: Phase 6 (real Gemini/OpenAI generation inside workflows, spending limits), only after Tomas's OK.** Keep work in small milestones and replies short.
+Phase 0 audit, Phase 1, Phase 2 and Phase 3 (3.1-3.4, plus the two gap fixes below) are done (see "Master plan status" below). Phase 4 (Simplified / Advanced navigation) is done too. Phase 5 (parts 1 and 2: Claude builds, runs and monitors workflows on the shared engine; pause, manual control, rerun of affected steps, versions, templates) is done; Phase 6 (real image generation, spending limit, Workflow AI step) is done and verified; **next: Phase 7 (AI video providers).** Keep work in small milestones and replies short.
 
 ## Master plan status (Phase 0 audit, 2026-10-14)
 
@@ -44,7 +44,7 @@ typecheck 0, Vitest 135 passed / 14 skipped (opt-in live tests).
 | 3.4 | Project Overview: brief, objective, progress, latest artwork, items to review, recent versions/exports, Continue creating, workspace + selected file restored | **WORKING**: Claude chat is saved in the project folder and restored on reopen (see "Phase 3 gaps closed") | 3.1 | `projects.test.ts`, `projectStore.test.ts`, `smoke-home-ai.mjs`, screenshots 46-47 |
 | 4 | Simplified / Advanced navigation | **WORKING** | 1, 3 | `navigation.test.ts`, `smoke-nav.mjs` 7/7 |
 | 5 | Claude builds and runs workflows (shared engine) | **WORKING** (paid AI Generate steps stay blocked until Phase 6) | 1.4 | `workflowPlan.test.ts`, `workflowControl.test.ts`, `workflowVersions.test.ts`, `smoke-claude-workflow.mjs` 9/9, `smoke-workflow-control.mjs` 32/32 (real Claude + real PhotoCraft) |
-| 6 | Real Gemini / OpenAI image generation; spending limits; Workflow AI node | **PARTIAL**: spending limit + ledger and the Workflow AI step on the real generation path WORKING (verified offline / mocked HTTP); **real end-to-end generation per provider NOT YET VERIFIED** (keys saved and connection tests passed by the user at 22:46/22:47; awaiting the user's one approved real image per provider) | user's keys + OK | one approved real call per provider |
+| 6 | Real Gemini / OpenAI image generation; spending limits; Workflow AI node | **WORKING / VERIFIED** (2026-10-14): one approved real image from each provider (OpenAI `gpt-image-2.5-flare`, Gemini `gemini-nano-banana-2.1`), 1024x1024, in the library with prompt/model/estimate; spending limit + ledger; Workflow AI step on the real path. Costs are estimates, not confirmed charges. | user's keys + OK | done |
 | 7 | AI video providers (Veo, Runway, Luma) | NOT IMPLEMENTED | 6 | per provider |
 | 8 | Templates | NOT IMPLEMENTED | 5 | smoke |
 | 9 | README / docs refresh, status vocabulary | PARTIAL (README out of date) | any | review |
@@ -237,13 +237,19 @@ Phase 6 part 1 (2026-10-14):
   (approval dialog in main, spending limit, ledger, provenance, reference image from the upstream file when the model can edit).
   Declining stops that branch with nothing charged. Old nodes without a model still use the offline mock. Claude's plans
   and prompt were updated (the "not enabled yet" warning is gone).
-* **Not verified:** a real OpenAI or Gemini image. The user saved both keys and the free connection tests passed in their own
+* **Verified (user ran both, approval dialog shown):** a real OpenAI image (est. $0.0132) and a real Gemini image (est. $0.0346). Earlier note: a real OpenAI or Gemini image was not yet verified. The user saved both keys and the free connection tests passed in their own
   app (2 of 2 and 4 of 4 models listed). I could not decrypt their keys from a second launched instance, so the real
   generation test is theirs to run once in AI Generate (approval dialog); then the files and provenance can be inspected.
   My launch also overwrote their stored "last test" status with a failure; pressing Test connection restores it.
 * Tests: lint 0, types 0, **174 passed / 14 skipped** (+3: `spending.test.ts`, 2 workflow AI step tests);
   `smoke-generate-workflow.mjs` 7/7 (new, offline), `smoke-generate` 16/16, `smoke-claude-generate` 5/5, `smoke-workflow` 7/7.
   The "over the limit" behaviour is covered by the unit test; the smoke profile has no key so it stops earlier.
+
+Phase 6 incident (2026-10-14): a second app instance I launched while the user's app was closing saw `project.json` as missing and
+recreated the Sample Project list (11 sample files), dropping 9 entries from the list (files stayed on disk). Recovered by rebuilding
+the list from the folder (backup: `project.json.bak-before-recovery`; lineage and generation settings best-effort). Guard added in
+`ensureSampleProject`: retries, then refuses to recreate a project whose folder still has files. Unexplained: the running app did not
+rewrite `project.json` after generation or a rating change; restart showed all 20 items. Tests 174 passed / 14 skipped.
 
 Phase 1 note: the old `integrationStatus().claude` field in `src/main/ipc.ts` still says "not
 configured in this build" (stale); Settings now shows Claude's real sign-in state instead.
