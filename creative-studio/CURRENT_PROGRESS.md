@@ -20,7 +20,7 @@ Evidence for each integration (exact commands, versions and test results) is in
 still describes "Phase 2, steps 1–2"); this file and the audit are the current picture.
 
 **Resume here (new conversation):** follow Tomas's Master Development Instructions (phases 0–10).
-Phase 0 audit, Phase 1, Phase 2 and Phase 3 (3.1-3.4, plus the two gap fixes below) are done (see "Master plan status" below). Phase 4 (Simplified / Advanced navigation) is done too. Phase 5 (parts 1 and 2: Claude builds, runs and monitors workflows on the shared engine; pause, manual control, rerun of affected steps, versions, templates) is done; Phase 6 (real image generation, spending limit, Workflow AI step) is done and verified; **Phase 7 (AI video) is built for Veo but not yet verified with a real approved clip.** Keep work in small milestones and replies short.
+Phase 0 audit, Phase 1, Phase 2 and Phase 3 (3.1-3.4, plus the two gap fixes below) are done (see "Master plan status" below). Phase 4 (Simplified / Advanced navigation) is done too. Phase 5 (parts 1 and 2: Claude builds, runs and monitors workflows on the shared engine; pause, manual control, rerun of affected steps, versions, templates) is done; Phase 6 (real image generation, spending limit, Workflow AI step) is done and verified; **Phase 7 (AI video) is done for Veo and verified; Runway and Luma are not built.** Keep work in small milestones and replies short.
 
 ## Master plan status (Phase 0 audit, 2026-10-14)
 
@@ -45,7 +45,7 @@ typecheck 0, Vitest 135 passed / 14 skipped (opt-in live tests).
 | 4 | Simplified / Advanced navigation | **WORKING** | 1, 3 | `navigation.test.ts`, `smoke-nav.mjs` 7/7 |
 | 5 | Claude builds and runs workflows (shared engine) | **WORKING** (paid AI Generate steps stay blocked until Phase 6) | 1.4 | `workflowPlan.test.ts`, `workflowControl.test.ts`, `workflowVersions.test.ts`, `smoke-claude-workflow.mjs` 9/9, `smoke-workflow-control.mjs` 32/32 (real Claude + real PhotoCraft) |
 | 6 | Real Gemini / OpenAI image generation; spending limits; Workflow AI node | **WORKING / VERIFIED** (2026-10-14): one approved real image from each provider (OpenAI `gpt-image-2.5-flare`, Gemini `gemini-nano-banana-2.1`), 1024x1024, in the library with prompt/model/estimate; spending limit + ledger; Workflow AI step on the real path. Costs are estimates, not confirmed charges. | user's keys + OK | done |
-| 7 | AI video providers (Veo, Runway, Luma) | **PARTIAL**: Veo built and unit-tested with mocked HTTP; **no real Veo video generated yet** (needs Tomas's OK for a paid call). Runway and Luma not built. | 6 | one approved real Veo clip |
+| 7 | AI video providers (Veo, Runway, Luma) | **WORKING / VERIFIED (Veo)** 2026-10-14: one approved real clip (Veo 3.1 Lite, 16:9, 4 s, 720p, est. $0.20) came back as a 1280x720 4 s mp4 in the library with provenance and ledger entry. Runway and Luma not built. | 6 | one approved real Veo clip |
 | 8 | Templates | NOT IMPLEMENTED | 5 | smoke |
 | 9 | README / docs refresh, status vocabulary | PARTIAL (README out of date) | any | review |
 | 10 | Installer, first run, backup, recovery | NOT IMPLEMENTED | 2 | manual |
@@ -266,9 +266,8 @@ Phase 7 (2026-10-14):
   window change or restart resumes any still-running job from its saved operation (Google keeps the file 2 days). The finished
   mp4 is downloaded with the key, imported to `Assets/Generated`, and shown under "Video jobs" (Show in library / Open in Edit).
 * **Honest limits:** Veo has no documented cancel call, so "Stop waiting" only stops CreateCraft and warns that Google may still
-  bill it. Request fields for image-to-video (`instances[0].image.bytesBase64Encoded/mimeType`) and the response path
-  (`response.generateVideoResponse.generatedSamples[0].video.uri`) follow Google's docs but are **unverified against the live
-  API**. Claude has no video tool yet; Workflow AI step is images only; no resume of a job whose app was closed beyond 2 days.
+  bill it. Verified live: text-to-video, polling, download, import. Not live-tested: image-to-video. Request fields for image-to-video (`instances[0].image.bytesBase64Encoded/mimeType`) and the response path
+  (`response.generateVideoResponse.generatedSamples[0].video.uri`) follow Google's docs but image-to-video is **unverified against the live API**. Claude has no video tool yet; Workflow AI step is images only; no resume of a job whose app was closed beyond 2 days.
 * Tests: lint 0, types 0, **181 passed / 14 skipped** (+7 `videoGeneration.test.ts`: price and rules, request mapping, decline sends
   nothing, spending limit, full job to library asset + ledger, restart resume, failure and stop-waiting); `smoke-generate` 16/16,
   `smoke-generate-workflow` 7/7, `smoke-docks` 15/15. No paid call was made.

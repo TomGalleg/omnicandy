@@ -464,7 +464,11 @@ export function registerIpc(d: IpcDeps): void {
   handle(IPC.genRun, z.tuple([jobSchema]), (job) => runGeneration(job, 'user'));
   const video = new VideoService({
     vault, store: d.project, approve: approveGeneration, fetch: globalThis.fetch.bind(globalThis),
-    onChange: (r) => { for (const w of BrowserWindow.getAllWindows()) if (!w.isDestroyed()) w.webContents.send(IPC.videoEvent, r); },
+    onChange: (r) => {
+      for (const w of BrowserWindow.getAllWindows()) if (!w.isDestroyed()) w.webContents.send(IPC.videoEvent, r);
+      // A finished video is a new library asset: same event as a finished image so the Media list refreshes.
+      if (r.state === 'done' && r.assetId) emitGenerated({ assetIds: [r.assetId], message: r.message, estimate: { amount: r.estimateUsd, perImage: r.estimateUsd, currency: 'USD', approximate: true, basis: 'Veo price per second' }, requestedBy: r.requestedBy });
+    },
   });
   const videoJobSchema = z.object({
     modelId: z.string().min(1).max(64),
