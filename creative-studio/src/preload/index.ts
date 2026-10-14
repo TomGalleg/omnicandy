@@ -67,9 +67,11 @@ const api: StudioApi = {
       return () => ipcRenderer.removeListener(IPC.liveEvent, listener);
     },
   },
+  setProjectMeta: (patch) => ipcRenderer.invoke(IPC.setProjectMeta, patch),
   claude: {
     state: () => ipcRenderer.invoke(IPC.claudeState),
     send: (message) => ipcRenderer.invoke(IPC.claudeSend, message),
+    planProject: (request) => ipcRenderer.invoke(IPC.claudePlanProject, request),
     stop: () => ipcRenderer.invoke(IPC.claudeStop),
     reset: () => ipcRenderer.invoke(IPC.claudeReset),
     setModel: (model) => ipcRenderer.invoke(IPC.claudeModel, model),
@@ -91,7 +93,7 @@ const api: StudioApi = {
   projects: {
     list: () => ipcRenderer.invoke(IPC.projectsList),
     current: () => ipcRenderer.invoke(IPC.projectsCurrent),
-    create: (name, parentDir) => ipcRenderer.invoke(IPC.projectsCreate, name, parentDir),
+    create: (name, parentDir, meta) => ipcRenderer.invoke(IPC.projectsCreate, name, parentDir ?? null, meta ?? null),
     storage: () => ipcRenderer.invoke(IPC.projectsStorage),
     pickFolder: () => ipcRenderer.invoke(IPC.projectsPickFolder),
     setDefaultDir: (dir) => ipcRenderer.invoke(IPC.projectsSetDefaultDir, dir),

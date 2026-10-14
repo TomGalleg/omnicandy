@@ -18,6 +18,7 @@ import type { GenerateResultDto, ProviderStatusDto } from '@shared/ipc';
 import { EDITOR_APPS, type EditorAppId } from '@shared/appEditors';
 import { presetsFor } from '@shared/deliver';
 import type { DeliverQueue } from './deliver';
+import { parseProjectPlan, PROJECT_KINDS, type ProjectPlan } from '@shared/projectPlan';
 import type { LiveTaskController } from './liveTask';
 import type { ProjectStore } from './projectStore';
 
@@ -34,6 +35,17 @@ Saving creates a new version in the library; the user's original file is never c
 To deliver finished files (JPEG for the web, PDF, MP4, WAV, GIF and so on), use list_export_formats and export_file. Exports go to the project's exports folder (the Deliver tab) and are made from saved library files, never from unsaved changes in the open app. Keep replies short and plain.
 
 You can also create new pictures with generate_image (OpenAI or Google Gemini, using the user's own account). It costs the user money: only generate when they ask for it, keep the count low, and say which model you will use. CreateCraft shows the user the price and asks them to approve every call; if they cancel, accept it and do not ask again unless they bring it up. New images are added to the library as new files; open one with open_file to edit it.`;
+
+const PLAN_PROMPT = `You are Claude, the Creative Partner inside CreateCraft. The user describes a creative project in their own words. Answer with ONE JSON object and nothing else (no code fence, no commentary) with these keys:
+"name": a short project name (max 60 characters);
+"kind": one of ${PROJECT_KINDS.map((k) => `"${k.id}" (${k.label})`).join(', ')};
+"finishedOutput": one sentence naming the finished result the user wants;
+"summary": two or three plain sentences describing your creative plan;
+"apps": which ArtCraft apps to use, from PhotoCraft (photos), VectorCraft (vector art), SoundCraft (audio), FilmCraft (video timeline), LightCraft (light and colour), EffectCraft (effects and titles), DesignCraft (page layouts);
+"aiTools": AI image generation tools worth using, only from the list of available models you are given (an empty list when none is needed or none are set up); say what each is for;
+"steps": 3 to 6 short steps in plain language;
+"questions": at most 2 essential questions you still need answered (usually none).
+Do not start any work and do not mention software internals, node graphs or file formats unless the user did. Write in the user's language.`;
 
 const TOOL_NAMES = ['get_status', 'look_at_document', 'apply_edit', 'photocraft_command', 'undo', 'save_version', 'list_files', 'open_file', 'list_image_models', 'generate_image', 'list_export_formats', 'export_file', 'timeline_add', 'timeline_move_clip', 'timeline_remove_clip'];
 
@@ -307,6 +319,56 @@ New files: ${names.join(', ') || '(none)'}`);
         }),
       ],
     });
+  }
+
+  /**
+   * One real Claude call that turns a described project into a creative plan. No tools, no project
+   * files, no generation: it only returns text. Needs the Claude Code sign-in like the chat does.
+   */
+  async planProject(request: string): Promise<ProjectPlan> {
+    if (this.status === 'working') throw new Error('Claude is busy with another request. Wait for it to finish or stop it.');
+    this.status = 'working';
+    this.publish();
+    const abort = new AbortController();
+    this.abort = abort;
+    const signedOut = () => {
+      this.status = 'signed-out';
+      this.signedIn = false;
+      return new Error('Claude Code on this PC is not signed in. Open the Claude panel, click "Sign in to Claude", then try again.');
+    };
+    try {
+      const ready = await this.d.imageModels().catch(() => []);
+      const models = IMAGE_MODELS.filter((m) => ready.some((p) => p.id === m.provider && p.billable))
+        .map((m) => `${m.label} (${m.id}, ${m.note})`);
+      const { query } = await import('@anthropic-ai/claude-agent-sdk');
+      const q = query({
+        prompt: `Available AI image models: ${models.length ? models.join('; ') : 'none set up'}.\n\nThe user wants to create:\n${request}`,
+        options: {
+          model: this.model, systemPrompt: PLAN_PROMPT, tools: [], allowedTools: [], permissionMode: 'dontAsk',
+          settingSources: [], maxTurns: 1, cwd: await this.d.workDir(), abortController: abort,
+          env: { ...process.env, CLAUDE_AGENT_SDK_CLIENT_APP: 'CreateCraft/0.1' } as Record<string, string>,
+        },
+      });
+      let said = '';
+      for await (const m of q) {
+        if (m.type === 'assistant') said += m.message.content.filter((b) => b.type === 'text').map((b) => (b as { text: string }).text).join('\n');
+        else if (m.type === 'result') {
+          this.costUsd += m.total_cost_usd ?? 0;
+          const resultText = 'result' in m ? String(m.result ?? '') : '';
+          if (/not logged in|\/login/i.test(resultText)) throw signedOut();
+          if (m.is_error) throw new Error('Claude could not make a plan right now. Try again in a moment.');
+        }
+      }
+      return parseProjectPlan(said);
+    } catch (e) {
+      if (abort.signal.aborted) throw new Error('Planning was cancelled.');
+      if (e instanceof Error && /not logged in|\/login/i.test(e.message)) throw signedOut();
+      throw e;
+    } finally {
+      this.abort = null;
+      if (this.status === 'working') this.status = 'idle';
+      this.publish();
+    }
   }
 
   /** Sends one message; Claude works until it answers. Streams activity and replies to the panel. */

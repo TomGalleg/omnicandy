@@ -20,7 +20,7 @@ Evidence for each integration (exact commands, versions and test results) is in
 still describes "Phase 2, steps 1–2"); this file and the audit are the current picture.
 
 **Resume here (new conversation):** follow Tomas's Master Development Instructions (phases 0–10).
-Phase 0 audit, all of Phase 1 and Phase 2 (2.1-2.4) is done (see "Master plan status" below). **Next: Phase 3 (Project Home, prompt-first creation), after Tomas's OK of Phase 2.** Keep work in small milestones and replies short.
+Phase 0 audit, Phase 1, Phase 2 and Phase 3 (3.1-3.4) are done (see "Master plan status" below). **Next: Phase 4 (Simplified / Advanced navigation), after Tomas's OK of Phase 3.** Keep work in small milestones and replies short.
 
 ## Master plan status (Phase 0 audit, 2026-10-14)
 
@@ -38,7 +38,10 @@ typecheck 0, Vitest 135 passed / 14 skipped (opt-in live tests).
 | 2.2 | Self-contained project folder layout (Assets/, Versions/, Exports/, Workflows/, per-app folders...) | **WORKING** for new projects; older projects keep their layout | 2.1 | `projectStore.test.ts`, `projects.test.ts` |
 | 2.3 | Open existing project from any folder, Duplicate, verified Move, Locate a missing project | **WORKING** (relink of individual missing files: n/a, files are copied into the project) | 2.1 | `projects.test.ts` |
 | 2.4 | Virtual collections (All, Originals, AI, Favorites, Versions, Workflows, Deliverables) | **WORKING** | 2.2 | `collections.test.ts` |
-| 3 | Prompt-first Project Home, Claude creates projects, blank project types, overview | NOT IMPLEMENTED (Home lists projects; creation is name-only) | 2 | smoke + real Claude run |
+| 3.1 | Prompt-first Project Home: prompt, Create with Claude, New blank project, Open existing, recent project cards with type/brief, search | **WORKING** (Templates button is disabled: Phase 8) | 2 | `smoke-projects.mjs` 13/13 |
+| 3.2 | AI-first creation: real Claude call returns name, type, finished output, apps, AI tools, steps, questions; user approves; project created in chosen/default folder; optional reference import; opens matching workspace | **WORKING** (one real Claude call verified) | 3.1 | `smoke-home-ai.mjs` 6/6 (real Claude, Sonnet 5.5) |
+| 3.3 | Blank project: name, type (5 categories), folder | **WORKING** | 3.1 | `projects.test.ts`, `smoke-projects.mjs` |
+| 3.4 | Project Overview: brief, objective, progress, latest artwork, items to review, recent versions/exports, Continue creating, workspace + selected file restored | **PARTIAL**: conversation history is not restored (Claude chat is in memory, reset per project) | 3.1 | `projects.test.ts`, screenshots 46-47 |
 | 4 | Simplified / Advanced navigation | NOT IMPLEMENTED | 1, 3 | smoke |
 | 5 | Claude builds and runs workflows (shared engine) | NOT IMPLEMENTED (Claude has no workflow tools) | 1.4 | real Claude run + `workflowRunner` tests |
 | 6 | Real Gemini / OpenAI image generation; spending limits; Workflow AI node | PARTIAL (mocked-HTTP tests only; Workflow AI node is MOCK) | user's keys + OK | one approved real call per provider |
@@ -109,6 +112,27 @@ Phase 2.3-2.4 (2026-10-14):
   (native dialogs; logic covered by unit tests).
 * Tests: lint 0, types 0, **146 passed / 14 skipped**; `smoke-projects.mjs` 10/10, `smoke-docks.mjs` 15/15.
 
+Phase 3 (2026-10-14):
+* Home opens first (default workspace is Home). Big prompt "What would you like to create?"; **Create with Claude**
+  makes ONE real Claude call (`ClaudePartner.planProject`, Agent SDK, no tools, no files, no generation) that returns
+  a JSON plan (`src/shared/projectPlan.ts`, validated, with the five project types). The plan card lets the user edit
+  name and type, answer Claude's questions (re-plans), and tick "add reference files"; nothing is created until
+  **Approve and create project**. No mocked output: if Claude is signed out or fails, the error is shown. Claude is
+  told which image models are set up and only recommends from them; no paid generation can start from planning.
+* Project meta in `project.json` (all optional, older projects unaffected): `kind`, `brief`, `objective`, `view`
+  (last workspace + selected file; saved quietly, does not change "last edited"). Opening a project restores its view.
+* Blank projects: name + one of Image / Photography, Graphic Design, Video / Animation, Audio, Mixed Media + optional folder.
+  Recent projects: cards show type and the brief's first line; search filters by name, brief and type.
+* Overview: type chip, brief, Claude's objective (first plan step; it is not updated by Claude yet), progress
+  checklist, latest artwork, "Waiting for your review" (new versions / AI images not yet approved), recent versions,
+  workflow, recent exports, **Continue creating**. Nothing billable or destructive resumes on opening.
+* Not done: conversation history restore, Claude updating the objective itself, Templates (Phase 8), references
+  attached before the project exists (they are imported right after creating).
+* Tests: lint 0, types 0, **149 passed / 14 skipped** (+1 projects, +2 projectPlan); `smoke-projects.mjs` 13/13;
+  `smoke-home-ai.mjs` 6/6 with real Claude (about one Sonnet call). Other smokes not re-run; the ones that type into
+  "New project name" need the new "New blank project" step (only smoke-projects was updated).
+  Screenshots: `46-home-claude-plan.png`, `47-project-overview-brief.png`, refreshed `40`, `41`.
+
 Phase 1 note: the old `integrationStatus().claude` field in `src/main/ipc.ts` still says "not
 configured in this build" (stale); Settings now shows Claude's real sign-in state instead.
 
@@ -136,7 +160,7 @@ configured in this build" (stale); Settings now shows Claude's real sign-in stat
 
 ## 2. Project Home and new project creation
 
-**WORKING.** The Home tab lists all projects (thumbnail, file count) with New project, Open,
+**WORKING** (Phase 3 made it prompt-first; see "Phase 3" above). The Home tab lists all projects (thumbnail, file count) with New project, Open,
 Rename, Show folder and Remove (moves the folder to the Windows Recycle Bin after confirmation).
 The open project has an Overview (files by kind, recent versions, workflow, exports, Import
 files…, Show folder). Switching projects resets live sessions, Claude's session and per-project

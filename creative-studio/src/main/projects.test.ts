@@ -22,6 +22,19 @@ afterEach(async () => {
 });
 
 describe('ProjectManager', () => {
+  it('stores the project type, brief and objective, and remembers the view without changing "edited"', async () => {
+    const pm = make();
+    await pm.current();
+    const key = await pm.create('Desert poster', undefined, { kind: 'design', brief: 'A cinematic poster', objective: 'Grade the photo' });
+    const list = await pm.list();
+    expect(list.find((p) => p.id === key)).toMatchObject({ kind: 'design', brief: 'A cinematic poster' });
+    const store = await pm.open(key);
+    const before = (await store.loadManifest()).updatedAt;
+    await store.setMeta({ view: { workspace: 'edit' } });
+    const m = await make().open(key).then((s) => s.loadManifest());
+    expect(m).toMatchObject({ kind: 'design', objective: 'Grade the photo', view: { workspace: 'edit' }, updatedAt: before });
+  });
+
   it('opens the Sample Project on first run', async () => {
     const pm = make();
     expect(await pm.currentKey()).toBe(SAMPLE_KEY);

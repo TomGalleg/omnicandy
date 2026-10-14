@@ -29,13 +29,24 @@ try {
   check('Overview shows the open project', /\d+\s*originals/.test(await win.locator('.overview-grid').textContent()));
   await win.screenshot({ path: path.join(shots, '40-project-home.png') });
 
+  check('Home is prompt-first (heading, prompt field, Create with Claude, Open existing, Templates)',
+    (await win.getByRole('heading', { name: 'What would you like to create?' }).count()) === 1
+    && (await win.getByLabel('Describe what you would like to create').count()) === 1
+    && (await win.getByRole('button', { name: 'Create with Claude' }).isDisabled())
+    && (await win.getByRole('button', { name: 'Open existing project…' }).count()) === 1
+    && (await win.getByRole('button', { name: /^Templates/ }).isDisabled()));
+  await win.getByRole('button', { name: 'New blank project' }).click();
+  check('blank project offers the five categories',
+    (await win.getByLabel('Project type').locator('option').allTextContents()).join('|') === 'Image / Photography|Graphic Design|Video / Animation|Audio|Mixed Media');
   await win.getByLabel('New project name').fill('Poster series');
-  await win.getByRole('button', { name: 'New project' }).click();
+  await win.getByLabel('Project type').selectOption('design');
+  await win.getByRole('button', { name: 'Create project' }).click();
   await win.locator('.project-card.open', { hasText: 'Poster series' }).waitFor({ timeout: 10000 });
   await sleep(400);
   check('creating a project opens it', /Poster series/.test(await header()), await header());
   check('a new project starts empty (own library, own workflow)', (await win.locator('.asset').count()) === 0 && /0\s*originals/.test(await win.locator('.overview-grid').textContent())
     && (await win.evaluate(() => window.studio.loadWorkflow())).nodes.length === 0);
+  check('the new project shows its type', /Graphic Design/.test(await win.locator('.home-head h2').last().textContent()));
   await win.screenshot({ path: path.join(shots, '41-new-project-overview.png') });
 
   await win.locator('.project-card', { hasText: 'Sample Project' }).getByRole('button', { name: 'Open', exact: true }).click();
@@ -56,8 +67,9 @@ try {
   check('the open project and the sample cannot be removed', (await win.locator('.project-card.open').getByRole('button', { name: 'Remove' }).count()) === 0);
 
   // remember the open project across restart
+  await win.getByRole('button', { name: 'New blank project' }).click();
   await win.getByLabel('New project name').fill('Keep me open');
-  await win.getByRole('button', { name: 'New project' }).click();
+  await win.getByRole('button', { name: 'Create project' }).click();
   await win.locator('.project-card.open', { hasText: 'Keep me open' }).waitFor({ timeout: 10000 });
 } catch (e) {
   check('projects smoke', false, String(e).slice(0, 400));

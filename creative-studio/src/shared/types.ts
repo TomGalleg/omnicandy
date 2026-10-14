@@ -50,6 +50,14 @@ export interface ProjectManifest {
   createdAt: string;
   updatedAt: string;
   assets: Asset[];
+  /** Project category chosen at creation (Phase 3); absent on older projects. */
+  kind?: 'image' | 'design' | 'video' | 'audio' | 'mixed';
+  /** The creative brief: what the user asked for. */
+  brief?: string;
+  /** What Claude is working toward right now. */
+  objective?: string;
+  /** Where the user left off, restored when the project is opened. */
+  view?: { workspace: WorkspaceId; assetId?: string };
 }
 
 export interface ProjectSummary {
@@ -68,6 +76,8 @@ export interface ProjectSummary {
   thumbAssetId: string | null;
   isOpen: boolean;
   isSample: boolean;
+  kind?: ProjectManifest['kind'];
+  brief?: string;
 }
 
 /** artcraft = ArtCraft Match (charcoal, matches PhotoCraft); studioDark = original near-black; system follows Windows. */

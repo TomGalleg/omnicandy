@@ -2,6 +2,10 @@
 
 import type { AppearanceSettings, AppProbeResult, Asset, ProjectManifest, ProjectSummary } from './types';
 import type { ClaudeState } from './claude';
+import type { ProjectPlan } from './projectPlan';
+
+export type ProjectMeta = Pick<ProjectManifest, 'kind' | 'brief' | 'objective'>;
+export type ProjectMetaPatch = Pick<ProjectManifest, 'objective' | 'view'>;
 import type { CostEstimate, ImageJob, ProviderId } from './generation';
 import type { LiveSnapshot, TimelineDto, TimelineEdit } from './live';
 import type { EditorAppId } from './appEditors';
@@ -54,6 +58,8 @@ export const IPC = {
   liveTimelineEdit: 'live:timeline-edit',
   claudeState: 'claude:state',
   claudeSend: 'claude:send',
+  claudePlanProject: 'claude:plan-project',
+  setProjectMeta: 'project:set-meta',
   claudeStop: 'claude:stop',
   claudeReset: 'claude:reset',
   claudeModel: 'claude:model',
@@ -154,6 +160,8 @@ export interface StudioApi {
   loadProject(): Promise<ProjectManifest>;
   /** Opens a native file dialog in main; the renderer never supplies paths. */
   importAssets(): Promise<ImportResult>;
+  /** Saves where the user left off and Claude's current objective for the open project. */
+  setProjectMeta(patch: ProjectMetaPatch): Promise<void>;
   setAssetRating(assetId: string, rating: number): Promise<ProjectManifest>;
   loadWorkflow(): Promise<WorkflowGraph>;
   saveWorkflow(g: WorkflowGraph): Promise<{ ok: true } | { ok: false; issues: string[] }>;
@@ -211,6 +219,8 @@ export interface StudioApi {
     state(): Promise<ClaudeState>;
     /** Sends a message; resolves when Claude has finished its turn. */
     send(message: string): Promise<void>;
+    /** One real Claude call: name, category, apps and steps for a described project. Starts no work and no paid generation. */
+    planProject(request: string): Promise<ProjectPlan>;
     stop(): Promise<void>;
     reset(): Promise<ClaudeState>;
     setModel(model: string): Promise<ClaudeState>;
@@ -233,7 +243,7 @@ export interface StudioApi {
     list(): Promise<ProjectSummary[]>;
     current(): Promise<string>;
     /** Creates an empty project (in `parentDir`, else the default project folder); returns its key (does not open it). */
-    create(name: string, parentDir?: string): Promise<string>;
+    create(name: string, parentDir?: string, meta?: ProjectMeta): Promise<string>;
     /** Where new projects go, and free space there when known. */
     storage(): Promise<StorageDto>;
     /** Native Browse dialog; null when cancelled. */

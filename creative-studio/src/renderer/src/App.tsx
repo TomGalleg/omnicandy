@@ -99,7 +99,7 @@ function SideTab({ label, text, open, onToggle, controls, shortcut, side }: {
 
 export function App() {
   const appearance = useAppearance();
-  const [workspace, setWorkspace] = useState<WorkspaceId>('media');
+  const [workspace, setWorkspace] = useState<WorkspaceId>('home');
   const [manifest, setManifest] = useState<ProjectManifest | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [apps, setApps] = useState<AppProbeResult[]>([]);
@@ -116,12 +116,30 @@ export function App() {
     window.studio.loadProject().then(setManifest).catch((e: unknown) => setError(String(e)));
   }, []);
 
-  const loadCurrent = useCallback(() => {
+  /** False while a project is being switched, so the old workspace is never saved into the new project. */
+  const [viewReady, setViewReady] = useState(false);
+  const loadCurrent = useCallback((restore = false) => {
     window.studio.projects.current().then(setProjectKey).catch(() => {});
     window.studio.loadProject()
-      .then((m) => { setManifest(m); setSelectedId(m.assets[0]?.id ?? null); setError(null); addLog('project', `Loaded "${m.name}" (${m.assets.length} assets).`); })
+      .then((m) => {
+        setManifest(m);
+        const back = restore ? m.view : undefined;
+        const asset = back?.assetId && m.assets.some((a) => a.id === back.assetId) ? back.assetId : null;
+        setSelectedId(asset ?? m.assets[0]?.id ?? null);
+        if (back && back.workspace !== 'home') setWorkspace(back.workspace);
+        setError(null);
+        setViewReady(true);
+        addLog('project', `Loaded "${m.name}" (${m.assets.length} assets).`);
+      })
       .catch((e: unknown) => setError(String(e)));
   }, [addLog]);
+
+  // Remember where the user left off in this project (restored when it is opened again).
+  useEffect(() => {
+    if (!viewReady || workspace === 'home') return;
+    const t = setTimeout(() => { void window.studio.setProjectMeta({ view: { workspace, ...(selectedId ? { assetId: selectedId } : {}) } }).catch(() => {}); }, 800);
+    return () => clearTimeout(t);
+  }, [viewReady, workspace, selectedId]);
 
   useEffect(() => {
     loadCurrent();
@@ -155,8 +173,9 @@ export function App() {
 
   /** After switching projects: reload everything tied to the old one. */
   const onSwitched = useCallback((key: string) => {
+    setViewReady(false);
     setProjectKey(key);
-    loadCurrent();
+    loadCurrent(true);
     void liveApi.resync();
   }, [loadCurrent, liveApi]);
   const goto = useCallback((w: WorkspaceId, assetId?: string) => { if (assetId) setSelectedId(assetId); setWorkspace(w); }, []);

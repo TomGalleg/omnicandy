@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
-import type { ProjectManifest, ProjectSummary } from '@shared/types';
+import { briefFromPlan, PROJECT_KINDS, projectKindLabel, type ProjectKind, type ProjectPlan } from '@shared/projectPlan';
+import type { ProjectManifest, ProjectSummary, WorkspaceId } from '@shared/types';
 import type { WorkflowGraph } from '@shared/workflow';
 import { formatBytes } from '../format';
 
@@ -7,21 +8,32 @@ interface Props {
   manifest: ProjectManifest | null;
   projectKey: string | null;
   onSwitched: (key: string) => void;
-  onGoto: (workspace: 'edit' | 'media' | 'workflow' | 'deliver', assetId?: string) => void;
+  onGoto: (workspace: WorkspaceId, assetId?: string) => void;
   log: (source: string, msg: string) => void;
 }
 
 const errText = (e: unknown) => (e instanceof Error ? e.message : String(e)).replace(/^Error invoking remote method '[^']+': (Error: )?/, '');
 const when = (iso: string) => new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+const workspaceFor = (kind: ProjectKind | undefined): WorkspaceId => PROJECT_KINDS.find((k) => k.id === kind)?.workspace ?? 'media';
 
-/** Project Home (all projects) + Project Overview (the open one). */
+/** Project Home (prompt-first creation, recent projects) + Project Overview (the open one). */
 export function HomeWorkspace({ manifest, projectKey, onSwitched, onGoto, log }: Props) {
   const [projects, setProjects] = useState<ProjectSummary[] | null>(null);
-  const [newName, setNewName] = useState('');
   const [location, setLocation] = useState<string | null>(null);
   const [renaming, setRenaming] = useState<{ key: string; name: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // AI-first creation
+  const [request, setRequest] = useState('');
+  const [answers, setAnswers] = useState('');
+  const [plan, setPlan] = useState<ProjectPlan | null>(null);
+  const [planning, setPlanning] = useState(false);
+  const [withRefs, setWithRefs] = useState(false);
+  // Blank project
+  const [blank, setBlank] = useState(false);
+  const [newName, setNewName] = useState('');
+  const [blankKind, setBlankKind] = useState<ProjectKind>('mixed');
+  const [search, setSearch] = useState('');
 
   const reload = useCallback(() => { void window.studio.projects.list().then(setProjects); }, []);
   useEffect(reload, [reload, projectKey, manifest?.updatedAt]);
@@ -35,36 +47,114 @@ export function HomeWorkspace({ manifest, projectKey, onSwitched, onGoto, log }:
     log('project', `Opened "${p.name}".`);
     onSwitched(p.id);
   });
-  const create = () => run(async () => {
+  const createBlank = () => run(async () => {
     const name = newName.trim() || 'Untitled project';
-    const key = await window.studio.projects.create(name, location ?? undefined);
+    const key = await window.studio.projects.create(name, location ?? undefined, { kind: blankKind });
     await window.studio.projects.open(key);
-    setNewName('');
-    setLocation(null);
+    setNewName(''); setLocation(null); setBlank(false);
     log('project', `Created and opened "${name}". Import files to get started.`);
     onSwitched(key);
   });
 
+  /** One real Claude call. Nothing is created and nothing paid starts until the plan is approved. */
+  const makePlan = async () => {
+    const text = [request.trim(), answers.trim() && `My answers to your questions: ${answers.trim()}`].filter(Boolean).join('\n\n');
+    if (text.length < 3) return;
+    setPlanning(true); setError(null);
+    try { setPlan(await window.studio.claude.planProject(text)); } catch (e) { setError(errText(e)); } finally { setPlanning(false); }
+  };
+  const approvePlan = () => run(async () => {
+    if (!plan) return;
+    const meta = { kind: plan.kind, brief: briefFromPlan(request, plan), objective: plan.steps[0] };
+    const key = await window.studio.projects.create(plan.name.trim() || 'Untitled project', location ?? undefined, meta);
+    await window.studio.projects.open(key);
+    log('project', `Created "${plan.name}" from your description.`);
+    onSwitched(key);
+    const kind = plan.kind;
+    setPlan(null); setRequest(''); setAnswers(''); setLocation(null);
+    const imported = withRefs ? (await window.studio.importAssets()).imported.length : 0;
+    onGoto(imported ? 'media' : workspaceFor(kind));
+  });
+
+  const q = search.trim().toLowerCase();
+  const shown = projects?.filter((p) => !q || `${p.name} ${p.brief ?? ''} ${projectKindLabel(p.kind)}`.toLowerCase().includes(q));
+  const folderLabel = location ? (location.split(/[\\/]/).filter(Boolean).at(-1) ?? location) : null;
+
   return (
     <div className="home">
+      <section className="home-hero">
+        <h1>What would you like to create?</h1>
+        <textarea aria-label="Describe what you would like to create" rows={3} maxLength={4000} disabled={planning || busy || !!plan}
+          placeholder="For example: a cinematic poster from my desert photo, with a bold title and a print-ready export."
+          value={request} onChange={(e) => setRequest(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) void makePlan(); }} />
+        <div className="btn-row">
+          <button className="btn primary" disabled={planning || busy || !!plan || request.trim().length < 3} onClick={() => void makePlan()}>
+            {planning ? 'Claude is thinking…' : 'Create with Claude'}
+          </button>
+          <button className="btn" disabled={busy} onClick={() => setBlank((v) => !v)}>New blank project</button>
+          <button className="btn" disabled={busy}
+            onClick={() => void run(async () => { const key = await window.studio.projects.openExisting(); if (key) { await window.studio.projects.open(key); onSwitched(key); } })}>Open existing project…</button>
+          <button className="btn" disabled title="Reusable creative templates arrive in a later update">Templates (coming later)</button>
+          <button className="btn small ghost" type="button" disabled={busy} title={location ?? 'Uses the project folder from Settings'}
+            onClick={() => void window.studio.projects.pickFolder().then((d) => { if (d) setLocation(d); })}>
+            {folderLabel ? `Save in: ${folderLabel}` : 'Default folder · Choose…'}
+          </button>
+          {location && <button className="btn small ghost" type="button" aria-label="Use the default project folder" onClick={() => setLocation(null)}>✕</button>}
+        </div>
+        <div className="asset-meta">Claude only plans first. Nothing is created, and nothing paid starts, until you approve.</div>
+        {blank && (
+          <form className="new-project" onSubmit={(e) => { e.preventDefault(); void createBlank(); }}>
+            <input aria-label="New project name" placeholder="Project name" value={newName} maxLength={80} onChange={(e) => setNewName(e.target.value)} />
+            <select aria-label="Project type" value={blankKind} onChange={(e) => setBlankKind(e.target.value as ProjectKind)}>
+              {PROJECT_KINDS.map((k) => <option key={k.id} value={k.id}>{k.label}</option>)}
+            </select>
+            <button className="btn primary" type="submit" disabled={busy}>Create project</button>
+          </form>
+        )}
+        {error && <div className="wf-msg error" role="alert">{error}</div>}
+        {plan && (
+          <div className="plan-card panel-card" role="region" aria-label="Claude's plan">
+            <h3>Claude's plan</h3>
+            <div className="plan-fields">
+              <label className="plan-field">Project name
+                <input value={plan.name} maxLength={80} onChange={(e) => setPlan({ ...plan, name: e.target.value })} />
+              </label>
+              <label className="plan-field">Type
+                <select value={plan.kind} onChange={(e) => setPlan({ ...plan, kind: e.target.value as ProjectKind })}>
+                  {PROJECT_KINDS.map((k) => <option key={k.id} value={k.id}>{k.label}</option>)}
+                </select>
+              </label>
+            </div>
+            <p><strong>Finished result:</strong> {plan.finishedOutput}</p>
+            <p>{plan.summary}</p>
+            {plan.apps.length > 0 && <p><strong>Apps:</strong> {plan.apps.join(', ')}</p>}
+            {plan.aiTools.length > 0 && <p><strong>AI tools:</strong> {plan.aiTools.join('; ')} <span className="asset-meta">(every paid image shows its price and asks first)</span></p>}
+            <ol className="plan-steps">{plan.steps.map((st, i) => <li key={i}>{st}</li>)}</ol>
+            {plan.questions.length > 0 && (
+              <div className="plan-questions">
+                <strong>Claude would like to know:</strong>
+                <ul>{plan.questions.map((qq, i) => <li key={i}>{qq}</li>)}</ul>
+                <textarea aria-label="Your answers" rows={2} maxLength={1000} placeholder="Your answers (optional)" value={answers} onChange={(e) => setAnswers(e.target.value)} />
+                <button className="btn small" disabled={planning || !answers.trim()} onClick={() => void makePlan()}>{planning ? 'Claude is thinking…' : 'Update the plan'}</button>
+              </div>
+            )}
+            <label className="plan-check"><input type="checkbox" checked={withRefs} onChange={(e) => setWithRefs(e.target.checked)} /> Add reference files right after creating</label>
+            <div className="btn-row">
+              <button className="btn primary" disabled={busy || planning} onClick={() => void approvePlan()}>Approve and create project</button>
+              <button className="btn" disabled={busy || planning} onClick={() => setPlan(null)}>Change my request</button>
+            </div>
+          </div>
+        )}
+      </section>
+
       <section className="home-section">
         <div className="home-head">
-          <h2>Projects</h2>
-          <form className="new-project" onSubmit={(e) => { e.preventDefault(); void create(); }}>
-            <input aria-label="New project name" placeholder="New project name" value={newName} maxLength={80} onChange={(e) => setNewName(e.target.value)} />
-            <button className="btn small ghost" type="button" disabled={busy} title={location ?? 'Uses the project folder from Settings'}
-              onClick={() => void window.studio.projects.pickFolder().then((d) => { if (d) setLocation(d); })}>
-              {location ? `In: ${location.split(/[\\/]/).filter(Boolean).at(-1) ?? location}` : 'Choose folder…'}
-            </button>
-            {location && <button className="btn small ghost" type="button" aria-label="Use the default project folder" onClick={() => setLocation(null)}>✕</button>}
-            <button className="btn primary" type="submit" disabled={busy}>New project</button>
-            <button className="btn small" type="button" disabled={busy}
-              onClick={() => void run(async () => { const key = await window.studio.projects.openExisting(); if (key) { await window.studio.projects.open(key); onSwitched(key); } })}>Open existing…</button>
-          </form>
+          <h2>Recent projects</h2>
+          <input className="search-input" type="search" aria-label="Search projects" placeholder="Search projects" value={search} onChange={(e) => setSearch(e.target.value)} />
         </div>
-        {error && <div className="wf-msg error" role="alert">{error}</div>}
         <div className="project-grid">
-          {projects?.map((p) => (
+          {shown?.map((p) => (
             <article key={p.id} className={`project-card${p.isOpen ? ' open' : ''}`}>
               <button className="project-thumb" onClick={() => (p.isOpen ? onGoto('media') : void open(p))} disabled={busy} aria-label={p.isOpen ? `Go to ${p.name}` : `Open ${p.name}`}>
                 {p.thumbAssetId ? <img src={window.studio.projects.assetUrl(p.id, p.thumbAssetId)} alt="" /> : <span>No files yet</span>}
@@ -78,6 +168,8 @@ export function HomeWorkspace({ manifest, projectKey, onSwitched, onGoto, log }:
                 ) : (
                   <strong className="project-name-line" title={p.name}>{p.name}{p.isOpen && <span className="chip real">Open</span>}</strong>
                 )}
+                {p.kind && <span className="asset-meta">{projectKindLabel(p.kind)}</span>}
+                {p.brief && <span className="project-brief" title={p.brief}>{p.brief.split('\n')[0]}</span>}
                 <span className="asset-meta" title={p.folder}>{p.missing ? `Folder not found: ${p.folder}` : `${p.originals} file${p.originals === 1 ? '' : 's'} · ${p.versions} version${p.versions === 1 ? '' : 's'} · edited ${when(p.updatedAt)}`}</span>
                 <div className="btn-row">
                   {!p.isOpen && !p.missing && <button className="btn small primary" disabled={busy} onClick={() => void open(p)}>Open</button>}
@@ -95,6 +187,7 @@ export function HomeWorkspace({ manifest, projectKey, onSwitched, onGoto, log }:
               </div>
             </article>
           ))}
+          {shown && shown.length === 0 && <div className="asset-meta">{q ? 'No projects match your search.' : 'No projects yet.'}</div>}
         </div>
       </section>
       {manifest && projectKey && <Overview manifest={manifest} projectKey={projectKey} onGoto={onGoto} />}
@@ -115,19 +208,44 @@ function Overview({ manifest, projectKey, onGoto }: { manifest: ProjectManifest;
   const byKind = originals.reduce<Record<string, number>>((m, a) => ({ ...m, [a.kind]: (m[a.kind] ?? 0) + 1 }), {});
   const bytes = manifest.assets.reduce((n, a) => n + a.bytes, 0);
   const viewable = (k: string) => k === 'image' || k === 'vector';
+  const latest = manifest.assets.filter((a) => viewable(a.kind)).slice().sort((a, b) => b.provenance.createdAt.localeCompare(a.provenance.createdAt))[0];
+  // Results (new versions and AI generations) the user has not approved or rejected yet.
+  const review = manifest.assets.filter((a) => a.approval === 'none' && (a.parentId || a.provenance.origin === 'generated'))
+    .sort((a, b) => b.provenance.createdAt.localeCompare(a.provenance.createdAt));
+  const progress: Array<[string, boolean]> = [
+    ['Files added', originals.length > 0],
+    ['Edited or generated', versions.length > 0],
+    ['Reviewed', manifest.assets.some((a) => a.approval === 'approved')],
+    ['Exported', exportsList.length > 0],
+  ];
+  const resume = manifest.view && manifest.view.workspace !== 'home' && (!manifest.view.assetId || manifest.assets.some((a) => a.id === manifest.view?.assetId))
+    ? manifest.view : null;
+  const cont = () => {
+    if (resume) onGoto(resume.workspace, resume.assetId);
+    else onGoto(manifest.assets.length ? 'media' : (PROJECT_KINDS.find((k) => k.id === manifest.kind)?.workspace ?? 'media'));
+  };
 
   return (
     <section className="home-section">
       <div className="home-head">
-        <h2>Overview · {manifest.name}</h2>
+        <h2>{manifest.name}{manifest.kind && <span className="chip">{projectKindLabel(manifest.kind)}</span>}</h2>
         <div className="btn-row">
+          <button className="btn primary" onClick={cont}>Continue creating</button>
           <button className="btn small" onClick={() => void window.studio.importAssets().then(() => onGoto('media'))}>Import files…</button>
           <button className="btn small" onClick={() => void window.studio.projects.reveal(projectKey)}>Show folder</button>
         </div>
       </div>
+      {(manifest.brief || manifest.objective) && (
+        <div className="overview-grid">
+          {manifest.brief && <div className="panel-card"><h3>Creative brief</h3><div className="brief-text">{manifest.brief}</div></div>}
+          {manifest.objective && <div className="panel-card"><h3>Claude's current objective</h3><div className="brief-text">{manifest.objective}</div>
+            <div className="asset-meta">Claude starts nothing paid on its own; each generation asks for your approval.</div></div>}
+        </div>
+      )}
       <div className="overview-grid">
         <div className="panel-card">
-          <h3>Files</h3>
+          <h3>Progress</h3>
+          <ul className="progress-list">{progress.map(([label, done]) => <li key={label} className={done ? 'done' : ''}>{done ? '✓' : '○'} {label}</li>)}</ul>
           <div className="stat-row">
             <div className="stat"><strong>{originals.length}</strong><span>originals</span></div>
             <div className="stat"><strong>{versions.length}</strong><span>versions</span></div>
@@ -136,7 +254,29 @@ function Overview({ manifest, projectKey, onGoto }: { manifest: ProjectManifest;
           </div>
           <div className="asset-meta">{Object.entries(byKind).map(([k, n]) => `${n} ${k}`).join(' · ') || 'No files yet — import some to start.'}</div>
           <div className="asset-meta">Created {when(manifest.createdAt)} · last change {when(manifest.updatedAt)}</div>
-          <div className="asset-meta">Originals are never changed; every edit is saved as a new version.</div>
+        </div>
+        <div className="panel-card">
+          <h3>Latest artwork</h3>
+          {!latest && <div className="asset-meta">Nothing to show yet.</div>}
+          {latest && (
+            <button className="recent latest" title={latest.name} onClick={() => onGoto('edit', latest.id)}>
+              <span className="thumb"><img src={window.studio.assetUrl(latest.id)} alt="" /></span>
+              <span className="asset-name">{latest.name}</span>
+            </button>
+          )}
+        </div>
+        <div className="panel-card">
+          <h3>Waiting for your review</h3>
+          {review.length === 0 && <div className="asset-meta">Nothing is waiting.</div>}
+          <div className="recent-grid">
+            {review.slice(0, 4).map((v) => (
+              <button key={v.id} className="recent" title={v.name} onClick={() => onGoto('media', v.id)}>
+                <span className="thumb">{viewable(v.kind) ? <img src={window.studio.assetUrl(v.id)} alt="" /> : <span>{v.sourceFormat.toUpperCase()}</span>}</span>
+                <span className="asset-name">{v.name}</span>
+              </button>
+            ))}
+          </div>
+          {review.length > 4 && <div className="asset-meta">and {review.length - 4} more in the Media library</div>}
         </div>
         <div className="panel-card">
           <h3>Recent versions</h3>
@@ -156,7 +296,7 @@ function Overview({ manifest, projectKey, onGoto }: { manifest: ProjectManifest;
           <button className="btn small" onClick={() => onGoto('workflow')}>Open workflow</button>
         </div>
         <div className="panel-card">
-          <h3>Exports</h3>
+          <h3>Recent exports</h3>
           {exportsList.length === 0 && <div className="asset-meta">No exports yet.</div>}
           {exportsList.slice(0, 5).map((f) => <div key={f.name} className="asset-meta">{f.name} · {formatBytes(f.bytes)}</div>)}
           <button className="btn small" onClick={() => onGoto('deliver')}>Open Deliver</button>

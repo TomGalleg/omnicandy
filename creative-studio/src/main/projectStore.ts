@@ -88,9 +88,9 @@ export class ProjectStore implements AssetRepository {
     return structuredClone(this.manifest);
   }
 
-  private async persist() {
+  private async persist(touch = true) {
     if (!this.manifest) return;
-    this.manifest.updatedAt = new Date().toISOString();
+    if (touch) this.manifest.updatedAt = new Date().toISOString();
     await writeJsonAtomic(this.manifestPath, this.manifest);
   }
 
@@ -215,6 +215,14 @@ export class ProjectStore implements AssetRepository {
       out.push({ name: e.name, bytes: st.size, modified: st.mtime.toISOString() });
     }
     return out.sort((a, b) => b.modified.localeCompare(a.modified));
+  }
+
+  /** Saves project-level details (category, brief, Claude's objective, where the user left off). */
+  async setMeta(patch: Partial<Pick<ProjectManifest, 'kind' | 'brief' | 'objective' | 'view'>>): Promise<void> {
+    await this.loadManifest();
+    Object.assign(this.manifest!, patch);
+    // Remembering where the user left off is not an edit: it doesn't change "last edited".
+    await this.persist(Object.keys(patch).some((k) => k !== 'view'));
   }
 
   async rename(name: string): Promise<void> {

@@ -7,7 +7,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
-import type { ProjectSummary } from '@shared/types';
+import type { ProjectManifest, ProjectSummary } from '@shared/types';
 import { emptyGraph } from '@shared/workflow';
 import { ProjectStore, sha256File } from './projectStore';
 import { ensureSampleProject } from './sampleProject';
@@ -180,7 +180,7 @@ export class ProjectManager {
           id: e.name, name: m.name, assetCount: m.assets.length,
           originals: m.assets.filter((a) => !a.parentId).length, versions: m.assets.filter((a) => a.parentId).length,
           createdAt: m.createdAt, updatedAt: m.updatedAt, thumbAssetId: thumb?.id ?? null,
-          isOpen: e.name === this.storeKey, isSample: e.name === SAMPLE_KEY, folder: dir,
+          isOpen: e.name === this.storeKey, isSample: e.name === SAMPLE_KEY, folder: dir, kind: m.kind, brief: m.brief,
         });
       } catch {
         // A registered project whose folder is gone (drive unplugged, folder moved): keep it listed so it can be located again.
@@ -203,7 +203,7 @@ export class ProjectManager {
   }
 
   /** Creates a project in `parentDir` (or the default project folder); returns its key (does not open it). */
-  async create(name: string, parentDir?: string): Promise<string> {
+  async create(name: string, parentDir?: string, meta?: Pick<ProjectManifest, 'kind' | 'brief' | 'objective'>): Promise<string> {
     const clean = name.trim().slice(0, 80) || 'Untitled project';
     const key = `p-${randomUUID().slice(0, 8)}`;
     const st = await this.readState();
@@ -220,6 +220,7 @@ export class ProjectManager {
     }
     const store = new ProjectStore(dir);
     await store.create(clean);
+    if (meta && (meta.kind || meta.brief || meta.objective)) await store.setMeta(meta);
     await store.saveWorkflow(emptyGraph());
     return key;
   }

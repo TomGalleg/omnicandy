@@ -63,6 +63,13 @@ export const manifestSchema = z.object({
   createdAt: z.string(),
   updatedAt: z.string(),
   assets: z.array(assetSchema),
+  kind: z.enum(['image', 'design', 'video', 'audio', 'mixed']).optional(),
+  brief: z.string().max(2000).optional(),
+  objective: z.string().max(600).optional(),
+  view: z.object({
+    workspace: z.enum(['home', 'media', 'edit', 'generate', 'workflow', 'effects', 'color', 'audio', 'deliver']),
+    assetId: id.optional(),
+  }).optional(),
 });
 
 export function parseManifest(raw: unknown): ProjectManifest {

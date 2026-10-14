@@ -361,6 +361,11 @@ export function registerIpc(d: IpcDeps): void {
   }));
   handle(IPC.claudeState, none, () => claude().state());
   handle(IPC.claudeSend, z.tuple([z.string().min(1).max(4000)]), (msg) => claude().send(msg));
+  handle(IPC.claudePlanProject, z.tuple([z.string().trim().min(3).max(4000)]), (req) => claude().planProject(req));
+  handle(IPC.setProjectMeta, z.tuple([z.object({
+    objective: z.string().max(600).optional(),
+    view: z.object({ workspace: z.enum(['home', 'media', 'edit', 'generate', 'workflow', 'effects', 'color', 'audio', 'deliver']), assetId: z.string().max(128).optional() }).optional(),
+  })]), async (patch) => (await d.project()).setMeta(patch));
   handle(IPC.claudeStop, none, () => claude().stop());
   handle(IPC.claudeReset, none, () => { claude().reset(); return claude().state(); });
   handle(IPC.claudeModel, z.tuple([z.string().max(64)]), (m) => { claude().setModel(m); return claude().state(); });
@@ -424,7 +429,8 @@ export function registerIpc(d: IpcDeps): void {
   handle(IPC.projectsCurrent, none, () => d.projects.currentKey());
   const folderPath = z.string().min(3).max(1024);
   const projectKeyRe = z.string().regex(/^[A-Za-z0-9_-]{1,64}$/);
-  handle(IPC.projectsCreate, z.union([z.tuple([z.string().max(80)]), z.tuple([z.string().max(80), folderPath.optional()])]), (name, parentDir?: string) => d.projects.create(name, parentDir));
+  const metaSchema = z.object({ kind: z.enum(['image', 'design', 'video', 'audio', 'mixed']).optional(), brief: z.string().max(2000).optional(), objective: z.string().max(600).optional() });
+  handle(IPC.projectsCreate, z.tuple([z.string().max(80), folderPath.nullable(), metaSchema.nullable()]), (name, parentDir, meta) => d.projects.create(name, parentDir ?? undefined, meta ?? undefined));
   handle(IPC.projectsStorage, none, () => d.projects.storageInfo());
   const pickFolder = async (title: string): Promise<string | null> => {
     const win = d.window();
