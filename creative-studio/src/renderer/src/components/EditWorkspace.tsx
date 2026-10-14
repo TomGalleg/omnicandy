@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef } from 'react';
-import { editorFor, type EditorApp } from '@shared/appEditors';
+import { appForTab, type EditorApp } from '@shared/appEditors';
 import type { Asset, ProjectManifest } from '@shared/types';
 import type { LiveApi } from '../useLive';
 import { isTaskActive } from './live/LiveParts';
@@ -13,32 +13,45 @@ interface Props {
   log: (source: string, msg: string) => void;
 }
 
-const LIVE = new Set(['photocraft', 'vectorcraft', 'soundcraft']);
+type Tab = EditorApp['tab'];
+
+const INTRO: Record<Tab, { title: string; text: string }> = {
+  edit: { title: 'Pick something to edit', text: 'Choose a file on the left. It opens here in the right app: photos in PhotoCraft, vector art in VectorCraft, audio in SoundCraft, video in FilmCraft and layouts in DesignCraft.' },
+  color: { title: 'Pick a photo to colour', text: 'Choose a photo (PNG, JPEG, WebP or TIFF) on the left. It opens here in LightCraft for light and colour work: exposure, white balance, curves, colour grading and looks.' },
+  effects: { title: 'Pick a picture or video', text: 'Choose a picture or a video on the left. It opens here in EffectCraft as a composition, ready for effects, titles and animation.' },
+};
+
+/** The Edit tab: the selected file opens in its ArtCraft app, shown right here. */
+export function EditWorkspace(p: Props) {
+  return <AppWorkspace {...p} tab="edit" />;
+}
 
 /**
- * Edit tab: the selected file opens automatically in its ArtCraft app, shown right here in the
- * big area, where you edit with the app's own tools. "Open in its own window" pops the app out.
+ * Edit / Color / Effects: the selected file opens automatically in the tab's ArtCraft app, shown
+ * right here in the big area, where you work with the app's own tools. "Open in its own window"
+ * pops the app out. The library file itself is never changed; saving makes a new version.
  */
-export function EditWorkspace({ selected, liveApi, onProjectChanged }: Props) {
+export function AppWorkspace({ selected, liveApi, onProjectChanged, tab }: Props & { tab: Tab }) {
   const { live, busy, act } = liveApi;
-  const app = selected ? editorFor(selected.sourceFormat) : null;
-  const canLive = !!app && LIVE.has(app.id);
+  const app = selected ? appForTab(tab, selected.sourceFormat) : null;
+  const canLive = app?.open === 'live';
   const isOpen = live?.status === 'ready' && !!live.asset;
-  const showingThis = isOpen && live!.asset!.id === selected?.id;
+  const showingThis = isOpen && live!.asset!.id === selected?.id && live!.appId === app?.id;
   const taskActive = isTaskActive(live?.collab.phase ?? 'idle');
   const stageRef = useRef<HTMLDivElement>(null);
   const tried = useRef<string | null>(null);
+  const key = selected && app ? `${app.id}:${selected.id}` : null;
 
-  // Open the selected file in its app automatically (unless an automation task is mid-way).
+  // Open the selected file in the tab's app automatically (unless an automation task is mid-way).
   useEffect(() => {
-    if (!selected || !canLive || showingThis || busy || taskActive || live?.status === 'starting') return;
-    if (tried.current === selected.id) return;
-    tried.current = selected.id;
-    void act(`Open in ${app!.name}`, () => window.studio.live.open(selected.id));
-  }, [selected, canLive, showingThis, busy, taskActive, live?.status, act, app]);
+    if (!selected || !app || !canLive || showingThis || busy || taskActive || live?.status === 'starting') return;
+    if (tried.current === key) return;
+    tried.current = key;
+    void act(`Open in ${app.name}`, () => window.studio.live.open(selected.id, app.id));
+  }, [selected, app, key, canLive, showingThis, busy, taskActive, live?.status, act]);
 
-  // Tell main where the app should sit; hide it when we leave the Edit tab or it shows another file.
-  const embedVisible = showingThis && !live!.poppedOut;
+  // Tell main where the app should sit; hide it when we leave the tab or it shows another file.
+  const embedVisible = !!showingThis && !live!.poppedOut;
   useLayoutEffect(() => {
     const el = stageRef.current;
     if (!el) return;
@@ -55,7 +68,7 @@ export function EditWorkspace({ selected, liveApi, onProjectChanged }: Props) {
   useEffect(() => () => { void window.studio.live.setViewport(null); }, []);
 
   if (!selected) {
-    return <Empty title="Pick something to edit"><p>Choose a file on the left. It opens here in the right app: photos in PhotoCraft, vector art in VectorCraft, audio in SoundCraft.</p></Empty>;
+    return <Empty title={INTRO[tab].title}><p>{INTRO[tab].text}</p></Empty>;
   }
 
   const appName = app?.name ?? 'No app';
@@ -76,14 +89,14 @@ export function EditWorkspace({ selected, liveApi, onProjectChanged }: Props) {
           </>
         )}
         {canLive && !showingThis && !busy && live?.status !== 'starting' && (
-          <button className="btn primary" disabled={taskActive} onClick={() => { tried.current = selected.id; void act(`Open in ${appName}`, () => window.studio.live.open(selected.id)); }}>
+          <button className="btn primary" disabled={taskActive} onClick={() => { tried.current = key; void act(`Open in ${appName}`, () => window.studio.live.open(selected.id, app!.id)); }}>
             Open in {appName}
           </button>
         )}
       </div>
       <div className="edit-body">
         <div className="edit-stage" ref={stageRef}>
-          <Stage asset={selected} app={app} live={liveApi.live} showingThis={!!showingThis} />
+          <Stage asset={selected} app={app} tab={tab} live={liveApi.live} showingThis={!!showingThis} />
         </div>
       </div>
     </div>
@@ -91,18 +104,21 @@ export function EditWorkspace({ selected, liveApi, onProjectChanged }: Props) {
 }
 
 /** What sits under the app window: the art itself, with a status line while the app starts or when it's popped out. */
-function Stage({ asset, app, live, showingThis }: { asset: Asset; app: EditorApp | null; live: LiveApi['live']; showingThis: boolean }) {
+function Stage({ asset, app, tab, live, showingThis }: { asset: Asset; app: EditorApp | null; tab: Tab; live: LiveApi['live']; showingThis: boolean }) {
   const viewable = asset.kind === 'image' || asset.kind === 'vector';
   let status: string | null = null;
   if (live?.status === 'starting') status = `Opening in ${app?.name ?? 'the app'}…`;
   else if (live?.status === 'error' && !showingThis) status = live.error ?? 'The app could not be opened.';
   else if (showingThis && live?.poppedOut) status = `${app?.name} is open in its own window.`;
+  else if (!app && tab === 'color') status = `The Color tab works on photos. ${asset.sourceFormat.toUpperCase()} files open in the Edit tab.`;
+  else if (!app && tab === 'effects') status = `The Effects tab works on pictures and video. ${asset.sourceFormat.toUpperCase()} files open in the Edit tab.`;
   else if (!app || app.open === 'none') status = app?.note ?? `No ArtCraft app edits ${asset.sourceFormat.toUpperCase()} files yet.`;
   return (
     <div className="stage-art">
       {viewable && <img src={window.studio.assetUrl(asset.id)} alt={asset.name} />}
+      {asset.kind === 'video' && <video className="stage-video" controls src={window.studio.assetUrl(asset.id)} />}
       {asset.kind === 'audio' && <div className="stage-audio"><span className="stage-audio-icon" aria-hidden>♪</span><audio controls src={window.studio.assetUrl(asset.id)} /></div>}
-      {!viewable && asset.kind !== 'audio' && <div className="stage-format">{asset.sourceFormat.toUpperCase()}</div>}
+      {!viewable && asset.kind !== 'audio' && asset.kind !== 'video' && <div className="stage-format">{asset.sourceFormat.toUpperCase()}</div>}
       {status && <div className="stage-status" role="status">{status}</div>}
     </div>
   );
@@ -111,4 +127,3 @@ function Stage({ asset, app, live, showingThis }: { asset: Asset; app: EditorApp
 function Empty({ title, children }: { title: string; children: React.ReactNode }) {
   return <div className="empty-state"><div className="empty-card"><h2>{title}</h2>{children}</div></div>;
 }
-

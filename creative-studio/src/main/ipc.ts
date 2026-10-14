@@ -20,7 +20,7 @@ import { PhotoCraftCliAdapter } from './photocraftCli';
 import type { ProjectManager } from './projects';
 import type { EditorAppId } from '@shared/appEditors';
 import type { EmbeddedApp } from './embeddedApp';
-import { LiveSoundCraft, LiveVectorCraft } from './liveApps';
+import { LiveDesignCraft, LiveEffectCraft, LiveFilmCraft, LiveLightCraft, LiveSoundCraft, LiveVectorCraft } from './liveApps';
 import { LivePhotoCraft } from './photocraftLive';
 import type { ProjectStore } from './projectStore';
 import { parseWorkflow } from './schemas';
@@ -161,7 +161,8 @@ export function registerIpc(d: IpcDeps): void {
   // ---- Live apps (PhotoCraft: token + roots; VectorCraft: roots; SoundCraft: loopback port) ----
   const PFdir = (name: string) => path.join(process.env.ProgramFiles ?? 'C:\\Program Files', name);
   let livePromise: Promise<LiveTaskController> | null = null;
-  const drivers: Partial<Record<EditorAppId, LivePhotoCraft | LiveVectorCraft | LiveSoundCraft>> = {};
+  type Driver = LivePhotoCraft | LiveVectorCraft | LiveSoundCraft | LiveFilmCraft | LiveLightCraft | LiveEffectCraft | LiveDesignCraft;
+  const drivers: Partial<Record<EditorAppId, Driver>> = {};
   resetters.push(() => {
     // App windows stay open (no unsaved work is lost); they are just no longer controlled.
     for (const k of Object.keys(drivers) as EditorAppId[]) { drivers[k]?.stop(); delete drivers[k]; }
@@ -169,10 +170,15 @@ export function registerIpc(d: IpcDeps): void {
   });
   const live = () => (livePromise ??= (async () => {
     const store = await d.project();
-    const roots: Record<'photocraft' | 'vectorcraft' | 'soundcraft', string> = {
+    // Each app writes only into its own work folder; the library itself is only ever read.
+    const roots: Record<EditorAppId, string> = {
       photocraft: path.join(store.root, 'work', 'live'),
       vectorcraft: path.join(store.root, 'work', 'vectorcraft-live'),
       soundcraft: path.join(store.root, 'work', 'soundcraft-live'),
+      filmcraft: path.join(store.root, 'work', 'filmcraft-live'),
+      lightcraft: path.join(store.root, 'work', 'lightcraft-live'),
+      effectcraft: path.join(store.root, 'work', 'effectcraft-live'),
+      designcraft: path.join(store.root, 'work', 'designcraft-live'),
     };
     // Catch each app's window the moment it appears so it never flashes up on its own.
     const onSpawn = (pid: number) => d.embedded.prepare(pid);
@@ -181,6 +187,10 @@ export function registerIpc(d: IpcDeps): void {
       if (app === 'photocraft') drivers[app] = new LivePhotoCraft({ installDir: PFdir('PhotoCraft'), secretsDir: d.secretsDir, readRoot: store.root, writeRoot: roots.photocraft, onSpawn });
       else if (app === 'vectorcraft') drivers[app] = new LiveVectorCraft({ installDir: PFdir('VectorCraft'), readRoot: store.root, writeRoot: roots.vectorcraft, onSpawn });
       else if (app === 'soundcraft') drivers[app] = new LiveSoundCraft({ installDir: PFdir('SoundCraft'), readRoot: store.root, writeRoot: roots.soundcraft, onSpawn });
+      else if (app === 'filmcraft') drivers[app] = new LiveFilmCraft({ installDir: PFdir('FilmCraft'), readRoot: store.root, writeRoot: roots.filmcraft, onSpawn });
+      else if (app === 'lightcraft') drivers[app] = new LiveLightCraft({ installDir: PFdir('LightCraft'), readRoot: store.root, writeRoot: roots.lightcraft, onSpawn });
+      else if (app === 'effectcraft') drivers[app] = new LiveEffectCraft({ installDir: PFdir('EffectCraft'), readRoot: store.root, writeRoot: roots.effectcraft, onSpawn });
+      else if (app === 'designcraft') drivers[app] = new LiveDesignCraft({ installDir: PFdir('DesignCraft'), readRoot: store.root, writeRoot: roots.designcraft, onSpawn });
       else throw new Error(`${app} can't be opened live.`);
       return drivers[app]!;
     };
@@ -188,7 +198,7 @@ export function registerIpc(d: IpcDeps): void {
       connect: async (app) => { const drv = driver(app); await drv.ensureStarted(); return drv; },
       store,
       emit: (s) => { for (const w of BrowserWindow.getAllWindows()) if (!w.isDestroyed()) w.webContents.send(IPC.liveEvent, s); },
-      writeDir: async (app) => { const dir = roots[app as keyof typeof roots]; if (!dir) throw new Error('No write folder.'); await fs.mkdir(dir, { recursive: true }); return dir; },
+      writeDir: async (app) => { const dir = roots[app]; if (!dir) throw new Error('No write folder.'); await fs.mkdir(dir, { recursive: true }); return dir; },
     });
     d.panel.onClosed(() => {
       if (d.embedded.mode === 'window') { d.embedded.popIn(); }
@@ -221,9 +231,9 @@ export function registerIpc(d: IpcDeps): void {
   };
   handle(IPC.liveState, none, async () => (await live()).snapshot());
   /** Opens a library file in its app and shows it in the Edit area (or its own window). */
-  const openLive = async (id: string) => {
+  const openLive = async (id: string, app?: EditorAppId) => {
     const ctl = await live();
-    const s = await ctl.open(id);
+    const s = await ctl.open(id, app);
     await syncAppTheme();
     const pid = await currentPid();
     if (pid) {
@@ -232,7 +242,11 @@ export function registerIpc(d: IpcDeps): void {
     }
     return s;
   };
-  handle(IPC.liveOpen, z.tuple([z.string().min(1).max(128)]), (id) => openLive(id));
+  const appId = z.enum(['photocraft', 'vectorcraft', 'soundcraft', 'filmcraft', 'lightcraft', 'effectcraft', 'designcraft']);
+  handle(IPC.liveOpen, z.union([z.tuple([z.string().min(1).max(128)]), z.tuple([z.string().min(1).max(128), appId])]), (id, app?: EditorAppId) => openLive(id, app));
+  handle(IPC.liveTimeline, none, async () => (livePromise ? (await live()).timeline() : null));
+  handle(IPC.livePlayhead, z.tuple([z.number().finite().min(0).max(36_000)]), async (s) => (await live()).setPlayhead(s));
+  handle(IPC.liveSelectClip, z.tuple([z.number().int().min(0)]), async (c) => (await live()).selectClip(c));
 
   // ---- AI Generate (BYOK: keys in Windows protected storage, approval before every paid call) ----
   /** Native dialog in main: neither the renderer nor Claude can answer it. Cancel is the default. */

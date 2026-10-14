@@ -100,11 +100,24 @@ describe('ProjectStore', () => {
     const root = path.join(tmp, 'sample');
     const s = await ensureSampleProject(root, FIXTURES);
     const m = await s.loadManifest();
-    expect(m.assets.map((a) => a.kind).sort()).toEqual(['audio', 'image', 'project', 'vector', 'vector', 'vector']);
+    expect(m.assets.map((a) => a.kind).sort()).toEqual(['audio', 'design', 'image', 'image', 'project', 'vector', 'vector', 'vector', 'video']);
     expect(m.assets.every((a) => a.provenance.origin === 'fixture')).toBe(true);
+    expect(m.assets.find((a) => a.name === 'sunset-clip.mp4')).toMatchObject({ width: 960, height: 540, durationSec: 4.01 });
     const wf = await s.loadWorkflow();
     expect(wf.nodes.find((n) => n.type === 'import')?.params.assetId).toBe(m.assets.find((a) => a.name === 'harbor-landscape.svg')!.id);
     const again = await ensureSampleProject(root, FIXTURES);
     expect((await again.loadManifest()).assets).toHaveLength(m.assets.length);
+  });
+
+  it('adds fixtures from later versions to an existing Sample Project once', async () => {
+    const root = path.join(tmp, 'old-sample');
+    const old = new ProjectStore(root);
+    await old.create('Sample Project');
+    await old.importFile(path.join(FIXTURES, 'tone-a440.wav'), { origin: 'fixture', source: 'v1' });
+    await (await ensureSampleProject(root, FIXTURES)).loadManifest();
+    const names = (await new ProjectStore(root).loadManifest()).assets.map((a) => a.name).sort();
+    expect(names).toEqual(['sunset-clip.mp4', 'sunset-flyer.designcraft', 'sunset-still.jpg', 'tone-a440.wav']);
+    await ensureSampleProject(root, FIXTURES);
+    expect((await new ProjectStore(root).loadManifest()).assets).toHaveLength(4);
   });
 });

@@ -3,6 +3,11 @@
 import type { EditorAppId } from './appEditors';
 import type { CollabState } from './collaboration';
 
+/** A video's timeline as FilmCraft has it (times in seconds). */
+export interface TimelineClip { id: number; name: string; start: number; duration: number; speed: number; effects: string[] }
+export interface TimelineTrack { id: number; name: string; kind: 'video' | 'audio'; clips: TimelineClip[]; transitions: number }
+export interface TimelineDto { duration: number; fps: number; playhead: number | null; tracks: TimelineTrack[]; selection: number[] }
+
 export type LiveStatus = 'stopped' | 'starting' | 'ready' | 'error';
 
 export interface LiveStep {

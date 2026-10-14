@@ -119,6 +119,12 @@ export class ProjectStore implements AssetRepository {
     const fh = await fs.open(dest, 'r');
     const head = Buffer.alloc(Math.min(stat.size, 256 * 1024));
     await fh.read(head, 0, head.length, 0);
+    // Video keeps its index (duration, size) at the end as often as at the start.
+    let tail: Buffer | undefined;
+    if (kind === 'video' && stat.size > head.length) {
+      tail = Buffer.alloc(Math.min(stat.size - head.length, 1024 * 1024));
+      await fh.read(tail, 0, tail.length, stat.size - tail.length);
+    }
     await fh.close();
 
     const asset: Asset = {
@@ -129,7 +135,7 @@ export class ProjectStore implements AssetRepository {
       sha256: hash,
       bytes: stat.size,
       sourceFormat: ext,
-      ...sniffMedia(ext, head),
+      ...sniffMedia(ext, head, tail),
       approval: 'none',
       provenance: { createdAt: new Date().toISOString(), ...o.provenance },
       ...(o.parentId ? { parentId: o.parentId } : {}),

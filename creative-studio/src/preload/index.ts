@@ -27,7 +27,7 @@ const api: StudioApi = {
   revealExport: (name) => ipcRenderer.invoke(IPC.revealExport, name),
   live: {
     state: () => ipcRenderer.invoke(IPC.liveState),
-    open: (assetId) => ipcRenderer.invoke(IPC.liveOpen, assetId),
+    open: (assetId, app) => (app ? ipcRenderer.invoke(IPC.liveOpen, assetId, app) : ipcRenderer.invoke(IPC.liveOpen, assetId)),
     run: (steps) => ipcRenderer.invoke(IPC.liveRun, steps),
     pause: () => ipcRenderer.invoke(IPC.livePause),
     takeControl: () => ipcRenderer.invoke(IPC.liveTakeControl),
@@ -42,6 +42,9 @@ const api: StudioApi = {
     setViewport: (v) => ipcRenderer.invoke(IPC.liveViewport, v),
     quickEdit: (opId, values) => ipcRenderer.invoke(IPC.liveQuickEdit, opId, values),
     undo: () => ipcRenderer.invoke(IPC.liveUndo),
+    timeline: () => ipcRenderer.invoke(IPC.liveTimeline),
+    setPlayhead: (s) => ipcRenderer.invoke(IPC.livePlayhead, s),
+    selectClip: (c) => ipcRenderer.invoke(IPC.liveSelectClip, c),
     onChange: (cb) => {
       const listener = (_e: IpcRendererEvent, s: LiveSnapshot) => cb(s);
       ipcRenderer.on(IPC.liveEvent, listener);

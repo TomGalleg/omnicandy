@@ -19,7 +19,9 @@ export function AssetThumb({ asset, rendition }: { asset: Asset; rendition?: Ass
     <div className="thumb">
       {shown
         ? <img src={window.studio.assetUrl(shown.id)} alt="" loading="lazy" draggable={false} />
-        : <span>{asset.sourceFormat.toUpperCase()}</span>}
+        : asset.kind === 'video'
+          ? <video src={`${window.studio.assetUrl(asset.id)}#t=1`} muted preload="metadata" aria-hidden tabIndex={-1} />
+          : <span>{asset.sourceFormat.toUpperCase()}</span>}
     </div>
   );
 }
@@ -80,7 +82,7 @@ export function AssetBrowser({ manifest, selectedId, onSelect, onManifest, log }
             <div className="asset-grid" role="listbox" aria-label="Assets">
               {assets.map((a) => (
                 <button key={a.id} role="option" className="asset" aria-selected={a.id === selectedId} onClick={() => onSelect(a.id)}>
-                  <AssetThumb asset={a} rendition={a.sourceFormat === 'pcraft' ? manifest?.assets.find((x) => x.parentId === a.id && x.kind === 'image') : undefined} />
+                  <AssetThumb asset={a} rendition={a.sourceFormat === 'pcraft' || a.sourceFormat === 'designcraft' ? manifest?.assets.find((x) => x.parentId === a.id && x.kind === 'image') : undefined} />
                   <span className="asset-name" title={a.name}>{a.name}</span>
                   <span className="asset-meta">{a.kind} · {formatDims(a) || formatBytes(a.bytes)}</span>
                 </button>

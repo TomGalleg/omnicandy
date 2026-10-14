@@ -14,6 +14,7 @@ import net from 'node:net';
 import path from 'node:path';
 import { photocraftCommand, type EditValues } from '@shared/appEditors';
 import type { AppOperation } from '@shared/contracts';
+import type { TimelineDto } from '@shared/live';
 import { McpClient } from './mcpClient';
 
 /** What the live task controller needs from an open document. Implemented for real below; faked in tests. */
@@ -29,13 +30,17 @@ export interface LiveDoc {
   writeVersion(dir: string, base: string): Promise<{ main: string; preview?: string }>;
   undo?(): Promise<void>;
   /** Engine commands for a quick edit from src/shared/appEditors.ts. */
-  quickEditSteps?(opId: string, values: EditValues): AppOperation[];
+  quickEditSteps?(opId: string, values: EditValues): AppOperation[] | Promise<AppOperation[]>;
   /** PNG of the live app window, from the app's own screenshot tool. */
   screenshot?(maxSide: number): Promise<Buffer | null>;
   /** PNG of the document itself (flattened render), for Claude to look at. */
   preview?(maxSide: number): Promise<Buffer | null>;
   /** Sets the app's own interface theme through its official control; returns the value now in effect. */
   applyTheme?(value: string): Promise<string | null>;
+  /** Video apps: the open timeline, and moving the playhead / selecting a clip on it. */
+  timeline?(): Promise<TimelineDto>;
+  setPlayhead?(seconds: number): Promise<void>;
+  selectClip?(clipId: number): Promise<void>;
 }
 
 export function versionOf(history: string[]): string {

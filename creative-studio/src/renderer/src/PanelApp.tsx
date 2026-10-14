@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { editorFor } from '@shared/appEditors';
+import { EDITOR_APPS } from '@shared/appEditors';
 import type { ProjectManifest } from '@shared/types';
 import logo from './assets/logo.png';
 import { TaskControls } from './components/live/LiveParts';
@@ -17,7 +17,7 @@ export function PanelApp() {
   useEffect(reload, [reload]);
 
   const asset = manifest?.assets.find((a) => a.id === live?.asset?.id) ?? null;
-  const app = asset ? editorFor(asset.sourceFormat) : null;
+  const app = asset && live ? EDITOR_APPS[live.appId] : null;
 
   return (
     <div className="dock-panel">

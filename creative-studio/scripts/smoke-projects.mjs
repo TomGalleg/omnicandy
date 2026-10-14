@@ -26,7 +26,7 @@ try {
   check('project name in the header opens Project Home', true);
   const thumbOk = await win.locator('.project-card .project-thumb img').first().evaluate((img) => img.complete && img.naturalWidth > 0);
   check('Sample Project listed as open, with a thumbnail', /Sample Project/.test(await win.locator('.project-card.open').textContent()) && thumbOk);
-  check('Overview shows the open project', /6\s*originals/.test(await win.locator('.overview-grid').textContent()));
+  check('Overview shows the open project', /9\s*originals/.test(await win.locator('.overview-grid').textContent()));
   await win.screenshot({ path: path.join(shots, '40-project-home.png') });
 
   await win.getByLabel('New project name').fill('Poster series');

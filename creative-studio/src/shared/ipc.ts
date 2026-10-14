@@ -3,7 +3,8 @@
 import type { AppearanceSettings, AppProbeResult, Asset, ProjectManifest, ProjectSummary } from './types';
 import type { ClaudeState } from './claude';
 import type { CostEstimate, ImageJob, ProviderId } from './generation';
-import type { LiveSnapshot } from './live';
+import type { LiveSnapshot, TimelineDto } from './live';
+import type { EditorAppId } from './appEditors';
 import type { WorkflowGraph, WorkflowRunEvent } from './workflow';
 
 export const IPC = {
@@ -37,6 +38,9 @@ export const IPC = {
   liveQuickEdit: 'live:quick-edit',
   liveUndo: 'live:undo',
   liveDock: 'live:dock',
+  liveTimeline: 'live:timeline',
+  livePlayhead: 'live:playhead',
+  liveSelectClip: 'live:select-clip',
   claudeState: 'claude:state',
   claudeSend: 'claude:send',
   claudeStop: 'claude:stop',
@@ -135,7 +139,8 @@ export interface StudioApi {
   revealExport(name: string): Promise<void>;
   live: {
     state(): Promise<LiveSnapshot>;
-    open(assetId: string): Promise<LiveSnapshot>;
+    /** Opens a library file in its app (or in `app`, e.g. LightCraft for the Color tab). */
+    open(assetId: string, app?: EditorAppId): Promise<LiveSnapshot>;
     run(steps: Array<{ command: string; params: Record<string, unknown> }>): Promise<LiveSnapshot>;
     pause(): Promise<LiveSnapshot>;
     takeControl(): Promise<LiveSnapshot>;
@@ -154,6 +159,10 @@ export interface StudioApi {
     /** One-click edit applied in the open app window. */
     quickEdit(opId: string, values: Record<string, number | string>): Promise<LiveSnapshot>;
     undo(): Promise<LiveSnapshot>;
+    /** The open video's timeline (FilmCraft), or null. */
+    timeline(): Promise<TimelineDto | null>;
+    setPlayhead(seconds: number): Promise<void>;
+    selectClip(clipId: number): Promise<void>;
     onChange(cb: (s: LiveSnapshot) => void): () => void;
   };
   claude: {

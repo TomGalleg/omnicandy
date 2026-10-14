@@ -1,3 +1,5 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { kindForExtension, sniffMedia } from './media';
 
@@ -20,5 +22,12 @@ describe('media sniffing', () => {
     expect(sniffMedia('jpg', jpeg)).toEqual({ width: 640, height: 480 });
     expect(sniffMedia('png', Buffer.from('not a png'))).toEqual({});
     expect(sniffMedia('wav', Buffer.alloc(10))).toEqual({});
+  });
+
+  it('reads MP4 duration and size from the index at the end of the file (FilmCraft export)', () => {
+    const b = fs.readFileSync(path.resolve(__dirname, '../../fixtures/sample-project/sunset-clip.mp4'));
+    expect(sniffMedia('mp4', b.subarray(0, 256 * 1024))).toEqual({});
+    expect(sniffMedia('mp4', b.subarray(0, 256 * 1024), b.subarray(b.length - 1024 * 1024))).toEqual({ width: 960, height: 540, durationSec: 4.01 });
+    expect(kindForExtension('designcraft')).toBe('design');
   });
 });

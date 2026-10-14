@@ -11,7 +11,7 @@ import { ProjectManager } from './projects';
 import { SettingsStore } from './settingsStore';
 
 protocol.registerSchemesAsPrivileged([
-  { scheme: ASSET_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true } },
+  { scheme: ASSET_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } },
 ]);
 
 app.setName('CreateCraft');

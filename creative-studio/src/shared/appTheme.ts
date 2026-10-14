@@ -18,10 +18,10 @@ export const APP_THEME_SUPPORT: AppThemeInfo[] = [
   { id: 'photocraft', name: 'PhotoCraft', support: 'auto', note: 'Matched automatically' },
   { id: 'vectorcraft', name: 'VectorCraft', support: 'auto', note: 'Matched automatically' },
   { id: 'soundcraft', name: 'SoundCraft', support: 'auto', note: 'Matched automatically (dark or light)' },
-  { id: 'designcraft', name: 'DesignCraft', support: 'later', note: 'Has a theme setting; matched once CreateCraft opens DesignCraft files' },
-  { id: 'filmcraft', name: 'FilmCraft', support: 'later', note: 'Has a theme setting; matched once CreateCraft opens video in FilmCraft' },
-  { id: 'lightcraft', name: 'LightCraft', support: 'later', note: 'Has a theme setting; matched once CreateCraft opens LightCraft' },
-  { id: 'effectcraft', name: 'EffectCraft', support: 'manual', note: 'No theme control found: set it in EffectCraft yourself' },
+  { id: 'filmcraft', name: 'FilmCraft', support: 'auto', note: 'Matched automatically' },
+  { id: 'lightcraft', name: 'LightCraft', support: 'auto', note: 'Matched automatically (dark or light)' },
+  { id: 'effectcraft', name: 'EffectCraft', support: 'auto', note: 'Matched automatically (dark or light)' },
+  { id: 'designcraft', name: 'DesignCraft', support: 'auto', note: 'Matched automatically' },
 ];
 
 /** The app's own theme value for a CreateCraft palette. */
@@ -31,6 +31,12 @@ export function appThemeValue(appId: string, palette: ThemePalette): string | nu
     case 'photocraft': return palette === 'light' ? 'studioLight' : palette === 'studioDark' ? 'pro' : 'proMedium';
     case 'vectorcraft': return palette === 'light' ? 'light' : palette === 'studioDark' ? 'dark' : 'mediumDark';
     case 'soundcraft': return palette === 'light' ? 'light' : 'dark';
+    // FilmCraft prefs appearance.colorTheme: darkest | dark | light.
+    case 'filmcraft': return palette === 'light' ? 'light' : palette === 'studioDark' ? 'darkest' : 'dark';
+    // LightCraft settings.appearanceMode and EffectCraft appearance.appearanceMode: dark | light.
+    case 'lightcraft': case 'effectcraft': return palette === 'light' ? 'light' : 'dark';
+    // DesignCraft ui brightness: dark | mediumDark | mediumLight | light.
+    case 'designcraft': return palette === 'light' ? 'light' : palette === 'studioDark' ? 'dark' : 'mediumDark';
     default: return null;
   }
 }

@@ -1,4 +1,5 @@
-// REAL live control of VectorCraft and SoundCraft windows (PhotoCraft lives in photocraftLive.ts).
+// REAL live control of VectorCraft, SoundCraft, FilmCraft, LightCraft, EffectCraft and DesignCraft
+// windows (PhotoCraft lives in photocraftLive.ts).
 //
 // Both are launched with `--control <port>` on 127.0.0.1 and driven through their CLI's MCP bridge
 // (`… mcp --connect`). Neither app offers a control token (verified in the Phase 2 audit), so the
@@ -9,7 +10,8 @@
 import { execFile, spawn, type ChildProcess } from 'node:child_process';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { vectorcraftSteps, type EditValues, type EditorAppId } from '@shared/appEditors';
+import { effectcraftSteps, filmcraftSteps, lightcraftSteps, vectorcraftSteps, type EditValues, type EditorAppId } from '@shared/appEditors';
+import type { TimelineDto } from '@shared/live';
 import type { AppOperation } from '@shared/contracts';
 import { McpClient } from './mcpClient';
 import { freePort, waitForPort, type LiveDoc } from './photocraftLive';
@@ -42,15 +44,17 @@ abstract class LiveAppBase implements LiveDoc {
     return this.starting;
   }
 
-  protected abstract guiEnv(): NodeJS.ProcessEnv;
+  protected abstract guiEnv(port: number): NodeJS.ProcessEnv;
+  /** Command-line arguments for the app window (default: just the control port). */
+  protected guiArgs(port: number): string[] { return ['--control', String(port)]; }
   protected abstract bridgeArgs(port: number): string[];
 
   private async start(): Promise<void> {
     this.stop();
     await fs.mkdir(this.o.writeRoot, { recursive: true });
     const port = await freePort();
-    const gui = spawn(path.join(this.o.installDir, `${this.exeName}.exe`), ['--control', String(port)], {
-      env: { ...process.env, ...this.guiEnv() }, stdio: 'ignore', windowsHide: false,
+    const gui = spawn(path.join(this.o.installDir, `${this.exeName}.exe`), this.guiArgs(port), {
+      env: { ...process.env, ...this.guiEnv(port) }, stdio: 'ignore', windowsHide: false,
     });
     this.gui = gui;
     if (gui.pid) this.o.onSpawn?.(gui.pid);
@@ -205,5 +209,279 @@ export class LiveSoundCraft extends LiveAppBase {
     const r = (await this.client().request('tools/call', { name: 'screenshot', arguments: { max_side: maxSide } })) as { content?: Array<{ type: string; data?: string }> };
     const img = r.content?.find((c) => c.type === 'image');
     return img?.data ? Buffer.from(img.data, 'base64') : null;
+  }
+}
+
+// ---- FilmCraft, LightCraft, EffectCraft, DesignCraft (Phase 3; every call below verified live) ----
+
+const imageOf = (r: unknown): Buffer | null => {
+  const img = (r as { content?: Array<{ type: string; data?: string }> }).content?.find((c) => c.type === 'image');
+  return img?.data ? Buffer.from(img.data, 'base64') : null;
+};
+
+/** FilmCraft time unit: 254 016 000 000 ticks per second. */
+const TICKS = 254_016_000_000;
+
+interface FcItem { clip: number; name: string; start: number; duration: number; startFrame: number; durationFrames: number; speed: number; effects?: Array<{ effect: string }> }
+interface FcTrack { id: number; name: string; items: FcItem[]; transitions?: unknown[] }
+interface FcSequence { video?: FcTrack[]; audio?: FcTrack[]; duration: number; playhead: number | null; selection?: number[]; settings?: { frame_rate?: { num: number; den: number } } }
+
+/**
+ * FilmCraft: `filmcraft --control <port>` (loopback, no token) driven through `filmcraft-cli mcp
+ * --bridge`. Each open starts a fresh FilmCraft project with the video on its own sequence; the
+ * library file is only read. Auto-save/recovery data goes to the project's work folder.
+ */
+export class LiveFilmCraft extends LiveAppBase {
+  readonly appId = 'filmcraft' as const;
+  protected exeName = 'filmcraft';
+  private opened = false;
+
+  protected guiArgs(port: number) { return ['--control', String(port), '--empty', '--no-recover', '--data-dir', path.join(this.o.writeRoot, 'filmcraft-data')]; }
+  protected guiEnv() { return {}; }
+  protected bridgeArgs(port: number) { return ['mcp', '--bridge', `127.0.0.1:${port}`]; }
+
+  private cmd(id: string, params: Record<string, unknown> = {}, timeoutMs?: number) {
+    return this.client().callTool('command_run', { id, params }, timeoutMs);
+  }
+  private async sequence(): Promise<FcSequence> {
+    return (await this.client().callTool('sequence_inspect', {})) as FcSequence;
+  }
+
+  async open(absPath: string) {
+    if (this.opened) {
+      await this.cmd('file.closeProject', { force: true });
+      await this.cmd('file.newProject', { name: 'CreateCraft' });
+    }
+    const r = (await this.client().callTool('media_import', { paths: [absPath] })) as { items?: number[]; errors?: unknown[] };
+    const item = r.items?.[0];
+    if (item === undefined) throw new Error(`FilmCraft could not import the file${r.errors?.length ? `: ${JSON.stringify(r.errors[0])}` : '.'}`);
+    await this.cmd('file.newSequence', { name: path.basename(absPath).replace(/\.[^.]+$/, ''), fromItem: item });
+    this.opened = true;
+    return { name: path.basename(absPath) };
+  }
+  async run(op: AppOperation) { await this.cmd(op.command, op.params); }
+  async history() {
+    const h = (await this.cmd('history.list')) as { undo?: string[] };
+    return ['Open', ...(h.undo ?? []).slice(2)]; // the import and new-sequence steps are part of opening
+  }
+  async undo() {
+    const h = (await this.cmd('history.list')) as { undo?: string[] };
+    if ((h.undo?.length ?? 0) <= 2) throw new Error('Nothing to undo.');
+    await this.cmd('edit.undo');
+  }
+  async quickEditSteps(opId: string, values: EditValues): Promise<AppOperation[]> {
+    const s = await this.sequence();
+    const fr = s.settings?.frame_rate;
+    const fps = fr && fr.den ? fr.num / fr.den : 24;
+    const clips = (t?: FcTrack) => (t?.items ?? []).map((i) => ({ clip: i.clip, startFrame: i.startFrame, durationFrames: i.durationFrames }));
+    return filmcraftSteps(opId, values, { fps, video: clips(s.video?.[0]), audio: clips(s.audio?.[0]) });
+  }
+  async writeVersion(dir: string, base: string) {
+    const main = path.join(dir, `${base}.mp4`);
+    await this.cmd('file.exportMedia', { path: main, format: 'h264', wait: true }, 600_000);
+    await waitForFile(main);
+    return { main };
+  }
+  async preview(maxSide: number) { return imageOf(await this.client().request('tools/call', { name: 'render_frame', arguments: { max_side: maxSide } })); }
+  async screenshot(maxSide: number) { return imageOf(await this.client().request('tools/call', { name: 'ui_screenshot', arguments: { max_side: maxSide } })); }
+  async applyTheme(value: string): Promise<string | null> {
+    await this.cmd('prefs.set', { key: 'appearance.colorTheme', value });
+    const now = await this.cmd('prefs.get', { key: 'appearance.colorTheme' });
+    return typeof now === 'string' ? now : null;
+  }
+  async timeline(): Promise<TimelineDto> {
+    const s = await this.sequence();
+    const fr = s.settings?.frame_rate;
+    const sec = (t: number) => Math.round((t / TICKS) * 1000) / 1000;
+    const track = (t: FcTrack, kind: 'video' | 'audio') => ({
+      id: t.id, name: t.name, kind, transitions: t.transitions?.length ?? 0,
+      clips: t.items.map((i) => ({ id: i.clip, name: i.name.replace(/^[0-9a-f]{8}-/, ''), start: sec(i.start), duration: sec(i.duration), speed: i.speed, effects: (i.effects ?? []).map((e) => e.effect) })),
+    });
+    const used = (ts?: FcTrack[]) => (ts ?? []).filter((t, i) => i === 0 || t.items.length);
+    return {
+      duration: sec(s.duration), fps: fr && fr.den ? fr.num / fr.den : 24, playhead: s.playhead === null ? null : sec(s.playhead),
+      tracks: [...used(s.video).reverse().map((t) => track(t, 'video')), ...used(s.audio).map((t) => track(t, 'audio'))],
+      selection: s.selection ?? [],
+    };
+  }
+  async setPlayhead(seconds: number) { await this.cmd('playhead.set', { seconds }); }
+  async selectClip(clipId: number) { await this.cmd('timeline.select', { clips: [clipId], add: false, toggle: false }); }
+}
+
+/**
+ * LightCraft: `lightcraft --control <port> --memory` (a throwaway in-memory session, so the user's
+ * LightCraft library is never touched) driven through `lightcraft-cli mcp --connect`. The photo is
+ * imported from a copy in the work folder (LightCraft may write sidecars next to what it imports).
+ */
+export class LiveLightCraft extends LiveAppBase {
+  readonly appId = 'lightcraft' as const;
+  protected exeName = 'lightcraft';
+  private photo: number | null = null;
+  private port = 0;
+  private ext = 'png';
+
+  protected guiArgs(port: number) { this.port = port; return ['--control', String(port), '--memory', '--no-demo']; }
+  protected guiEnv() { return {}; }
+  protected bridgeArgs(port: number) { return ['mcp', '--connect', `127.0.0.1:${port}`]; }
+
+  private cmd(command: string, params: Record<string, unknown> = {}) { return this.client().callTool('run_command', { command, params }); }
+
+  async open(absPath: string) {
+    const copy = path.join(this.o.writeRoot, `src-${Date.now().toString(36)}-${path.basename(absPath).replace(/[^\w.-]+/g, '_')}`);
+    await fs.copyFile(absPath, copy);
+    await fs.chmod(copy, 0o666);
+    const r = (await this.client().callTool('import', { paths: [copy] })) as { imported?: number[]; duplicates?: number[] };
+    const id = r.imported?.[0] ?? r.duplicates?.[0];
+    if (id === undefined) throw new Error('LightCraft did not import the photo.');
+    await this.client().callTool('select_photos', { ids: [id], active: id });
+    this.photo = id;
+    const e = path.extname(absPath).slice(1).toLowerCase();
+    this.ext = e === 'jpeg' ? 'jpg' : ['jpg', 'png', 'tif', 'tiff', 'webp'].includes(e) ? e : 'png';
+    return { name: path.basename(absPath) };
+  }
+  async run(op: AppOperation) {
+    if (this.photo === null) throw new Error('No photo is open in LightCraft.');
+    await this.cmd(op.command, op.params);
+  }
+  async history() {
+    const h = (await this.cmd('history.list', this.photo === null ? {} : { id: this.photo })) as { history?: string[] };
+    return ['Open', ...(h.history ?? [])];
+  }
+  async undo() { await this.cmd('edit.undo'); }
+  quickEditSteps(opId: string, values: EditValues): AppOperation[] { return lightcraftSteps(opId, values); }
+  async writeVersion(dir: string, base: string) {
+    const main = path.join(dir, `${base}.${this.ext}`);
+    await this.cmd('app.export', { path: main, longEdge: 0, ...(this.photo !== null ? { ids: [this.photo] } : {}) });
+    await waitForFile(main);
+    return { main };
+  }
+  async preview(maxSide: number) { return imageOf(await this.client().request('tools/call', { name: 'render_preview', arguments: { max_side: maxSide } })); }
+  /** settings.appearanceMode through the control channel (`lightcraft-cli run --connect … ui.set`). */
+  async applyTheme(value: string): Promise<string | null> {
+    const out = await new Promise<string>((resolve, reject) => {
+      execFile(path.join(this.o.installDir, 'lightcraft-cli.exe'), ['run', '--connect', `127.0.0.1:${this.port}`, 'ui.set', JSON.stringify({ settings: { appearanceMode: value } })],
+        { windowsHide: true, timeout: 30_000, maxBuffer: 8 * 1024 * 1024 }, (err, stdout) => (err ? reject(err) : resolve(String(stdout))));
+    });
+    const m = /"appearanceMode"\s*:\s*"(\w+)"/.exec(out);
+    return m?.[1] ?? null;
+  }
+}
+
+/**
+ * EffectCraft: `effectcraft` with EFFECTCRAFT_CONTROL_PORT (loopback) driven through `effectcraft-cli
+ * mcp --bridge` with automation roots, so EffectCraft refuses automated file access outside the
+ * project (read) and its work folder (write), and refuses scripts. Each open makes a new project
+ * with a composition from the file.
+ */
+export class LiveEffectCraft extends LiveAppBase {
+  readonly appId = 'effectcraft' as const;
+  protected exeName = 'effectcraft';
+  private layer: number | null = null;
+  private still = false;
+
+  protected guiArgs() { return []; }
+  protected guiEnv(port: number) { return { EFFECTCRAFT_CONTROL_PORT: String(port) }; }
+  protected bridgeArgs(port: number) { return ['mcp', '--bridge', String(port), '--automation-read-root', this.o.readRoot, '--automation-write-root', this.o.writeRoot]; }
+
+  private exec(command: string, params: Record<string, unknown> = {}, timeoutMs?: number) {
+    return this.client().callTool('execute_command', { command, params }, timeoutMs);
+  }
+
+  async open(absPath: string) {
+    await this.client().callTool('open_project', { new: true });
+    const r = (await this.exec('file.import', { paths: [absPath] })) as { items?: number[]; errors?: unknown[] };
+    const item = r.items?.[0];
+    if (item === undefined) throw new Error(`EffectCraft could not import the file${r.errors?.length ? `: ${JSON.stringify(r.errors[0])}` : '.'}`);
+    this.still = !['mp4', 'mov', 'webm', 'mkv'].includes(path.extname(absPath).slice(1).toLowerCase());
+    await this.exec('project.select', { items: [item] });
+    await this.exec('file.newCompFromSelection', this.still ? { duration: 5 } : {});
+    const comp = (await this.client().callTool('get_comp', {})) as { layers?: Array<{ id: number; type: string }> };
+    this.layer = comp.layers?.find((l) => l.type !== 'Text')?.id ?? null;
+    return { name: path.basename(absPath) };
+  }
+  async run(op: AppOperation) {
+    if (op.command.startsWith('tool:')) await this.client().callTool(op.command.slice(5), op.params);
+    else await this.exec(op.command, op.params);
+  }
+  async history() {
+    const p = (await this.client().callTool('get_project', {})) as { undo?: string[] };
+    return ['Open', ...(p.undo ?? []).slice(2)]; // import + new comp are part of opening
+  }
+  async undo() {
+    const p = (await this.client().callTool('get_project', {})) as { undo?: string[] };
+    if ((p.undo?.length ?? 0) <= 2) throw new Error('Nothing to undo.');
+    await this.client().callTool('undo', {});
+  }
+  quickEditSteps(opId: string, values: EditValues): AppOperation[] {
+    if (this.layer === null) throw new Error('No composition is open in EffectCraft.');
+    return effectcraftSteps(opId, values, { layer: this.layer });
+  }
+  async writeVersion(dir: string, base: string) {
+    if (this.still) {
+      const main = path.join(dir, `${base}.png`);
+      await this.client().callTool('render_frame', { time: 0, max_side: 0, path: main, inline: false });
+      await waitForFile(main);
+      return { main };
+    }
+    const main = path.join(dir, `${base}.mp4`);
+    const item = (await this.exec('renderQueue.add', { format: 'h264', output: main })) as { id?: number };
+    try {
+      await this.exec('renderQueue.render', { wait: true }, 600_000);
+    } finally {
+      if (item?.id !== undefined) await this.exec('renderQueue.remove', { item: item.id }).catch(() => {});
+    }
+    await waitForFile(main);
+    return { main };
+  }
+  async preview(maxSide: number) { return imageOf(await this.client().request('tools/call', { name: 'render_preview', arguments: { max_side: maxSide } })); }
+  async applyTheme(value: string): Promise<string | null> {
+    await this.exec('prefs.set', { key: 'appearance.appearanceMode', value });
+    const now = await this.exec('prefs.get', { key: 'appearance.appearanceMode' });
+    return typeof now === 'string' ? now : null;
+  }
+}
+
+/**
+ * DesignCraft: `designcraft --control <port>` (loopback, no token) driven through `designcraft-cli
+ * mcp --connect`. The layout is opened read-only from the library; saving writes a new
+ * .designcraft into the work folder (plus a PNG of the first page).
+ */
+export class LiveDesignCraft extends LiveAppBase {
+  readonly appId = 'designcraft' as const;
+  protected exeName = 'designcraft';
+
+  protected guiArgs(port: number) { return ['--control', String(port)]; }
+  protected guiEnv() { return {}; }
+  protected bridgeArgs(port: number) { return ['mcp', '--connect', String(port)]; }
+
+  async open(absPath: string) {
+    await this.client().callTool('open_document', { path: absPath });
+    return { name: path.basename(absPath) };
+  }
+  async run(op: AppOperation) { await this.client().callTool('execute', { command: op.command, params: op.params }); }
+  async history() {
+    const h = (await this.client().callTool('execute', { command: 'document.history', params: {} })) as { undo?: string[] };
+    return ['Open', ...(h.undo ?? [])];
+  }
+  async undo() { await this.client().callTool('execute', { command: 'edit.undo', params: {} }); }
+  async writeVersion(dir: string, base: string) {
+    const main = path.join(dir, `${base}.designcraft`);
+    const preview = path.join(dir, `${base}.png`);
+    await this.client().callTool('save_document', { path: main });
+    await waitForFile(main);
+    await this.client().callTool('export_png', { path: preview, page: 0, scale: 1 });
+    await waitForFile(preview);
+    return { main, preview };
+  }
+  async preview(maxSide: number) {
+    const png = imageOf(await this.client().request('tools/call', { name: 'render_page', arguments: { page: 0, scale: Math.min(2, maxSide / 800) } }));
+    return png;
+  }
+  async screenshot() { return imageOf(await this.client().request('tools/call', { name: 'screenshot', arguments: {} })); }
+  async applyTheme(value: string): Promise<string | null> {
+    await this.client().callTool('ui_set', { brightness: value });
+    const ui = (await this.client().callTool('ui_inspect', {})) as { ui?: { brightness?: string } };
+    const b = ui?.ui?.brightness;
+    return b ? b.charAt(0).toLowerCase() + b.slice(1) : null;
   }
 }

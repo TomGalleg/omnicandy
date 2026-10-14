@@ -7,7 +7,8 @@ export function formatBytes(n: number): string {
 }
 
 export function formatDims(a: Asset): string {
-  if (a.width && a.height) return `${a.width}×${a.height}`;
-  if (a.durationSec != null) return `${a.durationSec.toFixed(2)} s`;
+  const dur = a.durationSec != null ? `${a.durationSec.toFixed(2)} s` : '';
+  if (a.width && a.height) return dur ? `${a.width}×${a.height} · ${dur}` : `${a.width}×${a.height}`;
+  if (dur) return dur;
   return '';
 }

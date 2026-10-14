@@ -4,5 +4,8 @@
   { "file": "harbor-landscape.svg", "workflowInput": true, "source": "Hand-authored SVG fixture for CreateCraft.", "licensingNotes": "Project fixture." },
   { "file": "studio-mark.svg", "source": "Hand-authored SVG fixture for CreateCraft.", "licensingNotes": "Project fixture." },
   { "file": "photocraft-smoke.pcraft", "source": "Native PhotoCraft document written by `photocraft-cli convert` during the Phase 0 audit.", "licensingNotes": "Generated locally." },
-  { "file": "tone-a440.wav", "source": "Synthesised by scripts/make-wav-fixture.mjs (2 s A440 tone).", "licensingNotes": "Project fixture." }
+  { "file": "tone-a440.wav", "source": "Synthesised by scripts/make-wav-fixture.mjs (2 s A440 tone).", "licensingNotes": "Project fixture." },
+  { "file": "sunset-clip.mp4", "since": 2, "source": "4-second clip exported by FilmCraft 0.7.2 from its built-in demo project (`filmcraft-cli --demo export … --start 0 --end 4 --scale 0.5`).", "licensingNotes": "Rendered locally from FilmCraft's procedurally generated demo media." },
+  { "file": "sunset-still.jpg", "since": 2, "source": "Frame at 2.5 s of sunset-clip.mp4, extracted with ffmpeg.", "licensingNotes": "Derived from the FilmCraft demo render." },
+  { "file": "sunset-flyer.designcraft", "since": 2, "source": "One-page layout made headlessly with DesignCraft 0.7.1 (designcraft-cli mcp: new_document, place_image, frame.create, type.char).", "licensingNotes": "Project fixture." }
 ]

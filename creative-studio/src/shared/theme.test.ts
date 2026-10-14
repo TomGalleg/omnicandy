@@ -71,7 +71,13 @@ describe('ArtCraft theme sync values', () => {
     expect(appThemeValue('vectorcraft', 'artcraft')).toBe('mediumDark');
     expect(appThemeValue('vectorcraft', 'studioDark')).toBe('dark');
     expect(appThemeValue('soundcraft', 'light')).toBe('light');
-    expect(appThemeValue('effectcraft', 'light')).toBeNull();
+    expect(appThemeValue('filmcraft', 'artcraft')).toBe('dark');
+    expect(appThemeValue('filmcraft', 'studioDark')).toBe('darkest');
+    expect(appThemeValue('lightcraft', 'light')).toBe('light');
+    expect(appThemeValue('effectcraft', 'artcraft')).toBe('dark');
+    expect(appThemeValue('designcraft', 'artcraft')).toBe('mediumDark');
+    expect(appThemeValue('designcraft', 'light')).toBe('light');
+    expect(appThemeValue('cadcraft', 'light')).toBeNull();
   });
 });
 

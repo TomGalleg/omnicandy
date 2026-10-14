@@ -3,7 +3,7 @@ import type { IntegrationSnapshot } from '@shared/ipc';
 import type { AppProbeResult, Asset, ProjectManifest, WorkspaceId } from '@shared/types';
 import { formatBytes, formatDims } from '../format';
 import type { LiveApi } from '../useLive';
-import { EditWorkspace } from './EditWorkspace';
+import { AppWorkspace, EditWorkspace } from './EditWorkspace';
 import { GenerateWorkspace } from './GenerateWorkspace';
 import { HomeWorkspace } from './HomeWorkspace';
 import { WorkflowEditor } from './WorkflowEditor';
@@ -31,8 +31,8 @@ export function WorkspaceView(p: Props) {
     case 'edit': return <EditWorkspace manifest={p.manifest} selected={p.selected} liveApi={p.liveApi} onProjectChanged={p.onProjectChanged} onSelectAsset={p.onSelectAsset} log={p.log} />;
     case 'generate': return <GenerateWorkspace manifest={p.manifest} selected={p.selected} onGoto={p.onGoto} log={p.log} />;
     case 'workflow': return <WorkflowEditor manifest={p.manifest} integrations={p.integrations} colorMode={p.resolvedTheme} log={p.log} onProjectChanged={p.onProjectChanged} />;
-    case 'effects': return <Bridge title="Effects" appId="effectcraft" apps={p.apps} what="compositions, layers, effects and keyframes" />;
-    case 'color': return <Bridge title="Color" appId="lightcraft" apps={p.apps} what="develop controls, presets and raw processing" />;
+    case 'effects': return <AppWorkspace tab="effects" manifest={p.manifest} selected={p.selected} liveApi={p.liveApi} onProjectChanged={p.onProjectChanged} onSelectAsset={p.onSelectAsset} log={p.log} />;
+    case 'color': return <AppWorkspace tab="color" manifest={p.manifest} selected={p.selected} liveApi={p.liveApi} onProjectChanged={p.onProjectChanged} onSelectAsset={p.onSelectAsset} log={p.log} />;
     case 'audio': return <Bridge title="Audio" appId="soundcraft" apps={p.apps} what="sessions, tracks, mixing and bounce" />;
     case 'deliver': return <DeliverView manifest={p.manifest} />;
   }
@@ -70,8 +70,16 @@ function MediaPreview({ asset, label }: { asset: Asset | null; label?: string })
       </Empty>
     );
   }
+  if (asset.kind === 'video') {
+    return (
+      <div className="viewer">
+        <div className="stage-label"><span className="chip">{asset.parentId ? 'Version · read-only' : 'Original · read-only'}</span><span className="chip">{formatDims(asset)}</span></div>
+        <div className="preview-stage"><video className="stage-video" controls src={window.studio.assetUrl(asset.id)} /></div>
+      </div>
+    );
+  }
   if (!viewable) {
-    return <Empty title={asset.name}><p>{asset.sourceFormat.toUpperCase()} files have no built-in preview yet. Open them in the matching ArtCraft app once the integration lands.</p></Empty>;
+    return <Empty title={asset.name}><p>{asset.sourceFormat.toUpperCase()} files have no built-in preview. Open them in the Edit tab to work on them in their ArtCraft app.</p></Empty>;
   }
   return (
     <div className="viewer">

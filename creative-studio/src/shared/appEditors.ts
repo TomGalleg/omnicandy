@@ -2,11 +2,12 @@
 // Every operation here was verified against the installed app's CLI (see docs/integration-audit.md);
 // main re-validates every request against this table before anything runs.
 
-export type EditorAppId = 'photocraft' | 'vectorcraft' | 'soundcraft' | 'filmcraft';
+export type EditorAppId = 'photocraft' | 'vectorcraft' | 'soundcraft' | 'filmcraft' | 'lightcraft' | 'effectcraft' | 'designcraft';
 
 export interface NumberParam { key: string; label: string; type: 'number'; min: number; max: number; step: number; default: number; unit?: string }
 export interface SelectParam { key: string; label: string; type: 'select'; options: Array<{ value: string; label: string }>; default: string }
-export type ParamSpec = NumberParam | SelectParam;
+export interface TextParam { key: string; label: string; type: 'text'; default: string; maxLength: number }
+export type ParamSpec = NumberParam | SelectParam | TextParam;
 
 export interface QuickEdit {
   id: string;
@@ -27,14 +28,29 @@ export interface EditorApp {
   quickEdits: QuickEdit[];
   /** How "Open in app" works for this app. */
   open: 'live' | 'working-copy' | 'none';
+  /**
+   * Which CreateCraft tab uses the app. Only 'edit' apps are picked by file type in the Edit tab;
+   * Color (LightCraft) and Effects (EffectCraft) open the same files in their own tabs.
+   */
+  tab: 'edit' | 'color' | 'effects';
   note?: string;
 }
+
+/** LightCraft built-in develop presets (ids verified with presets.list in LightCraft 0.7.1). */
+const LIGHTCRAFT_LOOKS = [
+  { value: 'lc.golden-hour', label: 'Golden Hour' }, { value: 'lc.warm-glow', label: 'Warm Glow' }, { value: 'lc.cool-morning', label: 'Cool Morning' },
+  { value: 'lc.teal-orange', label: 'Teal & Orange' }, { value: 'lc.vivid-pop', label: 'Vivid Pop' }, { value: 'lc.soft-pastel', label: 'Soft Pastel' },
+  { value: 'lc.faded-matte', label: 'Faded Matte' }, { value: 'lc.warm-film', label: 'Warm Film' }, { value: 'lc.muted-film', label: 'Muted Film' },
+  { value: 'lc.cinematic', label: 'Cinematic' }, { value: 'lc.moody', label: 'Moody' }, { value: 'lc.bw-high-contrast', label: 'High Contrast B&W' },
+  { value: 'lc.bw-soft', label: 'Soft B&W' }, { value: 'lc.blue-hour', label: 'Blue Hour Boost' }, { value: 'lc.crisp-landscape', label: 'Crisp Landscape' },
+];
 
 const deg = (d = 90): NumberParam => ({ key: 'angle', label: 'Angle', type: 'number', min: -360, max: 360, step: 1, default: d, unit: '°' });
 
 export const EDITOR_APPS: Record<EditorAppId, EditorApp> = {
   photocraft: {
     id: 'photocraft',
+    tab: 'edit',
     name: 'PhotoCraft',
     blurb: 'Photo and raster editing',
     formats: ['png', 'jpg', 'jpeg', 'webp', 'tif', 'tiff', 'bmp', 'gif', 'psd', 'pcraft'],
@@ -61,6 +77,7 @@ export const EDITOR_APPS: Record<EditorAppId, EditorApp> = {
   },
   vectorcraft: {
     id: 'vectorcraft',
+    tab: 'edit',
     name: 'VectorCraft',
     blurb: 'Vector illustration (SVG, AI, PDF, EPS)',
     formats: ['svg', 'svgz', 'vectorcraft', 'ai', 'eps', 'pdf'],
@@ -76,6 +93,7 @@ export const EDITOR_APPS: Record<EditorAppId, EditorApp> = {
   },
   soundcraft: {
     id: 'soundcraft',
+    tab: 'edit',
     name: 'SoundCraft',
     blurb: 'Audio editing and mixing',
     formats: ['wav', 'mp3', 'flac', 'ogg', 'aif', 'aiff'],
@@ -94,18 +112,102 @@ export const EDITOR_APPS: Record<EditorAppId, EditorApp> = {
   },
   filmcraft: {
     id: 'filmcraft',
+    tab: 'edit',
     name: 'FilmCraft',
     blurb: 'Video editing',
-    formats: ['mp4', 'mov', 'webm', 'mkv', 'fcproj'],
-    open: 'none',
+    formats: ['mp4', 'mov', 'webm', 'mkv'],
+    open: 'live',
+    note: 'The video opens on a FilmCraft timeline. Saving exports an H.264 MP4 as a new version.',
+    quickEdits: [
+      { id: 'trim', group: 'Trim', label: 'Trim start / end', params: [
+        { key: 'start', label: 'Cut from start', type: 'number', min: 0, max: 600, step: 0.1, default: 0.5, unit: 's' },
+        { key: 'end', label: 'Cut from end', type: 'number', min: 0, max: 600, step: 0.1, default: 0.5, unit: 's' }] },
+      { id: 'speed', group: 'Timing', label: 'Speed', params: [{ key: 'percent', label: 'Speed', type: 'number', min: 25, max: 400, step: 5, default: 150, unit: '%' }] },
+      { id: 'volume', group: 'Sound', label: 'Change volume', params: [{ key: 'db', label: 'Gain', type: 'number', min: -40, max: 20, step: 0.5, default: -6, unit: 'dB' }] },
+      { id: 'fades', group: 'Fades', label: 'Fade in / out (picture and sound)', params: [
+        { key: 'fadeIn', label: 'Fade in', type: 'number', min: 0, max: 10, step: 0.1, default: 0.5, unit: 's' },
+        { key: 'fadeOut', label: 'Fade out', type: 'number', min: 0, max: 10, step: 0.1, default: 0.5, unit: 's' }] },
+      { id: 'blackWhite', group: 'Look', label: 'Black & white', params: [] },
+      { id: 'saturation', group: 'Look', label: 'Colour saturation', params: [{ key: 'saturation', label: 'Saturation', type: 'number', min: 0, max: 200, step: 1, default: 140 }] },
+    ],
+  },
+  lightcraft: {
+    id: 'lightcraft',
+    tab: 'color',
+    name: 'LightCraft',
+    blurb: 'Photo colour and light (raw-style developing)',
+    formats: ['png', 'jpg', 'jpeg', 'webp', 'tif', 'tiff'],
+    open: 'live',
+    note: 'The photo opens in a throwaway LightCraft session, so your LightCraft library is not touched. Saving exports a full-size copy as a new version.',
+    quickEdits: [
+      { id: 'auto', group: 'Light', label: 'Auto settings', params: [] },
+      { id: 'light', group: 'Light', label: 'Exposure & contrast', params: [
+        { key: 'exposure', label: 'Exposure', type: 'number', min: -5, max: 5, step: 0.05, default: 0.3, unit: 'EV' },
+        { key: 'contrast', label: 'Contrast', type: 'number', min: -100, max: 100, step: 1, default: 10 },
+        { key: 'highlights', label: 'Highlights', type: 'number', min: -100, max: 100, step: 1, default: -20 },
+        { key: 'shadows', label: 'Shadows', type: 'number', min: -100, max: 100, step: 1, default: 20 }] },
+      { id: 'color', group: 'Colour', label: 'Vibrance & saturation', params: [
+        { key: 'vibrance', label: 'Vibrance', type: 'number', min: -100, max: 100, step: 1, default: 25 },
+        { key: 'saturation', label: 'Saturation', type: 'number', min: -100, max: 100, step: 1, default: 0 }] },
+      { id: 'presence', group: 'Detail', label: 'Clarity & dehaze', params: [
+        { key: 'clarity', label: 'Clarity', type: 'number', min: -100, max: 100, step: 1, default: 20 },
+        { key: 'dehaze', label: 'Dehaze', type: 'number', min: -100, max: 100, step: 1, default: 10 }] },
+      { id: 'vignette', group: 'Effects', label: 'Vignette', params: [{ key: 'amount', label: 'Amount', type: 'number', min: -100, max: 100, step: 1, default: -30 }] },
+      { id: 'blackWhite', group: 'Colour', label: 'Black & white', params: [] },
+      { id: 'look', group: 'Presets', label: 'Apply a look', params: [
+        { key: 'preset', label: 'Look', type: 'select', default: 'lc.golden-hour', options: LIGHTCRAFT_LOOKS },
+        { key: 'amount', label: 'Strength', type: 'number', min: 0, max: 200, step: 5, default: 100, unit: '%' }] },
+      { id: 'reset', group: 'Light', label: 'Reset all edits', params: [] },
+    ],
+  },
+  effectcraft: {
+    id: 'effectcraft',
+    tab: 'effects',
+    name: 'EffectCraft',
+    blurb: 'Motion graphics and visual effects',
+    formats: ['png', 'jpg', 'jpeg', 'webp', 'mp4', 'mov', 'webm'],
+    open: 'live',
+    note: 'The file opens as a composition in EffectCraft. Saving renders it (MP4 for video, PNG for pictures) as a new version.',
+    quickEdits: [
+      { id: 'glow', group: 'Light', label: 'Glow', params: [
+        { key: 'radius', label: 'Radius', type: 'number', min: 0, max: 200, step: 1, default: 25, unit: 'px' },
+        { key: 'intensity', label: 'Intensity', type: 'number', min: 0, max: 4, step: 0.1, default: 1 }] },
+      { id: 'blur', group: 'Blur', label: 'Gaussian blur', params: [{ key: 'blurriness', label: 'Blurriness', type: 'number', min: 0, max: 100, step: 0.5, default: 8 }] },
+      { id: 'brushStrokes', group: 'Stylize', label: 'Brush strokes', params: [
+        { key: 'brushSize', label: 'Brush size', type: 'number', min: 0, max: 5, step: 0.1, default: 2 },
+        { key: 'strokeLength', label: 'Stroke length', type: 'number', min: 0, max: 40, step: 1, default: 8 }] },
+      { id: 'cartoon', group: 'Stylize', label: 'Cartoon', params: [] },
+      { id: 'posterize', group: 'Stylize', label: 'Posterize', params: [{ key: 'level', label: 'Levels', type: 'number', min: 2, max: 32, step: 1, default: 6 }] },
+      { id: 'title', group: 'Text', label: 'Add a title', params: [
+        { key: 'text', label: 'Text', type: 'text', default: 'Title', maxLength: 120 },
+        { key: 'size', label: 'Size', type: 'number', min: 10, max: 300, step: 1, default: 90, unit: 'px' },
+        { key: 'color', label: 'Colour', type: 'select', default: '#ffffff', options: [
+          { value: '#ffffff', label: 'White' }, { value: '#000000', label: 'Black' }, { value: '#ffd23f', label: 'Yellow' }] }] },
+    ],
+  },
+  designcraft: {
+    id: 'designcraft',
+    tab: 'edit',
+    name: 'DesignCraft',
+    blurb: 'Page layout (flyers, posters, documents)',
+    formats: ['designcraft'],
+    open: 'live',
     quickEdits: [],
-    note: 'FilmCraft is installed and its automation connects, but there is no video in this project to verify edits against yet, so no quick edits are offered.',
+    note: "Edit the layout with DesignCraft's own tools. Saving keeps a new .designcraft version plus a PNG of the first page.",
   },
 };
 
+/** The Edit tab's app for a file type (Color and Effects pick their app explicitly). */
 export function editorFor(format: string): EditorApp | null {
   const f = format.toLowerCase();
-  return Object.values(EDITOR_APPS).find((a) => a.formats.includes(f)) ?? null;
+  return Object.values(EDITOR_APPS).find((a) => a.tab === 'edit' && a.formats.includes(f)) ?? null;
+}
+
+/** The app a workspace tab uses for a file, or null when that tab can't open it. */
+export function appForTab(tab: EditorApp['tab'], format: string): EditorApp | null {
+  if (tab === 'edit') return editorFor(format);
+  const f = format.toLowerCase();
+  return Object.values(EDITOR_APPS).find((a) => a.tab === tab && a.formats.includes(f)) ?? null;
 }
 
 export type EditValues = Record<string, number | string>;
@@ -116,7 +218,12 @@ export function checkEditValues(op: QuickEdit, raw: Record<string, unknown>): Va
   const values: EditValues = {};
   for (const p of op.params) {
     const v = raw[p.key] ?? p.default;
-    if (p.type === 'number') {
+    if (p.type === 'text') {
+      // Control characters (newlines, escapes) become spaces.
+      const t = typeof v === 'string' ? [...v].map((ch) => (ch < ' ' || ch === '\u007f' ? ' ' : ch)).join('').trim() : '';
+      if (!t || t.length > p.maxLength) return { ok: false, reason: `${p.label} must be 1–${p.maxLength} characters.` };
+      values[p.key] = t;
+    } else if (p.type === 'number') {
       const n = typeof v === 'number' ? v : Number(v);
       if (!Number.isFinite(n) || n < p.min || n > p.max) return { ok: false, reason: `${p.label} must be between ${p.min} and ${p.max}.` };
       values[p.key] = n;
@@ -156,5 +263,92 @@ export function vectorcraftSteps(opId: string, v: EditValues): Array<{ cmd: stri
     case 'scale': return [{ cmd: 'select.all' }, { cmd: 'object.scale', params: { sx: v.percent, sy: v.percent } }];
     case 'fitArtboard': return [{ cmd: 'artboard.fitToArt' }];
     default: throw new Error(`Unknown VectorCraft edit "${opId}".`);
+  }
+}
+
+// ---- Live step builders for FilmCraft, LightCraft and EffectCraft (each command verified live) ----
+
+export interface Op { command: string; params: Record<string, unknown> }
+
+/** What FilmCraft's sequence looks like, as far as the quick edits need it. */
+export interface FilmSequence {
+  fps: number;
+  video: Array<{ clip: number; startFrame: number; durationFrames: number }>;
+  audio: Array<{ clip: number; startFrame: number; durationFrames: number }>;
+}
+
+/** FilmCraft engine commands for a quick edit. Targets the clips on the first video/audio track. */
+export function filmcraftSteps(opId: string, v: EditValues, seq: FilmSequence): Op[] {
+  const vids = seq.video.map((c) => c.clip);
+  const auds = seq.audio.map((c) => c.clip);
+  const all = [...vids, ...auds];
+  if (!all.length) throw new Error('The FilmCraft timeline has no clips.');
+  const frames = (s: number) => Math.round(s * seq.fps);
+  const main = seq.video.length ? seq.video : seq.audio;
+  switch (opId) {
+    case 'trim': {
+      const cutIn = frames(Number(v.start)), cutOut = frames(Number(v.end));
+      const total = main.reduce((n, c) => n + c.durationFrames, 0);
+      if (cutIn + cutOut >= total - 1) throw new Error('That would cut away the whole clip.');
+      const steps: Op[] = [];
+      if (cutOut > 0) steps.push({ command: 'timeline.trim', params: { clip: main.at(-1)!.clip, edge: 'out', mode: 'ripple', deltaFrames: -cutOut } });
+      if (cutIn > 0) steps.push({ command: 'timeline.trim', params: { clip: main[0]!.clip, edge: 'in', mode: 'ripple', deltaFrames: cutIn } });
+      if (!steps.length) throw new Error('Set how much to cut.');
+      return steps;
+    }
+    case 'speed': return [{ command: 'clip.speedDuration', params: { clips: all, speed: v.percent, ripple: true } }];
+    case 'volume':
+      if (!auds.length) throw new Error('This video has no sound.');
+      return [{ command: 'clip.audioGain', params: { clips: auds, mode: 'adjust', db: v.db } }];
+    case 'fades': {
+      const fin = frames(Number(v.fadeIn)), fout = frames(Number(v.fadeOut));
+      const steps: Op[] = [];
+      const vFirst = seq.video[0], vLast = seq.video.at(-1), aFirst = seq.audio[0], aLast = seq.audio.at(-1);
+      if (fin > 0 && vFirst) steps.push({ command: 'sequence.applyVideoTransition', params: { clip: vFirst.clip, effect: 'dip_to_black', edge: 'in', frames: fin } });
+      if (fout > 0 && vLast) steps.push({ command: 'sequence.applyVideoTransition', params: { clip: vLast.clip, effect: 'dip_to_black', edge: 'out', frames: fout } });
+      if (fin > 0 && aFirst) steps.push({ command: 'sequence.applyAudioTransition', params: { clip: aFirst.clip, effect: 'constant_power', edge: 'in', frames: fin } });
+      if (fout > 0 && aLast) steps.push({ command: 'sequence.applyAudioTransition', params: { clip: aLast.clip, effect: 'constant_power', edge: 'out', frames: fout } });
+      if (!steps.length) throw new Error('Set a fade-in or fade-out length.');
+      return steps;
+    }
+    case 'blackWhite':
+      if (!vids.length) throw new Error('This file has no picture.');
+      return [{ command: 'effects.apply', params: { clips: vids, effect: 'black_white' } }];
+    case 'saturation':
+      if (!vids.length) throw new Error('This file has no picture.');
+      return [
+        { command: 'effects.apply', params: { clips: vids, effect: 'lumetri' } },
+        ...vids.map((clip) => ({ command: 'effects.setParam', params: { clip, effect: 'lumetri', param: 'saturation', value: v.saturation } })),
+      ];
+    default: throw new Error(`Unknown FilmCraft edit "${opId}".`);
+  }
+}
+
+/** LightCraft commands for a quick edit (develop controls by id; see `lightcraft-cli controls`). */
+export function lightcraftSteps(opId: string, v: EditValues): Op[] {
+  switch (opId) {
+    case 'auto': return [{ command: 'develop.auto', params: {} }];
+    case 'light': return [{ command: 'develop.set', params: { values: { 'light.exposure': v.exposure, 'light.contrast': v.contrast, 'light.highlights': v.highlights, 'light.shadows': v.shadows } } }];
+    case 'color': return [{ command: 'develop.set', params: { values: { 'color.vibrance': v.vibrance, 'color.saturation': v.saturation } } }];
+    case 'presence': return [{ command: 'develop.set', params: { values: { 'effects.clarity': v.clarity, 'effects.dehaze': v.dehaze } } }];
+    case 'vignette': return [{ command: 'develop.set', params: { values: { 'vignette.amount': v.amount } } }];
+    case 'blackWhite': return [{ command: 'develop.treatment', params: { bw: true } }];
+    case 'look': return [{ command: 'preset.apply', params: { id: v.preset, amount: v.amount } }];
+    case 'reset': return [{ command: 'develop.reset', params: {} }];
+    default: throw new Error(`Unknown LightCraft edit "${opId}".`);
+  }
+}
+
+/** EffectCraft operations for a quick edit. `tool:` commands are MCP tools; the rest are engine commands. */
+export function effectcraftSteps(opId: string, v: EditValues, ctx: { layer: number }): Op[] {
+  const fx = (effect: string, values: Record<string, unknown> = {}): Op => ({ command: 'tool:add_effect', params: { layer: ctx.layer, effect, values } });
+  switch (opId) {
+    case 'glow': return [fx('Glow', { radius: v.radius, intensity: v.intensity })];
+    case 'blur': return [fx('Gaussian Blur', { blurriness: v.blurriness })];
+    case 'brushStrokes': return [fx('Brush Strokes', { brushSize: v.brushSize, strokeLength: v.strokeLength })];
+    case 'cartoon': return [fx('Cartoon')];
+    case 'posterize': return [fx('Posterize', { level: v.level })];
+    case 'title': return [{ command: 'layer.newText', params: { text: v.text, size: v.size, fill: v.color } }];
+    default: throw new Error(`Unknown EffectCraft edit "${opId}".`);
   }
 }

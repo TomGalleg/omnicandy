@@ -39,13 +39,14 @@ describe('AppEditors against the real apps', () => {
   let store: ProjectStore;
   let ed: AppEditors;
   const ids: Record<string, string> = {};
+  const launched: string[] = [];
 
   beforeAll(async () => {
     tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'cs-editors-'));
     store = new ProjectStore(path.join(tmp, 'p'));
     await store.create('editors');
     for (const f of ['photocraft-smoke.png', 'harbor-landscape.svg', 'tone-a440.wav']) ids[f] = (await store.importFile(path.join(FIXTURES, f))).asset.id;
-    ed = new AppEditors(store);
+    ed = new AppEditors(store, (_exe, file) => { launched.push(file); }); // never opens a real window
   });
   afterAll(async () => {
     const walk = async (d: string): Promise<void> => {
@@ -104,11 +105,12 @@ describe('AppEditors against the real apps', () => {
   });
 
   it.skipIf(!has('VectorCraft'))('working copy round trip: unchanged copy is refused, a saved change comes back as a version', async () => {
-    // Opening launches the app window; simulate the app saving by editing the working copy directly.
+    // Opening would launch the app window (stubbed here); simulate the app saving by editing the working copy.
     const edit = await (async () => {
       const e = await ed.openWorkingCopy(ids['harbor-landscape.svg']!);
       return e;
     })();
+    expect(launched).toEqual([edit.workPath]);
     await expect(ed.bringBack(edit.id)).rejects.toThrow(/No saved changes/);
     const svg = await fs.readFile(edit.workPath, 'utf8');
     await fs.writeFile(edit.workPath, svg.replace('#1b1640', '#ff0000').replace('</svg>', '<rect width="10" height="10" fill="#f00"/></svg>'));

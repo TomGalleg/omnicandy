@@ -24,7 +24,7 @@ class FakeDoc implements LiveDoc {
   }
   async history() { return [...this.hist]; }
   userEdit(name = 'Brush Tool') { this.hist.push(name); }
-  async writeVersion(dir: string, base: string) {
+  async writeVersion(dir: string, base: string): Promise<{ main: string; preview?: string }> {
     const main = path.join(dir, `${base}.pcraft`);
     const preview = path.join(dir, `${base}.png`);
     await fs.writeFile(main, `pcraft:${this.hist.join(',')}`);
@@ -32,7 +32,7 @@ class FakeDoc implements LiveDoc {
     return { main, preview };
   }
   async undo() { if (this.hist.length > 1) this.hist.pop(); }
-  quickEditSteps(opId: string) {
+  quickEditSteps(opId: string): AppOperation[] | Promise<AppOperation[]> {
     if (opId === 'blackWhite') return [{ command: 'image.adjustments.blackWhite', params: {} }];
     if (opId === 'sharpen') return [{ command: 'file.saveAs', params: {} }]; // simulate a driver returning something disallowed
     return [];
@@ -228,5 +228,46 @@ describe('LiveTaskController', () => {
     await expect(ctl.run(STEPS)).rejects.toThrow(/PhotoCraft only/);
     const svg = (await store.importFile(path.join(FIXTURES, 'harbor-landscape.svg'))).asset.id;
     expect((await ctl.open(svg)).appId).toBe('vectorcraft');
+  });
+});
+
+describe('apps chosen by tab (Color = LightCraft) and async quick edits', () => {
+  class FakeLightDoc extends FakeDoc {
+    async writeVersion(dir: string, base: string) {
+      const main = path.join(dir, `${base}.png`);
+      await fs.writeFile(main, Buffer.concat([await fs.readFile(path.join(FIXTURES, 'photocraft-smoke.png')), Buffer.from(this.hist.join(','))]));
+      return { main };
+    }
+    async quickEditSteps(opId: string) { await new Promise((r) => setTimeout(r, 5)); return [{ command: `develop.${opId}`, params: {} }]; }
+  }
+
+  it('opens the same photo in LightCraft for the Color tab, runs async steps and names versions -color', async () => {
+    const light = new FakeLightDoc();
+    const c = new LiveTaskController({
+      connect: async (app) => (app === 'lightcraft' ? light : doc), store, emit: () => {},
+      writeDir: async () => { const d = path.join(store.root, 'work', 'lc'); await fs.mkdir(d, { recursive: true }); return d; },
+    });
+    const s = await c.open(assetId, 'lightcraft');
+    expect(s.appId).toBe('lightcraft');
+    await c.quickEdit('auto', {});
+    expect(light.ran).toEqual(['develop.auto']);
+    expect(c.statusForClaude().edits.map((e) => e.id)).toContain('look');
+    const saved = await c.saveVersion();
+    const v = (await store.loadManifest()).assets.find((a) => a.id === saved.savedVersionIds[0]);
+    expect(v).toMatchObject({ name: 'photocraft-smoke-color1.png', parentId: assetId });
+  });
+
+  it('says so instead of claiming a new version when nothing changed since the last save', async () => {
+    await ctl.quickEdit('blackWhite', {});
+    const first = await ctl.saveVersion();
+    expect(first.savedVersionIds).toHaveLength(2);
+    const again = await ctl.saveVersion();
+    expect(again.message).toMatch(/Nothing changed/);
+    expect(again.savedVersionIds).toHaveLength(2);
+  });
+
+  it('only video apps have a timeline', async () => {
+    expect(await ctl.timeline()).toBeNull();
+    await expect(ctl.setPlayhead(1)).rejects.toThrow(/no timeline/);
   });
 });

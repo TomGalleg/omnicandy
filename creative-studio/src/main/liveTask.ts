@@ -10,12 +10,13 @@
 //  - Saving writes the app's files (PhotoCraft .pcraft + .png, VectorCraft .svg + .png, SoundCraft
 //    .wav mix) into the app's work folder and registers them as new read-only versions; the opened
 //    asset is never overwritten.
-//  Works with PhotoCraft, VectorCraft and SoundCraft; multi-step automation is PhotoCraft-only.
+//  Works with every live ArtCraft app (see LIVE_APPS); multi-step automation is PhotoCraft-only.
 
 import { randomUUID } from 'node:crypto';
+import fs from 'node:fs/promises';
 import path from 'node:path';
 import { collabReducer, initialCollabState, type CollabEvent, type CollabState } from '@shared/collaboration';
-import type { LiveSnapshot, LiveStatus, LiveStep } from '@shared/live';
+import type { LiveSnapshot, LiveStatus, LiveStep, TimelineDto } from '@shared/live';
 import { checkEditValues, EDITOR_APPS, editorFor, type EditorAppId } from '@shared/appEditors';
 import { appThemeValue } from '@shared/appTheme';
 import type { AppOperation } from '@shared/contracts';
@@ -24,7 +25,9 @@ import { checkPhotoCraftOp, presetLabel } from '@shared/photocraftOps';
 import { versionOf, type LiveDoc } from './photocraftLive';
 import type { ProjectStore } from './projectStore';
 
-const LIVE_APPS: EditorAppId[] = ['photocraft', 'vectorcraft', 'soundcraft'];
+const LIVE_APPS: EditorAppId[] = ['photocraft', 'vectorcraft', 'soundcraft', 'filmcraft', 'lightcraft', 'effectcraft', 'designcraft'];
+/** Version name tag per app tab (photo-live1, photo-color1, clip-fx1). */
+const TAG: Partial<Record<EditorAppId, string>> = { lightcraft: 'color', effectcraft: 'fx' };
 /** Opened as shape layers; flattened on open so pixel adjustments and filters apply. */
 const VECTOR = new Set(['svg']);
 
@@ -259,19 +262,28 @@ export class LiveTaskController {
     const dir = await this.d.writeDir(this.appId);
     const files = await doc.writeVersion(dir, randomUUID().slice(0, 8));
     const appName = EDITOR_APPS[this.appId].name;
-    const base = this.asset!.name.replace(/\.[^.]+$/, '').replace(/-live\d*$/, '');
+    const tag = TAG[this.appId] ?? 'live';
+    const base = this.asset!.name.replace(/\.[^.]+$/, '').replace(/-(live|color|fx)\d*$/, '');
     const n = this.saveCount + 1;
     const steps = this.history.slice(1).join(' → ') || 'no edits';
     const mainExt = path.extname(files.main).slice(1);
+    const known = new Set((await this.d.store.loadManifest()).assets.map((x) => x.id));
     const main = await this.d.store.addDerivedFile(files.main, {
-      name: `${base}-live${n}.${mainExt}`,
+      name: `${base}-${tag}${n}.${mainExt}`,
       parentId: this.parentForNextSave ?? this.asset!.id,
       provenance: { origin: 'generated', source: `Saved from the live ${appName} window. History: ${steps}` },
     });
+    if (known.has(main.id)) {
+      // Byte-identical to a file already in the library: nothing new to keep.
+      if (files.preview) await fs.rm(files.preview, { force: true });
+      this.message = `Nothing changed since ${main.name}, so no new version was made.`;
+      this.publish();
+      return this.snapshot();
+    }
     const saved = [main.id];
     if (files.preview) {
       const png = await this.d.store.addDerivedFile(files.preview, {
-        name: `${base}-live${n}.png`,
+        name: `${base}-${tag}${n}.png`,
         parentId: main.id,
         provenance: { origin: 'generated', source: `PNG export of ${main.name} from the live ${appName} window` },
       });
@@ -300,7 +312,7 @@ export class LiveTaskController {
     const check = checkEditValues(op, rawValues);
     if (!check.ok) throw new Error(check.reason);
     if (!doc.quickEditSteps) throw new Error(`${app.name} can't apply quick edits live.`);
-    const steps = doc.quickEditSteps(op.id, check.values);
+    const steps = await doc.quickEditSteps(op.id, check.values);
     if (this.appId === 'photocraft') {
       for (const s of steps) { const c = checkPhotoCraftOp(s.command, s.params); if (!c.ok) throw new Error(c.reason); }
     }
@@ -381,7 +393,7 @@ export class LiveTaskController {
     const check = checkEditValues(op, rawValues);
     if (!check.ok) throw new Error(check.reason);
     if (!doc.quickEditSteps) throw new Error(`${app.name} can't apply edits live.`);
-    const steps = doc.quickEditSteps(op.id, check.values);
+    const steps = await doc.quickEditSteps(op.id, check.values);
     if (this.appId === 'photocraft') for (const s of steps) { const c = checkPhotoCraftOp(s.command, s.params); if (!c.ok) throw new Error(c.reason); }
     return this.claudeRun(`${op.label} (${app.name})`, steps);
   }
@@ -428,7 +440,9 @@ export class LiveTaskController {
         id: o.id, label: o.label, group: o.group,
         settings: o.params.map((p) => p.type === 'number'
           ? { key: p.key, label: p.label, min: p.min, max: p.max, default: p.default, unit: p.unit }
-          : { key: p.key, label: p.label, choices: p.options.map((x) => x.value), default: p.default }),
+          : p.type === 'text'
+            ? { key: p.key, label: p.label, text: true, maxLength: p.maxLength, default: p.default }
+            : { key: p.key, label: p.label, choices: p.options.map((x) => x.value), default: p.default }),
       })) : [],
     };
   }
@@ -451,6 +465,24 @@ export class LiveTaskController {
   }
 
   setPoppedOut(v: boolean) { this.poppedOut = v; this.publish(); }
+
+  /** The open video's timeline (FilmCraft); null for apps without one. */
+  async timeline(): Promise<TimelineDto | null> {
+    if (!this.doc?.timeline || !this.asset || this.status !== 'ready') return null;
+    return this.doc.timeline();
+  }
+
+  /** Moves the playhead / selects a clip in the app's timeline (no change to the document). */
+  async setPlayhead(seconds: number): Promise<void> {
+    const doc = this.requireDoc();
+    if (!doc.setPlayhead) throw new Error('This app has no timeline.');
+    await doc.setPlayhead(seconds);
+  }
+  async selectClip(clipId: number): Promise<void> {
+    const doc = this.requireDoc();
+    if (!doc.selectClip) throw new Error('This app has no timeline.');
+    await doc.selectClip(clipId);
+  }
 
   /** Re-reads the document history (e.g. after you edit by hand). */
   async refresh(): Promise<LiveSnapshot> {

@@ -8,6 +8,7 @@ const KIND_BY_EXT: Record<string, AssetKind> = {
   svg: 'vector', svgz: 'vector', ai: 'vector', eps: 'vector', pdf: 'vector',
   wav: 'audio', mp3: 'audio', flac: 'audio', ogg: 'audio', aif: 'audio', aiff: 'audio',
   mp4: 'video', mov: 'video', webm: 'video', mkv: 'video',
+  designcraft: 'design',
   pcraft: 'project', psd: 'project', vectorcraft: 'project', scraft: 'project', fcproj: 'project', ecproj: 'project',
 };
 
@@ -71,8 +72,34 @@ function wavInfo(b: Buffer): MediaInfo {
   return {};
 }
 
-export function sniffMedia(ext: string, head: Buffer): MediaInfo {
+/**
+ * MP4/MOV (ISO BMFF): duration from `mvhd`, picture size from the first video `tkhd`. The `moov`
+ * box is often at the end of the file, so callers pass the file's tail as well as its head.
+ */
+export function mp4Info(...parts: Buffer[]): MediaInfo {
+  const out: MediaInfo = {};
+  for (const b of parts) {
+    const mv = b.indexOf('mvhd');
+    if (mv >= 4 && out.durationSec === undefined && mv + 32 <= b.length) {
+      const v = b[mv + 4];
+      const scale = v === 1 ? b.readUInt32BE(mv + 24) : b.readUInt32BE(mv + 16);
+      const dur = v === 1 ? Number(b.readBigUInt64BE(mv + 28)) : b.readUInt32BE(mv + 20);
+      if (scale > 0) out.durationSec = Math.round((dur / scale) * 100) / 100;
+    }
+    for (let i = b.indexOf('tkhd'); i >= 4 && out.width === undefined; i = b.indexOf('tkhd', i + 4)) {
+      const v = b[i + 4];
+      const at = i + 4 + (v === 1 ? 88 : 76); // after version/flags, times, track id, duration, layer…, matrix
+      if (at + 8 > b.length) break;
+      const w = b.readUInt32BE(at) >>> 16, h = b.readUInt32BE(at + 4) >>> 16;
+      if (w > 0 && h > 0) { out.width = w; out.height = h; }
+    }
+  }
+  return out;
+}
+
+export function sniffMedia(ext: string, head: Buffer, tail?: Buffer): MediaInfo {
   switch (ext.toLowerCase().replace(/^\./, '')) {
+    case 'mp4': case 'mov': return tail ? mp4Info(head, tail) : mp4Info(head);
     case 'png': return pngInfo(head);
     case 'jpg': case 'jpeg': return jpegInfo(head);
     case 'svg': return svgInfo(head);

@@ -52,7 +52,8 @@ export interface ExternalEdit {
 export class AppEditors {
   private readonly external = new Map<string, ExternalEdit>();
 
-  constructor(private readonly store: ProjectStore) {}
+  /** `launch` opens the app window on a working copy (tests pass a stand-in so no window opens). */
+  constructor(private readonly store: ProjectStore, private readonly launch = (exePath: string, file: string) => { spawn(exePath, [file], { detached: true, stdio: 'ignore', windowsHide: false }).unref(); }) {}
 
   private async asset(id: string): Promise<Asset> {
     const a = (await this.store.loadManifest()).assets.find((x) => x.id === id);
@@ -184,8 +185,7 @@ export class AppEditors {
     }
     const edit: ExternalEdit = { id, app: app.id, assetId: a.id, assetName: a.name, workPath, hashAtOpen: await sha256File(workPath), openedAt: new Date().toISOString() };
     this.external.set(id, edit);
-    const child = spawn(exe(app.id, true), [workPath], { detached: true, stdio: 'ignore', windowsHide: false });
-    child.unref();
+    this.launch(exe(app.id, true), workPath);
     return edit;
   }
 
