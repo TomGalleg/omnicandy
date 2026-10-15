@@ -24,6 +24,7 @@ import type { ThemePalette } from '@shared/types';
 import { checkPhotoCraftOp, presetLabel } from '@shared/photocraftOps';
 import { versionOf, type LiveDoc } from './photocraftLive';
 import type { ProjectStore } from './projectStore';
+import { semanticZipDigest } from './zipDigest';
 
 const LIVE_APPS: EditorAppId[] = ['photocraft', 'vectorcraft', 'soundcraft', 'filmcraft', 'lightcraft', 'effectcraft', 'designcraft', 'wordcraft'];
 /** Version name tag per app tab (photo-live1, photo-color1, clip-fx1). */
@@ -134,6 +135,7 @@ export class LiveTaskController {
     try {
       this.doc = await this.d.connect(appId);
       await this.doc.open(abs);
+      await this.captureBaseline();
       if (appId === 'photocraft' && VECTOR.has(a.sourceFormat)) await this.doc.run({ command: 'layer.flattenImage', params: {} });
       this.status = 'ready';
     } catch (err) {
@@ -261,12 +263,32 @@ export class LiveTaskController {
     return this.snapshot();
   }
 
+  private baselineDigest: string | null = null;
+  /** Semantic digest of the document as opened, for apps that can save a cheap baseline copy. */
+  private async captureBaseline() {
+    this.baselineDigest = null;
+    try {
+      if (!this.doc?.writeBaseline) return;
+      const f = await this.doc.writeBaseline(await this.d.writeDir(this.appId!), `baseline-${randomUUID().slice(0, 8)}`);
+      this.baselineDigest = await semanticZipDigest(f);
+      await fs.rm(f, { force: true });
+    } catch { this.baselineDigest = null; }
+  }
+
   /** Saves the live document as new .pcraft + .png versions in the library. */
   async saveVersion(): Promise<LiveSnapshot> {
     const doc = this.requireDoc();
     if (this.collab.activeOperation) throw new Error('Wait for the current step to finish.');
     const dir = await this.d.writeDir(this.appId);
     const files = await doc.writeVersion(dir, randomUUID().slice(0, 8));
+    if (this.baselineDigest && await semanticZipDigest(files.main).catch(() => null) === this.baselineDigest) {
+      // Same content as when the document was opened (e.g. undo then save): only the app's version stamp may differ.
+      await fs.rm(files.main, { force: true });
+      if (files.preview) await fs.rm(files.preview, { force: true });
+      this.message = `Nothing changed since ${this.asset!.name} was opened, so no new version was made.`;
+      this.publish();
+      return this.snapshot();
+    }
     const appName = EDITOR_APPS[this.appId].name;
     const tag = TAG[this.appId] ?? 'live';
     const base = this.asset!.name.replace(/\.[^.]+$/, '').replace(/-(live|color|fx)\d*$/, '');

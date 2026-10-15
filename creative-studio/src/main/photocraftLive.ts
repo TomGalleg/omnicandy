@@ -28,6 +28,7 @@ export interface LiveDoc {
    * the editable/main file first, plus an optional PNG preview. Paths returned are inside `dir`.
    */
   writeVersion(dir: string, base: string): Promise<{ main: string; preview?: string }>;
+  writeBaseline?(dir: string, base: string): Promise<string>;
   undo?(): Promise<void>;
   /** Engine commands for a quick edit from src/shared/appEditors.ts. */
   quickEditSteps?(opId: string, values: EditValues): AppOperation[] | Promise<AppOperation[]>;

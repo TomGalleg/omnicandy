@@ -86,6 +86,8 @@ abstract class LiveAppBase implements LiveDoc {
   abstract run(op: AppOperation): Promise<void>;
   abstract history(): Promise<string[]>;
   abstract writeVersion(dir: string, base: string): Promise<{ main: string; preview?: string }>;
+  /** Optional cheap save of the just-opened state (no preview), used to tell "nothing changed" semantically. */
+  writeBaseline?(dir: string, base: string): Promise<string>;
 
   stop() { this.mcp?.close(); this.mcp = null; this.gui = null; }
   /** Closes the window this session started, discarding unsaved changes. Tests only. */
@@ -647,6 +649,12 @@ export class LiveDesignCraft extends LiveAppBase {
     await this.client().callTool('export_png', { path: preview, page: 0, scale: 1 });
     await waitForFile(preview);
     return { main, preview };
+  }
+  async writeBaseline(dir: string, base: string) {
+    const main = path.join(dir, `${base}.designcraft`);
+    await this.client().callTool('save_document', { path: main });
+    await waitForFile(main);
+    return main;
   }
   async preview(maxSide: number) {
     const png = imageOf(await this.client().request('tools/call', { name: 'render_page', arguments: { page: 0, scale: Math.min(2, maxSide / 800) } }));
