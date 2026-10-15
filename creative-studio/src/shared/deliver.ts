@@ -5,7 +5,7 @@
 import type { EditorAppId } from './appEditors';
 import type { Asset } from './types';
 
-export type DeliverGroup = 'image' | 'vector' | 'audio' | 'video' | 'design' | 'document' | 'pdf';
+export type DeliverGroup = 'image' | 'vector' | 'audio' | 'video' | 'design' | 'document' | 'pdf' | 'sheet';
 
 export interface DeliverPreset {
   id: string;
@@ -24,6 +24,7 @@ export interface DeliverPreset {
 export const DELIVER_SOURCES: Record<DeliverGroup, string[]> = {
   image: ['png', 'jpg', 'jpeg', 'webp', 'tif', 'tiff', 'bmp', 'gif', 'psd', 'pcraft'],
   pdf: ['pdf'],
+  sheet: ['xlsx'],
   vector: ['svg', 'svgz', 'ai', 'eps', 'pdf', 'vectorcraft'],
   audio: ['wav', 'flac', 'aif', 'aiff'],
   video: ['mp4', 'mov', 'webm', 'mkv'],
@@ -67,6 +68,11 @@ export const DELIVER_PRESETS: DeliverPreset[] = [
   { id: 'document-md', group: 'document', label: 'Markdown', note: 'Text with simple formatting', ext: 'md', app: 'wordcraft', suffix: '' },
   { id: 'document-html', group: 'document', label: 'Web page (HTML)', note: 'For the web or email', ext: 'html', app: 'wordcraft', suffix: '' },
   { id: 'document-odt', group: 'document', label: 'OpenDocument (ODT)', note: 'For LibreOffice and others', ext: 'odt', app: 'wordcraft', suffix: '' },
+  { id: 'sheet-csv', group: 'sheet', label: 'CSV (first sheet)', note: 'Plain values, opens anywhere', ext: 'csv', app: 'gridcraft', suffix: '' },
+  { id: 'sheet-tsv', group: 'sheet', label: 'Tab-separated text (first sheet)', note: 'Plain values, tab separated', ext: 'tsv', app: 'gridcraft', suffix: '' },
+  { id: 'sheet-json', group: 'sheet', label: 'JSON', note: 'Every sheet as data', ext: 'json', app: 'gridcraft', suffix: '' },
+  { id: 'sheet-html', group: 'sheet', label: 'Web page (HTML)', note: 'A table for the web or email', ext: 'html', app: 'gridcraft', suffix: '' },
+
   { id: 'pdf-png', group: 'pdf', label: 'PNG of page 1', note: 'A picture of the first page', ext: 'png', app: 'pdfcraft', suffix: '' },
   { id: 'pdf-txt', group: 'pdf', label: 'Plain text', note: 'The text of every page', ext: 'txt', app: 'pdfcraft', suffix: '' },
   { id: 'pdf-docx', group: 'pdf', label: 'Word document (DOCX)', note: 'Editable in WordCraft or Word; layout is approximate', ext: 'docx', app: 'pdfcraft', suffix: '' },

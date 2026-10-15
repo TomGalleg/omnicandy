@@ -376,6 +376,17 @@ Tomas's OK after each.
   Not done: theme sync (no setting), import-time thumbnails, the window is refreshed (not edited live) after each edit.
   Tests: lint 0, types 0, 240 passed / 33 skipped; live suites 31/31 (`CS_LIVE_TESTS=1`).
 
+* **GridCraft (2026-10-15): INTEGRATED, partly verified.** New asset kind `sheet` (.xlsx). Registry entry (`gridcraft`, Edit tab) with
+  quick edits Set a cell (`cell.set`) and Sort a table by a column (`data.sort`), both with cell/range validation; live driver
+  `LiveGridCraft` (open_workbook, execute_command, save_workbook, `history.list`, `undo`, window screenshot as the version picture);
+  headless engine for workflows (`gridcraft-cli mcp`, which has no file roots, so only the library file is read and results go to
+  the scratch folder); 4 Deliver presets (CSV and TSV of the first sheet, JSON, HTML; `convert`); Claude tools through the shared
+  tables. Theme sync: none verified (manual). Verified on this PC: real CLI exports, real headless workflow (set formula, sort, CSV),
+  real window through the live controller (open, edit, sort, undo, save new .xlsx + PNG, preview), unit tests. **Not verified:**
+  in-app Edit-tab embedding / UI smoke and a real Claude request through CreateCraft; PNG preview of a workbook without a window
+  (GridCraft has no headless renderer, so imported/workflow versions have no picture); multi-sheet CSV exports only the first sheet.
+  Tests: lint 0, types 0, 242 passed / 34 skipped; `videoGeneration` flakes under full-suite load, passes alone.
+
 Phase 1 note: the old `integrationStatus().claude` field in `src/main/ipc.ts` still says "not
 configured in this build" (stale); Settings now shows Claude's real sign-in state instead.
 

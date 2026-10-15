@@ -254,7 +254,7 @@ describe('apps chosen by tab (Color = LightCraft) and async quick edits', () => 
     const st = await c.statusForClaude();
     expect(st.edits.map((e) => e.id)).toContain('look');
     expect(st.open).toMatchObject({ app: 'LightCraft', tab: 'color' });
-    expect(st.apps.map((a) => a.app)).toEqual(['photocraft', 'vectorcraft', 'soundcraft', 'filmcraft', 'lightcraft', 'effectcraft', 'designcraft', 'wordcraft', 'pdfcraft']);
+    expect(st.apps.map((a) => a.app)).toEqual(['photocraft', 'vectorcraft', 'soundcraft', 'filmcraft', 'lightcraft', 'effectcraft', 'designcraft', 'wordcraft', 'pdfcraft', 'gridcraft']);
     const saved = await c.saveVersion();
     const v = (await store.loadManifest()).assets.find((a) => a.id === saved.savedVersionIds[0]);
     expect(v).toMatchObject({ name: 'photocraft-smoke-color1.png', parentId: assetId });

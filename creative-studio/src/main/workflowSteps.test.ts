@@ -40,7 +40,7 @@ describe('real workflows across the ArtCraft apps (no windows)', () => {
     tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'cs-workflow-'));
     store = new ProjectStore(path.join(tmp, 'p'));
     await store.create('workflow');
-    for (const f of ['sunset-still.jpg', 'photocraft-smoke.png', 'harbor-landscape.svg', 'tone-a440.wav', 'groove-loop.wav', 'sunset-clip.mp4', 'sunset-flyer.designcraft', 'quarterly-report.docx', 'quarterly-summary.pdf']) {
+    for (const f of ['sunset-still.jpg', 'photocraft-smoke.png', 'harbor-landscape.svg', 'tone-a440.wav', 'groove-loop.wav', 'sunset-clip.mp4', 'sunset-flyer.designcraft', 'quarterly-report.docx', 'quarterly-summary.pdf', 'region-sales.xlsx']) {
       ids[f] = (await store.importFile(path.join(FIXTURES, f))).asset.id;
     }
     q = new DeliverQueue({ store, emit: () => {}, installDir: dirOf });
@@ -132,6 +132,19 @@ describe('real workflows across the ArtCraft apps (no windows)', () => {
     expect(txt).toContain('Evening Tide');
     expect(txt).not.toContain('Sunset Over the Sea');
     const versions = (await lib()).filter((a) => a.sourceFormat === 'pdf' && a.parentId);
+    expect(versions.length).toBeGreaterThanOrEqual(2);
+  }, 120000);
+
+  it.skipIf(!has('gridcraft'))('a spreadsheet: set a formula and sort in the background, then CSV', async () => {
+    const r = await run(chain({ mode: 'files', assetIds: JSON.stringify([ids['region-sales.xlsx']]) },
+      [['gridcraft', 'setCell', { cell: 'F1', value: '=SUM(D2:D5)' }], ['gridcraft', 'sortColumn', { range: 'A1:D5', column: 'B', order: 'desc' }]], 'sheet-csv'));
+    expect(r.failures).toEqual([]);
+    expect(r.exported).toHaveLength(1);
+    const csv = (await fs.readFile(path.join(store.root, r.exported[0]!), 'utf8')).split(/\r?\n/);
+    expect(csv[0]).toContain('Region');
+    expect(csv[1]).toContain('East,20'); // largest units first
+    expect(csv[0]).toContain('101'); // the new total in F1
+    const versions = (await lib()).filter((a) => a.kind === 'sheet' && a.parentId);
     expect(versions.length).toBeGreaterThanOrEqual(2);
   }, 120000);
 

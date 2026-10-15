@@ -2,7 +2,7 @@
 // Every operation here was verified against the installed app's CLI (see docs/integration-audit.md);
 // main re-validates every request against this table before anything runs.
 
-export type EditorAppId = 'photocraft' | 'vectorcraft' | 'soundcraft' | 'filmcraft' | 'lightcraft' | 'effectcraft' | 'designcraft' | 'wordcraft' | 'pdfcraft';
+export type EditorAppId = 'photocraft' | 'vectorcraft' | 'soundcraft' | 'filmcraft' | 'lightcraft' | 'effectcraft' | 'designcraft' | 'wordcraft' | 'pdfcraft' | 'gridcraft';
 
 export interface NumberParam { key: string; label: string; type: 'number'; min: number; max: number; step: number; default: number; unit?: string }
 export interface SelectParam { key: string; label: string; type: 'select'; options: Array<{ value: string; label: string }>; default: string }
@@ -259,6 +259,25 @@ export const EDITOR_APPS: Record<EditorAppId, EditorApp> = {
     ],
     note: "Edit text and pages with PdfCraft's own tools in the window, or use the quick edits here. Saving keeps a new .pdf version plus a PNG of the first page; the original is never changed.",
   },
+  gridcraft: {
+    id: 'gridcraft',
+    tab: 'edit',
+    name: 'GridCraft',
+    blurb: 'Spreadsheets (tables, formulas, charts)',
+    formats: ['xlsx'],
+    open: 'live',
+    quickEdits: [
+      { id: 'setCell', group: 'Cells', label: 'Set a cell', params: [
+        { key: 'cell', label: 'Cell (for example B2)', type: 'text', default: 'A1', maxLength: 12 },
+        { key: 'value', label: 'Value or =formula', type: 'text', default: '0', maxLength: 500 }] },
+      { id: 'sortColumn', group: 'Data', label: 'Sort a table by a column', params: [
+        { key: 'range', label: 'Table range (for example A1:D20)', type: 'text', default: 'A1:D20', maxLength: 24 },
+        { key: 'column', label: 'Column letter', type: 'text', default: 'B', maxLength: 3 },
+        { key: 'order', label: 'Order', type: 'select', default: 'asc', options: [
+          { value: 'asc', label: 'Smallest first' }, { value: 'desc', label: 'Largest first' }] }] },
+    ],
+    note: "Edit cells, formulas and charts with GridCraft's own tools, or use the quick edits here. Saving keeps a new .xlsx version (plus a picture of the window when GridCraft is open); the original is never changed.",
+  },
 };
 
 /** The Edit tab's app for a file type (Color and Effects pick their app explicitly). */
@@ -500,6 +519,27 @@ export function pdfcraftSteps(opId: string, v: EditValues): Op[] {
     case 'watermark': return [{ command: 'tool:doc_watermark', params: { text: v.text, opacity: Number(v.opacity) / 100 } }];
     case 'setTitle': return [{ command: 'tool:doc_set_info', params: { key: 'Title', value: v.title } }];
     default: throw new Error(`Unknown PdfCraft edit "${opId}".`);
+  }
+}
+
+const CELL = /^[A-Za-z]{1,3}[1-9][0-9]{0,6}$/;
+const RANGE = /^[A-Za-z]{1,3}[1-9][0-9]{0,6}:[A-Za-z]{1,3}[1-9][0-9]{0,6}$/;
+/** GridCraft commands for a quick edit (verified headless and live). Cell references are checked here. */
+export function gridcraftSteps(opId: string, v: EditValues): Op[] {
+  switch (opId) {
+    case 'setCell': {
+      const cell = String(v.cell).trim().toUpperCase();
+      if (!CELL.test(cell)) throw new Error(`"${String(v.cell)}" is not a cell reference like B2.`);
+      return [{ command: 'cell.set', params: { cell, input: String(v.value) } }];
+    }
+    case 'sortColumn': {
+      const range = String(v.range).trim().toUpperCase();
+      const column = String(v.column).trim().toUpperCase();
+      if (!RANGE.test(range)) throw new Error(`"${String(v.range)}" is not a range like A1:D20.`);
+      if (!/^[A-Z]{1,3}$/.test(column)) throw new Error(`"${String(v.column)}" is not a column letter.`);
+      return [{ command: 'data.sort', params: { range, header: true, keys: [{ column, order: v.order === 'desc' ? 'desc' : 'asc' }] } }];
+    }
+    default: throw new Error(`Unknown GridCraft edit "${opId}".`);
   }
 }
 

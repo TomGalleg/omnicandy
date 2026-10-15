@@ -7,7 +7,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { EDITOR_APPS, type EditorAppId } from '@shared/appEditors';
-import { LiveDesignCraft, LiveEffectCraft, LiveFilmCraft, LiveLightCraft, LiveSoundCraft, LiveWordCraft } from './liveApps';
+import { LiveDesignCraft, LiveEffectCraft, LiveFilmCraft, LiveLightCraft, LiveSoundCraft, LiveWordCraft, LiveGridCraft } from './liveApps';
 import { LiveTaskController } from './liveTask';
 import { sniffMedia } from './media';
 import { ProjectStore } from './projectStore';
@@ -305,6 +305,42 @@ describe.skipIf(!has('WordCraft'))('Live WordCraft (real window)', () => {
     const main = await fileInfo(t.store, saved.savedVersionIds[0]!);
     const png = await fileInfo(t.store, saved.savedVersionIds[1]!);
     expect(main.asset).toMatchObject({ kind: 'document', parentId: doc, sourceFormat: 'docx' });
+    expect(png.asset.kind).toBe('image');
+    expect(png.info.width).toBeGreaterThan(500);
+    expect((await t.ctl.preview(800))?.subarray(1, 4).toString()).toBe('PNG');
+  }, 120000);
+});
+
+describe.skipIf(!has('GridCraft'))('Live GridCraft (real window)', () => {
+  let t: Awaited<ReturnType<typeof setup>>;
+  let sheet: string;
+  beforeAll(async () => {
+    t = await setup('gridcraft', (o) => new LiveGridCraft(o) as unknown as Driver);
+    sheet = (await t.store.importFile(path.join(FIXTURES, 'region-sales.xlsx'))).asset.id;
+  }, 60000);
+  afterAll(async () => { await t?.cleanup(); });
+
+  it('opens a workbook, edits cells, sorts, undoes, and saves a new .xlsx version with a window picture', async () => {
+    const s = await t.ctl.open(sheet);
+    expect(s.status).toBe('ready');
+    expect(s.history).toEqual(['Open']);
+    const g = t.app as unknown as LiveGridCraft;
+    const d0 = (await g.describe()) as { sheets: Array<{ usedRange: string }>; topRows: unknown[][] };
+    expect(d0.sheets[0]!.usedRange).toBe('A1:D5');
+    expect(d0.topRows[1]![0]).toBe('North');
+    await t.ctl.quickEdit('setCell', { cell: 'F1', value: '=SUM(D2:D5)' });
+    await expect(t.ctl.quickEdit('setCell', { cell: 'nope', value: '1' })).rejects.toThrow(/cell reference/);
+    const h = (await t.ctl.quickEdit('sortColumn', { range: 'A1:D5', column: 'B', order: 'desc' })).history;
+    expect(h.length).toBeGreaterThanOrEqual(3);
+    expect(((await g.describe()) as { topRows: unknown[][] }).topRows[1]![0]).toBe('East');
+    expect((await t.ctl.undo()).history.length).toBe(h.length - 1);
+    expect(((await g.describe()) as { topRows: unknown[][] }).topRows[1]![0]).toBe('North');
+    await t.ctl.quickEdit('sortColumn', { range: 'A1:D5', column: 'B', order: 'desc' });
+    const saved = await t.ctl.saveVersion();
+    expect(saved.savedVersionIds).toHaveLength(2);
+    const main = await fileInfo(t.store, saved.savedVersionIds[0]!);
+    const png = await fileInfo(t.store, saved.savedVersionIds[1]!);
+    expect(main.asset).toMatchObject({ kind: 'sheet', parentId: sheet, sourceFormat: 'xlsx' });
     expect(png.asset.kind).toBe('image');
     expect(png.info.width).toBeGreaterThan(500);
     expect((await t.ctl.preview(800))?.subarray(1, 4).toString()).toBe('PNG');

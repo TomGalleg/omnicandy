@@ -36,6 +36,7 @@ describe('deliver command lines', () => {
     expect(presetsFor('designcraft').map((p) => p.id)).toEqual(['design-pdf', 'design-png']);
     expect(presetsFor('docx').map((p) => p.id)).toEqual(['document-pdf', 'document-png', 'document-txt', 'document-md', 'document-html', 'document-odt', 'document-rtf']);
     expect(presetsFor('PDF').map((p) => p.id)).toEqual(['pdf-png', 'pdf-txt', 'pdf-docx', 'pdf-html', 'pdf-rtf', 'pdf-small', 'vector-svg', 'vector-pdf', 'vector-png', 'vector-png2x', 'vector-eps']);
+    expect(presetsFor('XLSX').map((p) => p.id)).toEqual(['sheet-csv', 'sheet-tsv', 'sheet-json', 'sheet-html']);
     expect(presetsFor('exe')).toEqual([]);
   });
 });
@@ -164,7 +165,7 @@ describe('every Deliver preset with the real ArtCraft tools (headless)', () => {
     tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'cs-deliver-real-'));
     store = new ProjectStore(path.join(tmp, 'p'));
     await store.create('deliver');
-    for (const f of ['sunset-still.jpg', 'harbor-landscape.svg', 'tone-a440.wav', 'sunset-clip.mp4', 'sunset-flyer.designcraft', 'quarterly-report.docx', 'quarterly-summary.pdf']) ids[f] = (await store.importFile(path.join(FIXTURES, f))).asset.id;
+    for (const f of ['sunset-still.jpg', 'harbor-landscape.svg', 'tone-a440.wav', 'sunset-clip.mp4', 'sunset-flyer.designcraft', 'quarterly-report.docx', 'quarterly-summary.pdf', 'region-sales.xlsx']) ids[f] = (await store.importFile(path.join(FIXTURES, f))).asset.id;
     q = new DeliverQueue({ store, emit: () => {}, installDir: dirOf });
   });
   afterAll(async () => { await fs.rm(tmp, { recursive: true, force: true, maxRetries: 3 }); });
@@ -233,6 +234,15 @@ describe('every Deliver preset with the real ArtCraft tools (headless)', () => {
     expect((await head(o['document-rtf']!)).subarray(0, 5).toString()).toBe(String.raw`{\rtf`);
   }, 120000);
 
+  it.skipIf(!installed('gridcraft'))('spreadsheets: CSV, TSV, JSON and HTML', async () => {
+    const o = await run('region-sales.xlsx', 'sheet');
+    const text = (n: string) => fs.readFile(path.join(store.root, 'exports', o[n]!), 'utf8');
+    expect(await text('sheet-csv')).toContain('East,20,1.5,30');
+    expect((await text('sheet-tsv')).split(/\r?\n/)[0]).toBe('Region\tUnits\tPrice\tRevenue');
+    expect(JSON.parse(await text('sheet-json'))).toBeTruthy();
+    expect((await text('sheet-html')).toLowerCase()).toContain('<table');
+  }, 120000);
+
   it.skipIf(!installed('pdfcraft'))('PDFs: PNG, text, DOCX, HTML, RTF and a smaller PDF', async () => {
     const o = await run('quarterly-summary.pdf', 'pdf');
     expect((await head(o['pdf-png']!, 4096)).subarray(1, 4).toString()).toBe('PNG');
@@ -248,6 +258,6 @@ describe('every Deliver preset with the real ArtCraft tools (headless)', () => {
     expect((await head(o['design-pdf']!)).subarray(0, 5).toString()).toBe('%PDF-');
     expect(sniffMedia('png', await head(o['design-png']!, 4096))).toMatchObject({ width: 1224, height: 1584 });
     const hist = await q.history();
-    expect(hist.length).toBe(DELIVER_PRESETS.filter((p) => ['image', 'vector', 'audio', 'video', 'design', 'document', 'pdf'].includes(p.group) && (installed(p.app))).length);
+    expect(hist.length).toBe(DELIVER_PRESETS.filter((p) => ['image', 'vector', 'audio', 'video', 'design', 'document', 'pdf', 'sheet'].includes(p.group) && (installed(p.app))).length);
   }, 120000);
 });

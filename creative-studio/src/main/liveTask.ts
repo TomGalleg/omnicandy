@@ -26,7 +26,7 @@ import { versionOf, type LiveDoc } from './photocraftLive';
 import type { ProjectStore } from './projectStore';
 import { semanticZipDigest } from './zipDigest';
 
-const LIVE_APPS: EditorAppId[] = ['photocraft', 'vectorcraft', 'soundcraft', 'filmcraft', 'lightcraft', 'effectcraft', 'designcraft', 'wordcraft', 'pdfcraft'];
+const LIVE_APPS: EditorAppId[] = ['photocraft', 'vectorcraft', 'soundcraft', 'filmcraft', 'lightcraft', 'effectcraft', 'designcraft', 'wordcraft', 'pdfcraft', 'gridcraft'];
 /** Version name tag per app tab (photo-live1, photo-color1, clip-fx1). */
 const TAG: Partial<Record<EditorAppId, string>> = { lightcraft: 'color', effectcraft: 'fx' };
 /** Opened as shape layers; flattened on open so pixel adjustments and filters apply. */

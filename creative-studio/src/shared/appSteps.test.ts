@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { appForTab, checkEditValues, designcraftSteps, EDITOR_APPS, editorFor, effectcraftSteps, filmcraftSteps, lightcraftSteps, parsePageList, pdfcraftSteps, type FilmSequence, wordcraftSteps } from './appEditors';
+import { gridcraftSteps, appForTab, checkEditValues, designcraftSteps, EDITOR_APPS, editorFor, effectcraftSteps, filmcraftSteps, lightcraftSteps, parsePageList, pdfcraftSteps, type FilmSequence, wordcraftSteps } from './appEditors';
 
 const seq: FilmSequence = {
   fps: 24000 / 1001,
@@ -26,6 +26,7 @@ describe('which app opens a file in which tab', () => {
     expect(editorFor('mp4')?.id).toBe('filmcraft');
     expect(editorFor('designcraft')?.id).toBe('designcraft');
     expect(editorFor('DOCX')?.id).toBe('wordcraft');
+    expect(editorFor('xlsx')?.id).toBe('gridcraft');
     expect(appForTab('color', 'jpg')?.id).toBe('lightcraft');
     expect(appForTab('color', 'svg')).toBeNull();
     expect(appForTab('effects', 'mp4')?.id).toBe('effectcraft');
@@ -154,5 +155,17 @@ describe('PdfCraft steps', () => {
     expect(checkEditValues(add, { text: 'x', bold: true }).ok).toBe(false);
     const rot = EDITOR_APPS.pdfcraft.quickEdits.find((o) => o.id === 'rotatePages')!;
     expect(checkEditValues(rot, { degrees: '45' }).ok).toBe(false);
+  });
+});
+
+describe('GridCraft steps', () => {
+  it('sets a cell and sorts a table, checking cell references first', () => {
+    expect(gridcraftSteps('setCell', { cell: 'b2', value: '=SUM(A1:A3)' })).toEqual([{ command: 'cell.set', params: { cell: 'B2', input: '=SUM(A1:A3)' } }]);
+    expect(gridcraftSteps('sortColumn', { range: 'a1:d5', column: 'b', order: 'desc' })).toEqual([
+      { command: 'data.sort', params: { range: 'A1:D5', header: true, keys: [{ column: 'B', order: 'desc' }] } }]);
+    expect(() => gridcraftSteps('setCell', { cell: 'B0', value: '1' })).toThrow(/cell reference/);
+    expect(() => gridcraftSteps('setCell', { cell: 'DROP', value: '1' })).toThrow();
+    expect(() => gridcraftSteps('sortColumn', { range: 'A1', column: 'B', order: 'asc' })).toThrow(/range/);
+    expect(() => gridcraftSteps('nope', {})).toThrow();
   });
 });

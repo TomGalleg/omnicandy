@@ -11,7 +11,7 @@ import { execFile, spawn, type ChildProcess } from 'node:child_process';
 import fs from 'node:fs/promises';
 import net from 'node:net';
 import path from 'node:path';
-import { designcraftSteps, effectcraftSteps, filmcraftSteps, type DesignPage, lightcraftSteps, pdfcraftSteps, vectorcraftSteps, wordcraftSteps, type EditValues, type EditorAppId } from '@shared/appEditors';
+import { designcraftSteps, effectcraftSteps, filmcraftSteps, type DesignPage, lightcraftSteps, gridcraftSteps, pdfcraftSteps, vectorcraftSteps, wordcraftSteps, type EditValues, type EditorAppId } from '@shared/appEditors';
 import type { TimelineDto, TimelineEdit } from '@shared/live';
 import type { AppOperation } from '@shared/contracts';
 import { McpClient } from './mcpClient';
@@ -1003,5 +1003,73 @@ export class LivePdfCraft extends LiveAppBase {
   async screenshot() {
     const r = (await this.ui('ui.screenshot')) as { png_base64?: string };
     return r.png_base64 ? Buffer.from(r.png_base64, 'base64') : null;
+  }
+}
+
+/**
+ * GridCraft: `gridcraft --control <port>` (loopback, no token) driven through `gridcraft-cli mcp
+ * --connect <port>`. The .xlsx is opened from the library and never written back (saving always goes
+ * to a new file in the work folder). The headless engine (`gridcraft-cli mcp`) has no file roots, so
+ * workflows only read the library file and write into their own scratch folder.
+ */
+export class LiveGridCraft extends LiveAppBase {
+  readonly appId = 'gridcraft' as const;
+  protected exeName = 'gridcraft';
+
+  protected guiArgs(port: number) { return ['--control', String(port)]; }
+  protected guiEnv() { return {}; }
+  protected bridgeArgs(port: number) { return ['mcp', '--connect', String(port)]; }
+  protected headlessArgs() { return ['mcp']; }
+
+  async open(absPath: string) {
+    await this.client().callTool('open_workbook', { path: absPath });
+    return { name: path.basename(absPath) };
+  }
+  private exec(command: string, params: Record<string, unknown> = {}) { return this.client().callTool('execute_command', { command, params }); }
+
+  async run(op: AppOperation) { await this.exec(op.command, op.params); }
+  async quickEditSteps(opId: string, values: EditValues): Promise<AppOperation[]> { return gridcraftSteps(opId, values); }
+  /** Sheets, their used ranges and the top rows of the active sheet, so Claude knows what is there. */
+  async describe() {
+    const d = (await this.client().callTool('inspect_workbook', {})) as { activeSheet?: number; sheets?: Array<{ name: string; usedRange?: string }> };
+    const sheets = d.sheets ?? [];
+    const active = sheets[d.activeSheet ?? 0];
+    let top: unknown[] = [];
+    if (active?.usedRange) {
+      const m = /^([A-Z]+)(\d+):([A-Z]+)(\d+)$/.exec(active.usedRange);
+      const range = m ? `${m[1]}${m[2]}:${m[3]}${Math.min(Number(m[4]), Number(m[2]) + 11)}` : active.usedRange;
+      const r = (await this.client().callTool('read_range', { range, sheet: active.name })) as { values?: unknown[] };
+      top = r.values ?? [];
+    }
+    return { sheets: sheets.map((s) => ({ name: s.name, usedRange: s.usedRange })), activeSheet: active?.name, topRows: top };
+  }
+  async history() {
+    const h = (await this.exec('history.list')) as { undo?: string[] };
+    return ['Open', ...(h.undo ?? [])];
+  }
+  async undo() { await this.client().callTool('undo', {}); }
+  async writeVersion(dir: string, base: string) {
+    const main = path.join(dir, `${base}.xlsx`);
+    await this.client().callTool('save_workbook', { path: main });
+    await waitForFile(main);
+    // A picture of the window, when there is one (the headless engine cannot draw).
+    if (this.o.headless) return { main };
+    const preview = path.join(dir, `${base}.png`);
+    try {
+      await this.client().callTool('screenshot', { path: preview });
+      await waitForFile(preview);
+      return { main, preview };
+    } catch { return { main }; }
+  }
+  async preview(_maxSide: number) {
+    if (this.o.headless) return null;
+    const f = path.join(this.o.writeRoot, `preview-${Date.now()}.png`);
+    try {
+      await this.client().callTool('screenshot', { path: f });
+      await waitForFile(f);
+      const b = await fs.readFile(f);
+      await fs.rm(f, { force: true });
+      return b;
+    } catch { return null; }
   }
 }

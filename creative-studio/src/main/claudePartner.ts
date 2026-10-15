@@ -27,7 +27,7 @@ import { parseProjectPlan, PROJECT_KINDS, type ProjectPlan } from '@shared/proje
 import type { LiveTaskController } from './liveTask';
 import type { ProjectStore } from './projectStore';
 
-const SYSTEM_PROMPT = `You are Claude, the Creative Partner inside CreateCraft, a desktop app where the user edits media in ArtCraft apps: PhotoCraft (photos), VectorCraft (vector art), SoundCraft (audio), FilmCraft (video, on a timeline), DesignCraft (page layouts) WordCraft (word-processing documents, .docx) and PdfCraft (PDFs: text, pages, watermark) in the Edit tab, LightCraft (photo light and colour) in the Color tab, and EffectCraft (effects and titles on pictures and video) in the Effects tab. The file the user is working on is open in one of these apps, shown inside CreateCraft. get_status tells you which app, and the edits that app offers.
+const SYSTEM_PROMPT = `You are Claude, the Creative Partner inside CreateCraft, a desktop app where the user edits media in ArtCraft apps: PhotoCraft (photos), VectorCraft (vector art), SoundCraft (audio), FilmCraft (video, on a timeline), DesignCraft (page layouts) WordCraft (word-processing documents, .docx), GridCraft (spreadsheets, .xlsx) and PdfCraft (PDFs: text, pages, watermark) in the Edit tab, LightCraft (photo light and colour) in the Color tab, and EffectCraft (effects and titles on pictures and video) in the Effects tab. The file the user is working on is open in one of these apps, shown inside CreateCraft. get_status tells you which app, and the edits that app offers.
 
 You can only act through the createcraft tools. Start by calling get_status. For visual work, call look_at_document before and after you change something, so you see what you are doing.
 
@@ -51,7 +51,7 @@ const PLAN_PROMPT = `You are Claude, the Creative Partner inside CreateCraft. Th
 "kind": one of ${PROJECT_KINDS.map((k) => `"${k.id}" (${k.label})`).join(', ')};
 "finishedOutput": one sentence naming the finished result the user wants;
 "summary": two or three plain sentences describing your creative plan;
-"apps": which ArtCraft apps to use, from PhotoCraft (photos), VectorCraft (vector art), SoundCraft (audio), FilmCraft (video timeline), LightCraft (light and colour), EffectCraft (effects and titles), DesignCraft (page layouts), WordCraft (text documents), PdfCraft (PDFs);
+"apps": which ArtCraft apps to use, from PhotoCraft (photos), VectorCraft (vector art), SoundCraft (audio), FilmCraft (video timeline), LightCraft (light and colour), EffectCraft (effects and titles), DesignCraft (page layouts), WordCraft (text documents), GridCraft (spreadsheets), PdfCraft (PDFs);
 "aiTools": AI image generation tools worth using, only from the list of available models you are given (an empty list when none is needed or none are set up); say what each is for;
 "steps": 3 to 6 short steps in plain language;
 "questions": at most 2 essential questions you still need answered (usually none);
@@ -532,9 +532,9 @@ New files: ${names.join(', ') || '(none)'}`);
             return fail(/cancelled/i.test(msg) ? new Error('The user cancelled this generation. Nothing was charged. Do not retry unless they ask.') : e);
           }
         }),
-        tool('open_file', 'Opens a library file (exact name from list_files) in an ArtCraft app and shows it in that app\'s CreateCraft tab. Without app it uses the file type\'s Edit-tab app (photos: PhotoCraft, vector: VectorCraft, audio: SoundCraft, video: FilmCraft, .designcraft: DesignCraft, .docx: WordCraft, .pdf: PdfCraft). Pass app to use another one, e.g. lightcraft for colour work on a photo or effectcraft for effects and titles. Ask the user first if the current document has unsaved changes.', {
+        tool('open_file', 'Opens a library file (exact name from list_files) in an ArtCraft app and shows it in that app\'s CreateCraft tab. Without app it uses the file type\'s Edit-tab app (photos: PhotoCraft, vector: VectorCraft, audio: SoundCraft, video: FilmCraft, .designcraft: DesignCraft, .docx: WordCraft, .xlsx: GridCraft, .pdf: PdfCraft). Pass app to use another one, e.g. lightcraft for colour work on a photo or effectcraft for effects and titles. Ask the user first if the current document has unsaved changes.', {
           name: z.string().max(512),
-          app: z.enum(['photocraft', 'vectorcraft', 'soundcraft', 'filmcraft', 'lightcraft', 'effectcraft', 'designcraft', 'wordcraft', 'pdfcraft']).optional(),
+          app: z.enum(['photocraft', 'vectorcraft', 'soundcraft', 'filmcraft', 'lightcraft', 'effectcraft', 'designcraft', 'wordcraft', 'pdfcraft', 'gridcraft']).optional(),
         }, async ({ name, app }) => {
           try {
             const a = (await (await this.d.store()).loadManifest()).assets.find((x) => x.name === name);

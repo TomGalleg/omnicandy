@@ -26,6 +26,7 @@ export const ARTCRAFT_APPS: ArtCraftAppDef[] = [
   { id: 'designcraft', displayName: 'DesignCraft', folder: 'DesignCraft', cli: 'designcraft-cli.exe', auditedHeadless: [] },
   { id: 'soundcraft', displayName: 'SoundCraft', folder: 'SoundCraft', cli: 'soundcraft-cli.exe', auditedHeadless: [] },
   { id: 'filmcraft', displayName: 'FilmCraft', folder: 'FilmCraft', cli: 'filmcraft-cli.exe', auditedHeadless: [] },
+  { id: 'gridcraft', displayName: 'GridCraft', folder: 'GridCraft', cli: 'gridcraft-cli.exe', auditedHeadless: ['convert', 'run', 'eval', 'mcp'] },
   { id: 'wordcraft', displayName: 'WordCraft', folder: 'WordCraft', cli: 'wordcraft-cli.exe', auditedHeadless: ['convert', 'run', 'render', 'mcp'], testedVersion: '0.7' },
   { id: 'pdfcraft', displayName: 'PdfCraft', folder: 'PdfCraft', cli: 'pdfcraft-cli.exe', auditedHeadless: ['info', 'render', 'text', 'edit', 'run', 'mcp'], testedVersion: '0.8' },
 ];
