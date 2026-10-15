@@ -38,7 +38,7 @@ import { MotionService } from './motionEffects';
 import { detectHardware } from './hardware';
 import { ModelDownloads } from './modelDownloads';
 import { LocalVideoService } from './localVideo';
-import { MAX_LOCAL_PROMPT } from '@shared/localVideo';
+import { LOCAL_PRESETS, MAX_LOCAL_PROMPT } from '@shared/localVideo';
 import fsp from 'node:fs/promises';
 import { LOCAL_MODELS, modelFit, SDCPP_RUNTIME, tierFor, TIER_LABEL, totalBytes, warningsFor } from '@shared/localAi';
 import { MOTION_ASPECTS, MOTION_FPS, MOTION_INTENSITIES, MOTION_PRESETS, MOTION_RESOLUTIONS } from '@shared/motionEffects';
@@ -194,6 +194,15 @@ export function registerIpc(d: IpcDeps): void {
         resolveImport: (p) => steps.resolveImport(p),
         applyStep: (s, inputs) => steps.applyStep(s, inputs),
         deliver: (inputs, presets) => steps.deliver(inputs, presets),
+        // Free local video: same project store, no approval or ledger (nothing is paid).
+        generateLocalVideo: async (job, signal) => {
+          const onAbort = () => localVideo.cancel();
+          signal?.addEventListener('abort', onAbort, { once: true });
+          try {
+            const r = await localVideo.render({ modelId: job.modelId, prompt: job.prompt, preset: job.preset as 'experimental', width: 0, height: 0, frames: 0, steps: 0 });
+            return { assetId: r.asset.id, name: r.asset.name, message: r.message };
+          } finally { signal?.removeEventListener('abort', onAbort); }
+        },
         // Paid steps go through the same approval dialog, spending limit and ledger as AI Generate.
         generateImage: async (job) => {
           const r = await runGeneration(job, by);
@@ -547,7 +556,7 @@ export function registerIpc(d: IpcDeps): void {
   });
   handle(IPC.localVideoCancel, none, async () => { localVideo.cancel(); });
   handle(IPC.localAiDownloads, none, () => downloads.status());
-  handle(IPC.localAiDownload, z.tuple([z.string().min(1).max(80)]), async (id) => {
+  const requestModelDownload = async (id: string) => {
     const m = modelById(id);
     const dir = await getModelDir();
     const gb = totalBytes(m) / 1024 ** 3;
@@ -567,7 +576,8 @@ export function registerIpc(d: IpcDeps): void {
     const res = win && !win.isDestroyed() ? await dialog.showMessageBox(win, options) : await dialog.showMessageBox(options);
     if (res.response !== 1) return null;
     return downloads.start(id, true);
-  });
+  };
+  handle(IPC.localAiDownload, z.tuple([z.string().min(1).max(80)]), (id) => requestModelDownload(id));
   handle(IPC.localAiCancel, z.tuple([z.string().min(1).max(80)]), async (id) => { modelById(id); downloads.cancel(id); });
   handle(IPC.localAiRemove, z.tuple([z.string().min(1).max(80)]), async (id) => {
     const m = modelById(id);
@@ -621,6 +631,38 @@ export function registerIpc(d: IpcDeps): void {
     cliPath: defaultClaudeCli(),
     generate: (job) => runGeneration(job, 'claude'),
     generateVideo: (job) => video.submit(job, 'claude'),
+    localAi: {
+      status: async () => {
+        const report = await detectHardware(await getModelDir());
+        const inst = await downloads.status();
+        const has = (id: string) => inst.find((x) => x.modelId === id)?.state === 'installed';
+        return JSON.stringify({
+          tier: TIER_LABEL[tierFor(report)], gpus: report.gpus, ramGb: report.ramGb, freeDiskGb: report.freeDiskGb, warnings: warningsFor(report),
+          engine_installed: has('sdcpp-vulkan-runtime'),
+          models: LOCAL_MODELS.map((m) => ({ id: m.id, name: m.name, installed: has(m.id), download_gb: Math.round(totalBytes(m) / 1e8) / 10, downloadable: m.files.length > 0, verified_on: m.verified, offered_here: modelFit(m, report).offered })),
+          presets: LOCAL_PRESETS,
+          note: 'Only entries under verified_on have really generated a clip. Local video is free; never switch to a paid provider without asking the user.',
+        }, null, 2);
+      },
+      startVideo: async (prompt, preset) => {
+        if (localVideo.busy) throw new Error('A local video is already being made.');
+        void localVideo.render({ modelId: 'wan-2.1-t2v-1.3b', prompt, preset, width: 0, height: 0, frames: 0, steps: 0 })
+          .then((r) => emitGenerated({ assetIds: [r.asset.id], message: r.message, estimate: { amount: 0, perImage: 0, currency: 'USD', approximate: false, basis: 'Free: generated on this PC.' }, requestedBy: 'claude' }))
+          .catch(() => undefined);
+        return `Local video started (${preset} preset, free, on this PC). It takes a minute or more; it will appear in the library. Do not wait; tell the user.`;
+      },
+      motion: async (j) => {
+        const a = (await (await d.project()).loadManifest()).assets.find((x) => x.name === j.fileName);
+        if (!a) throw new Error(`No file named "${j.fileName}". Use list_files.`);
+        const r = await motion.render({ assetId: a.id, preset: j.preset, intensity: j.intensity, aspectRatio: j.aspect, resolution: '720p', fps: 24, durationSeconds: j.seconds } as Parameters<MotionService['render']>[0]);
+        emitGenerated({ assetIds: [r.asset.id], message: r.message, estimate: { amount: 0, perImage: 0, currency: 'USD', approximate: false, basis: 'Free: local camera move, no AI.' }, requestedBy: 'claude' });
+        return `${r.message} File: ${r.asset.name}`;
+      },
+      requestDownload: async (id) => {
+        const s = await requestModelDownload(id);
+        return s ? `The user accepted; downloading ${id} (${s.state}).` : 'The user declined the download. Do not ask again unless they bring it up.';
+      },
+    },
     deliver: async () => deliver(),
     imageModels: async () => (await providerStatus()).filter((p) => p.configured),
     workDir: async () => (await d.project()).workDir('claude'),

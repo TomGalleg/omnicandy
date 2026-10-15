@@ -26,6 +26,8 @@ export interface RunnerDeps {
   exportAsset?: (assetId: string, format: string) => Promise<string>;
   /** Real image generation for AI Generate steps with a model (approval, spending limit and ledger live behind it). */
   generateImage?: (job: ImageJob, signal?: AbortSignal) => Promise<{ assetIds: string[]; names: string[]; message: string }>;
+  /** Free local AI video (a downloaded model on this PC): no provider, no approval, no cost. */
+  generateLocalVideo?: (job: { modelId: string; prompt: string; preset: string }, signal?: AbortSignal) => Promise<{ assetId: string; name: string; message: string }>;
   /** Delay per node so the UI can show progress; 0 in tests. */
   stepMs?: number;
   newRunId?: () => string;
@@ -57,7 +59,7 @@ const sleep = (ms: number, signal?: AbortSignal) =>
 /** True when any node in the graph would run against a mock adapter/provider or simulated export. */
 export function graphUsesMocks(graph: WorkflowGraph, deps: RunnerDeps): boolean {
   return graph.nodes.some((n) =>
-    (n.type === 'aiGenerate' && !(n.params.modelId && deps.generateImage) && (deps.providers[n.params.providerId ?? '']?.isMock ?? true)) ||
+    (n.type === 'aiGenerate' && n.params.providerId !== 'local' && !(n.params.modelId && deps.generateImage) && (deps.providers[n.params.providerId ?? '']?.isMock ?? true)) ||
     (n.type === 'artcraftEdit' && !(n.params.opId && deps.applyStep) && (deps.apps[n.params.appId ?? '']?.isMock ?? true)) ||
     (n.type === 'export' && !deps.deliver && !deps.exportAsset));
 }
@@ -164,6 +166,16 @@ export class WorkflowRunner implements WorkflowExecutor {
             break;
           }
           case 'aiGenerate': {
+            if (node.params.providerId === 'local') {
+              if (!this.deps.generateLocalVideo) throw new Error('Free local AI video is not available here.');
+              const r = await this.deps.generateLocalVideo({ modelId: node.params.modelId ?? '', prompt: node.params.prompt ?? '', preset: node.params.preset || 'experimental' }, o.signal);
+              const items: Item[] = [{ name: r.name, refs: [r.assetId] }];
+              outputs.set(id, items);
+              if (!graph.nodes.some((n) => n.type === 'import')) o.onEvent({ kind: 'run-items', runId, names: [r.name] });
+              emitItem(id, 0, r.name, 'completed', 'Generated locally (free).', r.assetId);
+              emit(id, 'completed', r.message, `asset:${r.assetId}`);
+              break;
+            }
             if (node.params.modelId && this.deps.generateImage) {
               // A real (or offline Mock) model: the same approval, spending limit and provenance as AI Generate.
               const m = modelById(node.params.modelId);

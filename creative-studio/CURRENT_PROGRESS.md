@@ -340,6 +340,14 @@ Free local video, Stage A + B (2026-10-14):
   like water (Experimental quality is rough). Verified only for: this GPU, Vulkan, Wan 2.1 1.3B, Experimental preset. Not yet tried:
   Low/Balanced/Higher presets, cancel on the real engine, longer clips, other GPUs. Fixed on the way: Windows tar (Git's tar failed on
   "C:"), re-extract when the zip was already downloaded, `--fps 16` passed. Stage C remaining: Claude tool, workflow node, source selector.
+* **Stage C part 4 (2026-10-15):** Claude tools `local_video_status`, `make_local_video`, `make_motion_video`, `request_model_download`; workflow
+  AI Generate node can use the local model (`providerId: 'local'`, free, same engine/approval/cancel; Claude's plans accept
+  `model_id wan-2.1-t2v-1.3b` + `settings.preset`); source selector in AI Generate (Cloud AI / Free Local AI / Motion Effects, default
+  Motion Effects). **Balanced preset does NOT work in practice on the RX 6650 XT**: ~143 s per step x 20 steps (about 48 min), stopped
+  by hand; the engine warned about pinned-memory allocation (all weights live in RAM). Low and Higher are untested. They stay as
+  "future options", labelled "not proven on this PC"; Experimental (83 s) is the only proven preset. Lesson: a leftover temp test in
+  src/ got picked up by `npm test` and started a second engine, which caused one out-of-memory failure; temp tests are now removed
+  before any suite run. Tests: 4 new `localWorkflow.test.ts`.
 * **Requirement added by Tomas:** Free Local AI must have a built-in, self-service setup inside CreateCraft (guided: check this PC, pick a model, consent, download, self-test, status and repair/remove). The user must not need to install Python or ComfyUI by hand.
 * Next (needs Tomas's OK): Stage C hardware detection, then model download and a real inference test.
 

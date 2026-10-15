@@ -23,11 +23,12 @@ export interface LocalVideoJob {
 
 export const LOCAL_FPS = 16;
 
-export const LOCAL_PRESETS: Record<Exclude<LocalPreset, 'custom'>, { label: string; width: number; height: number; frames: number; steps: number; note: string }> = {
-  experimental: { label: 'Experimental', width: 320, height: 192, frames: 17, steps: 10, note: 'Tiny and quick: proves the setup works. About 1 second.' },
-  low: { label: 'Low Resource', width: 448, height: 256, frames: 25, steps: 16, note: 'Light on memory. About 1.5 seconds.' },
-  balanced: { label: 'Balanced', width: 624, height: 352, frames: 33, steps: 20, note: 'Reasonable detail. About 2 seconds.' },
-  higher: { label: 'Higher Quality', width: 832, height: 480, frames: 33, steps: 25, note: 'Needs the most memory and time. About 2 seconds.' },
+/** `proven`: a real clip came out at this preset on the RX 6650 XT. Others stay available as future options. */
+export const LOCAL_PRESETS: Record<Exclude<LocalPreset, 'custom'>, { label: string; width: number; height: number; frames: number; steps: number; note: string; proven: boolean }> = {
+  experimental: { label: 'Experimental', width: 320, height: 192, frames: 17, steps: 10, note: 'Tiny and quick: proves the setup works. About 1 second. Verified: a real clip took 83 s on the RX 6650 XT.', proven: true },
+  low: { label: 'Low Resource', width: 448, height: 256, frames: 25, steps: 16, note: 'Light on memory. About 1.5 seconds. Not tested on this PC yet.', proven: false },
+  balanced: { label: 'Balanced', width: 624, height: 352, frames: 33, steps: 20, note: 'Reasonable detail. About 2 seconds. NOT WORKING in practice on the RX 6650 XT: it ran at about 143 s per step (roughly 48 minutes) and was stopped. A future option for faster GPUs.', proven: false },
+  higher: { label: 'Higher Quality', width: 832, height: 480, frames: 33, steps: 25, note: 'Needs the most memory and time. About 2 seconds. Not tested; expect it to be slower than Balanced.', proven: false },
 };
 
 export const MAX_LOCAL_PROMPT = 1000;

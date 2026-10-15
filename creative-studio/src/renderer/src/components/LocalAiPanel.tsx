@@ -65,7 +65,7 @@ export function LocalAiPanel() {
               <label className="field">Prompt<textarea value={prompt} maxLength={1000} placeholder="Describe the shot…" onChange={(e) => setPrompt(e.target.value)} /></label>
               <label className="field">Quality
                 <select value={preset} onChange={(e) => setPreset(e.target.value as typeof preset)}>
-                  {Object.entries(LOCAL_PRESETS).map(([k, p]) => <option key={k} value={k}>{p.label}: {p.width}x{p.height}, {clipSeconds(p)} s</option>)}
+                  {Object.entries(LOCAL_PRESETS).map(([k, p]) => <option key={k} value={k}>{p.label}: {p.width}x{p.height}, {clipSeconds(p)} s{p.proven ? '' : ' (not proven on this PC)'}</option>)}
                 </select>
               </label>
               <div className="asset-meta">{LOCAL_PRESETS[preset].note} Not tested on this PC until a clip comes out; it may fail or run out of memory.</div>

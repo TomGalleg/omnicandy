@@ -3,6 +3,8 @@
 // validateGraph, apps/edits/presets/models are checked against the same catalogues the UI uses.
 // Pure: nothing is saved, run or billed here.
 
+import { LOCAL_MODELS } from './localAi';
+import { LOCAL_PRESETS } from './localVideo';
 import { EDITOR_APPS, checkEditValues, type EditorAppId } from './appEditors';
 import { presetById } from './deliver';
 import { estimateCost, formatUsd, modelById, providerById } from './generation';
@@ -98,6 +100,21 @@ export function buildWorkflowPlan(input: PlanInput, ctx: PlanContext): PlanResul
         break;
       }
       case 'aiGenerate': {
+        const local = LOCAL_MODELS.find((x) => x.id === s.model_id && x.engine === 'sdcpp');
+        if (local) {
+          const prompt = (s.prompt ?? '').trim();
+          if (!prompt) { issues.push(`${where}: a prompt is needed.`); break; }
+          const preset = s.settings?.preset ?? 'experimental';
+          if (!(preset in LOCAL_PRESETS)) { issues.push(`${where}: preset must be one of ${Object.keys(LOCAL_PRESETS).join(', ')}.`); break; }
+          params.providerId = 'local';
+          params.modelId = local.id;
+          params.prompt = prompt;
+          params.preset = preset;
+          title = `Make a local video with ${local.name}`;
+          warnings.push(`${title}: free and runs on this PC (it can take minutes). Needs the model downloaded in AI Generate → Free local AI video.`);
+          detail = `${LOCAL_PRESETS[preset as keyof typeof LOCAL_PRESETS].label} preset, free, text to video, “${prompt.length > 70 ? `${prompt.slice(0, 70)}…` : prompt}”.`;
+          break;
+        }
         const m = modelById(s.model_id ?? '');
         if (!m) { issues.push(`${where}: unknown model "${s.model_id ?? ''}". Use a model_id from list_image_models.`); break; }
         const prov = providerById(m.provider)!;
@@ -222,7 +239,7 @@ export function workflowCatalog() {
   return {
     step_types: {
       import: 'Pick library files to work on. Fields: files (exact names from list_files). Output: files.',
-      aiGenerate: 'Make new pictures with an image model. Fields: model_id (list_image_models), prompt, count, settings. Output: images. Paid models need user approval.',
+      aiGenerate: 'Make new pictures with an image model. Fields: model_id (list_image_models), prompt, count, settings. Output: images. Paid models need user approval. For free local video on this PC use model_id wan-2.1-t2v-1.3b with settings.preset experimental|low|balanced|higher (needs the model downloaded; output: a video).',
       artcraftEdit: 'One quick edit in an ArtCraft app, in the background. Fields: app, edit, edit_settings. Input: files. Output: files.',
       approval: 'Pauses for the user to approve or reject each result. Fields: note. Input: files. Output: approved files.',
       export: 'Writes finished files with Deliver presets. Fields: presets. Input: files.',

@@ -19,6 +19,15 @@ const when = (iso: string) => new Date(iso).toLocaleString(undefined, { dateStyl
 
 /** AI Generate: bring-your-own-key providers, cost estimate, approval in main, results as new originals. */
 export function GenerateWorkspace({ manifest, selected, onGoto, log }: Props) {
+  // Free sources first: nothing paid is the default, and the choice is remembered per viewer.
+  const [videoSource, setVideoSource] = useState<'cloud' | 'local' | 'motion'>(() => {
+    try { const v = localStorage.getItem('cs-video-source'); if (v === 'cloud' || v === 'local' || v === 'motion') return v; } catch { /* storage unavailable */ }
+    return 'motion';
+  });
+  const chooseVideoSource = (v: 'cloud' | 'local' | 'motion') => {
+    setVideoSource(v);
+    try { localStorage.setItem('cs-video-source', v); } catch { /* storage unavailable */ }
+  };
   const [providers, setProviders] = useState<ProviderStatusDto[] | null>(null);
   const [capability, setCapability] = useState<GenCapability>('text-to-image');
   const [modelId, setModelId] = useState<string>('');
@@ -172,9 +181,22 @@ export function GenerateWorkspace({ manifest, selected, onGoto, log }: Props) {
           {msg && <div className={`wf-msg${msg.error ? ' error' : ''}`} role="status">{msg.text}</div>}
         </div>
 
-        <VideoPanel providers={providers} selected={selected} onGoto={onGoto} log={log} />
-        <MotionPanel selected={selected} onGoto={onGoto} log={log} />
-        <LocalAiPanel />
+        <div className="panel-card" role="group" aria-label="Video source">
+          <h3>Make video</h3>
+          <div className="btn-row">
+            {([['cloud', 'Cloud AI (paid)'], ['local', 'Free Local AI'], ['motion', 'Motion Effects (free, not AI)']] as const).map(([id, label]) => (
+              <button key={id} className={`btn small${videoSource === id ? ' primary' : ''}`} aria-pressed={videoSource === id} onClick={() => chooseVideoSource(id)}>{label}</button>
+            ))}
+          </div>
+          <div className="asset-meta">
+            {videoSource === 'cloud' ? 'Google Veo or Runway with your own key. Costs money; you approve each price.'
+              : videoSource === 'local' ? 'AI video made on this PC. Free; slower and lower quality. Needs a one-time model download.'
+              : 'A camera move on one picture. Free, instant, not AI-generated.'}
+          </div>
+        </div>
+        {videoSource === 'cloud' && <VideoPanel providers={providers} selected={selected} onGoto={onGoto} log={log} />}
+        {videoSource === 'motion' && <MotionPanel selected={selected} onGoto={onGoto} log={log} />}
+        {videoSource === 'local' && <LocalAiPanel />}
       </div>
 
       <div className="gen-results">

@@ -39,7 +39,7 @@ Saving creates a new version in the library; the user's original file is never c
 
 To deliver finished files (JPEG for the web, PDF, MP4, WAV, GIF and so on), use list_export_formats and export_file. Exports go to the project's exports folder (the Deliver tab) and are made from saved library files, never from unsaved changes in the open app. Keep replies short and plain.
 
-You can also create new pictures with generate_image (OpenAI or Google Gemini, using the user's own account). It costs the user money: only generate when they ask for it, keep the count low, and say which model you will use. CreateCraft shows the user the price and asks them to approve every call; if they cancel, accept it and do not ask again unless they bring it up. New images are added to the library as new files; open one with open_file to edit it. For video use list_video_models and generate_video (Google Veo or Runway): it costs more, takes minutes, the user approves the price, and the clip lands in the library later, so tell the user rather than waiting.
+You can also create new pictures with generate_image (OpenAI or Google Gemini, using the user's own account). It costs the user money: only generate when they ask for it, keep the count low, and say which model you will use. CreateCraft shows the user the price and asks them to approve every call; if they cancel, accept it and do not ask again unless they bring it up. New images are added to the library as new files; open one with open_file to edit it. For free video on this PC use local_video_status, make_local_video (AI, on the user GPU) or make_motion_video (camera move on a picture, not AI); never switch to a paid provider because local is unavailable, ask first. For paid video use list_video_models and generate_video (Google Veo or Runway): it costs more, takes minutes, the user approves the price, and the clip lands in the library later, so tell the user rather than waiting.
 
 When the user wants a repeatable multi-step process (for example edit many photos and export them), build a workflow with plan_workflow instead of editing files yourself: read list_files, list_image_models and workflow_catalog, then propose it. The user decides whether to use it. Explain the plan in plain words, say what it costs and what they will be asked to approve, and be honest about warnings.
 
@@ -57,7 +57,7 @@ const PLAN_PROMPT = `You are Claude, the Creative Partner inside CreateCraft. Th
 "template": the id of ONE template from the list you are given if it clearly fits the project, otherwise null. Never invent an id.
 Do not start any work and do not mention software internals, node graphs or file formats unless the user did. Write in the user's language.`;
 
-const TOOL_NAMES = ['get_status', 'look_at_document', 'apply_edit', 'photocraft_command', 'undo', 'save_version', 'list_files', 'open_file', 'list_image_models', 'generate_image', 'list_video_models', 'generate_video', 'list_export_formats', 'export_file', 'timeline_add', 'timeline_move_clip', 'timeline_remove_clip', 'workflow_catalog', 'plan_workflow', 'workflow_status', 'run_workflow', 'rerun_workflow', 'pause_workflow', 'resume_workflow', 'cancel_workflow', 'change_workflow_step', 'list_workflow_versions', 'restore_workflow_version', 'save_workflow_template'];
+const TOOL_NAMES = ['get_status', 'look_at_document', 'apply_edit', 'photocraft_command', 'undo', 'save_version', 'list_files', 'open_file', 'list_image_models', 'generate_image', 'list_video_models', 'generate_video', 'local_video_status', 'make_local_video', 'make_motion_video', 'request_model_download', 'list_export_formats', 'export_file', 'timeline_add', 'timeline_move_clip', 'timeline_remove_clip', 'workflow_catalog', 'plan_workflow', 'workflow_status', 'run_workflow', 'rerun_workflow', 'pause_workflow', 'resume_workflow', 'cancel_workflow', 'change_workflow_step', 'list_workflow_versions', 'restore_workflow_version', 'save_workflow_template'];
 
 export interface WorkflowControlApi {
   /** Snapshot of the run (waits up to `waitSeconds` for it to finish, pause or need the user). */
@@ -86,6 +86,16 @@ export interface ClaudePartnerDeps {
   generate: (job: ImageJob) => Promise<GenerateResultDto>;
   /** Same approval dialog and spending limit as the Generate tab; resolves when the job is submitted, not when the video is ready. */
   generateVideo: (job: VideoJob) => Promise<VideoJobRecord>;
+  /** Free local AI and Motion Effects (no provider, no cost). Every method returns plain text for Claude. */
+  localAi: {
+    status: () => Promise<string>;
+    /** Starts a clip in the background and returns at once. */
+    startVideo: (prompt: string, preset: 'experimental' | 'low' | 'balanced' | 'higher') => Promise<string>;
+    /** Camera move on a library picture (a few seconds). */
+    motion: (job: { fileName: string; preset: string; intensity: string; seconds: number; aspect: string }) => Promise<string>;
+    /** Shows the user the license/size dialog; downloads only if they accept. */
+    requestDownload: (modelId: string) => Promise<string>;
+  };
   /** Providers with a saved key (status only, never the key). */
   imageModels: () => Promise<ProviderStatusDto[]>;
   /** The Deliver tab's export queue (same queue, presets and manifest as the UI). */
@@ -432,6 +442,32 @@ Now explain the plan to the user in plain language, including cost and what they
               price_at_720p_4s: formatUsd(estimateVideoCost({ modelId: m.id, prompt: 'x', referenceAssetId: null, aspectRatio: '16:9', durationSeconds: m.durations.includes(4) ? 4 : m.durations[0]!, resolution: '720p' }).amount),
             })), null, 2));
           } catch (e) { return fail(e); }
+        }),
+        tool('local_video_status', 'Free local AI video on this PC: hardware tier, which engine and models are downloaded, which presets exist, and what has really been verified. Check this before offering local video. Never switch to a paid provider because local is unavailable; ask the user first.', {}, async () => {
+          try { return text(await this.d.localAi.status()); } catch (e) { return fail(e); }
+        }),
+        tool('make_local_video', 'Makes a short text-to-video clip on the user own PC with the downloaded local model (free, no account, no approval needed, but it uses the GPU for minutes). Only when the user asks. Starts in the background and returns at once; the clip is added to the library when done. Use local_video_status first. Presets: experimental (320x192, about 1 s), low, balanced, higher.', {
+          prompt: z.string().min(1).max(1000),
+          preset: z.enum(['experimental', 'low', 'balanced', 'higher']).optional(),
+        }, async ({ prompt, preset }) => {
+          try { activity('Starting a local video'); return text(await this.d.localAi.startVideo(prompt, preset ?? 'experimental')); } catch (e) { return fail(e); }
+        }),
+        tool('make_motion_video', 'Free, non-AI camera move (zoom or pan) on one library picture, saved as a short video. Say it is Motion Effects, not generated AI video.', {
+          file_name: z.string().max(512).describe('Exact picture name from list_files (PNG, JPEG or WebP).'),
+          movement: z.enum(['zoom-in', 'zoom-out', 'pan-left', 'pan-right', 'pan-up', 'pan-down']).optional(),
+          strength: z.enum(['subtle', 'medium', 'strong']).optional(),
+          seconds: z.number().min(2).max(20).optional(),
+          aspect_ratio: z.enum(['16:9', '9:16', '1:1']).optional(),
+        }, async ({ file_name, movement, strength, seconds, aspect_ratio }) => {
+          try {
+            activity('Making a motion video');
+            return text(await this.d.localAi.motion({ fileName: file_name, preset: movement ?? 'zoom-in', intensity: strength ?? 'medium', seconds: seconds ?? 6, aspect: aspect_ratio ?? '16:9' }));
+          } catch (e) { return fail(e); }
+        }),
+        tool('request_model_download', 'Asks the user to download a local AI model or the engine. A native dialog shows license, size and folder and the user decides; nothing downloads unless they accept. Model ids come from local_video_status. Never assume the answer.', {
+          model_id: z.string().max(80),
+        }, async ({ model_id }) => {
+          try { return text(await this.d.localAi.requestDownload(model_id)); } catch (e) { return fail(e); }
         }),
         tool('generate_video', 'Starts a video with one of list_video_models. Costs the user money: only when they ask, keep clips short, say which model. The user sees the price and must approve before anything is sent. Returns as soon as the job is submitted; the video takes minutes and is added to the library when ready (the user sees it under Video jobs). Optionally start from a library picture.', {
           prompt: z.string().min(1).max(2000),
