@@ -320,6 +320,12 @@ Free local video, Stage A + B (2026-10-14):
   31.8 GB RAM, RX 6650 XT 8 GB + UHD 770, tier Standard, DirectML runtime present, no CUDA/ROCm; LTX "could be tried", Wan not offered.
   **Not built:** download manager, runner, self-test, generation, Claude/workflow integration. AMD is still unverified.
   Tests: 203 passed / 14 skipped (+7 `hardware.test.ts`, fake Windows output), smoke-generate 16/16.
+* **Stage C part 2 (2026-10-15):** model download manager (`src/main/modelDownloads.ts`, tests with a fake server). Consent is a native
+  dialog in main (license, size, folder; Cancel default); resume by HTTP Range, per-file SHA-256 when published, disk check with 2 GB
+  margin, cancel keeps partials, remove, custom model folder (`local-ai.json`, write-tested). UI in the Free local AI card.
+  **Correction:** the LTX-Video 2B distilled download is about **27 GB** (6.3 GB model + 19 GB text encoder + 1.7 GB VAE, sizes and
+  hashes from the Hugging Face listing), not 8 GB as I said earlier. No real download has been made; needs Tomas's explicit yes naming
+  model and size. Still unbuilt: runner, self-test, generation, Claude tool, workflow node. Tests 211 passed / 14 skipped (+9).
 * **Requirement added by Tomas:** Free Local AI must have a built-in, self-service setup inside CreateCraft (guided: check this PC, pick a model, consent, download, self-test, status and repair/remove). The user must not need to install Python or ComfyUI by hand.
 * Next (needs Tomas's OK): Stage C hardware detection, then model download and a real inference test.
 

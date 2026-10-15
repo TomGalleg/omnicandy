@@ -36,7 +36,9 @@ import { GenerationService, type ApprovalRequest } from './generation';
 import { VideoService } from './videoGeneration';
 import { MotionService } from './motionEffects';
 import { detectHardware } from './hardware';
-import { LOCAL_MODELS, modelFit, tierFor, TIER_LABEL, warningsFor } from '@shared/localAi';
+import { ModelDownloads } from './modelDownloads';
+import fsp from 'node:fs/promises';
+import { LOCAL_MODELS, modelFit, tierFor, TIER_LABEL, totalBytes, warningsFor } from '@shared/localAi';
 import { MOTION_ASPECTS, MOTION_FPS, MOTION_INTENSITIES, MOTION_PRESETS, MOTION_RESOLUTIONS } from '@shared/motionEffects';
 import { MAX_VIDEO_PROMPT } from '@shared/video';
 import type { SettingsStore } from './settingsStore';
@@ -503,16 +505,71 @@ export function registerIpc(d: IpcDeps): void {
     return { assetId: r.asset.id, message: r.message };
   });
   handle(IPC.motionCancel, none, async () => { motion.cancel(); });
-  // Free local AI (Stage C): read-only hardware check. No download, no inference.
+  // Free local AI (Stage C): hardware check and the model download manager. No generation yet.
+  const aiSettingsFile = path.join(d.secretsDir, '..', 'local-ai.json');
+  const defaultModelDir = path.join(d.secretsDir, '..', 'models');
+  const getModelDir = async () => {
+    try { const j = JSON.parse(await fsp.readFile(aiSettingsFile, 'utf8')) as { modelDir?: string }; if (j.modelDir && path.isAbsolute(j.modelDir)) return j.modelDir; } catch { /* default */ }
+    return defaultModelDir;
+  };
+  const downloads = new ModelDownloads({
+    modelDir: getModelDir,
+    fetch: (url, init) => globalThis.fetch(url, { ...init, redirect: 'follow' }),
+    freeBytes: async (dir) => { await fsp.mkdir(dir, { recursive: true }); const s = await fsp.statfs(dir); return s.bavail * s.bsize; },
+    onChange: (s) => { for (const w of BrowserWindow.getAllWindows()) if (!w.isDestroyed()) w.webContents.send(IPC.localAiEvent, s); },
+  });
+  const modelById = (id: string) => { const m = LOCAL_MODELS.find((x) => x.id === id); if (!m) throw new Error('Unknown model.'); return m; };
   handle(IPC.localAiStatus, none, async () => {
-    const report = await detectHardware(path.join(d.secretsDir, '..', 'models'));
+    const report = await detectHardware(await getModelDir());
     const tier = tierFor(report);
     return {
       report, tier, tierLabel: TIER_LABEL[tier], warnings: warningsFor(report),
       models: LOCAL_MODELS.map((m) => modelFit(m, report)),
       generationAvailable: false,
-      note: 'Model download and generation are not built yet. This is a compatibility check only; no backend has been tested.',
+      note: 'Generation is not built yet. Downloads and this check are free and local; no backend has been tested.',
     };
+  });
+  handle(IPC.localAiDownloads, none, () => downloads.status());
+  handle(IPC.localAiDownload, z.tuple([z.string().min(1).max(80)]), async (id) => {
+    const m = modelById(id);
+    const dir = await getModelDir();
+    const gb = totalBytes(m) / 1024 ** 3;
+    const win = d.window();
+    const options: Electron.MessageBoxOptions = {
+      type: 'question', title: 'Download a local AI model',
+      message: `Download ${m.name} (${gb.toFixed(1)} GB)?`,
+      detail: [
+        `Source: ${m.sourceUrl}`,
+        `License: ${m.license}. ${m.licenseNote}`,
+        `Saved to: ${path.join(dir, m.id)}`,
+        'The download is free, but it uses about this much disk space and bandwidth. It can be cancelled and resumed.',
+        'Downloading does not mean the model works on this PC: it has not been tested here.',
+      ].join('\n'),
+      buttons: ['Cancel', `Accept license and download ${gb.toFixed(1)} GB`], defaultId: 0, cancelId: 0, noLink: true,
+    };
+    const res = win && !win.isDestroyed() ? await dialog.showMessageBox(win, options) : await dialog.showMessageBox(options);
+    if (res.response !== 1) return null;
+    return downloads.start(id, true);
+  });
+  handle(IPC.localAiCancel, z.tuple([z.string().min(1).max(80)]), async (id) => { modelById(id); downloads.cancel(id); });
+  handle(IPC.localAiRemove, z.tuple([z.string().min(1).max(80)]), async (id) => {
+    const m = modelById(id);
+    const win = d.window();
+    const options: Electron.MessageBoxOptions = { type: 'warning', title: 'Remove model', message: `Remove ${m.name} from this PC?`, detail: 'The downloaded files are deleted. You can download it again later.', buttons: ['Cancel', 'Remove'], defaultId: 0, cancelId: 0, noLink: true };
+    const res = win && !win.isDestroyed() ? await dialog.showMessageBox(win, options) : await dialog.showMessageBox(options);
+    if (res.response === 1) await downloads.remove(id);
+  });
+  handle(IPC.localAiPickDir, none, async () => {
+    const win = d.window();
+    const o: Electron.OpenDialogOptions = { title: 'Where should AI models be stored?', properties: ['openDirectory', 'createDirectory'] };
+    const pick = await (win ? dialog.showOpenDialog(win, o) : dialog.showOpenDialog(o));
+    const dir = pick.canceled ? null : pick.filePaths[0] ?? null;
+    if (!dir) return null;
+    // Real write test, as for the project folder.
+    const probe = path.join(dir, `.createcraft-write-test-${process.pid}`);
+    try { await fsp.writeFile(probe, 'x'); await fsp.rm(probe, { force: true }); } catch { throw new Error('CreateCraft cannot write to that folder. Pick another one.'); }
+    await fsp.writeFile(aiSettingsFile, JSON.stringify({ modelDir: dir }, null, 2), 'utf8');
+    return dir;
   });
   const spendingDto = async () => { const s = await (await d.project()).spending(); return { limitUsd: s.limitUsd, spentUsd: s.spentUsd, count: s.entries.length }; };
   handle(IPC.genSpending, none, spendingDto);

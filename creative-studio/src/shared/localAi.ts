@@ -73,7 +73,18 @@ export const TIER_LABEL: Record<LocalTier, string> = {
 
 export interface VerifiedRun { gpu: string; backend: BackendProbe['id']; width: number; height: number; frames: number; date: string }
 
+export interface LocalModelFile {
+  /** Path inside the model folder. */
+  path: string;
+  url: string;
+  bytes: number;
+  /** Expected SHA-256 when the host publishes one (Hugging Face does for large files). */
+  sha256?: string;
+}
+
 export interface LocalModel {
+  /** Files to download. Empty = not downloadable through CreateCraft yet. */
+  files: LocalModelFile[];
   id: string;
   name: string;
   version: string;
@@ -93,15 +104,35 @@ export interface LocalModel {
   verified: VerifiedRun[];
 }
 
+const HF = 'https://huggingface.co/Lightricks/LTX-Video/resolve/main/';
+
 export const LOCAL_MODELS: LocalModel[] = [
   {
+    files: [
+      { path: 'ltxv-2b-0.9.8-distilled.safetensors', url: HF + 'ltxv-2b-0.9.8-distilled.safetensors', bytes: 6340744492, sha256: '76aa8c4786af752fa6f951947129d5290c3c6c0b2fadcadea6b5e114ae2cad8f' },
+      { path: 'vae/config.json', url: HF + 'vae/config.json', bytes: 501 },
+      { path: 'vae/diffusion_pytorch_model.safetensors', url: HF + 'vae/diffusion_pytorch_model.safetensors', bytes: 1676798532, sha256: '265ca87cb5dff5e37f924286e957324e282fe7710a952a7dafc0df43883e2010' },
+      { path: 'text_encoder/config.json', url: HF + 'text_encoder/config.json', bytes: 781 },
+      { path: 'text_encoder/model.safetensors.index.json', url: HF + 'text_encoder/model.safetensors.index.json', bytes: 19886 },
+      { path: 'text_encoder/model-00001-of-00004.safetensors', url: HF + 'text_encoder/model-00001-of-00004.safetensors', bytes: 4989319680, sha256: '7a68b2c8c080696a10109612a649bc69330991ecfea65930ccfdfbdb011f2686' },
+      { path: 'text_encoder/model-00002-of-00004.safetensors', url: HF + 'text_encoder/model-00002-of-00004.safetensors', bytes: 4999830656, sha256: 'b8ed6556d7507e38af5b428c605fb2a6f2bdb7e80bd481308b865f7a40c551ca' },
+      { path: 'text_encoder/model-00003-of-00004.safetensors', url: HF + 'text_encoder/model-00003-of-00004.safetensors', bytes: 4865612720, sha256: 'c831635f83041f83faf0024b39c6ecb21b45d70dd38a63ea5bac6c7c6e5e558c' },
+      { path: 'text_encoder/model-00004-of-00004.safetensors', url: HF + 'text_encoder/model-00004-of-00004.safetensors', bytes: 4194506688, sha256: '02a5f2d69205be92ad48fe5d712d38c2ff55627969116aeffc58bd75a28da468' },
+      { path: 'tokenizer/added_tokens.json', url: HF + 'tokenizer/added_tokens.json', bytes: 2593 },
+      { path: 'tokenizer/special_tokens_map.json', url: HF + 'tokenizer/special_tokens_map.json', bytes: 2543 },
+      { path: 'tokenizer/spiece.model', url: HF + 'tokenizer/spiece.model', bytes: 791656, sha256: 'd60acb128cf7b7f2536e8f38a5b18a05535c9e14c7a355904270e15b0945ea86' },
+      { path: 'tokenizer/tokenizer_config.json', url: HF + 'tokenizer/tokenizer_config.json', bytes: 20618 },
+      { path: 'scheduler/scheduler_config.json', url: HF + 'scheduler/scheduler_config.json', bytes: 418 },
+      { path: 'model_index.json', url: HF + 'model_index.json', bytes: 412 },
+    ],
     id: 'ltx-video-2b-distilled-0.9.8', name: 'LTX-Video 2B distilled', version: '0.9.8',
     sourceUrl: 'https://huggingface.co/Lightricks/LTX-Video', license: 'LTX-Video Open Weights License',
     licenseNote: 'Not a plain open-source license: read its terms before using output commercially.',
-    downloadGb: 8, minVramGb: 6, minRamGb: 16, backends: ['cuda', 'directml', 'cpu'], capabilities: ['text-to-video', 'image-to-video'],
-    minTier: 'experimental', note: 'Smallest and fastest candidate. Resolution divisible by 32, frames 8n+1, best under 720x1280.', verified: [],
+    downloadGb: 27, minVramGb: 6, minRamGb: 16, backends: ['cuda', 'directml', 'cpu'], capabilities: ['text-to-video', 'image-to-video'],
+    minTier: 'experimental', note: 'Smallest and fastest candidate. The download is the 6.3 GB model plus its 19 GB text encoder and 1.7 GB VAE (file sizes read from the Hugging Face listing). Resolution divisible by 32, frames 8n+1, best under 720x1280.', verified: [],
   },
   {
+    files: [],
     id: 'wan-2.2-ti2v-5b', name: 'Wan 2.2 TI2V 5B', version: '2.2',
     sourceUrl: 'https://huggingface.co/Wan-AI/Wan2.2-TI2V-5B', license: 'Apache 2.0',
     licenseNote: 'Permissive; keep the license notice.',
@@ -140,7 +171,7 @@ export function warningsFor(r: HardwareReport): string[] {
   else if (g.vendor === 'amd') w.push('AMD graphics cards are not verified yet. On Windows, AMD only lists its newest Radeon cards for the standard GPU toolkit (older RX 6000 cards are not on the list). A real test generation is needed before AMD is called supported.');
   else if (g.integrated) w.push('This is integrated graphics that shares system memory. Local AI video is likely to be too slow to be useful; Motion Effects is the practical choice.');
   else if (g.vramGb === null) w.push('The amount of video memory could not be read, so only the experimental tier is offered.');
-  if (r.freeDiskGb !== null && r.freeDiskGb < 15) w.push(`Only ${r.freeDiskGb} GB is free where models are stored; models are 8 GB or more.`);
+  if (r.freeDiskGb !== null && r.freeDiskGb < 15) w.push(`Only ${r.freeDiskGb} GB is free where models are stored; models are 20 GB or more.`);
   if (r.ramGb < 16) w.push(`This PC has ${r.ramGb} GB of memory; 16 GB or more is recommended.`);
   return w;
 }
@@ -154,4 +185,15 @@ export interface LocalAiStatus {
   /** False until a backend has passed a real self-test generation. */
   generationAvailable: boolean;
   note: string;
+}
+
+export const totalBytes = (m: LocalModel) => m.files.reduce((n, f) => n + f.bytes, 0);
+
+export interface DownloadState {
+  modelId: string;
+  state: 'idle' | 'downloading' | 'verifying' | 'installed' | 'failed' | 'cancelled';
+  doneBytes: number;
+  totalBytes: number;
+  file: string | null;
+  message: string;
 }

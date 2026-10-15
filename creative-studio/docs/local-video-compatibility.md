@@ -78,3 +78,7 @@ other cell is an expectation until a real clip comes out.
   atmospheric overlays, title animation. FilmCraft has the primitives (opacity, transitions, graphics) so
   these are feasible as follow-ups. Claude has no Motion Effects tool yet and the workflow engine has no
   such node yet (both belong to a later stage).
+
+## Correction (Stage C)
+
+The LTX-Video 2B distilled install is about 27 GB, not 8 GB: the 6.3 GB checkpoint needs the 19 GB text encoder (T5, 4 shards) and the 1.7 GB VAE. An FP8 checkpoint (4.5 GB) saves little. A smaller text encoder would be a later optimisation and has not been tested.

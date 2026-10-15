@@ -124,6 +124,12 @@ export const IPC = {
   videoEvent: 'video:event',
   motionRender: 'motion:render',
   localAiStatus: 'localai:status',
+  localAiDownloads: 'localai:downloads',
+  localAiDownload: 'localai:download',
+  localAiCancel: 'localai:cancel',
+  localAiRemove: 'localai:remove',
+  localAiPickDir: 'localai:pick-dir',
+  localAiEvent: 'localai:event',
   motionCancel: 'motion:cancel',
   deliverJobs: 'deliver:jobs',
   deliverEnqueue: 'deliver:enqueue',
@@ -160,7 +166,7 @@ export interface ProviderStatusDto {
 
 import type { VideoJob, VideoJobRecord } from './video';
 import type { MotionJob } from './motionEffects';
-import type { LocalAiStatus } from './localAi';
+import type { DownloadState, LocalAiStatus } from './localAi';
 
 export interface GenerateResultDto {
   assetIds: string[];
@@ -365,6 +371,14 @@ export interface StudioApi {
     motionCancel(): Promise<void>;
     /** Free local AI: re-checks this PC (read-only) and returns tier, warnings and which models could be offered. */
     localAiStatus(): Promise<LocalAiStatus>;
+    localAiDownloads(): Promise<DownloadState[]>;
+    /** Shows a native dialog (license, size, folder); starts only if the user accepts there. Returns null when declined. */
+    localAiDownload(modelId: string): Promise<DownloadState | null>;
+    localAiCancel(modelId: string): Promise<void>;
+    localAiRemove(modelId: string): Promise<void>;
+    /** Native folder picker for where models are stored. Returns the new folder or null. */
+    localAiPickDir(): Promise<string | null>;
+    onLocalAi(cb: (s: DownloadState) => void): () => void;
     /** New generated images (from the Generate tab or Claude). */
     onResult(cb: (r: GenerateResultDto) => void): () => void;
   };
