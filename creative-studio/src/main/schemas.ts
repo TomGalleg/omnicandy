@@ -29,7 +29,7 @@ export function parseWorkflow(raw: unknown): WorkflowGraph {
 const assetSchema = z.object({
   id,
   name: z.string().max(512),
-  kind: z.enum(['image', 'video', 'audio', 'vector', 'design', 'project', 'document', 'sheet', 'deck']),
+  kind: z.enum(['image', 'video', 'audio', 'vector', 'design', 'project', 'document', 'sheet', 'deck', 'ui']),
   relPath: z.string().max(1024).refine((p) => !p.split('/').includes('..') && !/^[a-zA-Z]:|^\//.test(p), 'relPath must be relative'),
   sha256: z.string().regex(/^[0-9a-f]{64}$/),
   bytes: z.number().int().nonnegative(),

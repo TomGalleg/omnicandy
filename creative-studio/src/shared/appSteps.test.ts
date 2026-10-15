@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { deckcraftSteps, gridcraftSteps, appForTab, checkEditValues, designcraftSteps, EDITOR_APPS, editorFor, effectcraftSteps, filmcraftSteps, lightcraftSteps, parsePageList, pdfcraftSteps, type FilmSequence, wordcraftSteps } from './appEditors';
+import { figcraftSteps, deckcraftSteps, gridcraftSteps, appForTab, checkEditValues, designcraftSteps, EDITOR_APPS, editorFor, effectcraftSteps, filmcraftSteps, lightcraftSteps, parsePageList, pdfcraftSteps, type FilmSequence, wordcraftSteps } from './appEditors';
 
 const seq: FilmSequence = {
   fps: 24000 / 1001,
@@ -29,6 +29,7 @@ describe('which app opens a file in which tab', () => {
     expect(editorFor('xlsx')?.id).toBe('gridcraft');
     expect(editorFor('DeckCraft'.toLowerCase())?.id).toBe('deckcraft');
     expect(editorFor('pptx')?.id).toBe('deckcraft');
+    expect(editorFor('figcraft')?.id).toBe('figcraft');
     expect(appForTab('color', 'jpg')?.id).toBe('lightcraft');
     expect(appForTab('color', 'svg')).toBeNull();
     expect(appForTab('effects', 'mp4')?.id).toBe('effectcraft');
@@ -177,5 +178,13 @@ describe('DeckCraft steps', () => {
     expect(deckcraftSteps('replaceText', { find: 'Lights', replace: 'Dawn' })).toEqual([{ command: 'createcraft.replaceText', params: { find: 'Lights', replace: 'Dawn' } }]);
     expect(deckcraftSteps('addSlide', { title: 'T', body: 'B' })).toEqual([{ command: 'createcraft.addSlide', params: { title: 'T', body: 'B' } }]);
     expect(() => deckcraftSteps('nope', {})).toThrow();
+  });
+});
+
+describe('FigCraft steps', () => {
+  it('replaces text in all layers and adds a line of text', () => {
+    expect(figcraftSteps('replaceText', { find: 'Welcome', replace: 'Hello' })).toEqual([{ command: 'createcraft.replaceText', params: { find: 'Welcome', replace: 'Hello' } }]);
+    expect(figcraftSteps('addText', { text: 'Hi', position: 'top', size: 16 })).toEqual([{ command: 'createcraft.addText', params: { text: 'Hi', position: 'top', size: 16 } }]);
+    expect(() => figcraftSteps('nope', {})).toThrow();
   });
 });

@@ -45,7 +45,7 @@ function v2Folder(folder: StoreFolder, kind: AssetKind): string {
   if (folder === 'generated') return 'Assets/Generated';
   if (kind === 'audio') return 'Assets/Audio';
   if (kind === 'video') return 'Assets/Video';
-  if (kind === 'design' || kind === 'project' || kind === 'document' || kind === 'sheet' || kind === 'deck') return 'Assets/Documents';
+  if (kind === 'design' || kind === 'project' || kind === 'document' || kind === 'sheet' || kind === 'deck' || kind === 'ui') return 'Assets/Documents';
   return 'Assets/Originals';
 }
 

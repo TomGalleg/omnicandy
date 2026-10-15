@@ -5,7 +5,7 @@
 import type { EditorAppId } from './appEditors';
 import type { Asset } from './types';
 
-export type DeliverGroup = 'image' | 'vector' | 'audio' | 'video' | 'design' | 'document' | 'pdf' | 'sheet' | 'deck';
+export type DeliverGroup = 'image' | 'vector' | 'audio' | 'video' | 'design' | 'document' | 'pdf' | 'sheet' | 'deck' | 'ui';
 
 export interface DeliverPreset {
   id: string;
@@ -26,6 +26,7 @@ export const DELIVER_SOURCES: Record<DeliverGroup, string[]> = {
   pdf: ['pdf'],
   sheet: ['xlsx'],
   deck: ['deckcraft', 'pptx'],
+  ui: ['figcraft'],
   vector: ['svg', 'svgz', 'ai', 'eps', 'pdf', 'vectorcraft'],
   audio: ['wav', 'flac', 'aif', 'aiff'],
   video: ['mp4', 'mov', 'webm', 'mkv'],
@@ -69,6 +70,11 @@ export const DELIVER_PRESETS: DeliverPreset[] = [
   { id: 'document-md', group: 'document', label: 'Markdown', note: 'Text with simple formatting', ext: 'md', app: 'wordcraft', suffix: '' },
   { id: 'document-html', group: 'document', label: 'Web page (HTML)', note: 'For the web or email', ext: 'html', app: 'wordcraft', suffix: '' },
   { id: 'document-odt', group: 'document', label: 'OpenDocument (ODT)', note: 'For LibreOffice and others', ext: 'odt', app: 'wordcraft', suffix: '' },
+  { id: 'ui-png', group: 'ui', label: 'PNG', note: 'First frame, full size', ext: 'png', app: 'figcraft', suffix: '' },
+  { id: 'ui-png2x', group: 'ui', label: 'PNG at 2×', note: 'First frame, double size, for sharp screens', ext: 'png', app: 'figcraft', suffix: '@2x' },
+  { id: 'ui-svg', group: 'ui', label: 'SVG', note: 'First frame, scalable', ext: 'svg', app: 'figcraft', suffix: '' },
+  { id: 'ui-pdf', group: 'ui', label: 'PDF', note: 'First frame, for print or sharing', ext: 'pdf', app: 'figcraft', suffix: '' },
+
   { id: 'deck-pdf', group: 'deck', label: 'PDF', note: 'All slides, for sharing or print', ext: 'pdf', app: 'deckcraft', suffix: '' },
   { id: 'deck-pptx', group: 'deck', label: 'PowerPoint (PPTX)', note: 'Opens in PowerPoint and others', ext: 'pptx', app: 'deckcraft', suffix: '' },
   { id: 'deck-png', group: 'deck', label: 'PNG of slide 1', note: 'A picture of the first slide', ext: 'png', app: 'deckcraft', suffix: '' },

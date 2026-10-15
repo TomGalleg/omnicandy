@@ -11,7 +11,7 @@ import { execFile, spawn, type ChildProcess } from 'node:child_process';
 import fs from 'node:fs/promises';
 import net from 'node:net';
 import path from 'node:path';
-import { designcraftSteps, effectcraftSteps, filmcraftSteps, type DesignPage, lightcraftSteps, deckcraftSteps, gridcraftSteps, pdfcraftSteps, vectorcraftSteps, wordcraftSteps, type EditValues, type EditorAppId } from '@shared/appEditors';
+import { designcraftSteps, effectcraftSteps, filmcraftSteps, type DesignPage, lightcraftSteps, deckcraftSteps, figcraftSteps, gridcraftSteps, pdfcraftSteps, vectorcraftSteps, wordcraftSteps, type EditValues, type EditorAppId } from '@shared/appEditors';
 import type { TimelineDto, TimelineEdit } from '@shared/live';
 import type { AppOperation } from '@shared/contracts';
 import { McpClient } from './mcpClient';
@@ -1156,6 +1156,103 @@ export class LiveDeckCraft extends LiveAppBase {
   }
   async preview(maxSide: number) {
     return imageOf(await this.client().request('tools/call', { name: 'render_slide', arguments: { scale: Math.min(2, maxSide / 960) } }));
+  }
+  async screenshot() { return null; }
+}
+
+interface FigNode { id: number; name?: string; type?: string; characters?: string; width?: number; height?: number; children?: FigNode[] }
+
+/**
+ * FigCraft: `figcraft --control <port>` (loopback, no token) driven through `figcraft-cli mcp
+ * --attach <port>`. The .figcraft file is opened from the library and never written back; saving
+ * writes a new .figcraft into the work folder plus a PNG of the current page (the window's own
+ * renderer, also available without a window).
+ */
+export class LiveFigCraft extends LiveAppBase {
+  readonly appId = 'figcraft' as const;
+  protected exeName = 'figcraft';
+
+  protected guiArgs(port: number) { return ['--control', String(port)]; }
+  protected guiEnv() { return {}; }
+  protected bridgeArgs(port: number) { return ['mcp', '--attach', String(port)]; }
+  protected headlessArgs() { return ['mcp']; }
+
+  async open(absPath: string) {
+    await this.client().callTool('open_file', { path: absPath });
+    return { name: path.basename(absPath) };
+  }
+  private async tree(allPages = false): Promise<{ history?: { undo?: string[] }; pages?: Array<{ name?: string; children?: FigNode[] }>; currentPage?: number }> {
+    return (await this.client().callTool('inspect_document', { allPages, depth: 40 })) as never;
+  }
+  private static texts(nodes: FigNode[] | undefined, out: FigNode[] = []): FigNode[] {
+    for (const n of nodes ?? []) {
+      if (n.type === 'TEXT' && typeof n.characters === 'string') out.push(n);
+      LiveFigCraft.texts(n.children, out);
+    }
+    return out;
+  }
+
+  async run(op: AppOperation) {
+    if (op.command === 'createcraft.replaceText') {
+      const { find, replace } = op.params as { find: string; replace: string };
+      const t = await this.tree(true);
+      const hits = (t.pages ?? []).flatMap((p) => LiveFigCraft.texts(p.children)).filter((n) => n.characters!.includes(find));
+      if (!hits.length) throw new Error(`"${find}" was not found in any text layer.`);
+      // One undo step for the whole replacement.
+      await this.client().callTool('batch', {
+        label: 'Replace text',
+        commands: hits.map((n) => ({ command: 'node.set', params: { ids: [n.id], props: { characters: n.characters!.split(find).join(replace) } } })),
+      });
+      return;
+    }
+    if (op.command === 'createcraft.addText') {
+      const { text, position, size } = op.params as { text: string; position: string; size: number };
+      const t = await this.tree(false);
+      const page = t.pages?.[(t.currentPage ?? 1) - 1] ?? t.pages?.[0];
+      const frame = page?.children?.find((n) => n.type === 'FRAME');
+      if (!frame) throw new Error('This design has no frame on the current page to put text in.');
+      const h = frame.height ?? 100;
+      const y = position === 'top' ? 16 : position === 'bottom' ? Math.max(0, h - size * 1.5 - 16) : Math.max(0, (h - size * 1.2) / 2);
+      // Created with its size in one step, so undo removes the whole line.
+      await this.client().callTool('run_command', { command: 'node.create', params: { type: 'text', text, parent: frame.id, x: 16, y, props: { fontSize: size } } });
+      return;
+    }
+    await this.client().callTool('run_command', { command: op.command, params: op.params });
+  }
+  async quickEditSteps(opId: string, values: EditValues): Promise<AppOperation[]> { return figcraftSteps(opId, values); }
+  /** Pages, top-level frames and the text on them, so Claude knows what it can replace. */
+  async describe() {
+    const t = await this.tree(true);
+    return {
+      pages: (t.pages ?? []).map((p) => ({
+        name: p.name,
+        frames: (p.children ?? []).map((n) => ({ name: n.name, type: n.type, size: n.width && n.height ? `${n.width}x${n.height}` : undefined })),
+        text: LiveFigCraft.texts(p.children).slice(0, 40).map((n) => n.characters!.slice(0, 120)),
+      })),
+    };
+  }
+  async history() {
+    const t = await this.tree(false);
+    return ['Open', ...(t.history?.undo ?? [])];
+  }
+  async undo() { await this.client().callTool('undo', {}); }
+  async writeBaseline(dir: string, base: string) {
+    const main = path.join(dir, `${base}.figcraft`);
+    await this.client().callTool('save_file', { path: main });
+    await waitForFile(main);
+    return main;
+  }
+  async writeVersion(dir: string, base: string) {
+    const main = path.join(dir, `${base}.figcraft`);
+    const preview = path.join(dir, `${base}.png`);
+    await this.client().callTool('save_file', { path: main });
+    await waitForFile(main);
+    const png = imageOf(await this.client().request('tools/call', { name: 'screenshot', arguments: {} }));
+    if (png) { await fs.writeFile(preview, png); return { main, preview }; }
+    return { main };
+  }
+  async preview(maxSide: number) {
+    return imageOf(await this.client().request('tools/call', { name: 'screenshot', arguments: { maxSize: Math.min(1600, maxSide) } }));
   }
   async screenshot() { return null; }
 }

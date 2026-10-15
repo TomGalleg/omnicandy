@@ -23,6 +23,7 @@ export const APP_THEME_SUPPORT: AppThemeInfo[] = [
   { id: 'effectcraft', name: 'EffectCraft', support: 'auto', note: 'Matched automatically (dark or light)' },
   { id: 'designcraft', name: 'DesignCraft', support: 'auto', note: 'Matched automatically' },
   { id: 'gridcraft', name: 'GridCraft', support: 'manual', note: 'Keeps its own look (no verified theme setting)' },
+  { id: 'figcraft', name: 'FigCraft', support: 'manual', note: 'Has its own light and dark setting; not matched yet (not verified)' },
   { id: 'deckcraft', name: 'DeckCraft', support: 'manual', note: 'Keeps its own look (no verified theme setting)' },
   { id: 'pdfcraft', name: 'PdfCraft', support: 'manual', note: 'Keeps its own look (its control port has no theme setting)' },
   { id: 'wordcraft', name: 'WordCraft', support: 'manual', note: 'Keeps its own look (no verified theme setting)' },

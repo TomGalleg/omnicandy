@@ -40,7 +40,7 @@ describe('real workflows across the ArtCraft apps (no windows)', () => {
     tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'cs-workflow-'));
     store = new ProjectStore(path.join(tmp, 'p'));
     await store.create('workflow');
-    for (const f of ['sunset-still.jpg', 'photocraft-smoke.png', 'harbor-landscape.svg', 'tone-a440.wav', 'groove-loop.wav', 'sunset-clip.mp4', 'sunset-flyer.designcraft', 'quarterly-report.docx', 'quarterly-summary.pdf', 'region-sales.xlsx', 'northern-lights.deckcraft']) {
+    for (const f of ['sunset-still.jpg', 'photocraft-smoke.png', 'harbor-landscape.svg', 'tone-a440.wav', 'groove-loop.wav', 'sunset-clip.mp4', 'sunset-flyer.designcraft', 'quarterly-report.docx', 'quarterly-summary.pdf', 'region-sales.xlsx', 'northern-lights.deckcraft', 'login-screen.figcraft']) {
       ids[f] = (await store.importFile(path.join(FIXTURES, f))).asset.id;
     }
     q = new DeliverQueue({ store, emit: () => {}, installDir: dirOf });
@@ -154,6 +154,17 @@ describe('real workflows across the ArtCraft apps (no windows)', () => {
     expect(r.failures).toEqual([]);
     expect(r.exported).toHaveLength(2);
     const versions = (await lib()).filter((a) => a.kind === 'deck' && a.parentId);
+    expect(versions.length).toBeGreaterThanOrEqual(2);
+  }, 180000);
+
+  it.skipIf(!has('figcraft'))('a UI design: replace text and add a line in the background, then PNG + SVG', async () => {
+    const r = await run(chain({ mode: 'files', assetIds: JSON.stringify([ids['login-screen.figcraft']]) },
+      [['figcraft', 'replaceText', { find: 'Welcome back', replace: 'Hello again' }], ['figcraft', 'addText', { text: 'Forgot password?', position: 'bottom', size: 14 }]], 'ui-png,ui-svg'));
+    expect(r.failures).toEqual([]);
+    expect(r.exported).toHaveLength(2);
+    const svg = await fs.readFile(path.join(store.root, r.exported.find((f) => f.endsWith('.svg'))!), 'utf8');
+    expect(svg).toContain('<svg');
+    const versions = (await lib()).filter((a) => a.kind === 'ui' && a.parentId);
     expect(versions.length).toBeGreaterThanOrEqual(2);
   }, 180000);
 

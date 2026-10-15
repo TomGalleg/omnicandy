@@ -2,7 +2,7 @@
 // Every operation here was verified against the installed app's CLI (see docs/integration-audit.md);
 // main re-validates every request against this table before anything runs.
 
-export type EditorAppId = 'photocraft' | 'vectorcraft' | 'soundcraft' | 'filmcraft' | 'lightcraft' | 'effectcraft' | 'designcraft' | 'wordcraft' | 'pdfcraft' | 'gridcraft' | 'deckcraft';
+export type EditorAppId = 'photocraft' | 'vectorcraft' | 'soundcraft' | 'filmcraft' | 'lightcraft' | 'effectcraft' | 'designcraft' | 'wordcraft' | 'pdfcraft' | 'gridcraft' | 'deckcraft' | 'figcraft';
 
 export interface NumberParam { key: string; label: string; type: 'number'; min: number; max: number; step: number; default: number; unit?: string }
 export interface SelectParam { key: string; label: string; type: 'select'; options: Array<{ value: string; label: string }>; default: string }
@@ -296,6 +296,25 @@ export const EDITOR_APPS: Record<EditorAppId, EditorApp> = {
     ],
     note: "Design slides with DeckCraft's own tools, or use the quick edits here. Saving keeps a new .deckcraft version plus a PNG of the current slide; the original is never changed.",
   },
+  figcraft: {
+    id: 'figcraft',
+    tab: 'edit',
+    name: 'FigCraft',
+    blurb: 'UI and UX design (frames, components, prototypes)',
+    formats: ['figcraft'],
+    open: 'live',
+    quickEdits: [
+      { id: 'replaceText', group: 'Text', label: 'Replace text in all layers', params: [
+        { key: 'find', label: 'Find', type: 'text', default: 'Title', maxLength: 200 },
+        { key: 'replace', label: 'Replace with', type: 'text', default: 'New title', maxLength: 200 }] },
+      { id: 'addText', group: 'Text', label: 'Add a line of text', params: [
+        { key: 'text', label: 'Text', type: 'text', default: 'Your text', maxLength: 200 },
+        { key: 'position', label: 'Where', type: 'select', default: 'top', options: [
+          { value: 'top', label: 'Top' }, { value: 'middle', label: 'Middle' }, { value: 'bottom', label: 'Bottom' }] },
+        { key: 'size', label: 'Size', type: 'number', min: 8, max: 200, step: 1, default: 16, unit: 'px' }] },
+    ],
+    note: "Design with FigCraft's own tools, or use the text edits here. Saving keeps a new .figcraft version plus a PNG of the page; the original is never changed.",
+  },
 };
 
 /** The Edit tab's app for a file type (Color and Effects pick their app explicitly). */
@@ -550,6 +569,19 @@ export function deckcraftSteps(opId: string, v: EditValues): Op[] {
     case 'replaceText': return [{ command: 'createcraft.replaceText', params: { find: v.find, replace: v.replace } }];
     case 'addSlide': return [{ command: 'createcraft.addSlide', params: { title: v.title, body: v.body } }];
     default: throw new Error(`Unknown DeckCraft edit "${opId}".`);
+  }
+}
+
+/**
+ * FigCraft operations for a quick edit. Both are CreateCraft multi-call operations run by LiveFigCraft:
+ * text layers are found with inspect_document and changed with set_properties; new text goes into the
+ * first frame of the current page.
+ */
+export function figcraftSteps(opId: string, v: EditValues): Op[] {
+  switch (opId) {
+    case 'replaceText': return [{ command: 'createcraft.replaceText', params: { find: v.find, replace: v.replace } }];
+    case 'addText': return [{ command: 'createcraft.addText', params: { text: v.text, position: v.position, size: v.size } }];
+    default: throw new Error(`Unknown FigCraft edit "${opId}".`);
   }
 }
 

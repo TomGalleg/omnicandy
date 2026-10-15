@@ -397,6 +397,15 @@ Tomas's OK after each.
   controller (open, edit, add slide, undo, save, preview, undo-then-save no-op), unit tests. **Not verified:** in-app Edit-tab
   embedding / UI smoke, a real Claude request, transitions/animations/theme/picture edits (no quick edit; use the window).
 
+* **FigCraft (2026-10-15): INTEGRATED, partly verified.** New asset kind `ui` (.figcraft). Quick edits: Replace text in all layers
+  (one undo step via the `batch` tool) and Add a line of text (`node.create` with its size, into the first frame). Live driver over
+  `--control PORT` + `figcraft-cli mcp --attach PORT`; history from `inspect_document`; baseline digest (undo-then-save is a no-op);
+  save writes .figcraft + PNG of the page (`screenshot`); headless engine for workflows; 4 Deliver presets (PNG, PNG at 2x, SVG, PDF
+  of the first frame via `figcraft-cli export`). Theme sync: FigCraft has `view.themeLight/Dark/System` but it was not exercised, so
+  listed manual. Verified on this PC: real CLI exports, real headless workflow, real window through the live controller, unit tests.
+  **Not verified:** in-app Edit-tab embedding / UI smoke, a real Claude request, theme sync, prototypes/components/auto-layout edits
+  (window only), .fig / .json / .svg import into the library as UI designs (SVG stays with VectorCraft).
+
 Phase 1 note: the old `integrationStatus().claude` field in `src/main/ipc.ts` still says "not
 configured in this build" (stale); Settings now shows Claude's real sign-in state instead.
 

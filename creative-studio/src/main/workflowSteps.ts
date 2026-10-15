@@ -13,11 +13,11 @@ import { deliverGroupFor, presetById, presetsFor } from '@shared/deliver';
 import type { StepRequest } from '@shared/workflowRunner';
 import { AppEditors } from './appEditors';
 import type { DeliverQueue } from './deliver';
-import { LiveDesignCraft, LiveEffectCraft, LiveFilmCraft, LiveLightCraft, LivePdfCraft, LiveWordCraft, LiveGridCraft, LiveDeckCraft } from './liveApps';
+import { LiveDesignCraft, LiveEffectCraft, LiveFilmCraft, LiveLightCraft, LivePdfCraft, LiveWordCraft, LiveGridCraft, LiveDeckCraft, LiveFigCraft } from './liveApps';
 import { IMPORTABLE_EXTENSIONS } from './media';
 import type { ProjectStore } from './projectStore';
 
-type Engine = LiveFilmCraft | LiveLightCraft | LiveEffectCraft | LiveDesignCraft | LiveWordCraft | LivePdfCraft | LiveGridCraft | LiveDeckCraft;
+type Engine = LiveFilmCraft | LiveLightCraft | LiveEffectCraft | LiveDesignCraft | LiveWordCraft | LivePdfCraft | LiveGridCraft | LiveDeckCraft | LiveFigCraft;
 const ENGINES: Partial<Record<EditorAppId, (o: ConstructorParameters<typeof LiveFilmCraft>[0]) => Engine>> = {
   filmcraft: (o) => new LiveFilmCraft(o),
   lightcraft: (o) => new LiveLightCraft(o),
@@ -26,6 +26,7 @@ const ENGINES: Partial<Record<EditorAppId, (o: ConstructorParameters<typeof Live
   wordcraft: (o) => new LiveWordCraft(o),
   gridcraft: (o) => new LiveGridCraft(o),
   deckcraft: (o) => new LiveDeckCraft(o),
+  figcraft: (o) => new LiveFigCraft(o),
   pdfcraft: (o) => new LivePdfCraft(o),
 };
 const CLI_APPS = new Set<EditorAppId>(['photocraft', 'vectorcraft', 'soundcraft']);
