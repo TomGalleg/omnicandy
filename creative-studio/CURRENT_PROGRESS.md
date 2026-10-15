@@ -313,6 +313,7 @@ Free local video, Stage A + B (2026-10-14):
   Cloud / Free Local AI / Motion Effects source selector (Motion Effects is just its own panel for now).
 * Tests: lint 0, types 0, **196 passed / 14 skipped** (+10: `motionEffects.test.ts` x2, incl. a real FilmCraft render);
   `smoke-generate` 16/16. `videoGeneration` Runway test is flaky under full-suite load (passes alone); not caused by this change.
+* **Requirement added by Tomas:** Free Local AI must have a built-in, self-service setup inside CreateCraft (guided: check this PC, pick a model, consent, download, self-test, status and repair/remove). The user must not need to install Python or ComfyUI by hand.
 * Next (needs Tomas's OK): Stage C hardware detection, then model download and a real inference test.
 
 Phase 1 note: the old `integrationStatus().claude` field in `src/main/ipc.ts` still says "not
