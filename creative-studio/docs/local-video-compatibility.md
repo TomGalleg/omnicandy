@@ -82,3 +82,12 @@ other cell is an expectation until a real clip comes out.
 ## Correction (Stage C)
 
 The LTX-Video 2B distilled install is about 27 GB, not 8 GB: the 6.3 GB checkpoint needs the 19 GB text encoder (T5, 4 shards) and the 1.7 GB VAE. An FP8 checkpoint (4.5 GB) saves little. A smaller text encoder would be a later optimisation and has not been tested.
+
+## Update (Stage C part 3): recommended engine is stable-diffusion.cpp, not PyTorch
+
+* `torch-directml` is a Sept 2024 dev release pinned to torch 2.4.1, wheels for Python 3.8-3.12 only; pip finds nothing for Python 3.13.
+  Not a base to build on.
+* stable-diffusion.cpp release master-964-1d0a58a (2026-10-13) ships Windows zips: Vulkan (30 MB, sha256 74211cb5...), CUDA 12, ROCm 10.1
+  (RX 7000/9000 class only), CPU. Its Wan docs cover Wan 2.1 T2V 1.3B, 2.2 TI2V 5B, GGUF text encoders, `--offload-to-cpu`, `--vae-tiling`.
+  Vulkan is the path for the RX 6650 XT. Unverified until a clip is made.
+* Test model: Wan 2.1 T2V 1.3B fp16 (2.84 GB) + wan_2.1_vae (0.25 GB) + umt5-xxl-encoder Q4_K_M GGUF (3.66 GB), Apache 2.0.

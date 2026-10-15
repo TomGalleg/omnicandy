@@ -130,6 +130,9 @@ export const IPC = {
   localAiRemove: 'localai:remove',
   localAiPickDir: 'localai:pick-dir',
   localAiEvent: 'localai:event',
+  localVideoRender: 'localai:render',
+  localVideoCancel: 'localai:render-cancel',
+  localVideoProgress: 'localai:progress',
   motionCancel: 'motion:cancel',
   deliverJobs: 'deliver:jobs',
   deliverEnqueue: 'deliver:enqueue',
@@ -167,6 +170,7 @@ export interface ProviderStatusDto {
 import type { VideoJob, VideoJobRecord } from './video';
 import type { MotionJob } from './motionEffects';
 import type { DownloadState, LocalAiStatus } from './localAi';
+import type { LocalVideoJob } from './localVideo';
 
 export interface GenerateResultDto {
   assetIds: string[];
@@ -379,6 +383,10 @@ export interface StudioApi {
     /** Native folder picker for where models are stored. Returns the new folder or null. */
     localAiPickDir(): Promise<string | null>;
     onLocalAi(cb: (s: DownloadState) => void): () => void;
+    /** Free local generation with an installed model. Resolves when the clip is in the library. */
+    localVideoRender(job: LocalVideoJob): Promise<{ assetId: string; message: string }>;
+    localVideoCancel(): Promise<void>;
+    onLocalVideoProgress(cb: (p: { fraction: number | null; line: string }) => void): () => void;
     /** New generated images (from the Generate tab or Claude). */
     onResult(cb: (r: GenerateResultDto) => void): () => void;
   };

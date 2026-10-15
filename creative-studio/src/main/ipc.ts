@@ -37,8 +37,10 @@ import { VideoService } from './videoGeneration';
 import { MotionService } from './motionEffects';
 import { detectHardware } from './hardware';
 import { ModelDownloads } from './modelDownloads';
+import { LocalVideoService } from './localVideo';
+import { MAX_LOCAL_PROMPT } from '@shared/localVideo';
 import fsp from 'node:fs/promises';
-import { LOCAL_MODELS, modelFit, tierFor, TIER_LABEL, totalBytes, warningsFor } from '@shared/localAi';
+import { LOCAL_MODELS, modelFit, SDCPP_RUNTIME, tierFor, TIER_LABEL, totalBytes, warningsFor } from '@shared/localAi';
 import { MOTION_ASPECTS, MOTION_FPS, MOTION_INTENSITIES, MOTION_PRESETS, MOTION_RESOLUTIONS } from '@shared/motionEffects';
 import { MAX_VIDEO_PROMPT } from '@shared/video';
 import type { SettingsStore } from './settingsStore';
@@ -518,17 +520,32 @@ export function registerIpc(d: IpcDeps): void {
     freeBytes: async (dir) => { await fsp.mkdir(dir, { recursive: true }); const s = await fsp.statfs(dir); return s.bavail * s.bsize; },
     onChange: (s) => { for (const w of BrowserWindow.getAllWindows()) if (!w.isDestroyed()) w.webContents.send(IPC.localAiEvent, s); },
   });
-  const modelById = (id: string) => { const m = LOCAL_MODELS.find((x) => x.id === id); if (!m) throw new Error('Unknown model.'); return m; };
+  const modelById = (id: string) => { const m = [...LOCAL_MODELS, SDCPP_RUNTIME].find((x) => x.id === id); if (!m) throw new Error('Unknown model.'); return m; };
   handle(IPC.localAiStatus, none, async () => {
     const report = await detectHardware(await getModelDir());
     const tier = tierFor(report);
     return {
       report, tier, tierLabel: TIER_LABEL[tier], warnings: warningsFor(report),
-      models: LOCAL_MODELS.map((m) => modelFit(m, report)),
-      generationAvailable: false,
-      note: 'Generation is not built yet. Downloads and this check are free and local; no backend has been tested.',
+      models: [SDCPP_RUNTIME, ...LOCAL_MODELS].map((m) => modelFit(m, report)),
+      generationAvailable: await downloads.isInstalled('sdcpp-vulkan-runtime'),
+      note: 'Free and local. Nothing here has been tested on this PC until a clip has been made; downloads can be removed at any time.',
     };
   });
+  const localVideo = new LocalVideoService({
+    store: d.project, modelDir: getModelDir, downloads,
+    onProgress: (p) => { for (const w of BrowserWindow.getAllWindows()) if (!w.isDestroyed()) w.webContents.send(IPC.localVideoProgress, p); },
+  });
+  const localJobSchema = z.object({
+    modelId: z.string().min(1).max(80), prompt: z.string().min(1).max(MAX_LOCAL_PROMPT), negativePrompt: z.string().max(500).optional(),
+    preset: z.enum(['experimental', 'low', 'balanced', 'higher', 'custom']),
+    width: z.number().int(), height: z.number().int(), frames: z.number().int(), steps: z.number().int(), seed: z.number().int().optional(),
+  });
+  handle(IPC.localVideoRender, z.tuple([localJobSchema]), async (job) => {
+    const r = await localVideo.render(job);
+    emitGenerated({ assetIds: [r.asset.id], message: r.message, estimate: { amount: 0, perImage: 0, currency: 'USD', approximate: false, basis: 'Free: generated on this PC.' }, requestedBy: 'user' });
+    return { assetId: r.asset.id, message: r.message };
+  });
+  handle(IPC.localVideoCancel, none, async () => { localVideo.cancel(); });
   handle(IPC.localAiDownloads, none, () => downloads.status());
   handle(IPC.localAiDownload, z.tuple([z.string().min(1).max(80)]), async (id) => {
     const m = modelById(id);

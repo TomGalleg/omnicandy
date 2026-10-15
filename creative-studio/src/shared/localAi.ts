@@ -16,7 +16,7 @@ export interface GpuInfo {
 }
 
 export interface BackendProbe {
-  id: 'cuda' | 'rocm' | 'directml' | 'cpu';
+  id: 'cuda' | 'rocm' | 'directml' | 'vulkan' | 'cpu';
   label: string;
   /** What was seen on this PC, not whether generation works. */
   found: boolean;
@@ -80,9 +80,16 @@ export interface LocalModelFile {
   bytes: number;
   /** Expected SHA-256 when the host publishes one (Hugging Face does for large files). */
   sha256?: string;
+  /** Unpack this file into the model folder after it is verified. */
+  extract?: 'zip';
 }
 
 export interface LocalModel {
+  /** Which runtime runs it. 'runtime' entries are the engine itself, not a model. */
+  kind: 'model' | 'runtime';
+  engine: 'sdcpp' | 'diffusers' | null;
+  /** sd.cpp: model files (paths inside the model folder) for the command line. */
+  sdcpp?: { diffusion: string; vae: string; textEncoder: string; flowShift: number; cfg: number; defaultSteps: number };
   /** Files to download. Empty = not downloadable through CreateCraft yet. */
   files: LocalModelFile[];
   id: string;
@@ -106,8 +113,26 @@ export interface LocalModel {
 
 const HF = 'https://huggingface.co/Lightricks/LTX-Video/resolve/main/';
 
+const WAN = 'https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/';
+const UMT5 = 'https://huggingface.co/city96/umt5-xxl-encoder-gguf/resolve/main/';
+
 export const LOCAL_MODELS: LocalModel[] = [
   {
+    kind: 'model', engine: 'sdcpp',
+    sdcpp: { diffusion: 'wan2.1_t2v_1.3B_fp16.safetensors', vae: 'wan_2.1_vae.safetensors', textEncoder: 'umt5-xxl-encoder-Q4_K_M.gguf', flowShift: 3, cfg: 6, defaultSteps: 20 },
+    files: [
+      { path: 'wan2.1_t2v_1.3B_fp16.safetensors', url: WAN + 'split_files/diffusion_models/wan2.1_t2v_1.3B_fp16.safetensors', bytes: 2838303560, sha256: 'be531024cd9018cb5b48c40cfbb6a6191645b1c792eb8bf4f8c1c6e10f924dc5' },
+      { path: 'wan_2.1_vae.safetensors', url: WAN + 'split_files/vae/wan_2.1_vae.safetensors', bytes: 253815318, sha256: '2fc39d31359a4b0a64f55876d8ff7fa8d780956ae2cb13463b0223e15148976b' },
+      { path: 'umt5-xxl-encoder-Q4_K_M.gguf', url: UMT5 + 'umt5-xxl-encoder-Q4_K_M.gguf', bytes: 3655145312, sha256: '17cf97a5bbbc60a646d6105b832b6f657ce904a8a1ad970e4b59df0c67584a40' },
+    ],
+    id: 'wan-2.1-t2v-1.3b', name: 'Wan 2.1 T2V 1.3B (test model)', version: '2.1',
+    sourceUrl: 'https://huggingface.co/Wan-AI/Wan2.1-T2V-1.3B', license: 'Apache 2.0',
+    licenseNote: 'Permissive; keep the license notice. Files are the ComfyUI repackaged copies; text encoder is a Q4 GGUF of umt5-xxl.',
+    downloadGb: 6.7, minVramGb: 6, minRamGb: 16, backends: ['vulkan', 'cuda', 'cpu'], capabilities: ['text-to-video'],
+    minTier: 'experimental', note: 'Small text-to-video model run by stable-diffusion.cpp (Vulkan, no Python). 480p-class, short clips. The first model to try on AMD and older GPUs; unproven until a clip is made.', verified: [],
+  },
+  {
+    kind: 'model', engine: 'diffusers',
     files: [
       { path: 'ltxv-2b-0.9.8-distilled.safetensors', url: HF + 'ltxv-2b-0.9.8-distilled.safetensors', bytes: 6340744492, sha256: '76aa8c4786af752fa6f951947129d5290c3c6c0b2fadcadea6b5e114ae2cad8f' },
       { path: 'vae/config.json', url: HF + 'vae/config.json', bytes: 501 },
@@ -128,10 +153,11 @@ export const LOCAL_MODELS: LocalModel[] = [
     id: 'ltx-video-2b-distilled-0.9.8', name: 'LTX-Video 2B distilled', version: '0.9.8',
     sourceUrl: 'https://huggingface.co/Lightricks/LTX-Video', license: 'LTX-Video Open Weights License',
     licenseNote: 'Not a plain open-source license: read its terms before using output commercially.',
-    downloadGb: 27, minVramGb: 6, minRamGb: 16, backends: ['cuda', 'directml', 'cpu'], capabilities: ['text-to-video', 'image-to-video'],
-    minTier: 'experimental', note: 'Smallest and fastest candidate. The download is the 6.3 GB model plus its 19 GB text encoder and 1.7 GB VAE (file sizes read from the Hugging Face listing). Resolution divisible by 32, frames 8n+1, best under 720x1280.', verified: [],
+    downloadGb: 27, minVramGb: 6, minRamGb: 16, backends: ['cuda'], capabilities: ['text-to-video', 'image-to-video'],
+    minTier: 'experimental', note: 'Needs a PyTorch runner CreateCraft does not have (torch-directml is stale: torch 2.4.1, Python 3.12 or older, last release Sept 2024), so it is only offered with NVIDIA CUDA. Smallest and fastest candidate. The download is the 6.3 GB model plus its 19 GB text encoder and 1.7 GB VAE (file sizes read from the Hugging Face listing). Resolution divisible by 32, frames 8n+1, best under 720x1280.', verified: [],
   },
   {
+    kind: 'model', engine: 'sdcpp',
     files: [],
     id: 'wan-2.2-ti2v-5b', name: 'Wan 2.2 TI2V 5B', version: '2.2',
     sourceUrl: 'https://huggingface.co/Wan-AI/Wan2.2-TI2V-5B', license: 'Apache 2.0',
@@ -140,6 +166,19 @@ export const LOCAL_MODELS: LocalModel[] = [
     minTier: 'higher', note: 'The model card targets 24 GB cards with offloading. Not offered on smaller GPUs.', verified: [],
   },
 ];
+
+/** The engine itself (not a model). A 30 MB zip from the project's GitHub release. */
+export const SDCPP_RUNTIME: LocalModel = {
+  kind: 'runtime', engine: null,
+  files: [{
+    path: 'sd-master-1d0a58a-bin-win-vulkan-x64.zip', extract: 'zip', bytes: 30155040,
+    url: 'https://github.com/leejet/stable-diffusion.cpp/releases/download/master-964-1d0a58a/sd-master-1d0a58a-bin-win-vulkan-x64.zip',
+    sha256: '74211cb5c382aec2aeb086b64f2fdf525efec5faec4200a2d3257bc2328954ab',
+  }],
+  id: 'sdcpp-vulkan-runtime', name: 'stable-diffusion.cpp (Vulkan)', version: 'master-964-1d0a58a',
+  sourceUrl: 'https://github.com/leejet/stable-diffusion.cpp', license: 'MIT', licenseNote: 'Open-source engine; runs on AMD, NVIDIA and Intel GPUs through Vulkan.',
+  downloadGb: 0.03, minVramGb: 0, minRamGb: 0, backends: ['vulkan'], capabilities: [], minTier: 'experimental', note: 'Runs the models below. Not tested on this PC yet.', verified: [],
+};
 
 const TIER_ORDER: LocalTier[] = ['none', 'experimental', 'lightweight', 'standard', 'higher'];
 
@@ -157,7 +196,7 @@ export function modelFit(m: LocalModel, r: HardwareReport): ModelFit {
     // Below the stated minimum it may still be tried with offloading, but only as experimental.
     if (m.minTier !== 'experimental') reasons.push(`Needs about ${m.minVramGb} GB of video memory; this GPU has ${g.vramGb} GB.`);
   }
-  const usable = r.backends.filter((b) => b.found && m.backends.includes(b.id));
+  const usable = m.backends.length === 0 ? [] : r.backends.filter((b) => b.found && m.backends.includes(b.id));
   if (!usable.length) reasons.push('No compatible backend was found on this PC.');
   const verifiedHere = !!g && m.verified.some((v) => v.gpu === g.name);
   return { model: m, offered: reasons.length === 0, reasons, verifiedHere };

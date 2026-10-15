@@ -160,6 +160,13 @@ const api: StudioApi = {
     localAiCancel: (id) => ipcRenderer.invoke(IPC.localAiCancel, id),
     localAiRemove: (id) => ipcRenderer.invoke(IPC.localAiRemove, id),
     localAiPickDir: () => ipcRenderer.invoke(IPC.localAiPickDir),
+    localVideoRender: (job) => ipcRenderer.invoke(IPC.localVideoRender, job),
+    localVideoCancel: () => ipcRenderer.invoke(IPC.localVideoCancel),
+    onLocalVideoProgress: (cb) => {
+      const listener = (_e: unknown, r: Parameters<typeof cb>[0]) => cb(r);
+      ipcRenderer.on(IPC.localVideoProgress, listener);
+      return () => ipcRenderer.removeListener(IPC.localVideoProgress, listener);
+    },
     onLocalAi: (cb) => {
       const listener = (_e: unknown, r: Parameters<typeof cb>[0]) => cb(r);
       ipcRenderer.on(IPC.localAiEvent, listener);

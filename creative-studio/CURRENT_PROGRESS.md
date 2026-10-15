@@ -326,6 +326,14 @@ Free local video, Stage A + B (2026-10-14):
   **Correction:** the LTX-Video 2B distilled download is about **27 GB** (6.3 GB model + 19 GB text encoder + 1.7 GB VAE, sizes and
   hashes from the Hugging Face listing), not 8 GB as I said earlier. No real download has been made; needs Tomas's explicit yes naming
   model and size. Still unbuilt: runner, self-test, generation, Claude tool, workflow node. Tests 211 passed / 14 skipped (+9).
+* **Stage C part 3 (2026-10-15): engine change + runner (simulated tests only).** torch-directml is stale (torch 2.4.1, Python <=3.12,
+  last release Sept 2024; no wheel for this PC's Python 3.13), so the PyTorch route is out for AMD. New plan: **stable-diffusion.cpp**
+  (MIT, Vulkan build 30 MB zip, no Python; has Wan 2.x video, GGUF, `--offload-to-cpu`, `--vae-tiling`). Test model: **Wan 2.1 T2V 1.3B**
+  (Apache 2.0): 2.84 GB + 0.25 GB VAE + 3.66 GB umt5 Q4 GGUF = ~6.7 GB. LTX-Video 2B stays listed but only offered with CUDA.
+  Built: `src/shared/localVideo.ts` (presets, validation, sd-cli args), `src/main/localVideo.ts` (runner: spawn, progress, cancel, import as an
+  AI-labelled free asset, FilmCraft AVI->MP4 conversion), runtime zip extraction in the download manager, Vulkan probe, UI in the card.
+  Tests: 220 passed / 14 skipped; the runner tests use a SIMULATED engine and prove only CreateCraft's logic. **No real generation has
+  happened; the exact sd-cli output file name/format and progress lines are unconfirmed until the runtime is installed.**
 * **Requirement added by Tomas:** Free Local AI must have a built-in, self-service setup inside CreateCraft (guided: check this PC, pick a model, consent, download, self-test, status and repair/remove). The user must not need to install Python or ComfyUI by hand.
 * Next (needs Tomas's OK): Stage C hardware detection, then model download and a real inference test.
 

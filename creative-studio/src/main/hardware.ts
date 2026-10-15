@@ -58,6 +58,9 @@ export async function probeBackends(gpus: GpuInfo[], run: Run, env: NodeJS.Proce
   out.push({ id: 'rocm', label: 'AMD ROCm / HIP', found: !!hip, state: 'untested', detail: hip ? `HIP SDK at ${env.HIP_PATH}.` : 'AMD HIP SDK not installed (ROCm on Windows supports only some newer Radeon cards).' });
   const hasDx = gpus.length > 0 && (await exists(path.join(env.SystemRoot ?? 'C:\\Windows', 'System32', 'DirectML.dll')));
   out.push({ id: 'directml', label: 'DirectML', found: hasDx, state: 'untested', detail: hasDx ? 'Windows DirectML runtime present (works with most GPUs; needs a model runner to use it).' : 'DirectML runtime not found.' });
+  const sys32 = path.join(env.SystemRoot ?? 'C:\\Windows', 'System32');
+  const vk = gpus.length > 0 && (await exists(path.join(sys32, 'vulkan-1.dll')));
+  out.push({ id: 'vulkan', label: 'Vulkan', found: vk, state: 'untested', detail: vk ? 'Vulkan loader present (used by stable-diffusion.cpp on AMD, NVIDIA and Intel GPUs).' : 'Vulkan loader not found; update the graphics driver.' });
   out.push({ id: 'cpu', label: 'CPU', found: true, state: 'untested', detail: 'Always available, but very slow for video.' });
   return out;
 }

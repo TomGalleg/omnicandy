@@ -3,13 +3,14 @@
 // the host publishes one, its SHA-256; refuses when the disk is too small. Models live under the
 // model folder, one folder per model, never inside a project and never in the installer.
 
+import { execFile } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { createReadStream } from 'node:fs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
-import { LOCAL_MODELS, totalBytes, type DownloadState, type LocalModel } from '@shared/localAi';
+import { LOCAL_MODELS, SDCPP_RUNTIME, totalBytes, type DownloadState, type LocalModel } from '@shared/localAi';
 
 export type Fetcher = (url: string, init: { headers: Record<string, string>; signal: AbortSignal }) => Promise<Response>;
 
@@ -20,7 +21,14 @@ export interface DownloadDeps {
   freeBytes: (dir: string) => Promise<number>;
   onChange?: (s: DownloadState) => void;
   models?: LocalModel[];
+  /** Unpacks a verified archive into `dir`. Default: Windows tar. */
+  extract?: (archive: string, dir: string) => Promise<void>;
 }
+
+const defaultExtract = (archive: string, dir: string) => new Promise<void>((resolve, reject) => {
+  // Windows 10+ ships bsdtar, which reads zip files.
+  execFile('tar', ['-xf', archive, '-C', dir], { windowsHide: true, timeout: 10 * 60_000 }, (err) => (err ? reject(new Error(`Could not unpack ${path.basename(archive)}: ${err.message}`)) : resolve()));
+});
 
 const MARGIN = 2 * 1024 ** 3;
 const MARKER = 'install.json';
@@ -39,7 +47,7 @@ export class ModelDownloads {
   constructor(private readonly d: DownloadDeps) {}
 
   private model(id: string): LocalModel {
-    const m = (this.d.models ?? LOCAL_MODELS).find((x) => x.id === id);
+    const m = ((this.d.models ?? [...LOCAL_MODELS, SDCPP_RUNTIME])).find((x) => x.id === id);
     if (!m) throw new Error('Unknown model.');
     return m;
   }
@@ -69,7 +77,7 @@ export class ModelDownloads {
 
   async status(): Promise<DownloadState[]> {
     const out: DownloadState[] = [];
-    for (const m of this.d.models ?? LOCAL_MODELS) {
+    for (const m of (this.d.models ?? [...LOCAL_MODELS, SDCPP_RUNTIME])) {
       const live = this.states.get(m.id);
       if (live && (live.state === 'downloading' || live.state === 'verifying')) { out.push(live); continue; }
       if (await this.isInstalled(m.id)) out.push({ modelId: m.id, state: 'installed', doneBytes: totalBytes(m), totalBytes: totalBytes(m), file: null, message: 'Installed.' });
@@ -159,6 +167,11 @@ export class ModelDownloads {
           this.set(m.id, { state: 'downloading' });
         }
         await fs.rename(part, final);
+        if (f.extract) {
+          this.set(m.id, { state: 'verifying', message: `Unpacking ${f.path}` });
+          await (this.d.extract ?? defaultExtract)(final, dir);
+          this.set(m.id, { state: 'downloading' });
+        }
         done.push(f.path);
         counted += f.bytes;
         this.set(m.id, { doneBytes: counted });

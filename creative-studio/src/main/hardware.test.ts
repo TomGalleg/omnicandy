@@ -43,14 +43,16 @@ describe('hardware detection', () => {
     expect(modelFit(LOCAL_MODELS[0]!, report()).verifiedHere).toBe(false);
   });
   it('model rules: big model refused on 8 GB, small one needs a backend and disk', () => {
-    const [ltx, wan] = LOCAL_MODELS;
-    expect(modelFit(ltx!, report()).offered).toBe(true);
-    const big = modelFit(wan!, report());
+    const ltx = LOCAL_MODELS.find((m) => m.id === 'wan-2.1-t2v-1.3b')!;
+    const wan = LOCAL_MODELS.find((m) => m.id === 'wan-2.2-ti2v-5b')!;
+    const withVk = report({ backends: [{ id: 'vulkan', label: 'Vulkan', found: true, detail: '', state: 'untested' }] });
+    expect(modelFit(ltx, withVk).offered).toBe(true);
+    const big = modelFit(wan, withVk);
     expect(big.offered).toBe(false);
     expect(big.reasons.join(' ')).toMatch(/video memory|better/);
-    expect(modelFit(ltx!, report({ backends: [] })).reasons.join(' ')).toMatch(/No compatible backend/);
-    expect(modelFit(ltx!, report({ freeDiskGb: 5 })).offered).toBe(false);
-    expect(modelFit(ltx!, report({ ramGb: 8 })).offered).toBe(false);
+    expect(modelFit(ltx, report({ backends: [] })).reasons.join(' ')).toMatch(/No compatible backend/);
+    expect(modelFit(ltx, { ...withVk, freeDiskGb: 5 }).offered).toBe(false);
+    expect(modelFit(ltx, { ...withVk, ramGb: 8 }).offered).toBe(false);
   });
   it('backends are found-not-tested; missing tools are reported plainly', async () => {
     const run = async () => { throw new Error('missing'); };

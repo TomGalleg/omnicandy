@@ -11,7 +11,7 @@ const A = Buffer.alloc(5000, 7);
 const B = Buffer.alloc(300, 9);
 const sha = (b: Buffer) => createHash('sha256').update(b).digest('hex');
 const model: LocalModel = {
-  id: 'fake', name: 'Fake', version: '1', sourceUrl: '', license: 'x', licenseNote: '', downloadGb: 0, minVramGb: 1, minRamGb: 1,
+  kind: 'model', engine: null, id: 'fake', name: 'Fake', version: '1', sourceUrl: '', license: 'x', licenseNote: '', downloadGb: 0, minVramGb: 1, minRamGb: 1,
   backends: ['cpu'], capabilities: ['text-to-video'], minTier: 'experimental', note: '', verified: [],
   files: [
     { path: 'big.bin', url: 'https://host/big.bin', bytes: A.length, sha256: sha(A) },
