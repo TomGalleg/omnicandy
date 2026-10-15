@@ -5,7 +5,7 @@
 import type { EditorAppId } from './appEditors';
 import type { Asset } from './types';
 
-export type DeliverGroup = 'image' | 'vector' | 'audio' | 'video' | 'design' | 'document';
+export type DeliverGroup = 'image' | 'vector' | 'audio' | 'video' | 'design' | 'document' | 'pdf';
 
 export interface DeliverPreset {
   id: string;
@@ -23,6 +23,7 @@ export interface DeliverPreset {
 /** Source file types each group takes (lower-case extensions). */
 export const DELIVER_SOURCES: Record<DeliverGroup, string[]> = {
   image: ['png', 'jpg', 'jpeg', 'webp', 'tif', 'tiff', 'bmp', 'gif', 'psd', 'pcraft'],
+  pdf: ['pdf'],
   vector: ['svg', 'svgz', 'ai', 'eps', 'pdf', 'vectorcraft'],
   audio: ['wav', 'flac', 'aif', 'aiff'],
   video: ['mp4', 'mov', 'webm', 'mkv'],
@@ -66,6 +67,13 @@ export const DELIVER_PRESETS: DeliverPreset[] = [
   { id: 'document-md', group: 'document', label: 'Markdown', note: 'Text with simple formatting', ext: 'md', app: 'wordcraft', suffix: '' },
   { id: 'document-html', group: 'document', label: 'Web page (HTML)', note: 'For the web or email', ext: 'html', app: 'wordcraft', suffix: '' },
   { id: 'document-odt', group: 'document', label: 'OpenDocument (ODT)', note: 'For LibreOffice and others', ext: 'odt', app: 'wordcraft', suffix: '' },
+  { id: 'pdf-png', group: 'pdf', label: 'PNG of page 1', note: 'A picture of the first page', ext: 'png', app: 'pdfcraft', suffix: '' },
+  { id: 'pdf-txt', group: 'pdf', label: 'Plain text', note: 'The text of every page', ext: 'txt', app: 'pdfcraft', suffix: '' },
+  { id: 'pdf-docx', group: 'pdf', label: 'Word document (DOCX)', note: 'Editable in WordCraft or Word; layout is approximate', ext: 'docx', app: 'pdfcraft', suffix: '' },
+  { id: 'pdf-html', group: 'pdf', label: 'Web page (HTML)', note: 'One file with the images inside', ext: 'html', app: 'pdfcraft', suffix: '' },
+  { id: 'pdf-rtf', group: 'pdf', label: 'Rich Text (RTF)', note: 'Text, headings, bold and italic', ext: 'rtf', app: 'pdfcraft', suffix: '' },
+  { id: 'pdf-small', group: 'pdf', label: 'Smaller PDF', note: 'Reduces the file size', ext: 'pdf', app: 'pdfcraft', suffix: '-small' },
+
   { id: 'document-rtf', group: 'document', label: 'Rich Text (RTF)', note: 'Opens in almost any word processor', ext: 'rtf', app: 'wordcraft', suffix: '' },
 ];
 
@@ -78,8 +86,10 @@ export function deliverGroupFor(format: string): DeliverGroup | null {
 
 /** Presets that can export this file. */
 export function presetsFor(format: string): DeliverPreset[] {
-  const g = deliverGroupFor(format);
-  return g ? DELIVER_PRESETS.filter((p) => p.group === g) : [];
+  const f = format.toLowerCase();
+  // A format can belong to several groups (a PDF is a document and also vector art).
+  const groups = (Object.keys(DELIVER_SOURCES) as DeliverGroup[]).filter((g) => DELIVER_SOURCES[g].includes(f));
+  return groups.flatMap((g) => DELIVER_PRESETS.filter((p) => p.group === g));
 }
 
 /** The file's versions, oldest first: the original, then each version it was saved from. */
@@ -121,6 +131,8 @@ export interface DeliverJob {
   output?: string;
   bytes?: number;
   error?: string;
+  /** Something worth knowing about a finished export (for example: nothing could be reduced). */
+  note?: string;
 }
 
 /** One finished export as recorded in exports/manifest.json. */

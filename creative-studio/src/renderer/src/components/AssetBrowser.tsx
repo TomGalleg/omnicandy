@@ -117,7 +117,7 @@ export function AssetBrowser({ manifest, selectedId, onSelect, onManifest, log }
               )}
               {collection !== 'deliverables' && assets.map((a) => (
                 <button key={a.id} role="option" className="asset" aria-selected={a.id === selectedId} onClick={() => onSelect(a.id)}>
-                  <AssetThumb asset={a} rendition={a.sourceFormat === 'pcraft' || a.sourceFormat === 'designcraft' || a.sourceFormat === 'docx' ? manifest?.assets.find((x) => x.parentId === a.id && x.kind === 'image') : undefined} />
+                  <AssetThumb asset={a} rendition={a.sourceFormat === 'pcraft' || a.sourceFormat === 'designcraft' || ['docx', 'pdf'].includes(a.sourceFormat) ? manifest?.assets.find((x) => x.parentId === a.id && x.kind === 'image') : undefined} />
                   <span className="asset-name" title={a.name}>{a.name}</span>
                   <span className="asset-meta">{KIND_LABEL[a.kind]} · {formatDims(a) || formatBytes(a.bytes)}</span>
                 </button>

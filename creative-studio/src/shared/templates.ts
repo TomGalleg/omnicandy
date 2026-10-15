@@ -141,6 +141,17 @@ const DEFS: Def[] = [
       { key: 'out', type: 'export', presets: ['document-pdf', 'document-txt'] },
     ], connections: chain('files', 'text', 'ok', 'out') },
   },
+  {
+    id: 'builtin-pdf-touch-up', name: 'PDF touch-up', kind: 'design', status: 'partial',
+    description: 'Replaces a phrase in a PDF, waits for approval and exports a smaller PDF and plain text.',
+    needs: 'A PDF with the phrase you want to change (text PDFs; scans have no text to replace). One PDF per run; the original is never changed.',
+    input: { title: 'PDF touch-up', explanation: 'Replace text, approve, export.', steps: [
+      imp('your PDF'),
+      { key: 'text', type: 'artcraftEdit', app: 'pdfcraft', edit: 'replaceText', edit_settings: { find: 'Title', replace: 'Final title' } },
+      { key: 'ok', type: 'approval', note: 'Check the PDF before exporting.' },
+      { key: 'out', type: 'export', presets: ['pdf-small', 'pdf-txt'] },
+    ], connections: chain('files', 'text', 'ok', 'out') },
+  },
 ];
 
 export type BuiltinTemplate = WorkflowTemplate & { builtin: true; kind: ProjectKind; status: TemplateStatus; needs: string; costNote: string };

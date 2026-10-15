@@ -115,7 +115,7 @@ describe('ProjectStore', () => {
     const root = path.join(tmp, 'sample');
     const s = await ensureSampleProject(root, FIXTURES);
     const m = await s.loadManifest();
-    expect(m.assets.map((a) => a.kind).sort()).toEqual(['audio', 'audio', 'design', 'image', 'image', 'project', 'vector', 'vector', 'vector', 'video', 'video']);
+    expect(m.assets.map((a) => a.kind).sort()).toEqual(['audio', 'audio', 'design', 'document', 'document', 'image', 'image', 'project', 'vector', 'vector', 'vector', 'video', 'video']);
     expect(m.assets.every((a) => a.provenance.origin === 'fixture')).toBe(true);
     expect(m.assets.find((a) => a.name === 'sunset-clip.mp4')).toMatchObject({ width: 960, height: 540, durationSec: 4.01 });
     const wf = await s.loadWorkflow();
@@ -131,9 +131,9 @@ describe('ProjectStore', () => {
     await old.importFile(path.join(FIXTURES, 'tone-a440.wav'), { origin: 'fixture', source: 'v1' });
     await (await ensureSampleProject(root, FIXTURES)).loadManifest();
     const names = (await new ProjectStore(root).loadManifest()).assets.map((a) => a.name).sort();
-    expect(names).toEqual(['aurora-clip.mp4', 'groove-loop.wav', 'sunset-clip.mp4', 'sunset-flyer.designcraft', 'sunset-still.jpg', 'tone-a440.wav']);
+    expect(names).toEqual(['aurora-clip.mp4', 'groove-loop.wav', 'quarterly-report.docx', 'quarterly-summary.pdf', 'sunset-clip.mp4', 'sunset-flyer.designcraft', 'sunset-still.jpg', 'tone-a440.wav']);
     await ensureSampleProject(root, FIXTURES);
-    expect((await new ProjectStore(root).loadManifest()).assets).toHaveLength(6);
+    expect((await new ProjectStore(root).loadManifest()).assets).toHaveLength(8);
   });
 
   it('keeps the older folder layout for projects created before Phase 2', async () => {

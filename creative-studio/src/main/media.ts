@@ -5,7 +5,7 @@ import type { AssetKind } from '@shared/types';
 
 const KIND_BY_EXT: Record<string, AssetKind> = {
   png: 'image', jpg: 'image', jpeg: 'image', webp: 'image', gif: 'image', bmp: 'image', tif: 'image', tiff: 'image',
-  svg: 'vector', svgz: 'vector', ai: 'vector', eps: 'vector', pdf: 'vector',
+  svg: 'vector', svgz: 'vector', ai: 'vector', eps: 'vector', pdf: 'document',
   wav: 'audio', mp3: 'audio', flac: 'audio', ogg: 'audio', aif: 'audio', aiff: 'audio',
   mp4: 'video', mov: 'video', webm: 'video', mkv: 'video',
   designcraft: 'design',

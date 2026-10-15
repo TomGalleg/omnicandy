@@ -10,6 +10,7 @@ import path from 'node:path';
 import { EDITOR_APPS, type EditorAppId } from '@shared/appEditors';
 import { lineage, MANIFEST_FILE, presetById, presetsFor, type DeliverJob, type DeliverPreset, type DeliverRecord } from '@shared/deliver';
 import type { Asset } from '@shared/types';
+import { kindForExtension } from './media';
 import { sha256File, type ProjectStore } from './projectStore';
 
 const LONG_EDGE_WEB = 1920;
@@ -20,6 +21,19 @@ export interface DeliverCommand {
   /** FilmCraft: `run` script lines, written to `scriptPath` before the tool starts. */
   script?: Array<{ id: string; params: Record<string, unknown> }>;
   scriptPath?: string;
+  /** PdfCraft: a `run --script` file (JSON array of {tool, args}), written to `scriptPath` before the tool starts. */
+  jsonScript?: Array<{ tool: string; args: Record<string, unknown> }>;
+  /** The tool writes nothing when there is nothing to do (a PDF that can't be made smaller): copy the source instead. */
+  copyIfNoOutput?: string;
+}
+
+/** The deepest folder that contains both files (PdfCraft's --root must cover the source and the output). */
+function commonFolder(a: string, b: string): string {
+  const pa = path.dirname(a).split(path.sep);
+  const pb = path.dirname(b).split(path.sep);
+  const n: string[] = [];
+  for (let i = 0; i < Math.min(pa.length, pb.length) && pa[i]!.toLowerCase() === pb[i]!.toLowerCase(); i++) n.push(pa[i]!);
+  return n.join(path.sep) || path.dirname(a);
 }
 
 /** The command line for one export (pure; every form here was verified against the installed tools). */
@@ -47,6 +61,18 @@ export function deliverCommand(p: DeliverPreset, src: string, out: string, a: Pi
     case 'document-pdf': case 'document-txt': case 'document-md': case 'document-html': case 'document-odt': case 'document-rtf':
       return { app: 'wordcraft', args: ['convert', src, out] };
     case 'document-png': return { app: 'wordcraft', args: ['render', src, out, '--page', '1'] };
+    case 'pdf-png': return { app: 'pdfcraft', args: ['render', src, '--page', '1', '--dpi', '150', '--out', out] };
+    case 'pdf-txt': case 'pdf-docx': case 'pdf-html': case 'pdf-rtf': case 'pdf-small': {
+      const tool = p.id === 'pdf-txt' ? 'doc_export_text' : p.id === 'pdf-small' ? 'doc_reduce' : 'doc_export_office';
+      const scriptPath = path.join(tmp, 'export.json');
+      return {
+        app: 'pdfcraft',
+        args: ['run', '--script', scriptPath, '--root', commonFolder(src, out)],
+        scriptPath,
+        jsonScript: [{ tool: 'doc_open', args: { path: src } }, { tool, args: { doc: 1, path: out } }],
+        ...(p.id === 'pdf-small' ? { copyIfNoOutput: 'This PDF is already as small as PdfCraft can make it, so the file is an unchanged copy.' } : {}),
+      };
+    }
   }
   const film: Record<string, Record<string, unknown>> = {
     'video-mp4': { format: 'h264' },
@@ -139,6 +165,33 @@ export class DeliverQueue {
     else if (j.status === 'running' && this.running?.id === j.id) this.running.abort.abort();
   }
 
+  /**
+   * Hands a finished export on to another app: a copy goes into the library as a new file derived from
+   * the source (the file in exports/ and its manifest record stay). Only types CreateCraft can open.
+   */
+  async addToLibrary(jobId: string): Promise<Asset> {
+    const j = this.jobs.find((x) => x.id === jobId);
+    if (!j || j.status !== 'done' || !j.output) throw new Error('That export has not finished.');
+    const ext = path.extname(j.output).slice(1).toLowerCase();
+    if (!kindForExtension(ext)) throw new Error(`.${ext} files can't be opened in CreateCraft, so there is nothing to hand on.`);
+    const manifest = await this.d.store.loadManifest();
+    const src = manifest.assets.find((x) => x.id === j.assetId);
+    if (!src) throw new Error('The source file is no longer in the library.');
+    const exportsDir = await this.d.store.exportsDir();
+    const tmp = path.join(this.d.store.root, 'work', 'deliver-handoff', jobId);
+    await fs.mkdir(tmp, { recursive: true });
+    const base = src.name.replace(/.[^.]+$/, '').replace(/^[0-9a-f]{8}-/, '');
+    const name = `${base}-from-${src.sourceFormat}.${ext}`;
+    const copy = path.join(tmp, name);
+    await fs.copyFile(path.join(exportsDir, j.output), copy);
+    try {
+      return await this.d.store.addDerivedFile(copy, {
+        name, parentId: src.id,
+        provenance: { origin: 'generated', source: `Exported from ${src.name} as ${j.presetLabel} and kept in the library (hand-off)` },
+      });
+    } finally { await fs.rm(tmp, { recursive: true, force: true }).catch(() => {}); }
+  }
+
   /** Removes finished, failed and cancelled jobs from the list (the files and manifest stay). */
   clearFinished() {
     this.jobs = this.jobs.filter((j) => j.status === 'queued' || j.status === 'running');
@@ -197,9 +250,17 @@ export class DeliverQueue {
       await fs.mkdir(tmp, { recursive: true });
       const cmd = deliverCommand(p, src, out, a, tmp);
       if (cmd.script && cmd.scriptPath) await fs.writeFile(cmd.scriptPath, cmd.script.map((l) => JSON.stringify(l)).join('\n'));
+      if (cmd.jsonScript && cmd.scriptPath) await fs.writeFile(cmd.scriptPath, JSON.stringify(cmd.jsonScript));
       const exe = path.join(this.d.installDir(cmd.app), `${cmd.app}-cli.exe`);
       await (this.d.exec ?? defaultExec)(exe, cmd.args, { cwd: tmp, signal: abort.signal });
-      const st = await fs.stat(out).catch(() => null);
+      let note: string | undefined;
+      let st = await fs.stat(out).catch(() => null);
+      if (!st?.size && cmd.copyIfNoOutput) {
+        await fs.copyFile(src, out);
+        await fs.chmod(out, 0o666);
+        note = cmd.copyIfNoOutput;
+        st = await fs.stat(out);
+      }
       if (!st?.size) throw new Error(`${EDITOR_APPS[cmd.app].name} finished but wrote no file.`);
       await this.record({
         jobId: next.id, at: new Date().toISOString(), preset: p.id, presetLabel: p.label, app: cmd.app, requestedBy: next.requestedBy,
@@ -207,7 +268,7 @@ export class DeliverQueue {
         output: { file: name, bytes: st.size, sha256: await sha256File(out) },
         ms: Date.now() - started,
       });
-      this.update(next.id, { status: 'done', finishedAt: new Date().toISOString(), output: name, bytes: st.size });
+      this.update(next.id, { status: 'done', finishedAt: new Date().toISOString(), output: name, bytes: st.size, ...(note ? { note } : {}) });
     } catch (err) {
       if (out) await fs.rm(out, { force: true });
       const cancelled = abort.signal.aborted;

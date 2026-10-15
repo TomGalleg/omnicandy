@@ -35,7 +35,25 @@ describe('deliver command lines', () => {
     expect(presetsFor('JPG').map((p) => p.group)).toContain('image');
     expect(presetsFor('designcraft').map((p) => p.id)).toEqual(['design-pdf', 'design-png']);
     expect(presetsFor('docx').map((p) => p.id)).toEqual(['document-pdf', 'document-png', 'document-txt', 'document-md', 'document-html', 'document-odt', 'document-rtf']);
+    expect(presetsFor('PDF').map((p) => p.id)).toEqual(['pdf-png', 'pdf-txt', 'pdf-docx', 'pdf-html', 'pdf-rtf', 'pdf-small', 'vector-svg', 'vector-pdf', 'vector-png', 'vector-png2x', 'vector-eps']);
     expect(presetsFor('exe')).toEqual([]);
+  });
+});
+
+describe('PdfCraft deliver commands', () => {
+  const P = path.join('C:', 'p');
+  it('renders page 1 with the CLI and runs a script (confined to the folder holding source and output) for the rest', () => {
+    const src = path.join(P, 'Assets', 'a.pdf');
+    const png = deliverCommand(presetById('pdf-png')!, src, path.join(P, 'exports', 'a.png'), {}, 't');
+    expect(png).toMatchObject({ app: 'pdfcraft', args: ['render', src, '--page', '1', '--dpi', '150', '--out', path.join(P, 'exports', 'a.png')] });
+    const docx = deliverCommand(presetById('pdf-docx')!, src, path.join(P, 'exports', 'a.docx'), {}, 'T');
+    expect(docx.app).toBe('pdfcraft');
+    expect(docx.args).toEqual(['run', '--script', path.join('T', 'export.json'), '--root', P]);
+    expect(docx.jsonScript).toEqual([{ tool: 'doc_open', args: { path: src } }, { tool: 'doc_export_office', args: { doc: 1, path: path.join(P, 'exports', 'a.docx') } }]);
+    expect(deliverCommand(presetById('pdf-txt')!, src, path.join(P, 'a.txt'), {}, 't').jsonScript![1]!.tool).toBe('doc_export_text');
+    const small = deliverCommand(presetById('pdf-small')!, src, path.join(P, 'a-small.pdf'), {}, 't');
+    expect(small.jsonScript![1]!.tool).toBe('doc_reduce');
+    expect(small.copyIfNoOutput).toMatch(/unchanged copy/);
   });
 });
 
@@ -92,6 +110,28 @@ describe('deliver queue', () => {
     expect(existsSync(path.join(store.root, 'exports', 'sunset-still.webp'))).toBe(false);
   });
 
+  it('refuses to hand on an export that has not finished', async () => {
+    const q = queue();
+    const [j] = await q.enqueue(still, ['image-tiff']);
+    await expect(q.addToLibrary(j!.id)).rejects.toThrow(/not finished/);
+    await q.wait([j!.id]);
+  });
+
+  it('keeps the export in exports/ and adds the library copy with provenance', async () => {
+    const own = new ProjectStore(path.join(tmp, 'handoff'));
+    await own.create('handoff');
+    const src = (await own.importFile(path.join(FIXTURES, 'sunset-still.jpg'))).asset.id;
+    const q = new DeliverQueue({ store: own, emit: () => {}, installDir: (app) => `C:\\Apps\\${app}`, exec: fakeExec });
+    const [j] = await q.enqueue(src, ['image-png']);
+    const [r] = await q.wait([j!.id]);
+    const a = await q.addToLibrary(r!.id);
+    expect(a).toMatchObject({ kind: 'image', sourceFormat: 'png', parentId: src });
+    expect(a.name).toBe('sunset-still-from-jpg.png');
+    expect(a.provenance.source).toMatch(/hand-off/);
+    expect(existsSync(path.join(own.root, 'exports', r!.output!))).toBe(true);
+    expect(existsSync(path.join(own.root, 'work', 'deliver-handoff', r!.id))).toBe(false);
+  });
+
   it('cancels waiting exports and clears finished ones from the list', async () => {
     const q = queue();
     const jobs = await q.enqueue(still, ['image-tiff', 'image-psd']);
@@ -124,7 +164,7 @@ describe('every Deliver preset with the real ArtCraft tools (headless)', () => {
     tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'cs-deliver-real-'));
     store = new ProjectStore(path.join(tmp, 'p'));
     await store.create('deliver');
-    for (const f of ['sunset-still.jpg', 'harbor-landscape.svg', 'tone-a440.wav', 'sunset-clip.mp4', 'sunset-flyer.designcraft', 'quarterly-report.docx']) ids[f] = (await store.importFile(path.join(FIXTURES, f))).asset.id;
+    for (const f of ['sunset-still.jpg', 'harbor-landscape.svg', 'tone-a440.wav', 'sunset-clip.mp4', 'sunset-flyer.designcraft', 'quarterly-report.docx', 'quarterly-summary.pdf']) ids[f] = (await store.importFile(path.join(FIXTURES, f))).asset.id;
     q = new DeliverQueue({ store, emit: () => {}, installDir: dirOf });
   });
   afterAll(async () => { await fs.rm(tmp, { recursive: true, force: true, maxRetries: 3 }); });
@@ -193,11 +233,21 @@ describe('every Deliver preset with the real ArtCraft tools (headless)', () => {
     expect((await head(o['document-rtf']!)).subarray(0, 5).toString()).toBe(String.raw`{\rtf`);
   }, 120000);
 
+  it.skipIf(!installed('pdfcraft'))('PDFs: PNG, text, DOCX, HTML, RTF and a smaller PDF', async () => {
+    const o = await run('quarterly-summary.pdf', 'pdf');
+    expect((await head(o['pdf-png']!, 4096)).subarray(1, 4).toString()).toBe('PNG');
+    expect(await fs.readFile(path.join(store.root, 'exports', o['pdf-txt']!), 'utf8')).toContain('Quarterly Summary');
+    expect((await head(o['pdf-docx']!)).subarray(0, 2).toString()).toBe('PK');
+    expect((await head(o['pdf-html']!, 8192)).toString().toLowerCase()).toContain('<');
+    expect((await head(o['pdf-rtf']!)).subarray(0, 5).toString()).toBe(String.raw`{\rtf`);
+    expect((await head(o['pdf-small']!)).subarray(0, 5).toString()).toBe('%PDF-');
+  }, 120000);
+
   it.skipIf(!installed('designcraft'))('layouts: PDF and a 2× PNG of page 1', async () => {
     const o = await run('sunset-flyer.designcraft', 'design');
     expect((await head(o['design-pdf']!)).subarray(0, 5).toString()).toBe('%PDF-');
     expect(sniffMedia('png', await head(o['design-png']!, 4096))).toMatchObject({ width: 1224, height: 1584 });
     const hist = await q.history();
-    expect(hist.length).toBe(DELIVER_PRESETS.filter((p) => ['image', 'vector', 'audio', 'video', 'design', 'document'].includes(p.group) && (installed(p.app))).length);
+    expect(hist.length).toBe(DELIVER_PRESETS.filter((p) => ['image', 'vector', 'audio', 'video', 'design', 'document', 'pdf'].includes(p.group) && (installed(p.app))).length);
   }, 120000);
 });

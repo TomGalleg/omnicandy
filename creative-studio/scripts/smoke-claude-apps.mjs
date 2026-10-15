@@ -14,7 +14,7 @@ const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'cs-smoke-claude-apps-'));
 const results = [];
 const check = (name, ok, detail = '') => { results.push({ name, ok, detail }); console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${detail ? ` - ${detail}` : ''}`); };
 const started = Date.now();
-const EXES = ['photocraft.exe', 'vectorcraft.exe', 'soundcraft.exe', 'filmcraft.exe', 'lightcraft.exe', 'effectcraft.exe', 'designcraft.exe'];
+const EXES = ['photocraft.exe', 'vectorcraft.exe', 'soundcraft.exe', 'filmcraft.exe', 'lightcraft.exe', 'effectcraft.exe', 'designcraft.exe', 'wordcraft.exe', 'pdfcraft.exe'];
 
 /** Processes of `exe` started by this test run. */
 function ourPids(exe) {
@@ -93,6 +93,18 @@ try {
   await scenario('DesignCraft: Claude changes the headline of a layout', 'Open sunset-flyer.designcraft and change the headline to "Evening Tide". Do not save.',
     async (s) => ({ ok: s.appId === 'designcraft' && s.history.length > 1 && (await tabNow()) === 'Edit', detail: JSON.stringify(s.history) }),
     '72-claude-designcraft');
+
+  await scenario('WordCraft: Claude edits a Word document', 'Open quarterly-report.docx and replace "Sunset Over the Sea" with "Evening Tide". Do not save.',
+    async (s) => ({ ok: s.appId === 'wordcraft' && s.history.length > 1 && (await tabNow()) === 'Edit', detail: JSON.stringify(s.history) }),
+    '73-claude-wordcraft');
+
+  await scenario('PdfCraft: Claude edits a PDF', 'Open quarterly-summary.pdf and replace "Sunset Over the Sea" with "Evening Tide", then add the text "Approved" at the bottom of page 1. Do not save.',
+    async (s) => ({ ok: s.appId === 'pdfcraft' && s.history.length > 2 && (await tabNow()) === 'Edit', detail: JSON.stringify(s.history) }),
+    '74-claude-pdfcraft');
+
+  await scenario('Doc hand-off: exports the Word document as PDF and opens it in PdfCraft',
+    'Export quarterly-report.docx as a PDF, keep the PDF in the library, and open that PDF so we can work on it. Do not save anything else.',
+    async (s) => ({ ok: s.appId === 'pdfcraft' && /quarterly-report.*.pdf$/.test(s.asset?.name ?? '') && (await tabNow()) === 'Edit', detail: s.asset?.name }));
 
   const cost = (await win.evaluate(() => window.studio.claude.state())).costUsd;
   console.log(`Claude usage for this run: $${cost.toFixed(3)}`);

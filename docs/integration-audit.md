@@ -163,3 +163,18 @@ Real runs only (scratch files, no CreateCraft project touched, no paid call).
 Not yet verified: app-interface theme sync (commands exist: FigCraft `view.themeLight/Dark/System`, WordCraft `view.darkMode`;
 none found for CADCraft, DeckCraft, GridCraft), saving from a live window, and any Edit-tab embedding of the new windows.
 Every live check used the app's own window opened by the audit and closed afterwards.
+
+## PdfCraft 0.8.0 and WordCraft 0.7.0 (2026-10-15)
+
+PdfCraft is integrated natively (details and evidence: `creative-studio/docs/wordcraft-pdfcraft-report.md`).
+
+| Item | Result |
+|---|---|
+| Native format | .pdf only (no project file); every save is a new library version next to the source |
+| Headless | `pdfcraft-cli info|render|text|edit|combine|extract|split|check|audit|batch|run|mcp|ui`; `mcp --root DIR` serves **163 tools** |
+| Window control | `pdfcraft --control FILE` writes `{pid, port, token}`; loopback JSON-RPC, `auth {token}` first, then `ui.*` only (state, inspect, click, command, commands, open, set, screenshot, key, type, drag, move, resize, focus, quit). Document tools are **not** on that port; `ui.command` takes no parameters. Verified: open, state (documents, dirty flag), `file.save` in place, `file.close`, screenshot |
+| How CreateCraft drives it | the CLI engine edits a working copy; the window shows that copy and is refreshed after every edit; hand edits in the window are saved into the working copy and picked up before the next step |
+| Theme sync | none found (manual) |
+| Real flows verified | open, read, replace text, add text, rotate, delete pages, watermark, title, undo, hand edit pickup, save, reopen, 6 exports, errors, Word<->PDF hand-off, Edit-tab embedding, Claude panel |
+| WordCraft 0.7.0 | native conformance and Edit-tab embedding verified (previously not): open, edit, undo, save, reopen, 7 exports, embedded within 1 px, Claude panel |
+

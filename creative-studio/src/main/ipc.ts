@@ -26,7 +26,7 @@ import { EDITOR_APPS, type EditorAppId } from '@shared/appEditors';
 import { DeliverQueue } from './deliver';
 import { WorkflowSteps } from './workflowSteps';
 import type { EmbeddedApp } from './embeddedApp';
-import { LiveDesignCraft, LiveEffectCraft, LiveFilmCraft, LiveLightCraft, LiveSoundCraft, LiveVectorCraft, LiveWordCraft } from './liveApps';
+import { LiveDesignCraft, LiveEffectCraft, LiveFilmCraft, LiveLightCraft, LiveSoundCraft, LiveVectorCraft, LiveWordCraft, LivePdfCraft } from './liveApps';
 import { LivePhotoCraft } from './photocraftLive';
 import type { ProjectStore } from './projectStore';
 import { parseWorkflow } from './schemas';
@@ -312,7 +312,7 @@ export function registerIpc(d: IpcDeps): void {
   // ---- Live apps (PhotoCraft: token + roots; VectorCraft: roots; SoundCraft: loopback port) ----
   const PFdir = (name: string) => path.join(process.env.ProgramFiles ?? 'C:\\Program Files', name);
   let livePromise: Promise<LiveTaskController> | null = null;
-  type Driver = LivePhotoCraft | LiveVectorCraft | LiveSoundCraft | LiveFilmCraft | LiveLightCraft | LiveEffectCraft | LiveDesignCraft | LiveWordCraft;
+  type Driver = LivePhotoCraft | LiveVectorCraft | LiveSoundCraft | LiveFilmCraft | LiveLightCraft | LiveEffectCraft | LiveDesignCraft | LiveWordCraft | LivePdfCraft;
   const drivers: Partial<Record<EditorAppId, Driver>> = {};
   resetters.push(() => {
     // App windows stay open (no unsaved work is lost); they are just no longer controlled.
@@ -331,6 +331,7 @@ export function registerIpc(d: IpcDeps): void {
       effectcraft: await store.appWorkDir('effectcraft', 'effectcraft-live'),
       designcraft: await store.appWorkDir('designcraft', 'designcraft-live'),
       wordcraft: await store.appWorkDir('wordcraft', 'wordcraft-live'),
+      pdfcraft: await store.appWorkDir('pdfcraft', 'pdfcraft-live'),
     };
     // Catch each app's window the moment it appears so it never flashes up on its own.
     const onSpawn = (pid: number) => d.embedded.prepare(pid);
@@ -344,6 +345,7 @@ export function registerIpc(d: IpcDeps): void {
       else if (app === 'effectcraft') drivers[app] = new LiveEffectCraft({ installDir: PFdir('EffectCraft'), readRoot: store.root, writeRoot: roots.effectcraft, onSpawn });
       else if (app === 'designcraft') drivers[app] = new LiveDesignCraft({ installDir: PFdir('DesignCraft'), readRoot: store.root, writeRoot: roots.designcraft, onSpawn });
       else if (app === 'wordcraft') drivers[app] = new LiveWordCraft({ installDir: PFdir('WordCraft'), readRoot: store.root, writeRoot: roots.wordcraft, onSpawn });
+      else if (app === 'pdfcraft') drivers[app] = new LivePdfCraft({ installDir: PFdir('PdfCraft'), readRoot: store.root, writeRoot: roots.pdfcraft, onSpawn });
       else throw new Error(`${app} can't be opened live.`);
       return drivers[app]!;
     };
@@ -395,7 +397,7 @@ export function registerIpc(d: IpcDeps): void {
     }
     return s;
   };
-  const appId = z.enum(['photocraft', 'vectorcraft', 'soundcraft', 'filmcraft', 'lightcraft', 'effectcraft', 'designcraft', 'wordcraft']);
+  const appId = z.enum(['photocraft', 'vectorcraft', 'soundcraft', 'filmcraft', 'lightcraft', 'effectcraft', 'designcraft', 'wordcraft', 'pdfcraft']);
   handle(IPC.liveOpen, z.union([z.tuple([z.string().min(1).max(128)]), z.tuple([z.string().min(1).max(128), appId])]), (id, app?: EditorAppId) => openLive(id, app));
   handle(IPC.liveTimeline, none, async () => (livePromise ? (await live()).timeline() : null));
   handle(IPC.livePlayhead, z.tuple([z.number().finite().min(0).max(36_000)]), async (s) => (await live()).setPlayhead(s));
@@ -893,6 +895,7 @@ export function registerIpc(d: IpcDeps): void {
   })));
   handle(IPC.deliverJobs, none, async () => (await deliver()).list());
   handle(IPC.deliverEnqueue, z.tuple([id, z.array(z.string().min(1).max(64)).min(1).max(30)]), async (assetId, presets) => (await deliver()).enqueue(assetId, presets, 'user'));
+  handle(IPC.deliverKeep, z.tuple([id]), async (jobId) => (await (await deliver()).addToLibrary(jobId)).id);
   handle(IPC.deliverCancel, z.tuple([id]), async (jobId) => (await deliver()).cancel(jobId));
   handle(IPC.deliverClear, none, async () => (await deliver()).clearFinished());
   handle(IPC.deliverHistory, z.union([z.tuple([]), z.tuple([id])]), async (assetId?: string) => (await deliver()).history(assetId));

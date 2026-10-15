@@ -76,7 +76,7 @@ export function DeliverWorkspace({ manifest, selected, liveApi, onSelectAsset, l
         {selected && (
           <div className="panel-card">
             <div className="deliver-source">
-              <div className="deliver-thumb"><AssetThumb asset={selected} rendition={assets.find((x) => x.parentId === selected.id && x.kind === 'image' && ['pcraft', 'designcraft', 'docx'].includes(selected.sourceFormat))} /></div>
+              <div className="deliver-thumb"><AssetThumb asset={selected} rendition={assets.find((x) => x.parentId === selected.id && x.kind === 'image' && ['pcraft', 'designcraft', 'docx', 'pdf'].includes(selected.sourceFormat))} /></div>
               <div>
                 <h2 className="deliver-title" title={selected.name}>{selected.name}</h2>
                 <p className="asset-meta">{selected.kind} · {selected.sourceFormat.toUpperCase()} · {formatDims(selected) || formatBytes(selected.bytes)}</p>
@@ -162,9 +162,13 @@ export function DeliverWorkspace({ manifest, selected, liveApi, onSelectAsset, l
                 {j.status === 'done' && j.output ? ` · ${j.output} · ${formatBytes(j.bytes ?? 0)}` : ''}
               </span>
               {j.error && <span className="asset-meta err">{j.error}</span>}
+              {j.note && <span className="asset-meta">{j.note}</span>}
               <div className="btn-row">
                 {(j.status === 'queued' || j.status === 'running') && <button className="btn small" onClick={() => void window.studio.deliver.cancel(j.id)}>Cancel</button>}
                 {j.status === 'done' && j.output && <button className="btn small" onClick={() => void window.studio.revealExport(j.output!)}>Show in folder</button>}
+                {j.status === 'done' && j.output && /.(pdf|docx|png|jpe?g|svg|wav|flac|mp4)$/i.test(j.output) && (
+                  <button className="btn small" title="Copy this export into the library so you can open it in another app" onClick={() => void window.studio.deliver.addToLibrary(j.id).then((id) => { log('deliver', `Added ${j.output} to the library`); onSelectAsset(id); }).catch((e: unknown) => setError(errText(e)))}>Add to library</button>
+                )}
               </div>
             </div>
           ))}

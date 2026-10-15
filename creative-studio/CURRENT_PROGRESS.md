@@ -367,6 +367,15 @@ Tomas's OK after each.
   imported .docx (shows "DOCX" until a version is saved). Tests: lint 0, types 0, 228 passed / 15 skipped
   (+8); `videoGeneration` tests flake under full-suite load (EPERM rename), pass alone.
 
+* **WordCraft verified + PdfCraft integrated (2026-10-15): WORKING, details in `docs/wordcraft-pdfcraft-report.md`.** WordCraft: native conformance
+  6/6 (open, edit, undo, save, reopen, all 7 exports), Edit-tab embedding and UI smoke (`npm run smoke:docs` 12/12), a real Claude request.
+  PdfCraft (.pdf, asset kind `document`, opens in PdfCraft by default): `LivePdfCraft` drives the CLI engine (`pdfcraft-cli mcp --root`) on a working
+  copy and keeps the embedded window showing it (its control port only has `ui.*`); quick edits Replace text, Add text, Rotate, Delete pages,
+  Watermark, Title; 6 Deliver presets (PNG, text, DOCX, HTML, RTF, smaller PDF); "Add to library" hands an export on to another app
+  (Word -> PDF -> PdfCraft and PDF -> DOCX -> WordCraft verified with the real apps and through the Claude panel); template "PDF touch-up".
+  Not done: theme sync (no setting), import-time thumbnails, the window is refreshed (not edited live) after each edit.
+  Tests: lint 0, types 0, 240 passed / 33 skipped; live suites 31/31 (`CS_LIVE_TESTS=1`).
+
 Phase 1 note: the old `integrationStatus().claude` field in `src/main/ipc.ts` still says "not
 configured in this build" (stale); Settings now shows Claude's real sign-in state instead.
 

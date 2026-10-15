@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { appForTab, checkEditValues, designcraftSteps, EDITOR_APPS, editorFor, effectcraftSteps, filmcraftSteps, lightcraftSteps, type FilmSequence, wordcraftSteps } from './appEditors';
+import { appForTab, checkEditValues, designcraftSteps, EDITOR_APPS, editorFor, effectcraftSteps, filmcraftSteps, lightcraftSteps, parsePageList, pdfcraftSteps, type FilmSequence, wordcraftSteps } from './appEditors';
 
 const seq: FilmSequence = {
   fps: 24000 / 1001,
@@ -114,5 +114,45 @@ describe('WordCraft steps', () => {
     expect(wordcraftSteps('replaceText', { find: 'Sunset', replace: 'Dawn' })).toEqual([{ command: 'edit.replaceAll', params: { text: 'Sunset', with: 'Dawn', matchCase: true } }]);
     expect(wordcraftSteps('addParagraph', { text: 'Bye' }).map((s) => s.command)).toEqual(['caret.docEnd', 'text.newParagraph', 'text.insert']);
     expect(() => wordcraftSteps('nope', {})).toThrow();
+  });
+});
+
+describe('PdfCraft steps', () => {
+  it('opens .pdf in PdfCraft by default, while VectorCraft can still be chosen', () => {
+    expect(editorFor('pdf')?.id).toBe('pdfcraft');
+    expect(EDITOR_APPS.vectorcraft.formats).toContain('pdf');
+  });
+  it('parses page lists strictly', () => {
+    expect(parsePageList('all')).toEqual([]);
+    expect(parsePageList('1, 3-5')).toEqual([1, 3, 4, 5]);
+    expect(parsePageList('2,2,1')).toEqual([1, 2]);
+    expect(() => parsePageList('0')).toThrow();
+    expect(() => parsePageList('5-3')).toThrow();
+    expect(() => parsePageList('1;2')).toThrow();
+    expect(() => parsePageList('-1')).toThrow();
+    expect(() => parsePageList('4', 3)).toThrow(/only 3 pages/);
+  });
+  it('maps every quick edit to a driver command or an allowed tool', () => {
+    expect(pdfcraftSteps('replaceText', { find: 'a', replace: 'b' })).toEqual([{ command: 'pdf.replaceText', params: { find: 'a', replace: 'b' } }]);
+    expect(pdfcraftSteps('addText', { text: 'Hi', page: 2, position: 'top', size: 12 })[0]).toMatchObject({ command: 'pdf.addText', params: { page: 2, position: 'top' } });
+    expect(pdfcraftSteps('rotatePages', { degrees: '90', pages: 'all' })).toEqual([{ command: 'tool:page_rotate', params: { degrees: 90 } }]);
+    expect(pdfcraftSteps('rotatePages', { degrees: '270', pages: '1,3' })).toEqual([{ command: 'tool:page_rotate', params: { degrees: 270, pages: [1, 3] } }]);
+    expect(pdfcraftSteps('deletePages', { pages: '2' })).toEqual([{ command: 'tool:page_delete', params: { pages: [2] } }]);
+    expect(() => pdfcraftSteps('deletePages', { pages: 'all' })).toThrow(/Name the pages/);
+    expect(pdfcraftSteps('watermark', { text: 'DRAFT', opacity: 30 })).toEqual([{ command: 'tool:doc_watermark', params: { text: 'DRAFT', opacity: 0.3 } }]);
+    expect(pdfcraftSteps('setTitle', { title: 'T' })).toEqual([{ command: 'tool:doc_set_info', params: { key: 'Title', value: 'T' } }]);
+    expect(() => pdfcraftSteps('nope', {})).toThrow();
+    for (const op of EDITOR_APPS.pdfcraft.quickEdits) {
+      const check = checkEditValues(op, {});
+      expect(check.ok, op.id).toBe(true);
+    }
+  });
+  it('validates values before anything runs', () => {
+    const add = EDITOR_APPS.pdfcraft.quickEdits.find((o) => o.id === 'addText')!;
+    expect(checkEditValues(add, { text: 'x', page: 0 }).ok).toBe(false);
+    expect(checkEditValues(add, { text: 'x', position: 'left' }).ok).toBe(false);
+    expect(checkEditValues(add, { text: 'x', bold: true }).ok).toBe(false);
+    const rot = EDITOR_APPS.pdfcraft.quickEdits.find((o) => o.id === 'rotatePages')!;
+    expect(checkEditValues(rot, { degrees: '45' }).ok).toBe(false);
   });
 });

@@ -9,8 +9,9 @@
 
 import { execFile, spawn, type ChildProcess } from 'node:child_process';
 import fs from 'node:fs/promises';
+import net from 'node:net';
 import path from 'node:path';
-import { designcraftSteps, effectcraftSteps, filmcraftSteps, type DesignPage, lightcraftSteps, vectorcraftSteps, wordcraftSteps, type EditValues, type EditorAppId } from '@shared/appEditors';
+import { designcraftSteps, effectcraftSteps, filmcraftSteps, type DesignPage, lightcraftSteps, pdfcraftSteps, vectorcraftSteps, wordcraftSteps, type EditValues, type EditorAppId } from '@shared/appEditors';
 import type { TimelineDto, TimelineEdit } from '@shared/live';
 import type { AppOperation } from '@shared/contracts';
 import { McpClient } from './mcpClient';
@@ -722,4 +723,285 @@ export class LiveWordCraft extends LiveAppBase {
     return imageOf(await this.client().request('tools/call', { name: 'render_page', arguments: { page: 1, scale: Math.min(2, maxSide / 800) } }));
   }
   async screenshot() { return imageOf(await this.client().request('tools/call', { name: 'screenshot', arguments: {} })); }
+}
+
+/** Friendly history names for PdfCraft operations. */
+const PDF_STEP_LABEL: Record<string, string> = {
+  'pdf.replaceText': 'Replace text', 'pdf.addText': 'Add text', 'tool:page_rotate': 'Rotate pages', 'tool:page_delete': 'Delete pages',
+  'tool:doc_watermark': 'Add watermark', 'tool:doc_set_info': 'Set title',
+};
+const PDF_TOOLS = ['page_rotate', 'page_delete', 'doc_watermark', 'doc_set_info'];
+
+/**
+ * PdfCraft. Its window (`pdfcraft --control <file>`) only accepts GUI-level calls (open, commands without
+ * parameters, state, screenshot) over a token-protected loopback port written to the control file, so the
+ * document itself is edited by the CLI's own automation engine (`pdfcraft-cli mcp --root <work>`), which
+ * has the full tool set and writes atomically. The window shows the same working copy and is refreshed
+ * after every edit; edits made by hand in the window are saved into the working copy (never the library
+ * original) and picked up before the next step, so you and Claude never overwrite each other.
+ *
+ * Every step is a snapshot of the working copy, so undo is exact and covers hand edits too.
+ */
+export class LivePdfCraft extends LiveAppBase {
+  readonly appId = 'pdfcraft' as const;
+  protected exeName = 'pdfcraft';
+  private starting2: Promise<void> | null = null;
+  private control: { port: number; token: string } | null = null;
+  private work: string | null = null;
+  private docId = 0;
+  private snaps: string[] = [];
+  private labels: string[] = [];
+  private session = 0;
+
+  protected guiEnv() { return {}; }
+  protected bridgeArgs() { return ['mcp', '--root', this.o.writeRoot]; }
+  protected headlessArgs() { return ['mcp', '--root', this.o.writeRoot]; }
+
+  async ensureStarted(): Promise<void> {
+    if (this.connected) return;
+    this.starting2 ??= this.startPdf().finally(() => { this.starting2 = null; });
+    return this.starting2;
+  }
+
+  private async startPdf(): Promise<void> {
+    this.stop();
+    await fs.mkdir(this.o.writeRoot, { recursive: true });
+    const cli = path.join(this.o.installDir, 'pdfcraft-cli.exe');
+    this.mcp = await McpClient.start(cli, ['mcp', '--root', this.o.writeRoot]);
+    if (this.o.headless) return;
+    const ctlFile = path.join(this.o.writeRoot, 'pdfcraft-control.json');
+    await fs.rm(ctlFile, { force: true });
+    const gui = spawn(path.join(this.o.installDir, 'pdfcraft.exe'), ['--control', ctlFile], { stdio: 'ignore', windowsHide: false });
+    this.gui = gui;
+    if (gui.pid) this.o.onSpawn?.(gui.pid);
+    gui.on('exit', () => { if (this.gui === gui) { this.gui = null; this.mcp?.close(); this.mcp = null; this.control = null; } });
+    const end = Date.now() + 30_000;
+    for (;;) {
+      if (gui.exitCode !== null) throw new Error('PdfCraft closed before it was ready.');
+      try {
+        const c = JSON.parse(await fs.readFile(ctlFile, 'utf8')) as { port?: number; token?: string };
+        if (c.port && c.token) { this.control = { port: c.port, token: c.token }; break; }
+      } catch { /* not written yet */ }
+      if (Date.now() > end) throw new Error('PdfCraft did not open its control port in time.');
+      await sleep(150);
+    }
+    await waitForPort(this.control.port, 15_000, () => gui.exitCode !== null);
+  }
+
+  /** One GUI call on the window's control port (authenticated per connection). */
+  private ui(method: string, params: Record<string, unknown> = {}): Promise<Record<string, unknown>> {
+    const c = this.control;
+    if (!c) return Promise.reject(new Error('The PdfCraft window is not running (was it closed?).'));
+    return new Promise((resolve, reject) => {
+      const sock = net.connect(c.port, '127.0.0.1');
+      let buf = '';
+      let answered = 0;
+      const timer = setTimeout(() => { sock.destroy(); reject(new Error(`PdfCraft's window did not answer ${method}.`)); }, 20_000);
+      const send = (id: number, m: string, p: Record<string, unknown>) => sock.write(`${JSON.stringify({ jsonrpc: '2.0', id, method: m, params: p })}\n`);
+      sock.on('connect', () => send(1, 'auth', { token: c.token }));
+      sock.on('error', (e) => { clearTimeout(timer); reject(new Error(`Can't reach the PdfCraft window (${e.message}).`)); });
+      sock.on('data', (d) => {
+        buf += d.toString();
+        let i: number;
+        while ((i = buf.indexOf('\n')) >= 0) {
+          const line = buf.slice(0, i);
+          buf = buf.slice(i + 1);
+          const m = JSON.parse(line) as { error?: { message?: string }; result?: Record<string, unknown> };
+          if (m.error) { clearTimeout(timer); sock.end(); reject(new Error(m.error.message ?? `${method} failed.`)); return; }
+          if (answered++ === 0) send(2, method, params);
+          else { clearTimeout(timer); sock.end(); resolve(m.result ?? {}); return; }
+        }
+      });
+    });
+  }
+
+  private tool(name: string, args: Record<string, unknown> = {}, timeoutMs?: number) { return this.client().callTool(name, args, timeoutMs); }
+
+  /** Opens `absPath` as a working copy in the work folder; the library file is only read. */
+  async open(absPath: string) {
+    this.client();
+    const dir = path.join(this.o.writeRoot, `session-${Date.now().toString(36)}-${++this.session}`);
+    await fs.mkdir(dir, { recursive: true });
+    const work = path.join(dir, path.basename(absPath));
+    await fs.copyFile(absPath, work);
+    await fs.chmod(work, 0o666); // library files are read-only; the working copy must be writable
+    this.work = work;
+    this.snaps = [];
+    this.labels = [];
+    try { await this.loadEngine(); } catch (e) { this.work = null; throw e; }
+    this.snaps = [await this.snapshot()];
+    await this.showInWindow();
+    return { name: path.basename(absPath) };
+  }
+
+  private async snapshot(): Promise<string> {
+    const f = path.join(path.dirname(this.work!), `step-${this.snaps.length}.pdf`);
+    await fs.copyFile(this.work!, f);
+    return f;
+  }
+
+  /** (Re)loads the working copy into the automation engine. */
+  private async loadEngine() {
+    const client = this.client();
+    if (this.docId) { await client.callTool('doc_close', { doc: this.docId, discard_changes: true }).catch(() => {}); this.docId = 0; }
+    try {
+      const r = (await client.callTool('doc_open', { path: this.work })) as { doc?: number };
+      if (!r?.doc) throw new Error('PdfCraft did not return a document.');
+      this.docId = r.doc;
+    } catch (e) {
+      const m = e instanceof Error ? e.message : String(e);
+      if (/password|encrypt/i.test(m)) throw new Error('This PDF is password-protected. Remove the password in PdfCraft first, then open it again.');
+      throw new Error(`PdfCraft could not read this file as a PDF (${m}).`);
+    }
+  }
+
+  private same(a: string, b: string) { return path.resolve(a.replace(/^\\\\\?\\/, '')).toLowerCase() === path.resolve(b).toLowerCase(); }
+
+  private async windowDocs(): Promise<Array<{ doc: number; path: string; dirty: boolean }>> {
+    const s = (await this.ui('ui.state')) as { documents?: Array<{ doc: number; path?: string; dirty?: boolean }> };
+    return (s.documents ?? []).map((d) => ({ doc: d.doc, path: d.path ?? '', dirty: !!d.dirty }));
+  }
+
+  /** Shows the working copy in the window: closes the tabs it had and opens the file fresh. */
+  private async showInWindow() {
+    if (this.o.headless || !this.control || !this.work) return;
+    let docs = await this.windowDocs();
+    for (let n = 0; docs.length && n < 12; n++) {
+      if (docs.some((d) => d.dirty)) await this.ui('ui.command', { id: 'file.save' }).catch(() => {});
+      await this.ui('ui.command', { id: 'file.close' }).catch(() => {});
+      await sleep(150);
+      const now = await this.windowDocs();
+      if (now.length >= docs.length) break; // a prompt blocked the close
+      docs = now;
+    }
+    await this.ui('ui.open', { path: this.work });
+    for (let i = 0; i < 60; i++) {
+      await sleep(150);
+      if ((await this.windowDocs()).some((d) => this.same(d.path, this.work!))) return;
+    }
+  }
+
+  /** Takes in edits made by hand in the window: saved into the working copy, then re-read by the engine. */
+  private async syncFromWindow() {
+    if (this.o.headless || !this.control || !this.work) return;
+    const mine = (await this.windowDocs()).filter((d) => this.same(d.path, this.work!));
+    if (!mine.some((d) => d.dirty)) return;
+    await this.ui('ui.command', { id: 'file.save' });
+    for (let i = 0; i < 40; i++) {
+      await sleep(150);
+      if (!(await this.windowDocs()).some((d) => this.same(d.path, this.work!) && d.dirty)) break;
+    }
+    this.snaps.push(await this.snapshot());
+    this.labels.push('Edit in PdfCraft');
+    await this.loadEngine();
+  }
+
+  async run(op: AppOperation) {
+    if (!this.work) throw new Error('No PDF is open.');
+    await this.syncFromWindow();
+    const p = op.params;
+    if (op.command === 'pdf.replaceText') await this.replaceText(String(p.find), String(p.replace));
+    else if (op.command === 'pdf.addText') await this.addText(String(p.text), Number(p.page), String(p.position), Number(p.size));
+    else if (op.command.startsWith('tool:')) {
+      const name = op.command.slice(5);
+      if (!PDF_TOOLS.includes(name)) throw new Error(`PdfCraft step "${name}" is not allowed.`);
+      await this.checkPages(name, p.pages);
+      await this.tool(name, { doc: this.docId, ...p });
+    } else throw new Error(`Unknown PdfCraft command "${op.command}".`);
+    await this.commit(PDF_STEP_LABEL[op.command] ?? op.command);
+  }
+
+  /** Saves the engine's document into the working copy, records a step and refreshes the window. */
+  private async commit(label: string) {
+    await this.tool('doc_save', { doc: this.docId, full: true });
+    this.snaps.push(await this.snapshot());
+    this.labels.push(label);
+    await this.showInWindow();
+  }
+
+  private async pageCount(): Promise<number> {
+    const r = (await this.tool('doc_info', { doc: this.docId })) as { pages?: unknown[] };
+    return r.pages?.length ?? 0;
+  }
+
+  private async checkPages(tool: string, pages: unknown) {
+    if (!Array.isArray(pages)) return;
+    const n = await this.pageCount();
+    if ((pages as number[]).some((x) => x > n)) throw new Error(`The document has only ${n} page${n === 1 ? '' : 's'}.`);
+    if (tool === 'page_delete' && new Set(pages as number[]).size >= n) throw new Error('A PDF needs at least one page: leave one page in.');
+  }
+
+  private async replaceText(find: string, replace: string) {
+    const n = await this.pageCount();
+    let replaced = 0;
+    for (let page = 1; page <= n; page++) {
+      const r = (await this.tool('text_paragraphs', { doc: this.docId, page })) as { paragraphs?: Array<{ paragraph: number; text: string }> };
+      for (const para of r.paragraphs ?? []) {
+        if (!para.text.includes(find)) continue;
+        await this.tool('text_edit', { doc: this.docId, page, paragraph: para.paragraph, text: para.text.split(find).join(replace) });
+        replaced += para.text.split(find).length - 1;
+      }
+    }
+    if (!replaced) throw new Error(`"${find}" was not found in the document.`);
+  }
+
+  private async addText(text: string, page: number, position: string, size: number) {
+    const info = (await this.tool('doc_info', { doc: this.docId })) as { pages?: Array<{ width: number; height: number }> };
+    const pg = info.pages?.[page - 1];
+    if (!pg) throw new Error(`The document has only ${info.pages?.length ?? 0} page${info.pages?.length === 1 ? '' : 's'}.`);
+    const y = position === 'top' ? 54 : position === 'middle' ? pg.height / 2 : pg.height - 90;
+    await this.tool('page_add_text', { doc: this.docId, page, text, size, at: [72, Math.round(y)], width: Math.max(50, Math.round(pg.width - 144)) });
+  }
+
+  quickEditSteps(opId: string, values: EditValues): AppOperation[] { return pdfcraftSteps(opId, values); }
+
+  async describe() {
+    await this.syncFromWindow();
+    const info = (await this.tool('doc_info', { doc: this.docId })) as { title?: string | null; pages?: unknown[] };
+    const pages = info.pages?.length ?? 0;
+    const t = (await this.tool('text_extract', { doc: this.docId, pages: Array.from({ length: Math.min(pages, 3) }, (_, i) => i + 1) })) as { pages?: Array<{ text?: string }> } | string;
+    const raw = typeof t === 'string' ? t : (t.pages ?? []).map((p) => p.text ?? '').join('\n');
+    const text = raw.split(/\r?\n/).map((l) => l.trim()).filter(Boolean).slice(0, 40).map((l) => l.slice(0, 160));
+    return { pages, title: info.title ?? null, text };
+  }
+
+  async history() {
+    await this.syncFromWindow();
+    return ['Open', ...this.labels];
+  }
+
+  async undo() {
+    await this.syncFromWindow();
+    if (this.snaps.length <= 1) throw new Error('Nothing to undo.');
+    this.snaps.pop();
+    this.labels.pop();
+    await fs.copyFile(this.snaps.at(-1)!, this.work!);
+    await this.loadEngine();
+    await this.showInWindow();
+  }
+
+  async writeVersion(dir: string, base: string) {
+    await this.syncFromWindow();
+    const main = path.join(dir, `${base}.pdf`);
+    await fs.mkdir(dir, { recursive: true });
+    await fs.copyFile(this.work!, main);
+    await fs.chmod(main, 0o666);
+    const png = await this.preview(1100);
+    if (png) {
+      const preview = path.join(dir, `${base}.png`);
+      await fs.writeFile(preview, png);
+      return { main, preview };
+    }
+    return { main };
+  }
+
+  async preview(maxSide: number) {
+    if (!this.docId) return null;
+    return imageOf(await this.client().request('tools/call', { name: 'render_preview', arguments: { doc: this.docId, page: 1, max_side: Math.min(4096, Math.max(64, Math.round(maxSide))) } }));
+  }
+
+  async screenshot() {
+    const r = (await this.ui('ui.screenshot')) as { png_base64?: string };
+    return r.png_base64 ? Buffer.from(r.png_base64, 'base64') : null;
+  }
 }

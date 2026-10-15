@@ -2,7 +2,7 @@
 // Every operation here was verified against the installed app's CLI (see docs/integration-audit.md);
 // main re-validates every request against this table before anything runs.
 
-export type EditorAppId = 'photocraft' | 'vectorcraft' | 'soundcraft' | 'filmcraft' | 'lightcraft' | 'effectcraft' | 'designcraft' | 'wordcraft';
+export type EditorAppId = 'photocraft' | 'vectorcraft' | 'soundcraft' | 'filmcraft' | 'lightcraft' | 'effectcraft' | 'designcraft' | 'wordcraft' | 'pdfcraft';
 
 export interface NumberParam { key: string; label: string; type: 'number'; min: number; max: number; step: number; default: number; unit?: string }
 export interface SelectParam { key: string; label: string; type: 'select'; options: Array<{ value: string; label: string }>; default: string }
@@ -35,6 +35,8 @@ export interface EditorApp {
    */
   tab: 'edit' | 'color' | 'effects' | 'audio';
   note?: string;
+  /** File types this app opens by default in the Edit tab, even when an earlier app lists them too. */
+  defaultFor?: string[];
 }
 
 /** LightCraft built-in develop presets (ids verified with presets.list in LightCraft 0.7.1). */
@@ -225,11 +227,45 @@ export const EDITOR_APPS: Record<EditorAppId, EditorApp> = {
     ],
     note: "Write and format with WordCraft's own tools, or use the text edits here. Saving keeps a new .docx version plus a PNG of the first page.",
   },
+  pdfcraft: {
+    id: 'pdfcraft',
+    tab: 'edit',
+    name: 'PdfCraft',
+    blurb: 'PDF viewing and editing (text, pages, marks)',
+    formats: ['pdf'],
+    defaultFor: ['pdf'],
+    open: 'live',
+    quickEdits: [
+      { id: 'replaceText', group: 'Text', label: 'Replace text', params: [
+        { key: 'find', label: 'Find', type: 'text', default: 'Title', maxLength: 200 },
+        { key: 'replace', label: 'Replace with', type: 'text', default: 'New title', maxLength: 200 }] },
+      { id: 'addText', group: 'Text', label: 'Add text to a page', params: [
+        { key: 'text', label: 'Text', type: 'text', default: 'Your text', maxLength: 500 },
+        { key: 'page', label: 'Page', type: 'number', min: 1, max: 10000, step: 1, default: 1 },
+        { key: 'position', label: 'Place it at the', type: 'select', default: 'bottom', options: [
+          { value: 'top', label: 'Top' }, { value: 'middle', label: 'Middle' }, { value: 'bottom', label: 'Bottom' }] },
+        { key: 'size', label: 'Size', type: 'number', min: 6, max: 96, step: 1, default: 14, unit: 'pt' }] },
+      { id: 'rotatePages', group: 'Pages', label: 'Rotate pages', params: [
+        { key: 'degrees', label: 'Turn', type: 'select', default: '90', options: [
+          { value: '90', label: 'Clockwise 90°' }, { value: '180', label: '180°' }, { value: '270', label: 'Counter-clockwise 90°' }] },
+        { key: 'pages', label: 'Pages (all, or 1,3-5)', type: 'text', default: 'all', maxLength: 60 }] },
+      { id: 'deletePages', group: 'Pages', label: 'Delete pages', params: [
+        { key: 'pages', label: 'Pages (for example 2,4-5)', type: 'text', default: '2', maxLength: 60 }] },
+      { id: 'watermark', group: 'Marks', label: 'Add a text watermark', params: [
+        { key: 'text', label: 'Text', type: 'text', default: 'DRAFT', maxLength: 60 },
+        { key: 'opacity', label: 'Opacity', type: 'number', min: 5, max: 100, step: 5, default: 30, unit: '%' }] },
+      { id: 'setTitle', group: 'Document', label: 'Set the document title', params: [
+        { key: 'title', label: 'Title', type: 'text', default: 'Untitled', maxLength: 200 }] },
+    ],
+    note: "Edit text and pages with PdfCraft's own tools in the window, or use the quick edits here. Saving keeps a new .pdf version plus a PNG of the first page; the original is never changed.",
+  },
 };
 
 /** The Edit tab's app for a file type (Color and Effects pick their app explicitly). */
 export function editorFor(format: string): EditorApp | null {
   const f = format.toLowerCase();
+  const preferred = Object.values(EDITOR_APPS).find((a) => a.defaultFor?.includes(f));
+  if (preferred) return preferred;
   return Object.values(EDITOR_APPS).find((a) => (a.tab === 'edit' || a.tab === 'audio') && a.formats.includes(f)) ?? null;
 }
 
@@ -424,6 +460,46 @@ export function wordcraftSteps(opId: string, v: EditValues): Op[] {
       { command: 'text.insert', params: { text: v.text } },
     ];
     default: throw new Error(`Unknown WordCraft edit "${opId}".`);
+  }
+}
+
+/** A page list such as "all", "2" or "1,3-5" as numbers (empty = every page); throws on anything else. */
+export function parsePageList(text: string, pageCount?: number): number[] {
+  const t = text.trim().toLowerCase();
+  if (t === 'all' || t === '') return [];
+  if (!/^\d+(-\d+)?(\s*,\s*\d+(-\d+)?)*$/.test(t)) throw new Error('Pages must be "all" or a list like 2,4-5.');
+  const out = new Set<number>();
+  for (const part of t.split(',')) {
+    const [a, b] = part.split('-').map((x) => parseInt(x.trim(), 10)) as [number, number | undefined];
+    const end = b ?? a;
+    if (a < 1 || end < a || end - a > 10000) throw new Error('Pages must be "all" or a list like 2,4-5.');
+    for (let p = a; p <= end; p++) out.add(p);
+  }
+  const list = [...out].sort((x, y) => x - y);
+  if (pageCount && list.some((p) => p > pageCount)) throw new Error(`The document has only ${pageCount} page${pageCount === 1 ? '' : 's'}.`);
+  return list;
+}
+
+/**
+ * PdfCraft operations for a quick edit. `pdf.*` commands are handled by the driver (they need to read
+ * the document first); `tool:` commands are PdfCraft automation tools, sent with the open document's id.
+ */
+export function pdfcraftSteps(opId: string, v: EditValues): Op[] {
+  switch (opId) {
+    case 'replaceText': return [{ command: 'pdf.replaceText', params: { find: v.find, replace: v.replace } }];
+    case 'addText': return [{ command: 'pdf.addText', params: { text: v.text, page: v.page, position: v.position, size: v.size } }];
+    case 'rotatePages': {
+      const pages = parsePageList(String(v.pages));
+      return [{ command: 'tool:page_rotate', params: { degrees: Number(v.degrees), ...(pages.length ? { pages } : {}) } }];
+    }
+    case 'deletePages': {
+      const pages = parsePageList(String(v.pages));
+      if (!pages.length) throw new Error('Name the pages to delete (a document needs at least one page left).');
+      return [{ command: 'tool:page_delete', params: { pages } }];
+    }
+    case 'watermark': return [{ command: 'tool:doc_watermark', params: { text: v.text, opacity: Number(v.opacity) / 100 } }];
+    case 'setTitle': return [{ command: 'tool:doc_set_info', params: { key: 'Title', value: v.title } }];
+    default: throw new Error(`Unknown PdfCraft edit "${opId}".`);
   }
 }
 

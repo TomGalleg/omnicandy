@@ -14,6 +14,8 @@ export interface ArtCraftAppDef {
   cli: string;
   /** Headless capabilities verified in the Phase 0 audit. */
   auditedHeadless: string[];
+  /** Version line ("major.minor") the integration was verified against; others get a warning note. */
+  testedVersion?: string;
 }
 
 export const ARTCRAFT_APPS: ArtCraftAppDef[] = [
@@ -24,7 +26,8 @@ export const ARTCRAFT_APPS: ArtCraftAppDef[] = [
   { id: 'designcraft', displayName: 'DesignCraft', folder: 'DesignCraft', cli: 'designcraft-cli.exe', auditedHeadless: [] },
   { id: 'soundcraft', displayName: 'SoundCraft', folder: 'SoundCraft', cli: 'soundcraft-cli.exe', auditedHeadless: [] },
   { id: 'filmcraft', displayName: 'FilmCraft', folder: 'FilmCraft', cli: 'filmcraft-cli.exe', auditedHeadless: [] },
-  { id: 'wordcraft', displayName: 'WordCraft', folder: 'WordCraft', cli: 'wordcraft-cli.exe', auditedHeadless: ['convert', 'run', 'render', 'mcp'] },
+  { id: 'wordcraft', displayName: 'WordCraft', folder: 'WordCraft', cli: 'wordcraft-cli.exe', auditedHeadless: ['convert', 'run', 'render', 'mcp'], testedVersion: '0.7' },
+  { id: 'pdfcraft', displayName: 'PdfCraft', folder: 'PdfCraft', cli: 'pdfcraft-cli.exe', auditedHeadless: ['info', 'render', 'text', 'edit', 'run', 'mcp'], testedVersion: '0.8' },
 ];
 
 function runVersion(exe: string): Promise<string | null> {
@@ -44,6 +47,9 @@ export async function probeArtCraftApp(def: ArtCraftAppDef, programFiles: string
     return { appId: def.id, displayName: def.displayName, installed: false, connected: false, version: null, capabilities: [], notes: ['Not installed.'] };
   }
   const version = await runVersion(exe);
+  const tested = def.testedVersion;
+  const found = version ? /(d+.d+).d+/.exec(version)?.[1] : undefined;
+  const mismatch = tested && found && found !== tested ? [`Version ${found} is newer or older than the ${tested} this integration was tested with; some controls may differ.`] : [];
   return {
     appId: def.id,
     displayName: def.displayName,
@@ -52,6 +58,7 @@ export async function probeArtCraftApp(def: ArtCraftAppDef, programFiles: string
     version,
     capabilities: def.auditedHeadless,
     notes: [
+      ...mismatch,
       def.auditedHeadless.length
         ? 'Headless CLI verified in audit; live app control not yet wired.'
         : 'MCP handshake verified in audit; operations not yet tested.',

@@ -65,6 +65,7 @@ const api: StudioApi = {
     clearFinished: () => ipcRenderer.invoke(IPC.deliverClear),
     history: (assetId) => (assetId ? ipcRenderer.invoke(IPC.deliverHistory, assetId) : ipcRenderer.invoke(IPC.deliverHistory)),
     openFolder: () => ipcRenderer.invoke(IPC.deliverOpenFolder),
+    addToLibrary: (jobId) => ipcRenderer.invoke(IPC.deliverKeep, jobId),
     onJobs: (cb) => {
       const listener = (_e: IpcRendererEvent, jobs: DeliverJob[]) => cb(jobs);
       ipcRenderer.on(IPC.deliverEvent, listener);

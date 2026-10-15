@@ -27,17 +27,18 @@ import { parseProjectPlan, PROJECT_KINDS, type ProjectPlan } from '@shared/proje
 import type { LiveTaskController } from './liveTask';
 import type { ProjectStore } from './projectStore';
 
-const SYSTEM_PROMPT = `You are Claude, the Creative Partner inside CreateCraft, a desktop app where the user edits media in ArtCraft apps: PhotoCraft (photos), VectorCraft (vector art), SoundCraft (audio), FilmCraft (video, on a timeline), DesignCraft (page layouts) and WordCraft (word-processing documents, .docx) in the Edit tab, LightCraft (photo light and colour) in the Color tab, and EffectCraft (effects and titles on pictures and video) in the Effects tab. The file the user is working on is open in one of these apps, shown inside CreateCraft. get_status tells you which app, and the edits that app offers.
+const SYSTEM_PROMPT = `You are Claude, the Creative Partner inside CreateCraft, a desktop app where the user edits media in ArtCraft apps: PhotoCraft (photos), VectorCraft (vector art), SoundCraft (audio), FilmCraft (video, on a timeline), DesignCraft (page layouts) WordCraft (word-processing documents, .docx) and PdfCraft (PDFs: text, pages, watermark) in the Edit tab, LightCraft (photo light and colour) in the Color tab, and EffectCraft (effects and titles on pictures and video) in the Effects tab. The file the user is working on is open in one of these apps, shown inside CreateCraft. get_status tells you which app, and the edits that app offers.
 
 You can only act through the createcraft tools. Start by calling get_status. For visual work, call look_at_document before and after you change something, so you see what you are doing.
 
-One file is open at a time, in one app. To use a different app, open a file in it with open_file and its app (get_status lists every app and the file types it takes). The same photo can go to PhotoCraft (edit), LightCraft (light and colour) or EffectCraft (effects and titles); a video to FilmCraft (timeline: trim, speed, sound, fades) or EffectCraft. To carry your changes from one app to the next, save_version first, then open the saved version (its name is in the save result) in the next app. Opening another file replaces what is open, so save first if the user wants to keep the changes. get_status also shows details of the open file when the app provides them (FilmCraft: the timeline with clip ids; DesignCraft: the text on the page, which replaceText can change; WordCraft: the paragraphs of the document, which replaceText can change and addParagraph can extend). To build a video from several files, open the first video, then add more with timeline_add (as clip, or as music), arrange them with timeline_move_clip / timeline_remove_clip, and use apply_edit for trims, crossfades between clips, fades, music volume and looks, which act on the whole video.
+One file is open at a time, in one app. To use a different app, open a file in it with open_file and its app (get_status lists every app and the file types it takes). The same photo can go to PhotoCraft (edit), LightCraft (light and colour) or EffectCraft (effects and titles); a video to FilmCraft (timeline: trim, speed, sound, fades) or EffectCraft. To carry your changes from one app to the next, save_version first, then open the saved version (its name is in the save result) in the next app. Opening another file replaces what is open, so save first if the user wants to keep the changes. get_status also shows details of the open file when the app provides them (FilmCraft: the timeline with clip ids; DesignCraft: the text on the page, which replaceText can change; WordCraft: the paragraphs of the document, which replaceText can change and addParagraph can extend; PdfCraft: the page count and the text of the first pages, which replaceText can change). To build a video from several files, open the first video, then add more with timeline_add (as clip, or as music), arrange them with timeline_move_clip / timeline_remove_clip, and use apply_edit for trims, crossfades between clips, fades, music volume and looks, which act on the whole video.
 
 Follow the user's direction. You may suggest improvements, but ask before big creative reinterpretations. Work in small steps and say briefly what you changed. If a tool says the user paused you or took control, stop at once and tell them you are waiting. Never claim a change you did not make.
 
 Saving creates a new version in the library; the user's original file is never changed. Save only when the user asks or agrees.
 
-To deliver finished files (JPEG for the web, PDF, MP4, WAV, GIF and so on), use list_export_formats and export_file. Exports go to the project's exports folder (the Deliver tab) and are made from saved library files, never from unsaved changes in the open app. Keep replies short and plain.
+To deliver finished files (JPEG for the web, PDF, MP4, WAV, GIF and so on), use list_export_formats and export_file. Exports go to the project's exports folder (the Deliver tab) and are made from saved library files, never from unsaved changes in the open app. To hand a file to another app (a Word document to PdfCraft as a PDF, or a PDF to WordCraft as a .docx), export it with export_file and add_to_library set to true, then open the new library file with open_file. The conversion is approximate for layout: tell the user what was kept.
+Keep replies short and plain.
 
 You can also create new pictures with generate_image (OpenAI or Google Gemini, using the user's own account). It costs the user money: only generate when they ask for it, keep the count low, and say which model you will use. CreateCraft shows the user the price and asks them to approve every call; if they cancel, accept it and do not ask again unless they bring it up. New images are added to the library as new files; open one with open_file to edit it. For free video on this PC use local_video_status, make_local_video (AI, on the user GPU) or make_motion_video (camera move on a picture, not AI); never switch to a paid provider because local is unavailable, ask first. For paid video use list_video_models and generate_video (Google Veo or Runway): it costs more, takes minutes, the user approves the price, and the clip lands in the library later, so tell the user rather than waiting.
 
@@ -50,7 +51,7 @@ const PLAN_PROMPT = `You are Claude, the Creative Partner inside CreateCraft. Th
 "kind": one of ${PROJECT_KINDS.map((k) => `"${k.id}" (${k.label})`).join(', ')};
 "finishedOutput": one sentence naming the finished result the user wants;
 "summary": two or three plain sentences describing your creative plan;
-"apps": which ArtCraft apps to use, from PhotoCraft (photos), VectorCraft (vector art), SoundCraft (audio), FilmCraft (video timeline), LightCraft (light and colour), EffectCraft (effects and titles), DesignCraft (page layouts), WordCraft (text documents);
+"apps": which ArtCraft apps to use, from PhotoCraft (photos), VectorCraft (vector art), SoundCraft (audio), FilmCraft (video timeline), LightCraft (light and colour), EffectCraft (effects and titles), DesignCraft (page layouts), WordCraft (text documents), PdfCraft (PDFs);
 "aiTools": AI image generation tools worth using, only from the list of available models you are given (an empty list when none is needed or none are set up); say what each is for;
 "steps": 3 to 6 short steps in plain language;
 "questions": at most 2 essential questions you still need answered (usually none);
@@ -313,7 +314,8 @@ export class ClaudePartner {
         tool('export_file', 'Exports a library file (exact name from list_files) with one or more Deliver presets (see list_export_formats) into the project\'s exports folder, and waits until done. Exports use the SAVED library file: if the user wants changes in the open app included, save_version first and export the new version. Never changes the library.', {
           name: z.string().max(512),
           preset_ids: z.array(z.string().max(64)).min(1).max(10),
-        }, async ({ name, preset_ids }) => {
+          add_to_library: z.boolean().optional().describe('Also copy each finished file into the library as a new file, so it can be opened with open_file in another app (for example a .docx exported as PDF, then opened in PdfCraft).'),
+        }, async ({ name, preset_ids, add_to_library }) => {
           try {
             const a = (await (await this.d.store()).loadManifest()).assets.find((x) => x.name === name);
             if (!a) throw new Error(`No file named "${name}". Use list_files.`);
@@ -321,7 +323,15 @@ export class ClaudePartner {
             const jobs = await q.enqueue(a.id, preset_ids, 'claude');
             activity(`Exporting ${a.name}: ${jobs.map((j) => j.presetLabel).join(', ')}`);
             const done = await q.wait(jobs.map((j) => j.id));
-            const lines = done.map((j) => (j.status === 'done' ? `${j.presetLabel}: exports/${j.output}` : `${j.presetLabel}: ${j.status}${j.error ? ` (${j.error})` : ''}`));
+            const lines: string[] = [];
+            for (const j of done) {
+              if (j.status !== 'done') { lines.push(`${j.presetLabel}: ${j.status}${j.error ? ` (${j.error})` : ''}`); continue; }
+              let kept = '';
+              if (add_to_library) {
+                try { kept = ` · in the library as ${(await q.addToLibrary(j.id)).name}`; } catch (e) { kept = ` · not added to the library (${e instanceof Error ? e.message : String(e)})`; }
+              }
+              lines.push(`${j.presetLabel}: exports/${j.output}${j.note ? ` (${j.note})` : ''}${kept}`);
+            }
             activity(`Export finished: ${lines.join('; ')}`);
             const s = ctl.snapshot();
             const unsaved = s.asset?.id === a.id && s.history.length > 1 && !s.savedVersionIds.length;
@@ -522,9 +532,9 @@ New files: ${names.join(', ') || '(none)'}`);
             return fail(/cancelled/i.test(msg) ? new Error('The user cancelled this generation. Nothing was charged. Do not retry unless they ask.') : e);
           }
         }),
-        tool('open_file', 'Opens a library file (exact name from list_files) in an ArtCraft app and shows it in that app\'s CreateCraft tab. Without app it uses the file type\'s Edit-tab app (photos: PhotoCraft, vector: VectorCraft, audio: SoundCraft, video: FilmCraft, .designcraft: DesignCraft, .docx: WordCraft). Pass app to use another one, e.g. lightcraft for colour work on a photo or effectcraft for effects and titles. Ask the user first if the current document has unsaved changes.', {
+        tool('open_file', 'Opens a library file (exact name from list_files) in an ArtCraft app and shows it in that app\'s CreateCraft tab. Without app it uses the file type\'s Edit-tab app (photos: PhotoCraft, vector: VectorCraft, audio: SoundCraft, video: FilmCraft, .designcraft: DesignCraft, .docx: WordCraft, .pdf: PdfCraft). Pass app to use another one, e.g. lightcraft for colour work on a photo or effectcraft for effects and titles. Ask the user first if the current document has unsaved changes.', {
           name: z.string().max(512),
-          app: z.enum(['photocraft', 'vectorcraft', 'soundcraft', 'filmcraft', 'lightcraft', 'effectcraft', 'designcraft', 'wordcraft']).optional(),
+          app: z.enum(['photocraft', 'vectorcraft', 'soundcraft', 'filmcraft', 'lightcraft', 'effectcraft', 'designcraft', 'wordcraft', 'pdfcraft']).optional(),
         }, async ({ name, app }) => {
           try {
             const a = (await (await this.d.store()).loadManifest()).assets.find((x) => x.name === name);

@@ -136,6 +136,7 @@ export const IPC = {
   motionCancel: 'motion:cancel',
   deliverJobs: 'deliver:jobs',
   deliverEnqueue: 'deliver:enqueue',
+  deliverKeep: 'deliver:keep',
   deliverCancel: 'deliver:cancel',
   deliverClear: 'deliver:clear',
   deliverHistory: 'deliver:history',
@@ -264,6 +265,8 @@ export interface StudioApi {
     /** Recorded exports, newest first (all, or made from one file). */
     history(assetId?: string): Promise<DeliverRecord[]>;
     openFolder(): Promise<void>;
+    /** Copies a finished export into the library so another app can open it; returns the new file's id. */
+    addToLibrary(jobId: string): Promise<string>;
     onJobs(cb: (jobs: DeliverJob[]) => void): () => void;
   };
   live: {

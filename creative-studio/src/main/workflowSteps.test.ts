@@ -40,7 +40,7 @@ describe('real workflows across the ArtCraft apps (no windows)', () => {
     tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'cs-workflow-'));
     store = new ProjectStore(path.join(tmp, 'p'));
     await store.create('workflow');
-    for (const f of ['sunset-still.jpg', 'photocraft-smoke.png', 'harbor-landscape.svg', 'tone-a440.wav', 'groove-loop.wav', 'sunset-clip.mp4', 'sunset-flyer.designcraft', 'quarterly-report.docx']) {
+    for (const f of ['sunset-still.jpg', 'photocraft-smoke.png', 'harbor-landscape.svg', 'tone-a440.wav', 'groove-loop.wav', 'sunset-clip.mp4', 'sunset-flyer.designcraft', 'quarterly-report.docx', 'quarterly-summary.pdf']) {
       ids[f] = (await store.importFile(path.join(FIXTURES, f))).asset.id;
     }
     q = new DeliverQueue({ store, emit: () => {}, installDir: dirOf });
@@ -120,6 +120,18 @@ describe('real workflows across the ArtCraft apps (no windows)', () => {
     expect(txt).toContain('Evening Tide');
     expect(txt).toContain('Closing remarks.');
     const versions = (await lib()).filter((a) => a.kind === 'document' && a.parentId);
+    expect(versions.length).toBeGreaterThanOrEqual(2);
+  }, 120000);
+
+  it.skipIf(!has('pdfcraft'))('a PDF: replace text and add a watermark in the background, then smaller PDF + plain text', async () => {
+    const r = await run(chain({ mode: 'files', assetIds: JSON.stringify([ids['quarterly-summary.pdf']]) },
+      [['pdfcraft', 'replaceText', { find: 'Sunset Over the Sea', replace: 'Evening Tide' }], ['pdfcraft', 'watermark', { text: 'DRAFT', opacity: 30 }]], 'pdf-small,pdf-txt'));
+    expect(r.failures).toEqual([]);
+    expect(r.exported.sort()).toEqual(['exports/quarterly-summary-replace-text-add-a-text-watermark-small.pdf', 'exports/quarterly-summary-replace-text-add-a-text-watermark.txt'].sort());
+    const txt = await fs.readFile(path.join(store.root, r.exported.find((f) => f.endsWith('.txt'))!), 'utf8');
+    expect(txt).toContain('Evening Tide');
+    expect(txt).not.toContain('Sunset Over the Sea');
+    const versions = (await lib()).filter((a) => a.sourceFormat === 'pdf' && a.parentId);
     expect(versions.length).toBeGreaterThanOrEqual(2);
   }, 120000);
 

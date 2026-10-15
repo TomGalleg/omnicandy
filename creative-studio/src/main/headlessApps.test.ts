@@ -6,21 +6,22 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { checkEditValues, EDITOR_APPS, type EditorAppId } from '@shared/appEditors';
-import { LiveDesignCraft, LiveEffectCraft, LiveFilmCraft, LiveLightCraft, LiveWordCraft } from './liveApps';
+import { LiveDesignCraft, LiveEffectCraft, LiveFilmCraft, LiveLightCraft, LivePdfCraft, LiveWordCraft } from './liveApps';
 import { sniffMedia } from './media';
 
 const PF = process.env.ProgramFiles ?? 'C:\\Program Files';
 const FIXTURES = path.resolve(__dirname, '../../fixtures/sample-project');
 const installed = (app: EditorAppId) => existsSync(path.join(PF, EDITOR_APPS[app].name, `${app}-cli.exe`));
-type Driver = LiveFilmCraft | LiveLightCraft | LiveEffectCraft | LiveDesignCraft | LiveWordCraft;
+type Driver = LiveFilmCraft | LiveLightCraft | LiveEffectCraft | LiveDesignCraft | LiveWordCraft | LivePdfCraft;
 const MAKE: Record<string, (o: ConstructorParameters<typeof LiveFilmCraft>[0]) => Driver> = {
-  filmcraft: (o) => new LiveFilmCraft(o), lightcraft: (o) => new LiveLightCraft(o), effectcraft: (o) => new LiveEffectCraft(o), designcraft: (o) => new LiveDesignCraft(o), wordcraft: (o) => new LiveWordCraft(o),
+  filmcraft: (o) => new LiveFilmCraft(o), lightcraft: (o) => new LiveLightCraft(o), effectcraft: (o) => new LiveEffectCraft(o), designcraft: (o) => new LiveDesignCraft(o), wordcraft: (o) => new LiveWordCraft(o), pdfcraft: (o) => new LivePdfCraft(o),
 };
 const CASES: Array<{ app: EditorAppId; file: string; values?: Record<string, Record<string, unknown>> }> = [
   { app: 'filmcraft', file: 'sunset-clip.mp4' },
   { app: 'lightcraft', file: 'sunset-still.jpg' },
   { app: 'effectcraft', file: 'sunset-still.jpg', values: { title: { text: 'Evening' } } },
   { app: 'wordcraft', file: 'quarterly-report.docx', values: { replaceText: { find: 'Sunset Over the Sea', replace: 'Evening Tide' }, addParagraph: { text: 'Closing remarks.' } } },
+  { app: 'pdfcraft', file: 'quarterly-summary.pdf', values: { replaceText: { find: 'Sunset Over the Sea', replace: 'Evening Tide' }, addText: { text: 'Approved', page: 1 } } },
   { app: 'designcraft', file: 'sunset-flyer.designcraft', values: { replaceText: { find: 'Sunset Over the Sea', replace: 'Evening Tide' } } },
 ];
 
