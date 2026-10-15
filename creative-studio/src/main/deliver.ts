@@ -44,6 +44,9 @@ export function deliverCommand(p: DeliverPreset, src: string, out: string, a: Pi
     case 'audio-flac': case 'audio-aiff': return { app: 'soundcraft', args: ['convert', src, out] };
     case 'design-pdf': return { app: 'designcraft', args: ['run', '--in', src, '--export', out] };
     case 'design-png': return { app: 'designcraft', args: ['run', '--in', src, '--scale', '2', '--export', out] };
+    case 'document-pdf': case 'document-txt': case 'document-md': case 'document-html': case 'document-odt': case 'document-rtf':
+      return { app: 'wordcraft', args: ['convert', src, out] };
+    case 'document-png': return { app: 'wordcraft', args: ['render', src, out, '--page', '1'] };
   }
   const film: Record<string, Record<string, unknown>> = {
     'video-mp4': { format: 'h264' },

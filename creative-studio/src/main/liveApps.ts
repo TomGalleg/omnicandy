@@ -10,7 +10,7 @@
 import { execFile, spawn, type ChildProcess } from 'node:child_process';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { designcraftSteps, effectcraftSteps, filmcraftSteps, type DesignPage, lightcraftSteps, vectorcraftSteps, type EditValues, type EditorAppId } from '@shared/appEditors';
+import { designcraftSteps, effectcraftSteps, filmcraftSteps, type DesignPage, lightcraftSteps, vectorcraftSteps, wordcraftSteps, type EditValues, type EditorAppId } from '@shared/appEditors';
 import type { TimelineDto, TimelineEdit } from '@shared/live';
 import type { AppOperation } from '@shared/contracts';
 import { McpClient } from './mcpClient';
@@ -659,4 +659,59 @@ export class LiveDesignCraft extends LiveAppBase {
     const b = ui?.ui?.brightness;
     return b ? b.charAt(0).toLowerCase() + b.slice(1) : null;
   }
+}
+
+/**
+ * WordCraft: `wordcraft --control <port>` (loopback, no token) driven through `wordcraft-cli mcp
+ * --connect 127.0.0.1:<port>`. The .docx is opened from the library and never written back; saving
+ * writes a new .docx into the work folder plus a PNG of page 1. Headless runs use the CLI's own MCP
+ * engine confined to the library (read) and the work folder (write) with its automation roots.
+ */
+export class LiveWordCraft extends LiveAppBase {
+  readonly appId = 'wordcraft' as const;
+  protected exeName = 'wordcraft';
+
+  protected guiArgs(port: number) { return ['--control', String(port)]; }
+  protected guiEnv() { return {}; }
+  protected bridgeArgs(port: number) { return ['mcp', '--connect', `127.0.0.1:${port}`]; }
+  protected headlessArgs() { return ['mcp', '--automation-read-root', this.o.readRoot, '--automation-write-root', this.o.writeRoot]; }
+
+  async open(absPath: string) {
+    await this.client().callTool('open_document', { path: absPath });
+    return { name: path.basename(absPath) };
+  }
+  private exec(command: string, params: Record<string, unknown> = {}) { return this.client().callTool('execute', { command, params }); }
+
+  async run(op: AppOperation) {
+    const r = (await this.exec(op.command, op.params)) as { replaced?: number };
+    if (op.command === 'edit.replaceAll' && r?.replaced === 0) throw new Error(`"${String(op.params.text)}" was not found in the document.`);
+  }
+  async quickEditSteps(opId: string, values: EditValues): Promise<AppOperation[]> {
+    return wordcraftSteps(opId, values);
+  }
+  /** Page count, word count and the opening text, so Claude knows what it can replace. */
+  async describe() {
+    const d = (await this.client().callTool('inspect_document', {})) as { pages?: number; blocks?: Array<{ text?: string }> };
+    const text = (d.blocks ?? []).map((b) => b.text ?? '').filter(Boolean);
+    return { pages: d.pages, text: text.slice(0, 40).map((t) => t.slice(0, 160)) };
+  }
+  async history() {
+    const h = (await this.exec('edit.undoHistory')) as { undo?: string[] };
+    return ['Open', ...(h.undo ?? [])];
+  }
+  async undo() { await this.exec('edit.undo'); }
+  async writeVersion(dir: string, base: string) {
+    const main = path.join(dir, `${base}.docx`);
+    const preview = path.join(dir, `${base}.png`);
+    await this.client().callTool('save_document', { path: main });
+    await waitForFile(main);
+    // Page 1 as a picture (the PNG the library shows beside the document).
+    const png = imageOf(await this.client().request('tools/call', { name: 'render_page', arguments: { page: 1, scale: 1.5 } }));
+    if (png) { await fs.writeFile(preview, png); return { main, preview }; }
+    return { main };
+  }
+  async preview(maxSide: number) {
+    return imageOf(await this.client().request('tools/call', { name: 'render_page', arguments: { page: 1, scale: Math.min(2, maxSide / 800) } }));
+  }
+  async screenshot() { return imageOf(await this.client().request('tools/call', { name: 'screenshot', arguments: {} })); }
 }

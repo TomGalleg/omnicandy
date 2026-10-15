@@ -5,7 +5,7 @@
 import type { EditorAppId } from './appEditors';
 import type { Asset } from './types';
 
-export type DeliverGroup = 'image' | 'vector' | 'audio' | 'video' | 'design';
+export type DeliverGroup = 'image' | 'vector' | 'audio' | 'video' | 'design' | 'document';
 
 export interface DeliverPreset {
   id: string;
@@ -27,6 +27,7 @@ export const DELIVER_SOURCES: Record<DeliverGroup, string[]> = {
   audio: ['wav', 'flac', 'aif', 'aiff'],
   video: ['mp4', 'mov', 'webm', 'mkv'],
   design: ['designcraft'],
+  document: ['docx'],
 };
 
 export const DELIVER_PRESETS: DeliverPreset[] = [
@@ -58,6 +59,14 @@ export const DELIVER_PRESETS: DeliverPreset[] = [
 
   { id: 'design-pdf', group: 'design', label: 'PDF', note: 'All pages, for print or sharing', ext: 'pdf', app: 'designcraft', suffix: '' },
   { id: 'design-png', group: 'design', label: 'PNG of page 1 at 2×', note: 'For screens and social posts', ext: 'png', app: 'designcraft', suffix: '@2x' },
+
+  { id: 'document-pdf', group: 'document', label: 'PDF', note: 'All pages, for print or sharing', ext: 'pdf', app: 'wordcraft', suffix: '' },
+  { id: 'document-png', group: 'document', label: 'PNG of page 1', note: 'A picture of the first page', ext: 'png', app: 'wordcraft', suffix: '' },
+  { id: 'document-txt', group: 'document', label: 'Plain text', note: 'Text only, no formatting', ext: 'txt', app: 'wordcraft', suffix: '' },
+  { id: 'document-md', group: 'document', label: 'Markdown', note: 'Text with simple formatting', ext: 'md', app: 'wordcraft', suffix: '' },
+  { id: 'document-html', group: 'document', label: 'Web page (HTML)', note: 'For the web or email', ext: 'html', app: 'wordcraft', suffix: '' },
+  { id: 'document-odt', group: 'document', label: 'OpenDocument (ODT)', note: 'For LibreOffice and others', ext: 'odt', app: 'wordcraft', suffix: '' },
+  { id: 'document-rtf', group: 'document', label: 'Rich Text (RTF)', note: 'Opens in almost any word processor', ext: 'rtf', app: 'wordcraft', suffix: '' },
 ];
 
 export const presetById = (id: string) => DELIVER_PRESETS.find((p) => p.id === id);

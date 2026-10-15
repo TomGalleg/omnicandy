@@ -40,7 +40,7 @@ describe('real workflows across the ArtCraft apps (no windows)', () => {
     tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'cs-workflow-'));
     store = new ProjectStore(path.join(tmp, 'p'));
     await store.create('workflow');
-    for (const f of ['sunset-still.jpg', 'photocraft-smoke.png', 'harbor-landscape.svg', 'tone-a440.wav', 'groove-loop.wav', 'sunset-clip.mp4', 'sunset-flyer.designcraft']) {
+    for (const f of ['sunset-still.jpg', 'photocraft-smoke.png', 'harbor-landscape.svg', 'tone-a440.wav', 'groove-loop.wav', 'sunset-clip.mp4', 'sunset-flyer.designcraft', 'quarterly-report.docx']) {
       ids[f] = (await store.importFile(path.join(FIXTURES, f))).asset.id;
     }
     q = new DeliverQueue({ store, emit: () => {}, installDir: dirOf });
@@ -110,6 +110,18 @@ describe('real workflows across the ArtCraft apps (no windows)', () => {
     expect(flyer.failures).toEqual([]);
     expect(flyer.exported).toEqual(['exports/sunset-flyer-replace-text.pdf']);
   }, 300000);
+
+  it.skipIf(!has('wordcraft'))('a Word document: replace text and add a paragraph in the background, then PDF + plain text', async () => {
+    const r = await run(chain({ mode: 'files', assetIds: JSON.stringify([ids['quarterly-report.docx']]) },
+      [['wordcraft', 'replaceText', { find: 'Sunset Over the Sea', replace: 'Evening Tide' }], ['wordcraft', 'addParagraph', { text: 'Closing remarks.' }]], 'document-pdf,document-txt'));
+    expect(r.failures).toEqual([]);
+    expect(r.exported.sort()).toEqual(['exports/quarterly-report-replace-text-add-a-paragraph-at-the-end.pdf', 'exports/quarterly-report-replace-text-add-a-paragraph-at-the-end.txt'].sort());
+    const txt = await fs.readFile(path.join(store.root, r.exported.find((f) => f.endsWith('.txt'))!), 'utf8');
+    expect(txt).toContain('Evening Tide');
+    expect(txt).toContain('Closing remarks.');
+    const versions = (await lib()).filter((a) => a.kind === 'document' && a.parentId);
+    expect(versions.length).toBeGreaterThanOrEqual(2);
+  }, 120000);
 
   it.skipIf(!has('photocraft'))('a folder as input: files are copied into the library; you approve one of two', async () => {
     const folder = path.join(tmp, 'shoot');

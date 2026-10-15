@@ -130,6 +130,17 @@ const DEFS: Def[] = [
       { key: 'out', type: 'export', presets: ['design-pdf', 'design-png'] },
     ], connections: chain('files', 'text', 'ok', 'out') },
   },
+  {
+    id: 'builtin-document-pdf', name: 'Document to PDF', kind: 'design', status: 'partial',
+    description: 'Replaces a phrase in a Word document (.docx), waits for approval and exports a PDF and plain text.',
+    needs: 'A Word document (.docx) with the phrase you want to change. One document per run; it edits text only (no layout or style changes).',
+    input: { title: 'Document to PDF', explanation: 'Replace text, approve, export.', steps: [
+      imp('your document'),
+      { key: 'text', type: 'artcraftEdit', app: 'wordcraft', edit: 'replaceText', edit_settings: { find: 'Title', replace: 'Final title' } },
+      { key: 'ok', type: 'approval', note: 'Check the document before exporting.' },
+      { key: 'out', type: 'export', presets: ['document-pdf', 'document-txt'] },
+    ], connections: chain('files', 'text', 'ok', 'out') },
+  },
 ];
 
 export type BuiltinTemplate = WorkflowTemplate & { builtin: true; kind: ProjectKind; status: TemplateStatus; needs: string; costNote: string };

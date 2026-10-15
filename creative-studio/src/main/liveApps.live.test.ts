@@ -7,7 +7,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { EDITOR_APPS, type EditorAppId } from '@shared/appEditors';
-import { LiveDesignCraft, LiveEffectCraft, LiveFilmCraft, LiveLightCraft, LiveSoundCraft } from './liveApps';
+import { LiveDesignCraft, LiveEffectCraft, LiveFilmCraft, LiveLightCraft, LiveSoundCraft, LiveWordCraft } from './liveApps';
 import { LiveTaskController } from './liveTask';
 import { sniffMedia } from './media';
 import { ProjectStore } from './projectStore';
@@ -277,6 +277,38 @@ describe.skipIf(!has('DesignCraft'))('Live DesignCraft (real window)', () => {
     expect(await t.app.applyTheme('light')).toBe('light');
     expect(await t.app.applyTheme('mediumDark')).toBe('mediumDark');
   }, 60000);
+});
+
+describe.skipIf(!has('WordCraft'))('Live WordCraft (real window)', () => {
+  let t: Awaited<ReturnType<typeof setup>>;
+  let doc: string;
+  beforeAll(async () => {
+    t = await setup('wordcraft', (o) => new LiveWordCraft(o) as unknown as Driver);
+    doc = (await t.store.importFile(path.join(FIXTURES, 'quarterly-report.docx'))).asset.id;
+  }, 60000);
+  afterAll(async () => { await t?.cleanup(); });
+
+  it('opens a document, edits text, undoes, and saves a new .docx version with a PNG of page 1', async () => {
+    const s = await t.ctl.open(doc);
+    expect(s.status).toBe('ready');
+    expect(s.history).toEqual(['Open']);
+    const d = (await (t.app as unknown as LiveWordCraft).describe()) as { text: string[] };
+    expect(d.text[0]).toBe('Quarterly Report');
+    await t.ctl.quickEdit('replaceText', { find: 'Sunset Over the Sea', replace: 'Evening Tide' });
+    await expect(t.ctl.quickEdit('replaceText', { find: 'not in this document', replace: 'x' })).rejects.toThrow(/not found/);
+    const h = (await t.ctl.quickEdit('addParagraph', { text: 'Closing remarks.' })).history;
+    expect(h.length).toBeGreaterThanOrEqual(3);
+    expect((await t.ctl.undo()).history.length).toBe(h.length - 1);
+    await t.ctl.quickEdit('addParagraph', { text: 'Closing remarks.' });
+    const saved = await t.ctl.saveVersion();
+    expect(saved.savedVersionIds).toHaveLength(2);
+    const main = await fileInfo(t.store, saved.savedVersionIds[0]!);
+    const png = await fileInfo(t.store, saved.savedVersionIds[1]!);
+    expect(main.asset).toMatchObject({ kind: 'document', parentId: doc, sourceFormat: 'docx' });
+    expect(png.asset.kind).toBe('image');
+    expect(png.info.width).toBeGreaterThan(500);
+    expect((await t.ctl.preview(800))?.subarray(1, 4).toString()).toBe('PNG');
+  }, 120000);
 });
 
 describe.skipIf(!has('SoundCraft'))('Live SoundCraft timeline and history (real window)', () => {

@@ -146,3 +146,20 @@ the built app with the offline Mock model and a fake key (smoke tests).
 | Credential vault | **Real, verified** | `SafeStorageVault` (`src/main/credentialVault.ts`): DPAPI-encrypted files, main process only; smoke checks that the file on disk does not contain the key and the renderer never receives it |
 | Midjourney automation | **Blocked by policy** | Import from a user-chosen folder only |
 | SQLite asset index | **Deferred** | Phase 1 uses a JSON manifest; see `creative-studio/docs/architecture.md` |
+
+## Audit of five more ArtCraft apps (2026-10-15, this PC, all 0.6-0.7 builds)
+
+All five installed in `C:\Program Files\<App>\` (`<app>.exe` + `<app>-cli.exe`), none running during the audit.
+Real runs only (scratch files, no CreateCraft project touched, no paid call).
+
+| App | Version | Native files | Headless CLI (verified) | MCP tools (headless `mcp`) | Live control (verified) | Token |
+|---|---|---|---|---|---|---|
+| CADCraft | 0.7.0 | .dxf (read/write), .dwg (convert both ways) | `convert` DXF to dxf/dwg/svg/png(2400x1600)/pdf; `info`; `run --cmd 'id {json}' --save --export`; `sample bracket|floorplan` | 12 (`command_line, script, execute, inspect_drawing, query_entities, render, open, save...`), 426 commands | `cadcraft --control PORT` + `cadcraft-cli mcp --connect 127.0.0.1:PORT`: open, inspect, screenshot ok | none |
+| FigCraft | 0.6.0 | .figcraft; imports .json, .fig (best effort), .svg, png/jpg/webp/gif/bmp | `export` png/jpg/svg/webp/pdf/fig (+ bleed, crop marks, CMYK), `convert`, `render`, `run script.json` | 18 (`run_command, batch, create_node, set_properties, inspect_document, export, screenshot, open_file, save_file, undo/redo`...) | `figcraft --control PORT` + `figcraft-cli mcp --attach PORT`: open, inspect, screenshot ok | none |
+| WordCraft | 0.7.0 | .docx (also read .doc) | `convert` docx to pdf/html/md/txt/odt/rtf/png/tex/json/xml; `info`, `text`, `inspect`, `render --page`, `run --file --cmd --save` | 16, 617 commands; `--automation-read-root/-write-root` for headless | `wordcraft --control PORT` + `wordcraft-cli mcp --connect 127.0.0.1:PORT`: open, inspect, screenshot ok | none (roots only headless) |
+| DeckCraft | 0.7.0 | .deckcraft; converts to/from .pptx | `render --slide N|--all` png, `convert` to pdf/pptx/png, `run --in --cmd --save --export`, `info` | 25 (`open/save_presentation, export, inspect_slide, render_slide, add_slide, add_text_box, set_text, insert_*`...), 234 commands | `deckcraft --control PORT` + `deckcraft-cli mcp --connect PORT`: open, inspect, screenshot ok | none |
+| GridCraft | 0.7.0 | .xlsx | `convert` xlsx/csv/tsv/json/html, `eval`, `cat`, `check`, `run --in --cmd --out --print`, `info` | 21 (`read_range, write_range, set_cell, evaluate_formula, format_range, insert_chart, ...`), 341 commands | `gridcraft --control PORT` + `gridcraft-cli mcp --connect PORT`: open, inspect ok; `screenshot` needs a `path` argument | none |
+
+Not yet verified: app-interface theme sync (commands exist: FigCraft `view.themeLight/Dark/System`, WordCraft `view.darkMode`;
+none found for CADCraft, DeckCraft, GridCraft), saving from a live window, and any Edit-tab embedding of the new windows.
+Every live check used the app's own window opened by the audit and closed afterwards.

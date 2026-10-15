@@ -3,8 +3,8 @@ import { builtinTemplates, templateCatalogForClaude } from './templates';
 
 describe('built-in templates', () => {
   const all = builtinTemplates();
-  it('has the nine templates, with no file choices', () => {
-    expect(all).toHaveLength(9);
+  it('has the ten templates, with no file choices', () => {
+    expect(all).toHaveLength(10);
     for (const t of all) {
       expect(t.graph.nodes.length).toBeGreaterThan(2);
       for (const n of t.graph.nodes.filter((x) => x.type === 'import')) expect(n.params.assetIds).toBe('[]');

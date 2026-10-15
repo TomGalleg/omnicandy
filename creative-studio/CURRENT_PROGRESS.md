@@ -351,6 +351,22 @@ Free local video, Stage A + B (2026-10-14):
 * **Requirement added by Tomas:** Free Local AI must have a built-in, self-service setup inside CreateCraft (guided: check this PC, pick a model, consent, download, self-test, status and repair/remove). The user must not need to install Python or ComfyUI by hand.
 * Next (needs Tomas's OK): Stage C hardware detection, then model download and a real inference test.
 
+Five more ArtCraft apps (2026-10-15): CADCraft, FigCraft, WordCraft, DeckCraft, GridCraft are installed (0.6-0.7). **Audit done**
+(`docs/integration-audit.md`, "Audit of five more ArtCraft apps"): headless CLI and live control (`--control PORT` + CLI bridge, no
+token) verified for all five on this PC; theme sync not found/verified for any. Integration order: one app at a time, stop for
+Tomas's OK after each.
+* **WordCraft (first, 2026-10-15): INTEGRATED, partly verified.** New asset kind `document` (.docx). Registry entry (`wordcraft`,
+  Edit tab) with quick edits Replace text (`edit.replaceAll`) and Add a paragraph; live driver `LiveWordCraft`
+  (open_document, execute, save_document + render_page PNG, `edit.undoHistory`); headless engine for workflows
+  (`wordcraft-cli mcp` with automation read/write roots); 7 Deliver presets (PDF, PNG of page 1, TXT, MD, HTML, ODT, RTF via
+  `convert`/`render`); Claude `open_file`/`get_status`/workflow tools get it through the shared tables; template "Document to PDF";
+  Media filter "Documents". Theme sync: none (`view.darkMode` only toggles the page's dark mode): listed as manual.
+  Verified on this PC: every Deliver preset (real CLI), real workflow (replace text, add paragraph, PDF + text), real WordCraft
+  window through the live controller (open, edit, undo, save new .docx + PNG, preview). **Not verified:** the in-app Edit-tab
+  embedding and UI smokes (Tomas's CreateCraft was running, so none was launched), a real Claude request using it, thumbnails for
+  imported .docx (shows "DOCX" until a version is saved). Tests: lint 0, types 0, 228 passed / 15 skipped
+  (+8); `videoGeneration` tests flake under full-suite load (EPERM rename), pass alone.
+
 Phase 1 note: the old `integrationStatus().claude` field in `src/main/ipc.ts` still says "not
 configured in this build" (stale); Settings now shows Claude's real sign-in state instead.
 

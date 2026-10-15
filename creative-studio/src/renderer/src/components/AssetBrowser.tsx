@@ -15,7 +15,7 @@ interface Props {
 const VIEWABLE: AssetKind[] = ['image', 'vector'];
 
 /** Plain names for asset kinds, as people say them. */
-export const KIND_LABEL: Record<AssetKind, string> = { image: 'Picture', vector: 'Vector art', audio: 'Sound', video: 'Video', project: 'App document', design: 'Layout' };
+export const KIND_LABEL: Record<AssetKind, string> = { image: 'Picture', vector: 'Vector art', audio: 'Sound', video: 'Video', project: 'App document', design: 'Layout', document: 'Document' };
 const ORIGIN_LABEL: Record<string, string> = { imported: 'Imported', generated: 'Created in CreateCraft', fixture: 'Sample file' };
 
 const readKey = (k: string) => { try { return window.localStorage.getItem(k); } catch { return null; } };
@@ -102,6 +102,7 @@ export function AssetBrowser({ manifest, selectedId, onSelect, onManifest, log }
               <option value="audio">Sounds</option>
               <option value="video">Videos</option>
               <option value="design">Layouts</option>
+              <option value="document">Documents</option>
               <option value="project">App documents</option>
             </select>
           </div>
@@ -116,7 +117,7 @@ export function AssetBrowser({ manifest, selectedId, onSelect, onManifest, log }
               )}
               {collection !== 'deliverables' && assets.map((a) => (
                 <button key={a.id} role="option" className="asset" aria-selected={a.id === selectedId} onClick={() => onSelect(a.id)}>
-                  <AssetThumb asset={a} rendition={a.sourceFormat === 'pcraft' || a.sourceFormat === 'designcraft' ? manifest?.assets.find((x) => x.parentId === a.id && x.kind === 'image') : undefined} />
+                  <AssetThumb asset={a} rendition={a.sourceFormat === 'pcraft' || a.sourceFormat === 'designcraft' || a.sourceFormat === 'docx' ? manifest?.assets.find((x) => x.parentId === a.id && x.kind === 'image') : undefined} />
                   <span className="asset-name" title={a.name}>{a.name}</span>
                   <span className="asset-meta">{KIND_LABEL[a.kind]} · {formatDims(a) || formatBytes(a.bytes)}</span>
                 </button>

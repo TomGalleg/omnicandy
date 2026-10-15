@@ -18,7 +18,7 @@ try {
   await win.getByRole('button', { name: /^Templates/ }).click();
   const items = win.locator('.template-item');
   await items.first().waitFor();
-  check('Templates panel lists the nine built-in templates', (await items.count()) === 9, String(await items.count()));
+  check('Templates panel lists the ten built-in templates', (await items.count()) === 10, String(await items.count()));
   const text = await win.locator('.template-list').textContent();
   check('each is labelled honestly (ready / paid / partly manual)', /Ready: local apps only/.test(text) && /Uses paid AI \(asks first\)/.test(text) && /Partly manual/.test(text));
   await win.screenshot({ path: path.join(shots, '97-templates-home.png') });

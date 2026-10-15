@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { appForTab, checkEditValues, designcraftSteps, EDITOR_APPS, editorFor, effectcraftSteps, filmcraftSteps, lightcraftSteps, type FilmSequence } from './appEditors';
+import { appForTab, checkEditValues, designcraftSteps, EDITOR_APPS, editorFor, effectcraftSteps, filmcraftSteps, lightcraftSteps, type FilmSequence, wordcraftSteps } from './appEditors';
 
 const seq: FilmSequence = {
   fps: 24000 / 1001,
@@ -25,6 +25,7 @@ describe('which app opens a file in which tab', () => {
     expect(editorFor('jpg')?.id).toBe('photocraft');
     expect(editorFor('mp4')?.id).toBe('filmcraft');
     expect(editorFor('designcraft')?.id).toBe('designcraft');
+    expect(editorFor('DOCX')?.id).toBe('wordcraft');
     expect(appForTab('color', 'jpg')?.id).toBe('lightcraft');
     expect(appForTab('color', 'svg')).toBeNull();
     expect(appForTab('effects', 'mp4')?.id).toBe('effectcraft');
@@ -106,5 +107,12 @@ describe('DesignCraft steps', () => {
   it('only offers the swatch colours every document has', () => {
     const add = EDITOR_APPS.designcraft.quickEdits.find((o) => o.id === 'addText')!;
     expect(checkEditValues(add, { text: 'x', color: '#ff0000' }).ok).toBe(false);
+  });
+});
+describe('WordCraft steps', () => {
+  it('replaces text everywhere and appends a paragraph at the end', () => {
+    expect(wordcraftSteps('replaceText', { find: 'Sunset', replace: 'Dawn' })).toEqual([{ command: 'edit.replaceAll', params: { text: 'Sunset', with: 'Dawn', matchCase: true } }]);
+    expect(wordcraftSteps('addParagraph', { text: 'Bye' }).map((s) => s.command)).toEqual(['caret.docEnd', 'text.newParagraph', 'text.insert']);
+    expect(() => wordcraftSteps('nope', {})).toThrow();
   });
 });

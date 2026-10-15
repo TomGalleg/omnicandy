@@ -44,7 +44,7 @@ const edgeMarker = { type: MarkerType.ArrowClosed, width: 16, height: 16 };
 
 const readKey = (k: string) => { try { return window.localStorage.getItem(k); } catch { return null; } };
 const writeKey = (k: string, v: string) => { try { window.localStorage.setItem(k, v); } catch { /* storage unavailable */ } };
-const GROUP_LABEL: Record<DeliverGroup, string> = { image: 'Pictures', vector: 'Vector art', audio: 'Audio', video: 'Video', design: 'Layouts' };
+const GROUP_LABEL: Record<DeliverGroup, string> = { image: 'Pictures', vector: 'Vector art', audio: 'Audio', video: 'Video', design: 'Layouts', document: 'Documents' };
 
 const toGraph = (nodes: StudioNode[], edges: Edge[]): WorkflowGraph => ({
   schemaVersion: 1,

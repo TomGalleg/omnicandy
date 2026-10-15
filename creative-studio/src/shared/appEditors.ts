@@ -2,7 +2,7 @@
 // Every operation here was verified against the installed app's CLI (see docs/integration-audit.md);
 // main re-validates every request against this table before anything runs.
 
-export type EditorAppId = 'photocraft' | 'vectorcraft' | 'soundcraft' | 'filmcraft' | 'lightcraft' | 'effectcraft' | 'designcraft';
+export type EditorAppId = 'photocraft' | 'vectorcraft' | 'soundcraft' | 'filmcraft' | 'lightcraft' | 'effectcraft' | 'designcraft' | 'wordcraft';
 
 export interface NumberParam { key: string; label: string; type: 'number'; min: number; max: number; step: number; default: number; unit?: string }
 export interface SelectParam { key: string; label: string; type: 'select'; options: Array<{ value: string; label: string }>; default: string }
@@ -209,6 +209,22 @@ export const EDITOR_APPS: Record<EditorAppId, EditorApp> = {
     ],
     note: "Edit the layout with DesignCraft's own tools, or use the text edits here. Saving keeps a new .designcraft version plus a PNG of the first page.",
   },
+  wordcraft: {
+    id: 'wordcraft',
+    tab: 'edit',
+    name: 'WordCraft',
+    blurb: 'Word processing (letters, reports, documents)',
+    formats: ['docx'],
+    open: 'live',
+    quickEdits: [
+      { id: 'replaceText', group: 'Text', label: 'Replace text', params: [
+        { key: 'find', label: 'Find', type: 'text', default: 'Title', maxLength: 200 },
+        { key: 'replace', label: 'Replace with', type: 'text', default: 'New title', maxLength: 200 }] },
+      { id: 'addParagraph', group: 'Text', label: 'Add a paragraph at the end', params: [
+        { key: 'text', label: 'Text', type: 'text', default: 'Your text', maxLength: 2000 }] },
+    ],
+    note: "Write and format with WordCraft's own tools, or use the text edits here. Saving keeps a new .docx version plus a PNG of the first page.",
+  },
 };
 
 /** The Edit tab's app for a file type (Color and Effects pick their app explicitly). */
@@ -395,6 +411,19 @@ export function lightcraftSteps(opId: string, v: EditValues): Op[] {
     case 'look': return [{ command: 'preset.apply', params: { id: v.preset, amount: v.amount } }];
     case 'reset': return [{ command: 'develop.reset', params: {} }];
     default: throw new Error(`Unknown LightCraft edit "${opId}".`);
+  }
+}
+
+/** WordCraft commands for a quick edit (verified headless and live). */
+export function wordcraftSteps(opId: string, v: EditValues): Op[] {
+  switch (opId) {
+    case 'replaceText': return [{ command: 'edit.replaceAll', params: { text: v.find, with: v.replace, matchCase: true } }];
+    case 'addParagraph': return [
+      { command: 'caret.docEnd', params: {} },
+      { command: 'text.newParagraph', params: {} },
+      { command: 'text.insert', params: { text: v.text } },
+    ];
+    default: throw new Error(`Unknown WordCraft edit "${opId}".`);
   }
 }
 

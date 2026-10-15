@@ -13,16 +13,17 @@ import { deliverGroupFor, presetById, presetsFor } from '@shared/deliver';
 import type { StepRequest } from '@shared/workflowRunner';
 import { AppEditors } from './appEditors';
 import type { DeliverQueue } from './deliver';
-import { LiveDesignCraft, LiveEffectCraft, LiveFilmCraft, LiveLightCraft } from './liveApps';
+import { LiveDesignCraft, LiveEffectCraft, LiveFilmCraft, LiveLightCraft, LiveWordCraft } from './liveApps';
 import { IMPORTABLE_EXTENSIONS } from './media';
 import type { ProjectStore } from './projectStore';
 
-type Engine = LiveFilmCraft | LiveLightCraft | LiveEffectCraft | LiveDesignCraft;
+type Engine = LiveFilmCraft | LiveLightCraft | LiveEffectCraft | LiveDesignCraft | LiveWordCraft;
 const ENGINES: Partial<Record<EditorAppId, (o: ConstructorParameters<typeof LiveFilmCraft>[0]) => Engine>> = {
   filmcraft: (o) => new LiveFilmCraft(o),
   lightcraft: (o) => new LiveLightCraft(o),
   effectcraft: (o) => new LiveEffectCraft(o),
   designcraft: (o) => new LiveDesignCraft(o),
+  wordcraft: (o) => new LiveWordCraft(o),
 };
 const CLI_APPS = new Set<EditorAppId>(['photocraft', 'vectorcraft', 'soundcraft']);
 

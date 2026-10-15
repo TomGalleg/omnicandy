@@ -9,6 +9,7 @@ const KIND_BY_EXT: Record<string, AssetKind> = {
   wav: 'audio', mp3: 'audio', flac: 'audio', ogg: 'audio', aif: 'audio', aiff: 'audio',
   mp4: 'video', mov: 'video', webm: 'video', mkv: 'video',
   designcraft: 'design',
+  docx: 'document',
   pcraft: 'project', psd: 'project', vectorcraft: 'project', scraft: 'project', fcproj: 'project', ecproj: 'project',
 };
 
