@@ -5,7 +5,7 @@
 import type { EditorAppId } from './appEditors';
 import type { Asset } from './types';
 
-export type DeliverGroup = 'image' | 'vector' | 'audio' | 'video' | 'design' | 'document' | 'pdf' | 'sheet';
+export type DeliverGroup = 'image' | 'vector' | 'audio' | 'video' | 'design' | 'document' | 'pdf' | 'sheet' | 'deck';
 
 export interface DeliverPreset {
   id: string;
@@ -25,6 +25,7 @@ export const DELIVER_SOURCES: Record<DeliverGroup, string[]> = {
   image: ['png', 'jpg', 'jpeg', 'webp', 'tif', 'tiff', 'bmp', 'gif', 'psd', 'pcraft'],
   pdf: ['pdf'],
   sheet: ['xlsx'],
+  deck: ['deckcraft', 'pptx'],
   vector: ['svg', 'svgz', 'ai', 'eps', 'pdf', 'vectorcraft'],
   audio: ['wav', 'flac', 'aif', 'aiff'],
   video: ['mp4', 'mov', 'webm', 'mkv'],
@@ -68,6 +69,10 @@ export const DELIVER_PRESETS: DeliverPreset[] = [
   { id: 'document-md', group: 'document', label: 'Markdown', note: 'Text with simple formatting', ext: 'md', app: 'wordcraft', suffix: '' },
   { id: 'document-html', group: 'document', label: 'Web page (HTML)', note: 'For the web or email', ext: 'html', app: 'wordcraft', suffix: '' },
   { id: 'document-odt', group: 'document', label: 'OpenDocument (ODT)', note: 'For LibreOffice and others', ext: 'odt', app: 'wordcraft', suffix: '' },
+  { id: 'deck-pdf', group: 'deck', label: 'PDF', note: 'All slides, for sharing or print', ext: 'pdf', app: 'deckcraft', suffix: '' },
+  { id: 'deck-pptx', group: 'deck', label: 'PowerPoint (PPTX)', note: 'Opens in PowerPoint and others', ext: 'pptx', app: 'deckcraft', suffix: '' },
+  { id: 'deck-png', group: 'deck', label: 'PNG of slide 1', note: 'A picture of the first slide', ext: 'png', app: 'deckcraft', suffix: '' },
+
   { id: 'sheet-csv', group: 'sheet', label: 'CSV (first sheet)', note: 'Plain values, opens anywhere', ext: 'csv', app: 'gridcraft', suffix: '' },
   { id: 'sheet-tsv', group: 'sheet', label: 'Tab-separated text (first sheet)', note: 'Plain values, tab separated', ext: 'tsv', app: 'gridcraft', suffix: '' },
   { id: 'sheet-json', group: 'sheet', label: 'JSON', note: 'Every sheet as data', ext: 'json', app: 'gridcraft', suffix: '' },

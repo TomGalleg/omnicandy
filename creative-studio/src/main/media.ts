@@ -11,6 +11,7 @@ const KIND_BY_EXT: Record<string, AssetKind> = {
   designcraft: 'design',
   docx: 'document',
   xlsx: 'sheet',
+  deckcraft: 'deck', pptx: 'deck',
   pcraft: 'project', psd: 'project', vectorcraft: 'project', scraft: 'project', fcproj: 'project', ecproj: 'project',
 };
 

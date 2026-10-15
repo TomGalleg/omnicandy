@@ -40,7 +40,7 @@ describe('real workflows across the ArtCraft apps (no windows)', () => {
     tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'cs-workflow-'));
     store = new ProjectStore(path.join(tmp, 'p'));
     await store.create('workflow');
-    for (const f of ['sunset-still.jpg', 'photocraft-smoke.png', 'harbor-landscape.svg', 'tone-a440.wav', 'groove-loop.wav', 'sunset-clip.mp4', 'sunset-flyer.designcraft', 'quarterly-report.docx', 'quarterly-summary.pdf', 'region-sales.xlsx']) {
+    for (const f of ['sunset-still.jpg', 'photocraft-smoke.png', 'harbor-landscape.svg', 'tone-a440.wav', 'groove-loop.wav', 'sunset-clip.mp4', 'sunset-flyer.designcraft', 'quarterly-report.docx', 'quarterly-summary.pdf', 'region-sales.xlsx', 'northern-lights.deckcraft']) {
       ids[f] = (await store.importFile(path.join(FIXTURES, f))).asset.id;
     }
     q = new DeliverQueue({ store, emit: () => {}, installDir: dirOf });
@@ -147,6 +147,15 @@ describe('real workflows across the ArtCraft apps (no windows)', () => {
     const versions = (await lib()).filter((a) => a.kind === 'sheet' && a.parentId);
     expect(versions.length).toBeGreaterThanOrEqual(2);
   }, 120000);
+
+  it.skipIf(!has('deckcraft'))('a presentation: replace text and add a slide in the background, then PDF + PPTX', async () => {
+    const r = await run(chain({ mode: 'files', assetIds: JSON.stringify([ids['northern-lights.deckcraft']]) },
+      [['deckcraft', 'replaceText', { find: 'Northern Lights', replace: 'Southern Lights' }], ['deckcraft', 'addSlide', { title: 'Closing', body: 'Thank you' }]], 'deck-pdf,deck-pptx'));
+    expect(r.failures).toEqual([]);
+    expect(r.exported).toHaveLength(2);
+    const versions = (await lib()).filter((a) => a.kind === 'deck' && a.parentId);
+    expect(versions.length).toBeGreaterThanOrEqual(2);
+  }, 180000);
 
   it.skipIf(!has('photocraft'))('a folder as input: files are copied into the library; you approve one of two', async () => {
     const folder = path.join(tmp, 'shoot');

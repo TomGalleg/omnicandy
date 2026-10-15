@@ -6,15 +6,15 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { checkEditValues, EDITOR_APPS, type EditorAppId } from '@shared/appEditors';
-import { LiveDesignCraft, LiveEffectCraft, LiveFilmCraft, LiveLightCraft, LiveGridCraft, LivePdfCraft, LiveWordCraft } from './liveApps';
+import { LiveDesignCraft, LiveEffectCraft, LiveFilmCraft, LiveLightCraft, LiveDeckCraft, LiveGridCraft, LivePdfCraft, LiveWordCraft } from './liveApps';
 import { sniffMedia } from './media';
 
 const PF = process.env.ProgramFiles ?? 'C:\\Program Files';
 const FIXTURES = path.resolve(__dirname, '../../fixtures/sample-project');
 const installed = (app: EditorAppId) => existsSync(path.join(PF, EDITOR_APPS[app].name, `${app}-cli.exe`));
-type Driver = LiveFilmCraft | LiveLightCraft | LiveEffectCraft | LiveDesignCraft | LiveWordCraft | LivePdfCraft | LiveGridCraft;
+type Driver = LiveFilmCraft | LiveLightCraft | LiveEffectCraft | LiveDesignCraft | LiveWordCraft | LivePdfCraft | LiveGridCraft | LiveDeckCraft;
 const MAKE: Record<string, (o: ConstructorParameters<typeof LiveFilmCraft>[0]) => Driver> = {
-  filmcraft: (o) => new LiveFilmCraft(o), lightcraft: (o) => new LiveLightCraft(o), effectcraft: (o) => new LiveEffectCraft(o), designcraft: (o) => new LiveDesignCraft(o), wordcraft: (o) => new LiveWordCraft(o), pdfcraft: (o) => new LivePdfCraft(o), gridcraft: (o) => new LiveGridCraft(o),
+  filmcraft: (o) => new LiveFilmCraft(o), lightcraft: (o) => new LiveLightCraft(o), effectcraft: (o) => new LiveEffectCraft(o), designcraft: (o) => new LiveDesignCraft(o), wordcraft: (o) => new LiveWordCraft(o), pdfcraft: (o) => new LivePdfCraft(o), gridcraft: (o) => new LiveGridCraft(o), deckcraft: (o) => new LiveDeckCraft(o),
 };
 const CASES: Array<{ app: EditorAppId; file: string; values?: Record<string, Record<string, unknown>> }> = [
   { app: 'filmcraft', file: 'sunset-clip.mp4' },
@@ -23,6 +23,7 @@ const CASES: Array<{ app: EditorAppId; file: string; values?: Record<string, Rec
   { app: 'wordcraft', file: 'quarterly-report.docx', values: { replaceText: { find: 'Sunset Over the Sea', replace: 'Evening Tide' }, addParagraph: { text: 'Closing remarks.' } } },
   { app: 'pdfcraft', file: 'quarterly-summary.pdf', values: { replaceText: { find: 'Sunset Over the Sea', replace: 'Evening Tide' }, addText: { text: 'Approved', page: 1 } } },
   { app: 'gridcraft', file: 'region-sales.xlsx', values: { setCell: { cell: 'F1', value: '=SUM(D2:D5)' }, sortColumn: { range: 'A1:D5', column: 'B', order: 'desc' } } },
+  { app: 'deckcraft', file: 'northern-lights.deckcraft', values: { replaceText: { find: 'Northern Lights', replace: 'Southern Lights' }, addSlide: { title: 'Closing', body: 'Thank you' } } },
   { app: 'designcraft', file: 'sunset-flyer.designcraft', values: { replaceText: { find: 'Sunset Over the Sea', replace: 'Evening Tide' } } },
 ];
 

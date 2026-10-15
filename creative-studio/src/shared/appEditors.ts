@@ -2,7 +2,7 @@
 // Every operation here was verified against the installed app's CLI (see docs/integration-audit.md);
 // main re-validates every request against this table before anything runs.
 
-export type EditorAppId = 'photocraft' | 'vectorcraft' | 'soundcraft' | 'filmcraft' | 'lightcraft' | 'effectcraft' | 'designcraft' | 'wordcraft' | 'pdfcraft' | 'gridcraft';
+export type EditorAppId = 'photocraft' | 'vectorcraft' | 'soundcraft' | 'filmcraft' | 'lightcraft' | 'effectcraft' | 'designcraft' | 'wordcraft' | 'pdfcraft' | 'gridcraft' | 'deckcraft';
 
 export interface NumberParam { key: string; label: string; type: 'number'; min: number; max: number; step: number; default: number; unit?: string }
 export interface SelectParam { key: string; label: string; type: 'select'; options: Array<{ value: string; label: string }>; default: string }
@@ -278,6 +278,24 @@ export const EDITOR_APPS: Record<EditorAppId, EditorApp> = {
     ],
     note: "Edit cells, formulas and charts with GridCraft's own tools, or use the quick edits here. Saving keeps a new .xlsx version (plus a picture of the window when GridCraft is open); the original is never changed.",
   },
+  deckcraft: {
+    id: 'deckcraft',
+    tab: 'edit',
+    name: 'DeckCraft',
+    blurb: 'Presentations (slides, themes, transitions)',
+    formats: ['deckcraft', 'pptx'],
+    defaultFor: ['deckcraft', 'pptx'],
+    open: 'live',
+    quickEdits: [
+      { id: 'replaceText', group: 'Text', label: 'Replace text on all slides', params: [
+        { key: 'find', label: 'Find', type: 'text', default: 'Title', maxLength: 200 },
+        { key: 'replace', label: 'Replace with', type: 'text', default: 'New title', maxLength: 200 }] },
+      { id: 'addSlide', group: 'Slides', label: 'Add a slide at the end', params: [
+        { key: 'title', label: 'Title', type: 'text', default: 'New slide', maxLength: 200 },
+        { key: 'body', label: 'Text', type: 'text', default: 'Your text', maxLength: 1000 }] },
+    ],
+    note: "Design slides with DeckCraft's own tools, or use the quick edits here. Saving keeps a new .deckcraft version plus a PNG of the current slide; the original is never changed.",
+  },
 };
 
 /** The Edit tab's app for a file type (Color and Effects pick their app explicitly). */
@@ -519,6 +537,19 @@ export function pdfcraftSteps(opId: string, v: EditValues): Op[] {
     case 'watermark': return [{ command: 'tool:doc_watermark', params: { text: v.text, opacity: Number(v.opacity) / 100 } }];
     case 'setTitle': return [{ command: 'tool:doc_set_info', params: { key: 'Title', value: v.title } }];
     default: throw new Error(`Unknown PdfCraft edit "${opId}".`);
+  }
+}
+
+/**
+ * DeckCraft operations for a quick edit. The `createcraft.*` ones are CreateCraft's own multi-call
+ * operations run by LiveDeckCraft (DeckCraft has no find-and-replace command, so text is replaced
+ * shape by shape with its set_text tool).
+ */
+export function deckcraftSteps(opId: string, v: EditValues): Op[] {
+  switch (opId) {
+    case 'replaceText': return [{ command: 'createcraft.replaceText', params: { find: v.find, replace: v.replace } }];
+    case 'addSlide': return [{ command: 'createcraft.addSlide', params: { title: v.title, body: v.body } }];
+    default: throw new Error(`Unknown DeckCraft edit "${opId}".`);
   }
 }
 

@@ -1,6 +1,6 @@
 // Domain types shared by main, preload and renderer. No runtime dependencies.
 
-export type AssetKind = 'image' | 'video' | 'audio' | 'vector' | 'design' | 'project' | 'document' | 'sheet';
+export type AssetKind = 'image' | 'video' | 'audio' | 'vector' | 'design' | 'project' | 'document' | 'sheet' | 'deck';
 
 export type AssetOrigin = 'imported' | 'generated' | 'fixture';
 

@@ -7,7 +7,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { EDITOR_APPS, type EditorAppId } from '@shared/appEditors';
-import { LiveDesignCraft, LiveEffectCraft, LiveFilmCraft, LiveLightCraft, LiveSoundCraft, LiveWordCraft, LiveGridCraft } from './liveApps';
+import { LiveDesignCraft, LiveEffectCraft, LiveFilmCraft, LiveLightCraft, LiveSoundCraft, LiveWordCraft, LiveGridCraft, LiveDeckCraft } from './liveApps';
 import { LiveTaskController } from './liveTask';
 import { sniffMedia } from './media';
 import { ProjectStore } from './projectStore';
@@ -344,6 +344,49 @@ describe.skipIf(!has('GridCraft'))('Live GridCraft (real window)', () => {
     expect(png.asset.kind).toBe('image');
     expect(png.info.width).toBeGreaterThan(500);
     expect((await t.ctl.preview(800))?.subarray(1, 4).toString()).toBe('PNG');
+  }, 120000);
+});
+
+describe.skipIf(!has('DeckCraft'))('Live DeckCraft (real window)', () => {
+  let t: Awaited<ReturnType<typeof setup>>;
+  let deck: string;
+  beforeAll(async () => {
+    t = await setup('deckcraft', (o) => new LiveDeckCraft(o) as unknown as Driver);
+    deck = (await t.store.importFile(path.join(FIXTURES, 'northern-lights.deckcraft'))).asset.id;
+  }, 60000);
+  afterAll(async () => { await t?.cleanup(); });
+
+  it('opens a deck, edits text, adds a slide, undoes, and saves a new .deckcraft version with a PNG', async () => {
+    const s = await t.ctl.open(deck);
+    expect(s.status).toBe('ready');
+    expect(s.history).toEqual(['Open']);
+    const g = t.app as unknown as LiveDeckCraft;
+    const d0 = (await g.describe()) as { slideCount: number; slides: Array<{ title?: string }> };
+    expect(d0.slides[0]!.title).toBe('Northern Lights');
+    await t.ctl.quickEdit('replaceText', { find: 'Northern Lights', replace: 'Southern Lights' });
+    await expect(t.ctl.quickEdit('replaceText', { find: 'not in this deck', replace: 'x' })).rejects.toThrow(/not found/);
+    const h = (await t.ctl.quickEdit('addSlide', { title: 'Closing', body: 'Thank you' })).history;
+    expect(h.length).toBeGreaterThanOrEqual(3);
+    const d1 = (await g.describe()) as { slideCount: number; slides: Array<{ title?: string }> };
+    expect(d1.slideCount).toBe(d0.slideCount + 1);
+    expect(d1.slides[0]!.title).toBe('Southern Lights');
+    expect(d1.slides[d1.slideCount - 1]!.title).toBe('Closing');
+    expect((await t.ctl.undo()).history.length).toBe(h.length - 1);
+    expect(((await g.describe()) as { slideCount: number }).slideCount).toBe(d0.slideCount);
+    const saved = await t.ctl.saveVersion();
+    expect(saved.savedVersionIds).toHaveLength(2);
+    const main = await fileInfo(t.store, saved.savedVersionIds[0]!);
+    const png = await fileInfo(t.store, saved.savedVersionIds[1]!);
+    expect(main.asset).toMatchObject({ kind: 'deck', parentId: deck, sourceFormat: 'deckcraft' });
+    expect(png.info).toMatchObject({ width: 960, height: 540 });
+    expect((await t.ctl.preview(800))?.subarray(1, 4).toString()).toBe('PNG');
+  }, 120000);
+
+  it('makes no new version when edits are undone before saving', async () => {
+    await t.ctl.open(deck);
+    await t.ctl.quickEdit('replaceText', { find: 'Northern Lights', replace: 'Eastern Lights' });
+    await t.ctl.undo();
+    expect((await t.ctl.saveVersion()).message).toMatch(/Nothing changed/);
   }, 120000);
 });
 

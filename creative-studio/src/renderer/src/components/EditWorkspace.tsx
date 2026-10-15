@@ -17,7 +17,7 @@ interface Props {
 type Tab = EditorApp['tab'];
 
 const INTRO: Record<Tab, { title: string; text: string }> = {
-  edit: { title: 'Pick something to edit', text: 'Choose a file on the left. It opens here in the right app: photos in PhotoCraft, vector art in VectorCraft, audio in SoundCraft, video in FilmCraft, layouts in DesignCraft Word documents (.docx) in WordCraft, PDFs in PdfCraft and spreadsheets (.xlsx) in GridCraft.' },
+  edit: { title: 'Pick something to edit', text: 'Choose a file on the left. It opens here in the right app: photos in PhotoCraft, vector art in VectorCraft, audio in SoundCraft, video in FilmCraft, layouts in DesignCraft Word documents (.docx) in WordCraft, PDFs in PdfCraft spreadsheets (.xlsx) in GridCraft and presentations (.deckcraft, .pptx) in DeckCraft.' },
   color: { title: 'Pick a photo to colour', text: 'Choose a photo (PNG, JPEG, WebP or TIFF) on the left. It opens here in LightCraft for light and colour work: exposure, white balance, curves, colour grading and looks.' },
   effects: { title: 'Pick a picture or video', text: 'Choose a picture or a video on the left. It opens here in EffectCraft as a composition, ready for effects, titles and animation.' },
   audio: { title: 'Pick a sound', text: 'Choose an audio file (WAV, MP3, FLAC, OGG or AIFF) on the left. It opens here in SoundCraft, with its waveform and clips in the timeline below.' },

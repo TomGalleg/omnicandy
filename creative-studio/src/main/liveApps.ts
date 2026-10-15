@@ -11,7 +11,7 @@ import { execFile, spawn, type ChildProcess } from 'node:child_process';
 import fs from 'node:fs/promises';
 import net from 'node:net';
 import path from 'node:path';
-import { designcraftSteps, effectcraftSteps, filmcraftSteps, type DesignPage, lightcraftSteps, gridcraftSteps, pdfcraftSteps, vectorcraftSteps, wordcraftSteps, type EditValues, type EditorAppId } from '@shared/appEditors';
+import { designcraftSteps, effectcraftSteps, filmcraftSteps, type DesignPage, lightcraftSteps, deckcraftSteps, gridcraftSteps, pdfcraftSteps, vectorcraftSteps, wordcraftSteps, type EditValues, type EditorAppId } from '@shared/appEditors';
 import type { TimelineDto, TimelineEdit } from '@shared/live';
 import type { AppOperation } from '@shared/contracts';
 import { McpClient } from './mcpClient';
@@ -1072,4 +1072,90 @@ export class LiveGridCraft extends LiveAppBase {
       return b;
     } catch { return null; }
   }
+}
+
+/**
+ * DeckCraft: `deckcraft --control <port>` (loopback, no token) driven through `deckcraft-cli mcp
+ * --connect <port>`. The deck is opened from the library and never written back; saving writes a new
+ * .deckcraft into the work folder plus a PNG of the current slide. DeckCraft has no find-and-replace
+ * command, so text edits go through its set_text tool shape by shape (the first run's formatting is
+ * kept for the whole shape).
+ */
+export class LiveDeckCraft extends LiveAppBase {
+  readonly appId = 'deckcraft' as const;
+  protected exeName = 'deckcraft';
+
+  protected guiArgs(port: number) { return ['--control', String(port)]; }
+  protected guiEnv() { return {}; }
+  protected bridgeArgs(port: number) { return ['mcp', '--connect', String(port)]; }
+  protected headlessArgs() { return ['mcp']; }
+
+  async open(absPath: string) {
+    await this.client().callTool('open_presentation', { path: absPath });
+    return { name: path.basename(absPath) };
+  }
+  private cmd(command: string, params: Record<string, unknown> = {}) { return this.client().callTool('run_command', { command, params }); }
+  private async slideCount(): Promise<number> {
+    const d = (await this.client().callTool('inspect_document', {})) as { slides?: unknown[] };
+    return d.slides?.length ?? 0;
+  }
+
+  async run(op: AppOperation) {
+    if (op.command === 'createcraft.replaceText') {
+      const { find, replace } = op.params as { find: string; replace: string };
+      let changed = 0;
+      const n = await this.slideCount();
+      for (let i = 0; i < n; i++) {
+        const s = (await this.client().callTool('inspect_slide', { index: i })) as { shapes?: Array<{ id: number; text?: string }> };
+        for (const sh of s.shapes ?? []) {
+          if (typeof sh.text !== 'string' || !sh.text.includes(find)) continue;
+          await this.client().callTool('set_text', { id: sh.id, text: sh.text.split(find).join(replace) });
+          changed++;
+        }
+      }
+      if (!changed) throw new Error(`"${find}" was not found on any slide.`);
+      return;
+    }
+    if (op.command === 'createcraft.addSlide') {
+      const { title, body } = op.params as { title: string; body: string };
+      await this.cmd('slide.new', { layout: 'titleAndContent', at: await this.slideCount(), title, body });
+      return;
+    }
+    await this.cmd(op.command, op.params);
+  }
+  async quickEditSteps(opId: string, values: EditValues): Promise<AppOperation[]> { return deckcraftSteps(opId, values); }
+  /** Slide titles, layouts and text, so Claude knows what it can replace. */
+  async describe() {
+    const d = (await this.client().callTool('inspect_document', {})) as { slides?: Array<{ index: number; title?: string; layout?: string }> };
+    const slides = [];
+    for (const s of (d.slides ?? []).slice(0, 30)) {
+      const sl = (await this.client().callTool('inspect_slide', { index: s.index })) as { shapes?: Array<{ text?: string }> };
+      slides.push({ slide: s.index + 1, title: s.title, layout: s.layout, text: (sl.shapes ?? []).map((x) => x.text ?? '').filter(Boolean).map((t) => t.slice(0, 120)) });
+    }
+    return { slideCount: d.slides?.length ?? 0, slides };
+  }
+  async history() {
+    const d = (await this.client().callTool('inspect_document', {})) as { undo?: string[] };
+    return ['Open', ...(d.undo ?? [])];
+  }
+  async undo() { await this.cmd('edit.undo'); }
+  async writeBaseline(dir: string, base: string) {
+    const main = path.join(dir, `${base}.deckcraft`);
+    await this.client().callTool('save_presentation', { path: main });
+    await waitForFile(main);
+    return main;
+  }
+  async writeVersion(dir: string, base: string) {
+    const main = path.join(dir, `${base}.deckcraft`);
+    const preview = path.join(dir, `${base}.png`);
+    await this.client().callTool('save_presentation', { path: main });
+    await waitForFile(main);
+    const png = imageOf(await this.client().request('tools/call', { name: 'render_slide', arguments: { slide: 0, scale: 1 } }));
+    if (png) { await fs.writeFile(preview, png); return { main, preview }; }
+    return { main };
+  }
+  async preview(maxSide: number) {
+    return imageOf(await this.client().request('tools/call', { name: 'render_slide', arguments: { scale: Math.min(2, maxSide / 960) } }));
+  }
+  async screenshot() { return null; }
 }

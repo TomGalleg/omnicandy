@@ -387,6 +387,16 @@ Tomas's OK after each.
   (GridCraft has no headless renderer, so imported/workflow versions have no picture); multi-sheet CSV exports only the first sheet.
   Tests: lint 0, types 0, 242 passed / 34 skipped; `videoGeneration` flakes under full-suite load, passes alone.
 
+* **DeckCraft (2026-10-15): INTEGRATED, partly verified.** New asset kind `deck` (.deckcraft, .pptx; default app for both). Quick edits:
+  Replace text on all slides (no find/replace command exists, so `LiveDeckCraft` walks shapes with `inspect_slide` and sets text with
+  `set_text`; the first run's formatting is kept for the whole shape; tables and charts are not searched) and Add a slide at the end
+  (`slide.new` titleAndContent). Live driver over `--control PORT` + `deckcraft-cli mcp --connect`; history from `inspect_document`'s
+  undo list; baseline digest so undo-then-save makes no new version; save writes .deckcraft + PNG of slide 1 (`render_slide`);
+  headless engine for workflows; 3 Deliver presets (PDF, PPTX, PNG of slide 1 via `convert`); Claude tools through the shared tables.
+  Theme sync: none verified (manual). Verified on this PC: real CLI exports, real headless workflow, real window through the live
+  controller (open, edit, add slide, undo, save, preview, undo-then-save no-op), unit tests. **Not verified:** in-app Edit-tab
+  embedding / UI smoke, a real Claude request, transitions/animations/theme/picture edits (no quick edit; use the window).
+
 Phase 1 note: the old `integrationStatus().claude` field in `src/main/ipc.ts` still says "not
 configured in this build" (stale); Settings now shows Claude's real sign-in state instead.
 
