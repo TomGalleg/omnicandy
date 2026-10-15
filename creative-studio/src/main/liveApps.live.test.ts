@@ -7,7 +7,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { EDITOR_APPS, type EditorAppId } from '@shared/appEditors';
-import { LiveDesignCraft, LiveEffectCraft, LiveFilmCraft, LiveLightCraft, LiveSoundCraft, LiveWordCraft, LiveGridCraft, LiveDeckCraft, LiveFigCraft } from './liveApps';
+import { LiveDesignCraft, LiveEffectCraft, LiveFilmCraft, LiveLightCraft, LiveSoundCraft, LiveWordCraft, LiveGridCraft, LiveDeckCraft, LiveFigCraft, LiveCadCraft } from './liveApps';
 import { LiveTaskController } from './liveTask';
 import { sniffMedia } from './media';
 import { ProjectStore } from './projectStore';
@@ -429,6 +429,51 @@ describe.skipIf(!has('FigCraft'))('Live FigCraft (real window)', () => {
   it('makes no new version when edits are undone before saving', async () => {
     await t.ctl.open(design);
     await t.ctl.quickEdit('replaceText', { find: 'Sign in to continue', replace: 'Please sign in' });
+    await t.ctl.undo();
+    expect((await t.ctl.saveVersion()).message).toMatch(/Nothing changed/);
+  }, 120000);
+});
+
+describe.skipIf(!has('CADCraft'))('Live CADCraft (real window)', () => {
+  let t: Awaited<ReturnType<typeof setup>>;
+  let drawing: string;
+  beforeAll(async () => {
+    t = await setup('cadcraft', (o) => new LiveCadCraft(o) as unknown as Driver);
+    drawing = (await t.store.importFile(path.join(FIXTURES, 'bracket-drawing.dxf'))).asset.id;
+  }, 60000);
+  afterAll(async () => { await t?.cleanup(); });
+
+  type Desc = { text: string[]; entities: Record<string, number> };
+  it('opens a drawing, replaces text, adds a note, undoes, and saves a new .dxf version with a PNG', async () => {
+    const s = await t.ctl.open(drawing);
+    expect(s.status).toBe('ready');
+    expect(s.history).toEqual(['Open']);
+    const g = t.app as unknown as LiveCadCraft;
+    const d0 = (await g.describe()) as Desc;
+    expect(d0.text).toContain('FRONT VIEW');
+    await t.ctl.quickEdit('replaceText', { find: 'FRONT VIEW', replace: 'TOP VIEW' });
+    await expect(t.ctl.quickEdit('replaceText', { find: 'NOT IN THIS DRAWING', replace: 'x' })).rejects.toThrow(/not found/);
+    const h = (await t.ctl.quickEdit('addNote', { text: 'REV A', position: 'below' })).history;
+    expect(h).toHaveLength(3); // Open, Find, Single Line Text (the empty search left no entry behind)
+    const d1 = (await g.describe()) as Desc;
+    expect(d1.text).toEqual(expect.arrayContaining(['TOP VIEW', 'REV A']));
+    expect(d1.text).not.toContain('FRONT VIEW');
+    expect((await t.ctl.undo()).history).toHaveLength(2);
+    expect(((await g.describe()) as Desc).text).not.toContain('REV A');
+    await t.ctl.quickEdit('addNote', { text: 'REV A', position: 'above' });
+    const saved = await t.ctl.saveVersion();
+    expect(saved.savedVersionIds).toHaveLength(2);
+    const main = await fileInfo(t.store, saved.savedVersionIds[0]!);
+    const png = await fileInfo(t.store, saved.savedVersionIds[1]!);
+    expect(main.asset).toMatchObject({ kind: 'cad', parentId: drawing, sourceFormat: 'dxf' });
+    expect(png.asset.kind).toBe('image');
+    expect(png.info).toMatchObject({ width: 2400, height: 1600 });
+    expect((await t.ctl.preview(800))?.subarray(1, 4).toString()).toBe('PNG');
+  }, 120000);
+
+  it('makes no new version when edits are undone before saving', async () => {
+    await t.ctl.open(drawing);
+    await t.ctl.quickEdit('replaceText', { find: 'SCALE 1:1', replace: 'SCALE 1:2' });
     await t.ctl.undo();
     expect((await t.ctl.saveVersion()).message).toMatch(/Nothing changed/);
   }, 120000);

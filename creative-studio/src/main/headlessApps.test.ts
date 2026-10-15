@@ -6,15 +6,15 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { checkEditValues, EDITOR_APPS, type EditorAppId } from '@shared/appEditors';
-import { LiveDesignCraft, LiveEffectCraft, LiveFilmCraft, LiveLightCraft, LiveDeckCraft, LiveFigCraft, LiveGridCraft, LivePdfCraft, LiveWordCraft } from './liveApps';
+import { LiveDesignCraft, LiveEffectCraft, LiveFilmCraft, LiveLightCraft, LiveCadCraft, LiveDeckCraft, LiveFigCraft, LiveGridCraft, LivePdfCraft, LiveWordCraft } from './liveApps';
 import { sniffMedia } from './media';
 
 const PF = process.env.ProgramFiles ?? 'C:\\Program Files';
 const FIXTURES = path.resolve(__dirname, '../../fixtures/sample-project');
 const installed = (app: EditorAppId) => existsSync(path.join(PF, EDITOR_APPS[app].name, `${app}-cli.exe`));
-type Driver = LiveFilmCraft | LiveLightCraft | LiveEffectCraft | LiveDesignCraft | LiveWordCraft | LivePdfCraft | LiveGridCraft | LiveDeckCraft | LiveFigCraft;
+type Driver = LiveFilmCraft | LiveLightCraft | LiveEffectCraft | LiveDesignCraft | LiveWordCraft | LivePdfCraft | LiveGridCraft | LiveDeckCraft | LiveFigCraft | LiveCadCraft;
 const MAKE: Record<string, (o: ConstructorParameters<typeof LiveFilmCraft>[0]) => Driver> = {
-  filmcraft: (o) => new LiveFilmCraft(o), lightcraft: (o) => new LiveLightCraft(o), effectcraft: (o) => new LiveEffectCraft(o), designcraft: (o) => new LiveDesignCraft(o), wordcraft: (o) => new LiveWordCraft(o), pdfcraft: (o) => new LivePdfCraft(o), gridcraft: (o) => new LiveGridCraft(o), deckcraft: (o) => new LiveDeckCraft(o), figcraft: (o) => new LiveFigCraft(o),
+  filmcraft: (o) => new LiveFilmCraft(o), lightcraft: (o) => new LiveLightCraft(o), effectcraft: (o) => new LiveEffectCraft(o), designcraft: (o) => new LiveDesignCraft(o), wordcraft: (o) => new LiveWordCraft(o), pdfcraft: (o) => new LivePdfCraft(o), gridcraft: (o) => new LiveGridCraft(o), deckcraft: (o) => new LiveDeckCraft(o), figcraft: (o) => new LiveFigCraft(o), cadcraft: (o) => new LiveCadCraft(o),
 };
 const CASES: Array<{ app: EditorAppId; file: string; values?: Record<string, Record<string, unknown>> }> = [
   { app: 'filmcraft', file: 'sunset-clip.mp4' },
@@ -25,6 +25,7 @@ const CASES: Array<{ app: EditorAppId; file: string; values?: Record<string, Rec
   { app: 'gridcraft', file: 'region-sales.xlsx', values: { setCell: { cell: 'F1', value: '=SUM(D2:D5)' }, sortColumn: { range: 'A1:D5', column: 'B', order: 'desc' } } },
   { app: 'deckcraft', file: 'northern-lights.deckcraft', values: { replaceText: { find: 'Northern Lights', replace: 'Southern Lights' }, addSlide: { title: 'Closing', body: 'Thank you' } } },
   { app: 'figcraft', file: 'login-screen.figcraft', values: { replaceText: { find: 'Welcome back', replace: 'Hello again' }, addText: { text: 'Forgot password?', position: 'bottom', size: 14 } } },
+  { app: 'cadcraft', file: 'bracket-drawing.dxf', values: { replaceText: { find: 'FRONT VIEW', replace: 'TOP VIEW' }, addNote: { text: 'REV A', position: 'below' } } },
   { app: 'designcraft', file: 'sunset-flyer.designcraft', values: { replaceText: { find: 'Sunset Over the Sea', replace: 'Evening Tide' } } },
 ];
 

@@ -39,6 +39,7 @@ describe('deliver command lines', () => {
     expect(presetsFor('XLSX').map((p) => p.id)).toEqual(['sheet-csv', 'sheet-tsv', 'sheet-json', 'sheet-html']);
     expect(presetsFor('PPTX').map((p) => p.id)).toEqual(['deck-pdf', 'deck-pptx', 'deck-png']);
     expect(presetsFor('figcraft').map((p) => p.id)).toEqual(['ui-png', 'ui-png2x', 'ui-svg', 'ui-pdf']);
+    expect(presetsFor('DXF').map((p) => p.id)).toEqual(['cad-pdf', 'cad-png', 'cad-svg', 'cad-dxf', 'cad-dwg']);
     expect(presetsFor('exe')).toEqual([]);
   });
 });
@@ -167,7 +168,7 @@ describe('every Deliver preset with the real ArtCraft tools (headless)', () => {
     tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'cs-deliver-real-'));
     store = new ProjectStore(path.join(tmp, 'p'));
     await store.create('deliver');
-    for (const f of ['sunset-still.jpg', 'harbor-landscape.svg', 'tone-a440.wav', 'sunset-clip.mp4', 'sunset-flyer.designcraft', 'quarterly-report.docx', 'quarterly-summary.pdf', 'region-sales.xlsx', 'northern-lights.deckcraft', 'login-screen.figcraft']) ids[f] = (await store.importFile(path.join(FIXTURES, f))).asset.id;
+    for (const f of ['sunset-still.jpg', 'harbor-landscape.svg', 'tone-a440.wav', 'sunset-clip.mp4', 'sunset-flyer.designcraft', 'quarterly-report.docx', 'quarterly-summary.pdf', 'region-sales.xlsx', 'northern-lights.deckcraft', 'login-screen.figcraft', 'bracket-drawing.dxf']) ids[f] = (await store.importFile(path.join(FIXTURES, f))).asset.id;
     q = new DeliverQueue({ store, emit: () => {}, installDir: dirOf });
   });
   afterAll(async () => { await fs.rm(tmp, { recursive: true, force: true, maxRetries: 3 }); });
@@ -236,6 +237,15 @@ describe('every Deliver preset with the real ArtCraft tools (headless)', () => {
     expect((await head(o['document-rtf']!)).subarray(0, 5).toString()).toBe(String.raw`{\rtf`);
   }, 120000);
 
+  it.skipIf(!installed('cadcraft'))('CAD drawings: PDF, PNG, SVG, DXF and DWG', async () => {
+    const o = await run('bracket-drawing.dxf', 'cad');
+    expect((await head(o['cad-pdf']!)).subarray(0, 5).toString()).toBe('%PDF-');
+    expect(sniffMedia('png', await head(o['cad-png']!, 4096))).toMatchObject({ width: 2400, height: 1600 });
+    expect((await head(o['cad-svg']!, 512)).toString().toLowerCase()).toContain('<svg');
+    expect((await head(o['cad-dxf']!, 512)).toString()).toContain('SECTION');
+    expect((await head(o['cad-dwg']!)).subarray(0, 4).toString()).toBe('AC10');
+  }, 120000);
+
   it.skipIf(!installed('figcraft'))('UI designs: PNG, PNG at 2x, SVG and PDF of the first frame', async () => {
     const o = await run('login-screen.figcraft', 'ui');
     expect(sniffMedia('png', await head(o['ui-png']!, 4096))).toMatchObject({ width: 360, height: 640 });
@@ -275,6 +285,6 @@ describe('every Deliver preset with the real ArtCraft tools (headless)', () => {
     expect((await head(o['design-pdf']!)).subarray(0, 5).toString()).toBe('%PDF-');
     expect(sniffMedia('png', await head(o['design-png']!, 4096))).toMatchObject({ width: 1224, height: 1584 });
     const hist = await q.history();
-    expect(hist.length).toBe(DELIVER_PRESETS.filter((p) => ['image', 'vector', 'audio', 'video', 'design', 'document', 'pdf', 'sheet', 'deck', 'ui'].includes(p.group) && (installed(p.app))).length);
+    expect(hist.length).toBe(DELIVER_PRESETS.filter((p) => ['image', 'vector', 'audio', 'video', 'design', 'document', 'pdf', 'sheet', 'deck', 'ui', 'cad'].includes(p.group) && (installed(p.app))).length);
   }, 120000);
 });

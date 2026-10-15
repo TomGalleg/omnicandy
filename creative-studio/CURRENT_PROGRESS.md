@@ -406,6 +406,17 @@ Tomas's OK after each.
   **Not verified:** in-app Edit-tab embedding / UI smoke, a real Claude request, theme sync, prototypes/components/auto-layout edits
   (window only), .fig / .json / .svg import into the library as UI designs (SVG stays with VectorCraft).
 
+* **CADCraft (2026-10-15): INTEGRATED, partly verified.** New asset kind `cad` (.dxf, .dwg; default app for both). Quick edits: Replace
+  text in the drawing (`find`; an empty search is undone so it leaves no history entry) and Add a note (`text`, placed outside the
+  drawing from its extents). Live driver over `--control PORT` + `cadcraft-cli mcp --connect`; history from `inspect_drawing`'s
+  undo list (newest first, reversed); save writes .dxf + PNG (`save` with a .png path); headless engine for workflows; 5 Deliver
+  presets (PDF, PNG 2400x1600, SVG, DXF, DWG via `convert`). **Shared change:** `liveTask` now compares saves with
+  `documentDigest` (zip content digest, else raw bytes) so undo-then-save also makes no new version for non-zip files; zip apps
+  behave as before (DesignCraft, WordCraft, DeckCraft, FigCraft live tests re-run). Theme sync: none found (manual). Verified on
+  this PC: real CLI exports, real headless workflow (text and note present in the saved DXF), real window through the live
+  controller, unit tests. **Not verified:** in-app Edit-tab embedding / UI smoke, a real Claude request, drawing/dimensioning
+  edits (window or Claude's `command_line` only; no quick edit), DWG saved back as DWG (versions are always .dxf).
+
 Phase 1 note: the old `integrationStatus().claude` field in `src/main/ipc.ts` still says "not
 configured in this build" (stale); Settings now shows Claude's real sign-in state instead.
 

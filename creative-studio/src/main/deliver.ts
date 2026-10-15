@@ -60,6 +60,7 @@ export function deliverCommand(p: DeliverPreset, src: string, out: string, a: Pi
     case 'design-png': return { app: 'designcraft', args: ['run', '--in', src, '--scale', '2', '--export', out] };
     case 'document-pdf': case 'document-txt': case 'document-md': case 'document-html': case 'document-odt': case 'document-rtf':
       return { app: 'wordcraft', args: ['convert', src, out] };
+    case 'cad-pdf': case 'cad-png': case 'cad-svg': case 'cad-dxf': case 'cad-dwg': return { app: 'cadcraft', args: ['convert', src, out] };
     case 'ui-png': case 'ui-svg': case 'ui-pdf': return { app: 'figcraft', args: ['export', src, '-o', out, '--no-system-fonts'] };
     case 'ui-png2x': return { app: 'figcraft', args: ['export', src, '-o', out, '--scale', '2', '--no-system-fonts'] };
     case 'deck-pdf': case 'deck-pptx': case 'deck-png': return { app: 'deckcraft', args: ['convert', src, out] };

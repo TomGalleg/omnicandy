@@ -2,7 +2,7 @@
 // Every operation here was verified against the installed app's CLI (see docs/integration-audit.md);
 // main re-validates every request against this table before anything runs.
 
-export type EditorAppId = 'photocraft' | 'vectorcraft' | 'soundcraft' | 'filmcraft' | 'lightcraft' | 'effectcraft' | 'designcraft' | 'wordcraft' | 'pdfcraft' | 'gridcraft' | 'deckcraft' | 'figcraft';
+export type EditorAppId = 'photocraft' | 'vectorcraft' | 'soundcraft' | 'filmcraft' | 'lightcraft' | 'effectcraft' | 'designcraft' | 'wordcraft' | 'pdfcraft' | 'gridcraft' | 'deckcraft' | 'figcraft' | 'cadcraft';
 
 export interface NumberParam { key: string; label: string; type: 'number'; min: number; max: number; step: number; default: number; unit?: string }
 export interface SelectParam { key: string; label: string; type: 'select'; options: Array<{ value: string; label: string }>; default: string }
@@ -315,6 +315,25 @@ export const EDITOR_APPS: Record<EditorAppId, EditorApp> = {
     ],
     note: "Design with FigCraft's own tools, or use the text edits here. Saving keeps a new .figcraft version plus a PNG of the page; the original is never changed.",
   },
+  cadcraft: {
+    id: 'cadcraft',
+    tab: 'edit',
+    name: 'CADCraft',
+    blurb: '2D CAD drafting (DXF and DWG drawings)',
+    formats: ['dxf', 'dwg'],
+    defaultFor: ['dxf', 'dwg'],
+    open: 'live',
+    quickEdits: [
+      { id: 'replaceText', group: 'Text', label: 'Replace text in the drawing', params: [
+        { key: 'find', label: 'Find', type: 'text', default: 'TITLE', maxLength: 200 },
+        { key: 'replace', label: 'Replace with', type: 'text', default: 'NEW TITLE', maxLength: 200 }] },
+      { id: 'addNote', group: 'Text', label: 'Add a note', params: [
+        { key: 'text', label: 'Text', type: 'text', default: 'NOTE', maxLength: 200 },
+        { key: 'position', label: 'Where', type: 'select', default: 'below', options: [
+          { value: 'below', label: 'Below the drawing' }, { value: 'above', label: 'Above the drawing' }] }] },
+    ],
+    note: "Draw and dimension with CADCraft's own tools, or use the text edits here. Saving keeps a new .dxf version plus a PNG of the drawing; the original is never changed.",
+  },
 };
 
 /** The Edit tab's app for a file type (Color and Effects pick their app explicitly). */
@@ -582,6 +601,18 @@ export function figcraftSteps(opId: string, v: EditValues): Op[] {
     case 'replaceText': return [{ command: 'createcraft.replaceText', params: { find: v.find, replace: v.replace } }];
     case 'addText': return [{ command: 'createcraft.addText', params: { text: v.text, position: v.position, size: v.size } }];
     default: throw new Error(`Unknown FigCraft edit "${opId}".`);
+  }
+}
+
+/**
+ * CADCraft operations for a quick edit (verified headless and live). `createcraft.addNote` is placed by
+ * LiveCadCraft from the drawing's extents so the note lands just outside the drawing.
+ */
+export function cadcraftSteps(opId: string, v: EditValues): Op[] {
+  switch (opId) {
+    case 'replaceText': return [{ command: 'find', params: { find: v.find, replace: v.replace, matchCase: true } }];
+    case 'addNote': return [{ command: 'createcraft.addNote', params: { text: v.text, position: v.position } }];
+    default: throw new Error(`Unknown CADCraft edit "${opId}".`);
   }
 }
 

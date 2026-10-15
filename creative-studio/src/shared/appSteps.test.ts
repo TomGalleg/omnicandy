@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { figcraftSteps, deckcraftSteps, gridcraftSteps, appForTab, checkEditValues, designcraftSteps, EDITOR_APPS, editorFor, effectcraftSteps, filmcraftSteps, lightcraftSteps, parsePageList, pdfcraftSteps, type FilmSequence, wordcraftSteps } from './appEditors';
+import { cadcraftSteps, figcraftSteps, deckcraftSteps, gridcraftSteps, appForTab, checkEditValues, designcraftSteps, EDITOR_APPS, editorFor, effectcraftSteps, filmcraftSteps, lightcraftSteps, parsePageList, pdfcraftSteps, type FilmSequence, wordcraftSteps } from './appEditors';
 
 const seq: FilmSequence = {
   fps: 24000 / 1001,
@@ -30,6 +30,8 @@ describe('which app opens a file in which tab', () => {
     expect(editorFor('DeckCraft'.toLowerCase())?.id).toBe('deckcraft');
     expect(editorFor('pptx')?.id).toBe('deckcraft');
     expect(editorFor('figcraft')?.id).toBe('figcraft');
+    expect(editorFor('DXF')?.id).toBe('cadcraft');
+    expect(editorFor('dwg')?.id).toBe('cadcraft');
     expect(appForTab('color', 'jpg')?.id).toBe('lightcraft');
     expect(appForTab('color', 'svg')).toBeNull();
     expect(appForTab('effects', 'mp4')?.id).toBe('effectcraft');
@@ -186,5 +188,13 @@ describe('FigCraft steps', () => {
     expect(figcraftSteps('replaceText', { find: 'Welcome', replace: 'Hello' })).toEqual([{ command: 'createcraft.replaceText', params: { find: 'Welcome', replace: 'Hello' } }]);
     expect(figcraftSteps('addText', { text: 'Hi', position: 'top', size: 16 })).toEqual([{ command: 'createcraft.addText', params: { text: 'Hi', position: 'top', size: 16 } }]);
     expect(() => figcraftSteps('nope', {})).toThrow();
+  });
+});
+
+describe('CADCraft steps', () => {
+  it('replaces text with Find and adds a note placed from the extents', () => {
+    expect(cadcraftSteps('replaceText', { find: 'FRONT', replace: 'TOP' })).toEqual([{ command: 'find', params: { find: 'FRONT', replace: 'TOP', matchCase: true } }]);
+    expect(cadcraftSteps('addNote', { text: 'N', position: 'below' })).toEqual([{ command: 'createcraft.addNote', params: { text: 'N', position: 'below' } }]);
+    expect(() => cadcraftSteps('nope', {})).toThrow();
   });
 });

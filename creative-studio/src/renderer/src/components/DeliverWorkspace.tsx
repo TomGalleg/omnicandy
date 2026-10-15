@@ -76,7 +76,7 @@ export function DeliverWorkspace({ manifest, selected, liveApi, onSelectAsset, l
         {selected && (
           <div className="panel-card">
             <div className="deliver-source">
-              <div className="deliver-thumb"><AssetThumb asset={selected} rendition={assets.find((x) => x.parentId === selected.id && x.kind === 'image' && ['pcraft', 'designcraft', 'docx', 'pdf', 'xlsx', 'deckcraft', 'pptx', 'figcraft'].includes(selected.sourceFormat))} /></div>
+              <div className="deliver-thumb"><AssetThumb asset={selected} rendition={assets.find((x) => x.parentId === selected.id && x.kind === 'image' && ['pcraft', 'designcraft', 'docx', 'pdf', 'xlsx', 'deckcraft', 'pptx', 'figcraft', 'dxf', 'dwg'].includes(selected.sourceFormat))} /></div>
               <div>
                 <h2 className="deliver-title" title={selected.name}>{selected.name}</h2>
                 <p className="asset-meta">{selected.kind} · {selected.sourceFormat.toUpperCase()} · {formatDims(selected) || formatBytes(selected.bytes)}</p>

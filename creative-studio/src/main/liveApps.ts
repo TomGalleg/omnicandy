@@ -11,7 +11,7 @@ import { execFile, spawn, type ChildProcess } from 'node:child_process';
 import fs from 'node:fs/promises';
 import net from 'node:net';
 import path from 'node:path';
-import { designcraftSteps, effectcraftSteps, filmcraftSteps, type DesignPage, lightcraftSteps, deckcraftSteps, figcraftSteps, gridcraftSteps, pdfcraftSteps, vectorcraftSteps, wordcraftSteps, type EditValues, type EditorAppId } from '@shared/appEditors';
+import { designcraftSteps, effectcraftSteps, filmcraftSteps, type DesignPage, lightcraftSteps, cadcraftSteps, deckcraftSteps, figcraftSteps, gridcraftSteps, pdfcraftSteps, vectorcraftSteps, wordcraftSteps, type EditValues, type EditorAppId } from '@shared/appEditors';
 import type { TimelineDto, TimelineEdit } from '@shared/live';
 import type { AppOperation } from '@shared/contracts';
 import { McpClient } from './mcpClient';
@@ -1253,6 +1253,89 @@ export class LiveFigCraft extends LiveAppBase {
   }
   async preview(maxSide: number) {
     return imageOf(await this.client().request('tools/call', { name: 'screenshot', arguments: { maxSize: Math.min(1600, maxSide) } }));
+  }
+  async screenshot() { return null; }
+}
+
+/**
+ * CADCraft: `cadcraft --control <port>` (loopback, no token) driven through `cadcraft-cli mcp
+ * --connect 127.0.0.1:<port>`. The drawing is opened from the library (DXF or DWG) and never written
+ * back; saving writes a new .dxf into the work folder plus a PNG of the drawing (`save` with a .png
+ * path exports without renaming the drawing).
+ */
+export class LiveCadCraft extends LiveAppBase {
+  readonly appId = 'cadcraft' as const;
+  protected exeName = 'cadcraft';
+
+  protected guiArgs(port: number) { return ['--control', String(port)]; }
+  protected guiEnv() { return {}; }
+  protected bridgeArgs(port: number) { return ['mcp', '--connect', `127.0.0.1:${port}`]; }
+  protected headlessArgs() { return ['mcp']; }
+
+  async open(absPath: string) {
+    await this.client().callTool('open', { path: absPath });
+    return { name: path.basename(absPath) };
+  }
+  private exec(command: string, params: Record<string, unknown> = {}) { return this.client().callTool('execute', { command, params }); }
+  private async inspect() {
+    return (await this.client().callTool('inspect_drawing', {})) as { extents?: [[number, number], [number, number]]; undo?: string[]; counts?: Record<string, number>; layers?: Array<{ name: string }>; currentLayer?: string };
+  }
+
+  async run(op: AppOperation) {
+    if (op.command === 'find') {
+      const r = (await this.exec('find', op.params)) as { total?: number };
+      if (!r?.total) {
+        await this.exec('undo').catch(() => {}); // the empty search leaves an undo entry
+        throw new Error(`"${String(op.params.find)}" was not found in the drawing.`);
+      }
+      return;
+    }
+    if (op.command === 'createcraft.addNote') {
+      const { text, position } = op.params as { text: string; position: string };
+      const ext = (await this.inspect()).extents;
+      if (!ext) throw new Error('The drawing is empty, so there is nowhere to put a note.');
+      const [[x0, y0], [, y1]] = ext;
+      const h = Math.max(y1 - y0, 1);
+      const height = Math.round(h * 0.03 * 1000) / 1000 || 0.1;
+      const y = position === 'above' ? y1 + h * 0.05 : y0 - h * 0.05 - height;
+      await this.exec('text', { at: [x0, y], text, height });
+      return;
+    }
+    await this.exec(op.command, op.params);
+  }
+  async quickEditSteps(opId: string, values: EditValues): Promise<AppOperation[]> { return cadcraftSteps(opId, values); }
+  /** Entity counts, layers, extents and the texts, so Claude knows what it can replace. */
+  async describe() {
+    const d = await this.inspect();
+    const t = (await this.exec('texts', { limit: 40 })) as { texts?: Array<{ text: string }> };
+    return {
+      entities: d.counts, layers: (d.layers ?? []).map((l) => l.name), currentLayer: d.currentLayer,
+      extents: d.extents, text: (t.texts ?? []).map((x) => x.text.slice(0, 120)),
+    };
+  }
+  async history() {
+    // The drawing lists its undo steps newest first.
+    return ['Open', ...[...((await this.inspect()).undo ?? [])].reverse()];
+  }
+  async undo() { await this.exec('undo'); }
+  async writeBaseline(dir: string, base: string) {
+    const main = path.join(dir, `${base}.dxf`);
+    await this.client().callTool('save', { path: main });
+    await waitForFile(main);
+    return main;
+  }
+  async writeVersion(dir: string, base: string) {
+    const main = path.join(dir, `${base}.dxf`);
+    const preview = path.join(dir, `${base}.png`);
+    await this.client().callTool('save', { path: main });
+    await waitForFile(main);
+    await this.client().callTool('save', { path: preview });
+    await waitForFile(preview);
+    return { main, preview };
+  }
+  async preview(maxSide: number) {
+    const size = Math.max(200, Math.min(1600, Math.round(maxSide)));
+    return imageOf(await this.client().request('tools/call', { name: 'render', arguments: { width: size, height: Math.round(size * 0.66) } }));
   }
   async screenshot() { return null; }
 }

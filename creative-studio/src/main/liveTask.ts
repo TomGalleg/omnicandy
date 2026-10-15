@@ -24,9 +24,9 @@ import type { ThemePalette } from '@shared/types';
 import { checkPhotoCraftOp, presetLabel } from '@shared/photocraftOps';
 import { versionOf, type LiveDoc } from './photocraftLive';
 import type { ProjectStore } from './projectStore';
-import { semanticZipDigest } from './zipDigest';
+import { documentDigest } from './zipDigest';
 
-const LIVE_APPS: EditorAppId[] = ['photocraft', 'vectorcraft', 'soundcraft', 'filmcraft', 'lightcraft', 'effectcraft', 'designcraft', 'wordcraft', 'pdfcraft', 'gridcraft', 'deckcraft', 'figcraft'];
+const LIVE_APPS: EditorAppId[] = ['photocraft', 'vectorcraft', 'soundcraft', 'filmcraft', 'lightcraft', 'effectcraft', 'designcraft', 'wordcraft', 'pdfcraft', 'gridcraft', 'deckcraft', 'figcraft', 'cadcraft'];
 /** Version name tag per app tab (photo-live1, photo-color1, clip-fx1). */
 const TAG: Partial<Record<EditorAppId, string>> = { lightcraft: 'color', effectcraft: 'fx' };
 /** Opened as shape layers; flattened on open so pixel adjustments and filters apply. */
@@ -270,7 +270,7 @@ export class LiveTaskController {
     try {
       if (!this.doc?.writeBaseline) return;
       const f = await this.doc.writeBaseline(await this.d.writeDir(this.appId!), `baseline-${randomUUID().slice(0, 8)}`);
-      this.baselineDigest = await semanticZipDigest(f);
+      this.baselineDigest = await documentDigest(f);
       await fs.rm(f, { force: true });
     } catch { this.baselineDigest = null; }
   }
@@ -281,7 +281,7 @@ export class LiveTaskController {
     if (this.collab.activeOperation) throw new Error('Wait for the current step to finish.');
     const dir = await this.d.writeDir(this.appId);
     const files = await doc.writeVersion(dir, randomUUID().slice(0, 8));
-    if (this.baselineDigest && await semanticZipDigest(files.main).catch(() => null) === this.baselineDigest) {
+    if (this.baselineDigest && await documentDigest(files.main).catch(() => null) === this.baselineDigest) {
       // Same content as when the document was opened (e.g. undo then save): only the app's version stamp may differ.
       await fs.rm(files.main, { force: true });
       if (files.preview) await fs.rm(files.preview, { force: true });

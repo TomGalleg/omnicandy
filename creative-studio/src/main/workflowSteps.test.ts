@@ -40,7 +40,7 @@ describe('real workflows across the ArtCraft apps (no windows)', () => {
     tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'cs-workflow-'));
     store = new ProjectStore(path.join(tmp, 'p'));
     await store.create('workflow');
-    for (const f of ['sunset-still.jpg', 'photocraft-smoke.png', 'harbor-landscape.svg', 'tone-a440.wav', 'groove-loop.wav', 'sunset-clip.mp4', 'sunset-flyer.designcraft', 'quarterly-report.docx', 'quarterly-summary.pdf', 'region-sales.xlsx', 'northern-lights.deckcraft', 'login-screen.figcraft']) {
+    for (const f of ['sunset-still.jpg', 'photocraft-smoke.png', 'harbor-landscape.svg', 'tone-a440.wav', 'groove-loop.wav', 'sunset-clip.mp4', 'sunset-flyer.designcraft', 'quarterly-report.docx', 'quarterly-summary.pdf', 'region-sales.xlsx', 'northern-lights.deckcraft', 'login-screen.figcraft', 'bracket-drawing.dxf']) {
       ids[f] = (await store.importFile(path.join(FIXTURES, f))).asset.id;
     }
     q = new DeliverQueue({ store, emit: () => {}, installDir: dirOf });
@@ -166,6 +166,20 @@ describe('real workflows across the ArtCraft apps (no windows)', () => {
     expect(svg).toContain('<svg');
     const versions = (await lib()).filter((a) => a.kind === 'ui' && a.parentId);
     expect(versions.length).toBeGreaterThanOrEqual(2);
+  }, 180000);
+
+  it.skipIf(!has('cadcraft'))('a CAD drawing: replace text and add a note in the background, then PDF + DWG', async () => {
+    const r = await run(chain({ mode: 'files', assetIds: JSON.stringify([ids['bracket-drawing.dxf']]) },
+      [['cadcraft', 'replaceText', { find: 'FRONT VIEW', replace: 'TOP VIEW' }], ['cadcraft', 'addNote', { text: 'REV A', position: 'below' }]], 'cad-pdf,cad-dwg'));
+    expect(r.failures).toEqual([]);
+    expect(r.exported).toHaveLength(2);
+    const versions = (await lib()).filter((a) => a.kind === 'cad' && a.parentId);
+    expect(versions.length).toBeGreaterThanOrEqual(2);
+    const dxf = versions.find((a) => a.sourceFormat === 'dxf' && !versions.some((b) => b.parentId === a.id))!; // the last step's result
+    const text = await fs.readFile(await store.resolveAssetPath(dxf.id), 'utf8');
+    expect(text).toContain('TOP VIEW');
+    expect(text).toContain('REV A');
+    expect(text).not.toContain('FRONT VIEW');
   }, 180000);
 
   it.skipIf(!has('photocraft'))('a folder as input: files are copied into the library; you approve one of two', async () => {

@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import zlib from 'node:zlib';
 import { describe, expect, it } from 'vitest';
-import { semanticZipDigest } from './zipDigest';
+import { documentDigest, semanticZipDigest } from './zipDigest';
 
 /** Minimal zip writer (deflate) for the test. */
 function zip(files: Record<string, string>): Buffer {
@@ -28,5 +28,19 @@ describe('semanticZipDigest', () => {
     const c = await f('c', { mimetype: 'x', 'meta.json': '{"generator":"0.8.0","version":2}', 'document.json': '{"a":2,"b":[1,2]}' });
     expect(b).toBe(a);
     expect(c).not.toBe(a);
+  });
+});
+
+describe('documentDigest', () => {
+  it('compares zips by content and anything else by its bytes', async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'dd-'));
+    const w = async (n: string, data: Buffer | string) => { const p = path.join(dir, n); await writeFile(p, data); return documentDigest(p); };
+    const z1 = await w('a.zip', zip({ 'meta.json': '{"generator":"1"}', 'document.json': '{"a":1}' }));
+    const z2 = await w('b.zip', zip({ 'meta.json': '{"generator":"2"}', 'document.json': '{"a":1}' }));
+    expect(z2).toBe(z1);
+    const t1 = await w('a.dxf', ['0', 'SECTION', ''].join(String.fromCharCode(10)));
+    expect(t1).toMatch(/^raw:/);
+    expect(await w('b.dxf', ['0', 'SECTION', ''].join(String.fromCharCode(10)))).toBe(t1);
+    expect(await w('c.dxf', ['0', 'ENDSEC', ''].join(String.fromCharCode(10)))).not.toBe(t1);
   });
 });

@@ -5,7 +5,7 @@
 import type { EditorAppId } from './appEditors';
 import type { Asset } from './types';
 
-export type DeliverGroup = 'image' | 'vector' | 'audio' | 'video' | 'design' | 'document' | 'pdf' | 'sheet' | 'deck' | 'ui';
+export type DeliverGroup = 'image' | 'vector' | 'audio' | 'video' | 'design' | 'document' | 'pdf' | 'sheet' | 'deck' | 'ui' | 'cad';
 
 export interface DeliverPreset {
   id: string;
@@ -27,6 +27,7 @@ export const DELIVER_SOURCES: Record<DeliverGroup, string[]> = {
   sheet: ['xlsx'],
   deck: ['deckcraft', 'pptx'],
   ui: ['figcraft'],
+  cad: ['dxf', 'dwg'],
   vector: ['svg', 'svgz', 'ai', 'eps', 'pdf', 'vectorcraft'],
   audio: ['wav', 'flac', 'aif', 'aiff'],
   video: ['mp4', 'mov', 'webm', 'mkv'],
@@ -70,6 +71,12 @@ export const DELIVER_PRESETS: DeliverPreset[] = [
   { id: 'document-md', group: 'document', label: 'Markdown', note: 'Text with simple formatting', ext: 'md', app: 'wordcraft', suffix: '' },
   { id: 'document-html', group: 'document', label: 'Web page (HTML)', note: 'For the web or email', ext: 'html', app: 'wordcraft', suffix: '' },
   { id: 'document-odt', group: 'document', label: 'OpenDocument (ODT)', note: 'For LibreOffice and others', ext: 'odt', app: 'wordcraft', suffix: '' },
+  { id: 'cad-pdf', group: 'cad', label: 'PDF', note: 'The whole drawing, for print or sharing', ext: 'pdf', app: 'cadcraft', suffix: '' },
+  { id: 'cad-png', group: 'cad', label: 'PNG', note: 'The whole drawing as a picture (2400 x 1600)', ext: 'png', app: 'cadcraft', suffix: '' },
+  { id: 'cad-svg', group: 'cad', label: 'SVG', note: 'Scalable lines, for the web', ext: 'svg', app: 'cadcraft', suffix: '' },
+  { id: 'cad-dxf', group: 'cad', label: 'DXF', note: 'Opens in most CAD programs', ext: 'dxf', app: 'cadcraft', suffix: '' },
+  { id: 'cad-dwg', group: 'cad', label: 'DWG', note: 'AutoCAD drawing', ext: 'dwg', app: 'cadcraft', suffix: '' },
+
   { id: 'ui-png', group: 'ui', label: 'PNG', note: 'First frame, full size', ext: 'png', app: 'figcraft', suffix: '' },
   { id: 'ui-png2x', group: 'ui', label: 'PNG at 2×', note: 'First frame, double size, for sharp screens', ext: 'png', app: 'figcraft', suffix: '@2x' },
   { id: 'ui-svg', group: 'ui', label: 'SVG', note: 'First frame, scalable', ext: 'svg', app: 'figcraft', suffix: '' },

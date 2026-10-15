@@ -15,7 +15,7 @@ export interface LogEntry {
 const SOURCE_LABEL: Record<string, string> = {
   project: 'Project', artcraft: 'ArtCraft', import: 'Import', workflow: 'Workflow', generate: 'AI Generate', deliver: 'Deliver',
   photocraft: 'PhotoCraft', vectorcraft: 'VectorCraft', soundcraft: 'SoundCraft', filmcraft: 'FilmCraft',
-  lightcraft: 'LightCraft', effectcraft: 'EffectCraft', designcraft: 'DesignCraft', wordcraft: 'WordCraft', pdfcraft: 'PdfCraft', gridcraft: 'GridCraft', deckcraft: 'DeckCraft', figcraft: 'FigCraft',
+  lightcraft: 'LightCraft', effectcraft: 'EffectCraft', designcraft: 'DesignCraft', wordcraft: 'WordCraft', pdfcraft: 'PdfCraft', gridcraft: 'GridCraft', deckcraft: 'DeckCraft', figcraft: 'FigCraft', cadcraft: 'CADCraft',
 };
 
 /** Context-sensitive bottom area: a timeline only for time-based media, otherwise the activity log. */

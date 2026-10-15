@@ -46,3 +46,14 @@ export async function semanticZipDigest(file: string): Promise<string> {
   }
   return h.digest('hex');
 }
+
+/**
+ * Digest for a saved document of any kind: zip packages compare by content (generator stamps ignored),
+ * anything else (for example a DXF text file) by its bytes, which is enough to compare two saves made
+ * by the same app.
+ */
+export async function documentDigest(file: string): Promise<string> {
+  try { return await semanticZipDigest(file); } catch { /* not a zip */ }
+  return `raw:${createHash('sha256').update(await fs.readFile(file)).digest('hex')}`;
+}
+
