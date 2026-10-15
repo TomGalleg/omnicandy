@@ -129,7 +129,7 @@ export const LOCAL_MODELS: LocalModel[] = [
     sourceUrl: 'https://huggingface.co/Wan-AI/Wan2.1-T2V-1.3B', license: 'Apache 2.0',
     licenseNote: 'Permissive; keep the license notice. Files are the ComfyUI repackaged copies; text encoder is a Q4 GGUF of umt5-xxl.',
     downloadGb: 6.7, minVramGb: 6, minRamGb: 16, backends: ['vulkan', 'cuda', 'cpu'], capabilities: ['text-to-video'],
-    minTier: 'experimental', note: 'Small text-to-video model run by stable-diffusion.cpp (Vulkan, no Python). 480p-class, short clips. The first model to try on AMD and older GPUs; unproven until a clip is made.', verified: [],
+    minTier: 'experimental', note: 'Small text-to-video model run by stable-diffusion.cpp (Vulkan, no Python). 480p-class, short clips. The first model to try on AMD and older GPUs.', verified: [{ gpu: 'AMD Radeon RX 6650 XT', backend: 'vulkan', width: 320, height: 192, frames: 17, date: '2026-10-15' }],
   },
   {
     kind: 'model', engine: 'diffusers',

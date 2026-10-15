@@ -334,6 +334,12 @@ Free local video, Stage A + B (2026-10-14):
   AI-labelled free asset, FilmCraft AVI->MP4 conversion), runtime zip extraction in the download manager, Vulkan probe, UI in the card.
   Tests: 220 passed / 14 skipped; the runner tests use a SIMULATED engine and prove only CreateCraft's logic. **No real generation has
   happened; the exact sd-cli output file name/format and progress lines are unconfirmed until the runtime is installed.**
+* **FIRST REAL LOCAL CLIP (2026-10-15, Tomas approved the 30 MB engine + 6.7 GB Wan 1.3B download):** stable-diffusion.cpp Vulkan on the
+  **AMD Radeon RX 6650 XT** (Vulkan device 0, 32 GB RAM) generated "a calm sea at sunset" at 320x192, 17 frames, 10 steps in **83 s**
+  (weights held in RAM via --offload-to-cpu); AVI converted to H.264 MP4 by FilmCraft, 1.06 s at 16 fps, plays, frames change and look
+  like water (Experimental quality is rough). Verified only for: this GPU, Vulkan, Wan 2.1 1.3B, Experimental preset. Not yet tried:
+  Low/Balanced/Higher presets, cancel on the real engine, longer clips, other GPUs. Fixed on the way: Windows tar (Git's tar failed on
+  "C:"), re-extract when the zip was already downloaded, `--fps 16` passed. Stage C remaining: Claude tool, workflow node, source selector.
 * **Requirement added by Tomas:** Free Local AI must have a built-in, self-service setup inside CreateCraft (guided: check this PC, pick a model, consent, download, self-test, status and repair/remove). The user must not need to install Python or ComfyUI by hand.
 * Next (needs Tomas's OK): Stage C hardware detection, then model download and a real inference test.
 

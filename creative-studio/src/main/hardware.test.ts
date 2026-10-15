@@ -39,8 +39,10 @@ describe('hardware detection', () => {
   });
   it('warns that AMD is unverified and never reports a model as verified without a real run', () => {
     expect(warningsFor(report()).join(' ')).toMatch(/AMD graphics cards are not verified/);
-    for (const m of LOCAL_MODELS) expect(m.verified).toEqual([]);
-    expect(modelFit(LOCAL_MODELS[0]!, report()).verifiedHere).toBe(false);
+    // Only real runs may add verified entries; the only one so far is the real RX 6650 XT clip (Wan 1.3B, Vulkan).
+    for (const m of LOCAL_MODELS) expect(m.verified.length).toBe(m.id === 'wan-2.1-t2v-1.3b' ? 1 : 0);
+    expect(modelFit(LOCAL_MODELS.find((m) => m.id === 'wan-2.2-ti2v-5b')!, report()).verifiedHere).toBe(false);
+    expect(modelFit(LOCAL_MODELS.find((m) => m.id === 'wan-2.1-t2v-1.3b')!, report()).verifiedHere).toBe(true);
   });
   it('model rules: big model refused on 8 GB, small one needs a backend and disk', () => {
     const ltx = LOCAL_MODELS.find((m) => m.id === 'wan-2.1-t2v-1.3b')!;

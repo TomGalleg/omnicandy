@@ -27,7 +27,7 @@ export interface DownloadDeps {
 
 const defaultExtract = (archive: string, dir: string) => new Promise<void>((resolve, reject) => {
   // Windows 10+ ships bsdtar, which reads zip files.
-  execFile('tar', ['-xf', archive, '-C', dir], { windowsHide: true, timeout: 10 * 60_000 }, (err) => (err ? reject(new Error(`Could not unpack ${path.basename(archive)}: ${err.message}`)) : resolve()));
+  execFile(path.join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'tar.exe'), ['-xf', archive, '-C', dir], { windowsHide: true, timeout: 10 * 60_000 }, (err) => (err ? reject(new Error(`Could not unpack ${path.basename(archive)}: ${err.message}`)) : resolve()));
 });
 
 const MARGIN = 2 * 1024 ** 3;
@@ -135,7 +135,11 @@ export class ModelDownloads {
       for (const f of m.files) {
         const final = path.join(dir, ...f.path.split('/'));
         await fs.mkdir(path.dirname(final), { recursive: true });
-        if ((await sizeOf(final)) === f.bytes) { done.push(f.path); counted += f.bytes; this.set(m.id, { doneBytes: counted, file: f.path }); continue; }
+        if ((await sizeOf(final)) === f.bytes) {
+          // Already downloaded (e.g. an earlier run stopped while unpacking): unpack again, it is cheap and idempotent.
+          if (f.extract) await (this.d.extract ?? defaultExtract)(final, dir);
+          done.push(f.path); counted += f.bytes; this.set(m.id, { doneBytes: counted, file: f.path }); continue;
+        }
         const part = `${final}.part`;
         let start = await sizeOf(part);
         if (start > f.bytes) { await fs.rm(part, { force: true }); start = 0; }

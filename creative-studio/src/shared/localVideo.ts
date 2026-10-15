@@ -54,7 +54,7 @@ export function sdCliArgs(model: LocalModel, j: LocalVideoJob, modelDir: string,
   const a = [
     '-M', 'vid_gen',
     '--diffusion-model', f(c.diffusion), '--vae', f(c.vae), '--t5xxl', f(c.textEncoder),
-    '-p', j.prompt, '-W', String(j.width), '-H', String(j.height), '--video-frames', String(j.frames),
+    '-p', j.prompt, '-W', String(j.width), '-H', String(j.height), '--video-frames', String(j.frames), '--fps', String(LOCAL_FPS),
     '--steps', String(j.steps), '--cfg-scale', String(c.cfg), '--flow-shift', String(c.flowShift), '--sampling-method', 'euler',
     '-o', out,
   ];
