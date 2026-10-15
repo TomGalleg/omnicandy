@@ -4,6 +4,7 @@ import type { ProviderStatusDto } from '@shared/ipc';
 import type { Asset, ProjectManifest, WorkspaceId } from '@shared/types';
 import { VideoPanel } from './VideoPanel';
 import { MotionPanel } from './MotionPanel';
+import { LocalAiPanel } from './LocalAiPanel';
 
 interface Props {
   manifest: ProjectManifest | null;
@@ -173,6 +174,7 @@ export function GenerateWorkspace({ manifest, selected, onGoto, log }: Props) {
 
         <VideoPanel providers={providers} selected={selected} onGoto={onGoto} log={log} />
         <MotionPanel selected={selected} onGoto={onGoto} log={log} />
+        <LocalAiPanel />
       </div>
 
       <div className="gen-results">

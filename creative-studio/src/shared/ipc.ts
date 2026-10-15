@@ -123,6 +123,7 @@ export const IPC = {
   videoCancel: 'video:cancel',
   videoEvent: 'video:event',
   motionRender: 'motion:render',
+  localAiStatus: 'localai:status',
   motionCancel: 'motion:cancel',
   deliverJobs: 'deliver:jobs',
   deliverEnqueue: 'deliver:enqueue',
@@ -159,6 +160,7 @@ export interface ProviderStatusDto {
 
 import type { VideoJob, VideoJobRecord } from './video';
 import type { MotionJob } from './motionEffects';
+import type { LocalAiStatus } from './localAi';
 
 export interface GenerateResultDto {
   assetIds: string[];
@@ -361,6 +363,8 @@ export interface StudioApi {
     /** Motion Effects: free local camera move on a picture (FilmCraft). Not AI. Resolves when the video is in the library. */
     motionRender(job: MotionJob): Promise<{ assetId: string; message: string }>;
     motionCancel(): Promise<void>;
+    /** Free local AI: re-checks this PC (read-only) and returns tier, warnings and which models could be offered. */
+    localAiStatus(): Promise<LocalAiStatus>;
     /** New generated images (from the Generate tab or Claude). */
     onResult(cb: (r: GenerateResultDto) => void): () => void;
   };

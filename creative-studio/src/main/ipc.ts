@@ -35,6 +35,8 @@ import { SafeStorageVault } from './credentialVault';
 import { GenerationService, type ApprovalRequest } from './generation';
 import { VideoService } from './videoGeneration';
 import { MotionService } from './motionEffects';
+import { detectHardware } from './hardware';
+import { LOCAL_MODELS, modelFit, tierFor, TIER_LABEL, warningsFor } from '@shared/localAi';
 import { MOTION_ASPECTS, MOTION_FPS, MOTION_INTENSITIES, MOTION_PRESETS, MOTION_RESOLUTIONS } from '@shared/motionEffects';
 import { MAX_VIDEO_PROMPT } from '@shared/video';
 import type { SettingsStore } from './settingsStore';
@@ -501,6 +503,17 @@ export function registerIpc(d: IpcDeps): void {
     return { assetId: r.asset.id, message: r.message };
   });
   handle(IPC.motionCancel, none, async () => { motion.cancel(); });
+  // Free local AI (Stage C): read-only hardware check. No download, no inference.
+  handle(IPC.localAiStatus, none, async () => {
+    const report = await detectHardware(path.join(d.secretsDir, '..', 'models'));
+    const tier = tierFor(report);
+    return {
+      report, tier, tierLabel: TIER_LABEL[tier], warnings: warningsFor(report),
+      models: LOCAL_MODELS.map((m) => modelFit(m, report)),
+      generationAvailable: false,
+      note: 'Model download and generation are not built yet. This is a compatibility check only; no backend has been tested.',
+    };
+  });
   const spendingDto = async () => { const s = await (await d.project()).spending(); return { limitUsd: s.limitUsd, spentUsd: s.spentUsd, count: s.entries.length }; };
   handle(IPC.genSpending, none, spendingDto);
   handle(IPC.genSpendingSet, z.tuple([z.number().min(0).max(100000).nullable()]), async (limit) => { await (await d.project()).setSpendingLimit(limit); return spendingDto(); });

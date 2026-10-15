@@ -313,6 +313,13 @@ Free local video, Stage A + B (2026-10-14):
   Cloud / Free Local AI / Motion Effects source selector (Motion Effects is just its own panel for now).
 * Tests: lint 0, types 0, **196 passed / 14 skipped** (+10: `motionEffects.test.ts` x2, incl. a real FilmCraft render);
   `smoke-generate` 16/16. `videoGeneration` Runway test is flaky under full-suite load (passes alone); not caused by this change.
+* **Stage C part 1 (2026-10-15, verified on this PC):** read-only hardware check + **Free local AI video** setup card in AI Generate
+  (`src/shared/localAi.ts`, `src/main/hardware.ts`, `LocalAiPanel.tsx`, IPC `localai:status`). Detects OS, CPU, RAM, GPUs with real VRAM
+  (registry value, not the 4 GB WMI cap), free disk, and backends found (CUDA, ROCm/HIP, DirectML, CPU; all "untested"). Tier is a memory
+  ceiling. Model registry (LTX-Video 2B distilled, Wan 2.2 5B) keeps availability apart from `verified` (empty). On this PC: i5-12600K,
+  31.8 GB RAM, RX 6650 XT 8 GB + UHD 770, tier Standard, DirectML runtime present, no CUDA/ROCm; LTX "could be tried", Wan not offered.
+  **Not built:** download manager, runner, self-test, generation, Claude/workflow integration. AMD is still unverified.
+  Tests: 203 passed / 14 skipped (+7 `hardware.test.ts`, fake Windows output), smoke-generate 16/16.
 * **Requirement added by Tomas:** Free Local AI must have a built-in, self-service setup inside CreateCraft (guided: check this PC, pick a model, consent, download, self-test, status and repair/remove). The user must not need to install Python or ComfyUI by hand.
 * Next (needs Tomas's OK): Stage C hardware detection, then model download and a real inference test.
 
