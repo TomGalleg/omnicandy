@@ -122,6 +122,8 @@ export const IPC = {
   videoSubmit: 'video:submit',
   videoCancel: 'video:cancel',
   videoEvent: 'video:event',
+  motionRender: 'motion:render',
+  motionCancel: 'motion:cancel',
   deliverJobs: 'deliver:jobs',
   deliverEnqueue: 'deliver:enqueue',
   deliverCancel: 'deliver:cancel',
@@ -156,6 +158,7 @@ export interface ProviderStatusDto {
 }
 
 import type { VideoJob, VideoJobRecord } from './video';
+import type { MotionJob } from './motionEffects';
 
 export interface GenerateResultDto {
   assetIds: string[];
@@ -355,6 +358,9 @@ export interface StudioApi {
     videoSubmit(job: VideoJob): Promise<VideoJobRecord>;
     videoCancel(id: string): Promise<VideoJobRecord>;
     onVideo(cb: (r: VideoJobRecord) => void): () => void;
+    /** Motion Effects: free local camera move on a picture (FilmCraft). Not AI. Resolves when the video is in the library. */
+    motionRender(job: MotionJob): Promise<{ assetId: string; message: string }>;
+    motionCancel(): Promise<void>;
     /** New generated images (from the Generate tab or Claude). */
     onResult(cb: (r: GenerateResultDto) => void): () => void;
   };

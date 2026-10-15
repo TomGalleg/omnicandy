@@ -300,6 +300,21 @@ Phase 8 (2026-10-14):
   Not run: a template applied to real files end to end, and the Claude recommendation live (needs one real Claude call; no paid generation was made).
   Screenshots `97-templates-home.png`, `98-template-applied.png`.
 
+Free local video, Stage A + B (2026-10-14):
+* **Stage A (research only, nothing run):** `docs/local-video-compatibility.md` has the model/backend matrix and recommendation.
+  Key finding: AMD's Windows ROCm requirements list RX 7000/9000, Radeon PRO and Ryzen AI only; **RX 6000 (incl. 6650 XT) is
+  unsupported**, so AMD RX 6650 XT is *unproven* and only a DirectML experiment could change that. Recommended first local engine:
+  LTX-Video 2B distilled via a small diffusers runner (ComfyUI optional). No hardware is claimed to work.
+* **Stage B (verified):** **Motion Effects**, a free non-AI camera move on one picture rendered by FilmCraft's headless engine:
+  zoom in/out, pan L/R/U/D, strength, 16:9 / 9:16 / 1:1, 720p/1080p, 24/30 fps, 2-20 s. Saved as a new version of the picture,
+  labelled "not AI-generated", no cost/ledger. Panel in AI Generate (below Video). Code: `src/shared/motionEffects.ts`,
+  `src/main/motionEffects.ts`, `MotionPanel.tsx`; IPC `motion:render` / `motion:cancel`.
+* Not built: parallax/depth, multi-picture crossfade sequences, overlays, title animation, Claude tool, workflow node, the
+  Cloud / Free Local AI / Motion Effects source selector (Motion Effects is just its own panel for now).
+* Tests: lint 0, types 0, **196 passed / 14 skipped** (+10: `motionEffects.test.ts` x2, incl. a real FilmCraft render);
+  `smoke-generate` 16/16. `videoGeneration` Runway test is flaky under full-suite load (passes alone); not caused by this change.
+* Next (needs Tomas's OK): Stage C hardware detection, then model download and a real inference test.
+
 Phase 1 note: the old `integrationStatus().claude` field in `src/main/ipc.ts` still says "not
 configured in this build" (stale); Settings now shows Claude's real sign-in state instead.
 

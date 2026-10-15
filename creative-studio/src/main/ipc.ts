@@ -34,6 +34,8 @@ import { UnavailableWindowCapture } from './services';
 import { SafeStorageVault } from './credentialVault';
 import { GenerationService, type ApprovalRequest } from './generation';
 import { VideoService } from './videoGeneration';
+import { MotionService } from './motionEffects';
+import { MOTION_ASPECTS, MOTION_FPS, MOTION_INTENSITIES, MOTION_PRESETS, MOTION_RESOLUTIONS } from '@shared/motionEffects';
 import { MAX_VIDEO_PROMPT } from '@shared/video';
 import type { SettingsStore } from './settingsStore';
 
@@ -482,6 +484,23 @@ export function registerIpc(d: IpcDeps): void {
   handle(IPC.videoList, none, () => video.list());
   handle(IPC.videoSubmit, z.tuple([videoJobSchema]), (job) => video.submit(job, 'user'));
   handle(IPC.videoCancel, z.tuple([z.string().min(1).max(64)]), (id) => video.cancel(id));
+  // Motion Effects: free, local, not AI. No key, no approval dialog, no ledger entry.
+  const motion = new MotionService({ store: d.project, filmcraftDir: () => PFdir('FilmCraft') });
+  const motionSchema = z.object({
+    assetId: z.string().min(1).max(128),
+    preset: z.enum(MOTION_PRESETS.map((p) => p.id) as [string, ...string[]]),
+    intensity: z.enum(MOTION_INTENSITIES.map((p) => p.id) as [string, ...string[]]),
+    aspectRatio: z.enum(MOTION_ASPECTS),
+    resolution: z.enum(MOTION_RESOLUTIONS),
+    fps: z.union([z.literal(MOTION_FPS[0]), z.literal(MOTION_FPS[1])]),
+    durationSeconds: z.number().min(1).max(60),
+  });
+  handle(IPC.motionRender, z.tuple([motionSchema]), async (job) => {
+    const r = await motion.render(job as Parameters<MotionService['render']>[0]);
+    emitGenerated({ assetIds: [r.asset.id], message: r.message, estimate: { amount: 0, perImage: 0, currency: 'USD', approximate: false, basis: 'Free: local camera move, no AI.' }, requestedBy: 'user' });
+    return { assetId: r.asset.id, message: r.message };
+  });
+  handle(IPC.motionCancel, none, async () => { motion.cancel(); });
   const spendingDto = async () => { const s = await (await d.project()).spending(); return { limitUsd: s.limitUsd, spentUsd: s.spentUsd, count: s.entries.length }; };
   handle(IPC.genSpending, none, spendingDto);
   handle(IPC.genSpendingSet, z.tuple([z.number().min(0).max(100000).nullable()]), async (limit) => { await (await d.project()).setSpendingLimit(limit); return spendingDto(); });

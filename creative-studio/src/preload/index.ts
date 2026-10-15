@@ -152,6 +152,8 @@ const api: StudioApi = {
     videoJobs: () => ipcRenderer.invoke(IPC.videoList),
     videoSubmit: (job) => ipcRenderer.invoke(IPC.videoSubmit, job),
     videoCancel: (id) => ipcRenderer.invoke(IPC.videoCancel, id),
+    motionRender: (job) => ipcRenderer.invoke(IPC.motionRender, job),
+    motionCancel: () => ipcRenderer.invoke(IPC.motionCancel),
     onVideo: (cb) => {
       const listener = (_e: unknown, r: Parameters<typeof cb>[0]) => cb(r);
       ipcRenderer.on(IPC.videoEvent, listener);

@@ -3,6 +3,7 @@ import { estimateCost, formatUsd, IMAGE_MODELS, PROVIDERS, type GenCapability, t
 import type { ProviderStatusDto } from '@shared/ipc';
 import type { Asset, ProjectManifest, WorkspaceId } from '@shared/types';
 import { VideoPanel } from './VideoPanel';
+import { MotionPanel } from './MotionPanel';
 
 interface Props {
   manifest: ProjectManifest | null;
@@ -171,6 +172,7 @@ export function GenerateWorkspace({ manifest, selected, onGoto, log }: Props) {
         </div>
 
         <VideoPanel providers={providers} selected={selected} onGoto={onGoto} log={log} />
+        <MotionPanel selected={selected} onGoto={onGoto} log={log} />
       </div>
 
       <div className="gen-results">
