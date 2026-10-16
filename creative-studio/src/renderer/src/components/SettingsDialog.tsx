@@ -7,6 +7,7 @@ import type { LiveSnapshot } from '@shared/live';
 import { ACCENT_PRESETS, THEME_OPTIONS } from '@shared/theme';
 import type { AppProbeResult } from '@shared/types';
 import { setOverlayOpen } from '../overlay';
+import { ExternalApps } from './ExternalApps';
 import type { useAppearance } from '../useAppearance';
 
 type Section = 'appearance' | 'storage' | 'integrations' | 'diagnostics';
@@ -196,6 +197,7 @@ function IntegrationSettings({ apps }: { apps: AppProbeResult[] }) {
         </ul>
         <small>Installed means the app was found on this PC. CreateCraft starts and controls an app when you open a file in it.</small>
       </div>
+      <ExternalApps />
       <div className="field">
         <span className="menu-label">Claude</span>
         <p className="asset-meta">{claudeText(claude)}</p>

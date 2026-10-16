@@ -552,3 +552,11 @@ h1, h2, h3 { margin: 0; font-weight: 600; }
 .badge-ok { margin-left: 6px; padding: 0 5px; border-radius: 8px; font-size: 10px; background: #2e7d32; color: #fff; }
 .badge-stale { margin-left: 6px; padding: 0 5px; border-radius: 8px; font-size: 10px; background: #b26a00; color: #fff; }
 .node.stale { outline: 1px dashed #b26a00; }
+
+/* ---------- External applications (Settings > Integrations) ---------- */
+.ext-list { gap: 10px; }
+.ext-list .ext-row { display: grid; grid-template-columns: 1fr; gap: 4px; padding: 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-2); }
+.ext-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.ext-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
+.ext-note { color: var(--text-3); }
+.ext-error { color: var(--warn); }

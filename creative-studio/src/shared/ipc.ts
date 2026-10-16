@@ -123,6 +123,13 @@ export const IPC = {
   videoCancel: 'video:cancel',
   videoEvent: 'video:event',
   motionRender: 'motion:render',
+  extScan: 'ext:scan',
+  extList: 'ext:list',
+  extConnect: 'ext:connect',
+  extDisconnect: 'ext:disconnect',
+  extRepair: 'ext:repair',
+  extRevoke: 'ext:revoke',
+  extAddLocation: 'ext:add-location',
   localAiStatus: 'localai:status',
   localAiDownloads: 'localai:downloads',
   localAiDownload: 'localai:download',
@@ -171,6 +178,7 @@ export interface ProviderStatusDto {
 import type { VideoJob, VideoJobRecord } from './video';
 import type { MotionJob } from './motionEffects';
 import type { DownloadState, LocalAiStatus } from './localAi';
+import type { ExternalAppInfo, ExternalScan } from './integrations';
 import type { LocalVideoJob } from './localVideo';
 
 export interface GenerateResultDto {
@@ -392,6 +400,20 @@ export interface StudioApi {
     onLocalVideoProgress(cb: (p: { fraction: number | null; line: string }) => void): () => void;
     /** New generated images (from the Generate tab or Claude). */
     onResult(cb: (r: GenerateResultDto) => void): () => void;
+  };
+  /** External third-party applications (Universal Application Integration Framework). */
+  external: {
+    /** Looks for supported applications on this PC (local only). */
+    scan(): Promise<ExternalScan>;
+    /** Last scan result without scanning again. */
+    list(): Promise<ExternalAppInfo[]>;
+    connect(key: string): Promise<ExternalAppInfo>;
+    disconnect(key: string): Promise<ExternalAppInfo | null>;
+    repair(key: string): Promise<ExternalAppInfo>;
+    /** Forgets the permissions granted to this application. */
+    revoke(key: string): Promise<ExternalAppInfo[]>;
+    /** Native picker for a portable copy; rescans. Null when cancelled. */
+    addLocation(): Promise<ExternalScan | null>;
   };
   probeApps(): Promise<AppProbeResult[]>;
   integrationStatus(): Promise<IntegrationSnapshot>;

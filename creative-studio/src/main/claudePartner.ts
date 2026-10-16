@@ -40,6 +40,8 @@ Saving creates a new version in the library; the user's original file is never c
 To deliver finished files (JPEG for the web, PDF, MP4, WAV, GIF and so on), use list_export_formats and export_file. Exports go to the project's exports folder (the Deliver tab) and are made from saved library files, never from unsaved changes in the open app. To hand a file to another app (a Word document to PdfCraft as a PDF, or a PDF to WordCraft as a .docx), export it with export_file and add_to_library set to true, then open the new library file with open_file. The conversion is approximate for layout: tell the user what was kept.
 Keep replies short and plain.
 
+For third-party software that is not one of the ArtCraft apps (Blender, Autodesk, Adobe, FreeCAD, Godot and so on), call external_apps to see what is installed and which commands really exist, then external_run. The user approves each run in a dialog. A result is only successful when ok is true; say what the result's evidence lists as verified (files that exist, objects found when the file was re-opened) and nothing more. If the program is missing, unsupported or the command is not listed, say so plainly instead of improvising. Never use external_run for the native Craft apps.
+
 You can also create new pictures with generate_image (OpenAI or Google Gemini, using the user's own account). It costs the user money: only generate when they ask for it, keep the count low, and say which model you will use. CreateCraft shows the user the price and asks them to approve every call; if they cancel, accept it and do not ask again unless they bring it up. New images are added to the library as new files; open one with open_file to edit it. For free video on this PC use local_video_status, make_local_video (AI, on the user GPU) or make_motion_video (camera move on a picture, not AI); never switch to a paid provider because local is unavailable, ask first. For paid video use list_video_models and generate_video (Google Veo or Runway): it costs more, takes minutes, the user approves the price, and the clip lands in the library later, so tell the user rather than waiting.
 
 When the user wants a repeatable multi-step process (for example edit many photos and export them), build a workflow with plan_workflow instead of editing files yourself: read list_files, list_image_models and workflow_catalog, then propose it. The user decides whether to use it. Explain the plan in plain words, say what it costs and what they will be asked to approve, and be honest about warnings.
@@ -58,7 +60,7 @@ const PLAN_PROMPT = `You are Claude, the Creative Partner inside CreateCraft. Th
 "template": the id of ONE template from the list you are given if it clearly fits the project, otherwise null. Never invent an id.
 Do not start any work and do not mention software internals, node graphs or file formats unless the user did. Write in the user's language.`;
 
-const TOOL_NAMES = ['get_status', 'look_at_document', 'apply_edit', 'photocraft_command', 'undo', 'save_version', 'list_files', 'open_file', 'list_image_models', 'generate_image', 'list_video_models', 'generate_video', 'local_video_status', 'make_local_video', 'make_motion_video', 'request_model_download', 'list_export_formats', 'export_file', 'timeline_add', 'timeline_move_clip', 'timeline_remove_clip', 'workflow_catalog', 'plan_workflow', 'workflow_status', 'run_workflow', 'rerun_workflow', 'pause_workflow', 'resume_workflow', 'cancel_workflow', 'change_workflow_step', 'list_workflow_versions', 'restore_workflow_version', 'save_workflow_template'];
+const TOOL_NAMES = ['get_status', 'look_at_document', 'apply_edit', 'photocraft_command', 'undo', 'save_version', 'list_files', 'open_file', 'list_image_models', 'generate_image', 'list_video_models', 'generate_video', 'local_video_status', 'make_local_video', 'make_motion_video', 'request_model_download', 'list_export_formats', 'export_file', 'timeline_add', 'timeline_move_clip', 'timeline_remove_clip', 'workflow_catalog', 'plan_workflow', 'workflow_status', 'run_workflow', 'rerun_workflow', 'pause_workflow', 'resume_workflow', 'cancel_workflow', 'change_workflow_step', 'list_workflow_versions', 'restore_workflow_version', 'save_workflow_template', 'external_apps', 'external_run'];
 
 export interface WorkflowControlApi {
   /** Snapshot of the run (waits up to `waitSeconds` for it to finish, pause or need the user). */
@@ -96,6 +98,11 @@ export interface ClaudePartnerDeps {
     motion: (job: { fileName: string; preset: string; intensity: string; seconds: number; aspect: string }) => Promise<string>;
     /** Shows the user the license/size dialog; downloads only if they accept. */
     requestDownload: (modelId: string) => Promise<string>;
+  };
+  /** External third-party applications (not the native Craft apps): scan result as JSON text, and one verified command run. */
+  external: {
+    list: () => Promise<string>;
+    run: (app: string, command: string, params: Record<string, string | number | boolean>) => Promise<string>;
   };
   /** Providers with a saved key (status only, never the key). */
   imageModels: () => Promise<ProviderStatusDto[]>;
@@ -452,6 +459,16 @@ Now explain the plan to the user in plain language, including cost and what they
               price_at_720p_4s: formatUsd(estimateVideoCost({ modelId: m.id, prompt: 'x', referenceAssetId: null, aspectRatio: '16:9', durationSeconds: m.durations.includes(4) ? 4 : m.durations[0]!, resolution: '720p' }).amount),
             })), null, 2));
           } catch (e) { return fail(e); }
+        }),
+        tool('external_apps', 'External third-party software found on this PC (Blender, Autodesk, Adobe and others) with status, how it can be controlled and the exact commands that exist. These are NOT the native Craft apps. Only commands listed here can be run; unsupported programs are only detected.', {}, async () => {
+          try { activity('Looking for external applications'); return text(await this.d.external.list()); } catch (e) { return fail(e); }
+        }),
+        tool('external_run', 'Runs one command from external_apps in an external application. The user is asked to allow it first; if they decline, accept it. The result states what was verified (for example the saved file exists and was re-opened); report only that, never claim more. Outputs land in the project external folder.', {
+          app: z.string().max(200).describe('app_key, adapter id or name from external_apps.'),
+          command: z.string().max(100),
+          settings: z.record(z.string(), z.union([z.string().max(512), z.number(), z.boolean()])).optional(),
+        }, async ({ app, command, settings }) => {
+          try { activity(`Running ${command} in ${app}`); return text(await this.d.external.run(app, command, settings ?? {})); } catch (e) { return fail(e); }
         }),
         tool('local_video_status', 'Free local AI video on this PC: hardware tier, which engine and models are downloaded, which presets exist, and what has really been verified. Check this before offering local video. Never switch to a paid provider because local is unavailable; ask the user first.', {}, async () => {
           try { return text(await this.d.localAi.status()); } catch (e) { return fail(e); }

@@ -23,7 +23,9 @@
     "smoke:workflow": "electron-vite build && node scripts/smoke-workflow.mjs",
     "smoke:docks": "electron-vite build && node scripts/smoke-docks.mjs",
     "smoke:docs": "electron-vite build && node scripts/smoke-docs.mjs",
-    "smoke:reopen": "electron-vite build && node scripts/smoke-reopen.mjs"
+    "smoke:reopen": "electron-vite build && node scripts/smoke-reopen.mjs",
+    "smoke:external": "electron-vite build && node scripts/smoke-external.mjs",
+    "smoke:claude-external": "electron-vite build && node scripts/smoke-claude-external.mjs"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.3.296",

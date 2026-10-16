@@ -44,6 +44,8 @@ import { LOCAL_MODELS, modelFit, SDCPP_RUNTIME, tierFor, TIER_LABEL, totalBytes,
 import { MOTION_ASPECTS, MOTION_FPS, MOTION_INTENSITIES, MOTION_PRESETS, MOTION_RESOLUTIONS } from '@shared/motionEffects';
 import { MAX_VIDEO_PROMPT } from '@shared/video';
 import type { SettingsStore } from './settingsStore';
+import { createIntegrationManager } from './integrations';
+import { PERMISSION_LABEL, type ApprovalAnswer, type ExternalAppInfo, type Permission } from '@shared/integrations';
 
 export interface IpcDeps {
   window: () => BrowserWindow | null;
@@ -633,6 +635,56 @@ export function registerIpc(d: IpcDeps): void {
     sendPlan(null);
     return g;
   });
+  // External third-party applications: one engine for discovery, adapters, permissions and execution.
+  // The 13 native Craft apps are NOT routed through it.
+  const extFile = path.join(d.secretsDir, 'external-apps.json');
+  const extState = async (): Promise<{ grants: Record<string, Permission[]>; paths: string[] }> => {
+    try { const j = JSON.parse(await fsp.readFile(extFile, 'utf8')) as { grants?: Record<string, Permission[]>; paths?: string[] }; return { grants: j.grants ?? {}, paths: j.paths ?? [] }; } catch { return { grants: {}, paths: [] }; }
+  };
+  const extSave = async (s: { grants: Record<string, Permission[]>; paths: string[] }) => {
+    await fsp.mkdir(path.dirname(extFile), { recursive: true });
+    await fsp.writeFile(extFile, JSON.stringify(s, null, 2), 'utf8');
+  };
+  const external = createIntegrationManager({
+    workDir: async (id) => (await d.project()).workDir('external', id),
+    permissions: { load: async () => (await extState()).grants, save: async (grants) => extSave({ ...(await extState()), grants }) },
+    userPaths: async () => (await extState()).paths,
+    approve: async (r): Promise<ApprovalAnswer> => {
+      const win = d.window();
+      const lines = [
+        r.command.description,
+        '',
+        r.needed.length ? `This lets CreateCraft: ${r.needed.map((p) => PERMISSION_LABEL[p].toLowerCase()).join('; ')}.` : 'No new permissions are needed.',
+        Object.keys(r.params).length ? `Settings: ${Object.entries(r.params).map(([k, v]) => `${k} ${String(v)}`).join(', ')}` : '',
+        r.destructive ? 'This can change or remove existing work and may not be reversible. You are asked every time.' : 'Outputs are written to the external folder of this project; your existing files are not changed.',
+      ].filter((x, i, a) => x !== '' || a[i - 1] !== '');
+      const buttons = r.destructive ? ['Cancel', 'Allow once'] : ['Cancel', 'Allow once', `Always allow for ${r.app.adapterName ?? r.app.name}`];
+      const options: Electron.MessageBoxOptions = { type: 'question', title: 'External application', message: `Run "${r.command.label}" in ${r.app.adapterName ?? r.app.name}?`, detail: lines.join(String.fromCharCode(10)), buttons, defaultId: 0, cancelId: 0, noLink: true };
+      const res = win && !win.isDestroyed() ? await dialog.showMessageBox(win, options) : await dialog.showMessageBox(options);
+      return res.response === 1 ? 'once' : res.response === 2 ? 'always' : 'deny';
+    },
+  });
+  handle(IPC.extScan, none, () => external.scan());
+  handle(IPC.extList, none, () => external.list());
+  handle(IPC.extConnect, z.tuple([z.string().min(1).max(600)]), (k) => external.connect(k));
+  handle(IPC.extDisconnect, z.tuple([z.string().min(1).max(600)]), (k) => external.disconnect(k));
+  handle(IPC.extRepair, z.tuple([z.string().min(1).max(600)]), (k) => external.repair(k));
+  handle(IPC.extRevoke, z.tuple([z.string().min(1).max(600)]), async (k) => { await external.revoke(k); return external.list(); });
+  handle(IPC.extAddLocation, none, async () => {
+    const win = d.window();
+    const o: Electron.OpenDialogOptions = { title: 'Choose the application (.exe) or its folder', properties: ['openFile'], filters: [{ name: 'Applications', extensions: ['exe'] }] };
+    const r = await (win ? dialog.showOpenDialog(win, o) : dialog.showOpenDialog(o));
+    const p = r.canceled ? null : r.filePaths[0];
+    if (!p) return null;
+    const st = await extState();
+    if (!st.paths.includes(p)) await extSave({ ...st, paths: [...st.paths, p].slice(-50) });
+    return external.scan();
+  });
+  const describeExternal = (a: ExternalAppInfo) => ({
+    app_key: a.key, name: a.name, version: a.version, status: a.status, detail: a.statusDetail, adapter: a.adapterId, maturity: a.maturity, methods: a.methods,
+    commands: a.commands.map((c) => ({ id: c.id, label: c.label, description: c.description, settings: c.params, needs: c.permissions, destructive: !!c.destructive })),
+  });
+
   let partner: ClaudePartner | null = null;
   resetters.push(() => { partner = null; });
   const claude = () => (partner ??= new ClaudePartner({
@@ -673,6 +725,19 @@ export function registerIpc(d: IpcDeps): void {
       requestDownload: async (id) => {
         const s = await requestModelDownload(id);
         return s ? `The user accepted; downloading ${id} (${s.state}).` : 'The user declined the download. Do not ask again unless they bring it up.';
+      },
+    },
+    external: {
+      list: async () => {
+        const s = await external.scan();
+        return JSON.stringify({ applications: s.apps.map(describeExternal), not_found: s.missing.map((m) => `${m.name} (${m.maturity})`), note: 'Only commands listed here exist. status connected/available means usable; unsupported means detected only.' }, null, 2);
+      },
+      run: async (app, command, params) => {
+        const s = await external.list();
+        const a = s.find((x) => x.key === app || x.adapterId === app || x.name.toLowerCase() === app.toLowerCase());
+        if (!a) throw new Error(`No detected application "${app}". Use external_apps.`);
+        const r = await external.execute(a.key, command, params);
+        return JSON.stringify(r, null, 2);
       },
     },
     deliver: async () => deliver(),

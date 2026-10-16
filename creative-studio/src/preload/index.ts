@@ -184,6 +184,15 @@ const api: StudioApi = {
       return () => ipcRenderer.removeListener(IPC.genEvent, listener);
     },
   },
+  external: {
+    scan: () => ipcRenderer.invoke(IPC.extScan),
+    list: () => ipcRenderer.invoke(IPC.extList),
+    connect: (key) => ipcRenderer.invoke(IPC.extConnect, key),
+    disconnect: (key) => ipcRenderer.invoke(IPC.extDisconnect, key),
+    repair: (key) => ipcRenderer.invoke(IPC.extRepair, key),
+    revoke: (key) => ipcRenderer.invoke(IPC.extRevoke, key),
+    addLocation: () => ipcRenderer.invoke(IPC.extAddLocation),
+  },
   probeApps: () => ipcRenderer.invoke(IPC.probeApps),
   integrationStatus: () => ipcRenderer.invoke(IPC.integrationStatus),
   assetUrl: (assetId) => `${ASSET_SCHEME}://asset/${encodeURIComponent(assetId)}`,
