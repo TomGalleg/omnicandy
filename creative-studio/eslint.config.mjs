@@ -10,7 +10,7 @@ export default tseslint.config(
   { rules: { '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }] } },
   {
     // Integration packages are plain CommonJS that runs in its own restricted Node process, not CreateCraft code.
-    files: ['fixtures/sample-adapter/**/*.js'],
+    files: ['fixtures/sample-adapter/**/*.js', 'fixtures/freecad-adapter/**/*.js'],
     languageOptions: { sourceType: 'commonjs', globals: globals.node },
     rules: { '@typescript-eslint/no-require-imports': 'off' },
   },

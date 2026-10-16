@@ -234,6 +234,55 @@ To verify the commands for real: run Resolve Studio, set External scripting to L
 `CS_LIVE_TESTS=1 npx vitest run src/main/integrations/resolve.live.test.ts`. It creates and deletes only a project named
 "CreateCraft Live Test" and re-opens whatever was open.
 
+## FreeCAD adapter (installable package, `fixtures/freecad-adapter`)
+
+The first adapter delivered purely as a `.ccadapter`: no change to the manager, router, runner, UI, native Craft apps
+or `vendors.ts`. Package id `freecad` replaces the FreeCAD placeholder while installed (removing it restores the placeholder).
+
+Build and install: `node scripts/pack-adapter.mjs fixtures/freecad-adapter out/adapters/freecad-1.0.0.ccadapter --generate-key .local/publisher.key.pem`
+(omit the key option for an unsigned package), then Settings > Integrations > Install integration package.
+
+How it works: FreeCAD is driven through its own **FreeCADCmd.exe** (no window, FreeCAD need not be open). `main.js` runs in the
+restricted adapter process; for each command it writes `_cc_job.py` (a fixed script, `freecad_job.py`, hashed with the
+package, behind a generated header that carries the parameters as base64 JSON, never as code) into the project's
+`work/external/freecad/` folder and starts `FreeCADCmd.exe _cc_job.py` through the host operation `ctx.runApp` (cwd =
+that folder). The script prints one `CREATECRAFT_RESULT {json}` line. Version comes from `FreeCADCmd --version`
+(supported 0.21 to 1.x; older/newer shows as Incompatible before any command runs).
+
+| Command | What it does and checks |
+|---|---|
+| `app.health` | builds and measures a 10 mm cube in a temporary document; reports version, Python, module availability; saves nothing |
+| `doc.create` | new `.FCStd` with a `Params` spreadsheet (named parameters) driving a `box`, `cylinder` or `plate_with_hole`; volume compared with the formula, then the saved file is re-opened and re-measured |
+| `doc.inspect` | read only: objects, parameters, expressions, volumes, bounding boxes |
+| `geometry.add` | adds a box, cylinder, sphere or cone to an existing document; saves a NEW file; re-opened and checked |
+| `object.set_property` | one allow-listed property (Length, Width, Height, Radius, Radius1, Radius2, Angle, Label, Placement.Base.x/y/z); refuses properties driven by a parameter (use `param.set`); NEW file; re-opened and compared |
+| `param.set` | changes one named parameter, FreeCAD recomputes dependants; NEW file; volume before/after reported and re-checked |
+| `doc.save_as` | copy under a new name; re-opened and the object list compared |
+| `export.step`, `export.stl` | long-running jobs (cancellable, 10 min limit). STEP is re-read and its volume compared; STL is re-read (triangle count, volume within 5%) |
+
+Permissions: every command needs `execute-scripts` + `write-files` (the job script is written to the work folder), the health
+command also `read-info` (so the version probe at Connect is allowed). Nothing is destructive: every edit writes a new file and
+**never overwrites** (an existing output name is refused). Files are plain names inside the work folder only; `main.js`
+validates names and `freecad_job.py` validates them again (real path must be the work folder). FreeCAD files from elsewhere must
+be copied into the work folder first: reading arbitrary folders would need a host operation CreateCraft does not offer. Cancel
+kills FreeCADCmd; results are written under a temporary name and renamed only when complete, so a cancel leaves no half file.
+
+### FreeCAD verification status (read this before trusting it)
+
+| Item | Evidence |
+|---|---|
+| Package format, signature, install/enable/repair/remove, permission ceiling, unsigned handling, job + cancel, crash, path confinement, argument and geometry errors | `freecad.test.ts` (13 tests): REAL package store, REAL restricted child process, REAL manager; the program is a **test double** |
+| Install through Settings, discovery, commands listed, Connect | `scripts/smoke-freecad.mjs` (6/6) in a scratch profile with the test double |
+| Real Claude finds FreeCAD with `external_apps`, runs `external_run` (create, change parameter) and follows `external_job` (STEP export) | `scripts/smoke-freecad.mjs --claude` (10/10, Claude usage only) against the test double; Claude itself reported that the connected program was a mock folder |
+| **Real FreeCAD** | **NOT VERIFIED. FreeCAD is not installed on this PC.** `freecad_job.py` has never run inside a real FreeCADCmd. The test double (`fixtures/freecad-mock`: a compiled FreeCADCmd.exe launcher plus a Python imitation of the API calls used) proves the adapter logic and the process plumbing only |
+| How to verify | install FreeCAD 0.21+ (free), then `CS_LIVE_TESTS=1 npx vitest run src/main/integrations/freecad.live.test.ts` (it is SKIPPED, not passed, when FreeCAD is absent) |
+
+Risks that only a real FreeCAD can settle: API differences between 0.21 and 1.x in the calls the script uses
+(`Part::Cut` placement expressions, `MeshPart.meshFromShape`, `Spreadsheet` aliases), whether `FreeCADCmd.exe` exits by itself
+after the script (the script ends with `os._exit`), and whether FreeCAD starts with the minimal environment `ctx.runApp`
+gives it (PATH, SystemRoot, TEMP; no APPDATA). If the last one fails the fix is a host-side change (an allow-listed
+environment), not something the package can do.
+
 ## Prerequisites from the earlier review: status
 
 | # | Prerequisite | Status |

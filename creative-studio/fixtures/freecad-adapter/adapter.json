@@ -1,0 +1,401 @@
+{
+  "manifestVersion": 1,
+  "id": "freecad",
+  "name": "FreeCAD",
+  "version": "1.0.0",
+  "description": "Create, inspect and edit parametric 3D models with FreeCAD (free, open source) and export STEP and STL files. Works through FreeCAD's own command-line program without opening a window.",
+  "license": "MIT",
+  "homepage": "https://www.freecad.org",
+  "publisher": {
+    "name": "CreateCraft Integrations"
+  },
+  "sdk": {
+    "min": 1,
+    "max": 1
+  },
+  "application": {
+    "kind": "program",
+    "name": "FreeCAD",
+    "exeNames": [
+      "FreeCADCmd.exe"
+    ],
+    "displayNames": [
+      "FreeCAD"
+    ],
+    "versions": [
+      {
+        "min": "0.21",
+        "max": "1.99"
+      }
+    ]
+  },
+  "requirements": [
+    {
+      "kind": "application",
+      "text": "FreeCAD 0.21 or newer must be installed (free from freecad.org). Its FreeCADCmd.exe program is used, so FreeCAD does not need to be open."
+    },
+    {
+      "kind": "other",
+      "text": "Files stay inside this project's FreeCAD work folder: existing FreeCAD files from elsewhere must be copied there first. New work is always saved as new files; nothing is overwritten."
+    },
+    {
+      "kind": "other",
+      "text": "Not yet verified on a real FreeCAD install; tested against a clearly marked test double (see the integration notes)."
+    }
+  ],
+  "runtime": {
+    "entry": "main.js",
+    "dependencies": [
+      {
+        "kind": "application",
+        "name": "FreeCAD (with FreeCADCmd.exe)",
+        "min": "0.21",
+        "note": "FreeCAD brings its own Python; nothing else to install."
+      }
+    ]
+  },
+  "methods": [
+    "scripting",
+    "cli"
+  ],
+  "capabilities": [
+    "detect",
+    "connect",
+    "disconnect",
+    "healthCheck",
+    "executeCommand",
+    "getExecutionStatus",
+    "cancelOperation",
+    "saveProject",
+    "exportFile",
+    "getApplicationState"
+  ],
+  "commands": [
+    {
+      "id": "app.health",
+      "label": "Check that FreeCAD can model",
+      "description": "Starts FreeCAD without a window, builds a 10 mm cube in a temporary document and measures it. Saves nothing.",
+      "params": {},
+      "permissions": [
+        "read-info",
+        "execute-scripts",
+        "write-files"
+      ],
+      "idempotent": true,
+      "timeoutMs": 120000
+    },
+    {
+      "id": "doc.create",
+      "label": "Create a parametric 3D model",
+      "description": "Makes a new FreeCAD project (.FCStd) whose dimensions come from a named-parameter spreadsheet, so they can be changed later with \"Change a model parameter\". Shapes: box, cylinder, or plate_with_hole (a plate with a centred through-hole). Dimensions are in millimetres. The saved file is re-opened and its volume checked.",
+      "params": {
+        "name": {
+          "type": "string",
+          "description": "File name of the new project, without extension.",
+          "required": true
+        },
+        "shape": {
+          "type": "string",
+          "description": "box, cylinder or plate_with_hole.",
+          "default": "box"
+        },
+        "length": {
+          "type": "number",
+          "description": "Length in mm (box, plate_with_hole).",
+          "default": 40,
+          "min": 0.1,
+          "max": 100000
+        },
+        "width": {
+          "type": "number",
+          "description": "Width in mm (box, plate_with_hole).",
+          "default": 20,
+          "min": 0.1,
+          "max": 100000
+        },
+        "height": {
+          "type": "number",
+          "description": "Height or thickness in mm.",
+          "default": 10,
+          "min": 0.1,
+          "max": 100000
+        },
+        "radius": {
+          "type": "number",
+          "description": "Radius in mm (cylinder).",
+          "default": 10,
+          "min": 0.1,
+          "max": 100000
+        },
+        "hole_diameter": {
+          "type": "number",
+          "description": "Hole diameter in mm (plate_with_hole); must be smaller than the length and width.",
+          "default": 8,
+          "min": 0.1,
+          "max": 100000
+        }
+      },
+      "permissions": [
+        "execute-scripts",
+        "write-files"
+      ],
+      "timeoutMs": 120000
+    },
+    {
+      "id": "doc.inspect",
+      "label": "Inspect a FreeCAD document",
+      "description": "Lists the objects, named parameters, expressions, volumes and bounding boxes of a project. Changes nothing.",
+      "params": {
+        "document": {
+          "type": "string",
+          "description": "The FreeCAD document in this project's FreeCAD work folder, for example \"Bracket.FCStd\".",
+          "required": true
+        }
+      },
+      "permissions": [
+        "execute-scripts",
+        "write-files"
+      ],
+      "idempotent": true,
+      "timeoutMs": 120000
+    },
+    {
+      "id": "geometry.add",
+      "label": "Add a basic 3D shape",
+      "description": "Adds a box, cylinder, sphere or cone to an existing project and saves the result as a NEW file (the original is kept). Dimensions in mm; x, y, z place it.",
+      "params": {
+        "document": {
+          "type": "string",
+          "description": "The FreeCAD document in this project's FreeCAD work folder, for example \"Bracket.FCStd\".",
+          "required": true
+        },
+        "shape": {
+          "type": "string",
+          "description": "box, cylinder, sphere or cone.",
+          "required": true
+        },
+        "label": {
+          "type": "string",
+          "description": "Name shown for the new shape.",
+          "default": "Shape"
+        },
+        "length": {
+          "type": "number",
+          "description": "Box length in mm.",
+          "default": 10,
+          "min": 0.1,
+          "max": 100000
+        },
+        "width": {
+          "type": "number",
+          "description": "Box width in mm.",
+          "default": 10,
+          "min": 0.1,
+          "max": 100000
+        },
+        "height": {
+          "type": "number",
+          "description": "Height in mm (box, cylinder, cone).",
+          "default": 10,
+          "min": 0.1,
+          "max": 100000
+        },
+        "radius": {
+          "type": "number",
+          "description": "Radius in mm (cylinder, sphere, cone base).",
+          "default": 5,
+          "min": 0.1,
+          "max": 100000
+        },
+        "radius2": {
+          "type": "number",
+          "description": "Top radius in mm (cone).",
+          "default": 0,
+          "min": 0,
+          "max": 100000
+        },
+        "x": {
+          "type": "number",
+          "description": "X position in mm.",
+          "default": 0,
+          "min": -1000000,
+          "max": 1000000
+        },
+        "y": {
+          "type": "number",
+          "description": "Y position in mm.",
+          "default": 0,
+          "min": -1000000,
+          "max": 1000000
+        },
+        "z": {
+          "type": "number",
+          "description": "Z position in mm.",
+          "default": 0,
+          "min": -1000000,
+          "max": 1000000
+        },
+        "output": {
+          "type": "string",
+          "description": "Name for the new file (no extension). It is always a NEW file; existing files are never overwritten. Default: the document name plus \" edited\"."
+        }
+      },
+      "permissions": [
+        "execute-scripts",
+        "write-files"
+      ],
+      "timeoutMs": 120000
+    },
+    {
+      "id": "object.set_property",
+      "label": "Change an object property",
+      "description": "Sets one supported property of one object (Length, Width, Height, Radius, Radius1, Radius2, Angle, Label, Placement.Base.x/y/z) and saves a NEW file. Properties driven by a parameter must be changed with \"Change a model parameter\".",
+      "params": {
+        "document": {
+          "type": "string",
+          "description": "The FreeCAD document in this project's FreeCAD work folder, for example \"Bracket.FCStd\".",
+          "required": true
+        },
+        "object": {
+          "type": "string",
+          "description": "Object name as listed by the inspect command, for example Box.",
+          "required": true
+        },
+        "property": {
+          "type": "string",
+          "description": "The property to change.",
+          "required": true
+        },
+        "value": {
+          "type": "string",
+          "description": "New value: a number in mm (degrees for Angle) or the new label.",
+          "required": true
+        },
+        "output": {
+          "type": "string",
+          "description": "Name for the new file (no extension). It is always a NEW file; existing files are never overwritten. Default: the document name plus \" edited\"."
+        }
+      },
+      "permissions": [
+        "execute-scripts",
+        "write-files"
+      ],
+      "timeoutMs": 120000
+    },
+    {
+      "id": "param.set",
+      "label": "Change a model parameter",
+      "description": "Changes one named parameter of a model made with \"Create a parametric 3D model\" (for example length). Every dependent shape is recomputed; the result is saved as a NEW file.",
+      "params": {
+        "document": {
+          "type": "string",
+          "description": "The FreeCAD document in this project's FreeCAD work folder, for example \"Bracket.FCStd\".",
+          "required": true
+        },
+        "name": {
+          "type": "string",
+          "description": "Parameter name, for example length, width, height, radius or hole_diameter.",
+          "required": true
+        },
+        "value": {
+          "type": "number",
+          "description": "New value in mm.",
+          "required": true,
+          "min": 0.1,
+          "max": 100000
+        },
+        "output": {
+          "type": "string",
+          "description": "Name for the new file (no extension). It is always a NEW file; existing files are never overwritten. Default: the document name plus \" edited\"."
+        }
+      },
+      "permissions": [
+        "execute-scripts",
+        "write-files"
+      ],
+      "timeoutMs": 120000
+    },
+    {
+      "id": "doc.save_as",
+      "label": "Save a copy of a FreeCAD project",
+      "description": "Saves a copy of a project under a new name (native .FCStd) and checks that it reopens with the same objects.",
+      "params": {
+        "document": {
+          "type": "string",
+          "description": "The FreeCAD document in this project's FreeCAD work folder, for example \"Bracket.FCStd\".",
+          "required": true
+        },
+        "output": {
+          "type": "string",
+          "description": "Name of the copy, without extension.",
+          "required": true
+        }
+      },
+      "permissions": [
+        "execute-scripts",
+        "write-files"
+      ],
+      "timeoutMs": 120000
+    },
+    {
+      "id": "export.step",
+      "label": "Export STEP",
+      "description": "Exports the solids of a project (or one object) to a STEP file, then reads the STEP file back and compares the volume with the model.",
+      "params": {
+        "document": {
+          "type": "string",
+          "description": "The FreeCAD document in this project's FreeCAD work folder, for example \"Bracket.FCStd\".",
+          "required": true
+        },
+        "object": {
+          "type": "string",
+          "description": "Optional: export only this object."
+        },
+        "output": {
+          "type": "string",
+          "description": "File name without extension. Default: the document name."
+        }
+      },
+      "permissions": [
+        "execute-scripts",
+        "write-files"
+      ],
+      "longRunning": true,
+      "timeoutMs": 600000
+    },
+    {
+      "id": "export.stl",
+      "label": "Export STL",
+      "description": "Exports the solids of a project (or one object) to an STL mesh, then reads it back and compares triangle count and volume with the model.",
+      "params": {
+        "document": {
+          "type": "string",
+          "description": "The FreeCAD document in this project's FreeCAD work folder, for example \"Bracket.FCStd\".",
+          "required": true
+        },
+        "object": {
+          "type": "string",
+          "description": "Optional: export only this object."
+        },
+        "output": {
+          "type": "string",
+          "description": "File name without extension. Default: the document name."
+        },
+        "tolerance_mm": {
+          "type": "number",
+          "description": "Mesh accuracy in mm: smaller is finer and slower.",
+          "default": 0.1,
+          "min": 0.001,
+          "max": 10
+        }
+      },
+      "permissions": [
+        "execute-scripts",
+        "write-files"
+      ],
+      "longRunning": true,
+      "timeoutMs": 600000
+    }
+  ],
+  "files": {}
+}
