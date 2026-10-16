@@ -12,6 +12,7 @@ import type { Permission } from '@shared/integrations';
 import { AdapterPackages, createIntegrationManager } from '../index';
 import type { DiscoveryEnv } from '../discovery';
 import { ClaudeAuthor } from './author';
+import { DocsStore } from './docsStore';
 import { BuilderService } from './service';
 
 const on = process.env.CS_CLAUDE_TESTS === '1';
@@ -50,7 +51,13 @@ describe.skipIf(!on)('the real in-app Claude author', () => {
     closers.push(() => mgr.shutdown(), () => pk.shutdown());
     await pk.load();
     await mgr.scan();
+    // Reuse the local documentation cache: seed the builder's store with the FreeCAD 1.1.4 snapshot collected earlier (commit 014cd9d)
+    // so this run does not download anything again.
+    const snap = path.resolve(import.meta.dirname, '..', '..', '..', '..', 'fixtures', 'ai-generated', 'docs', 'freecad-1.1.4');
+    const seeded = (JSON.parse(fs.readFileSync(path.join(snap, 'manifest.json'), 'utf8')) as Array<Record<string, unknown> & { file: string }>).map(({ file, ...d }) => ({ ...d, text: fs.readFileSync(path.join(snap, file), 'utf8') })) as unknown as import('./docsStore').StoredDoc[];
+    await new DocsStore(path.join(root, 'builder')).saveAll('freecad', '1.1.4', seeded);
     const svc = new BuilderService({
+      docsFetcher: async () => { throw new Error('this run must use the cached documentation and not download'); },
       maxAttempts: 3, // explicit limit of this test: research + generation + at most two Claude corrections
       root: path.join(root, 'builder'), packages: pk, manager: mgr, confirm: async () => true, programs: async () => [], claude: () => ({ ready: true, reason: '' }),
       author: () => new ClaudeAuthor({ model: process.env.CS_CLAUDE_MODEL ?? 'claude-opus-5-5', cwd: path.join(os.tmpdir(), 'cc-claude-live-diag'), web: true }),
