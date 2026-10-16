@@ -54,7 +54,7 @@ describe('replay of the real Claude blueprint (live run 2026-10-16)', () => {
     expect(r.bytes).not.toBeNull(); // and the package is built (the simulated stage is not run here: see the docs)
   }, 60_000);
 
-  it('the simulated stage reports the stand-in program's inability to judge a code check as a mock limit, not as a defect', async () => {
+  it('the simulated stage reports the stand-in program being unable to judge a code check as a mock limit, not as a defect', async () => {
     const bp = structuredClone(parseBlueprintDetailed(raw).data);
     const url = bp.research.sources[0]!.url;
     for (const c of bp.commands) for (const sym of ['FreeCAD.Placement', 'FreeCAD.Rotation', 'FreeCAD.Vector', 'FreeCAD.closeDocument', 'FreeCAD.newDocument', 'FreeCAD.openDocument', 'Document.addObject', 'Document.recompute', 'Document.saveAs', 'Shape.cut', 'Shape.isValid', 'Spreadsheet.set', 'Spreadsheet.setAlias', 'Spreadsheet.setExpression', 'Document.getObject', 'Shape.isNull']) if (!c.docRefs.some((d) => d.symbol === sym)) c.docRefs.push({ symbol: sym, url });
