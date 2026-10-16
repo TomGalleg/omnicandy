@@ -23,7 +23,7 @@ try {
   const section = win.locator('.ext-apps');
   await section.waitFor({ timeout: 10000 });
   await win.locator('.ext-apps button', { hasText: 'Rescan applications' }).waitFor({ timeout: 90000 });
-  const blender = section.locator('.ext-row', { hasText: 'Blender' });
+  const blender = section.locator('.ext-row').filter({ has: win.locator('.ext-head strong', { hasText: /^Blender$/ }) });
   const found = (await blender.count()) > 0;
   if (!found) {
     console.log('Blender is not installed here: only the empty state is checked.');
@@ -51,7 +51,7 @@ try {
   }
   // Second adapter, same screen: Resolve is listed with the same controls. Connecting must end in a precise
   // status (Not running / Scripting not available / Connected); never a silent success.
-  const resolve = section.locator('.ext-row', { hasText: 'DaVinci Resolve' });
+  const resolve = section.locator('.ext-row').filter({ has: win.locator('.ext-head strong', { hasText: 'DaVinci Resolve' }) });
   if ((await resolve.count()) > 0) {
     check('Resolve is listed by the same screen with its commands', /Inspect the open Resolve project/.test((await resolve.textContent()) ?? ''));
     await resolve.getByRole('button', { name: 'Connect', exact: true }).click();

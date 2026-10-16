@@ -40,7 +40,7 @@
     },
     {
       "kind": "other",
-      "text": "Not yet verified on a real FreeCAD install; tested against a clearly marked test double (see the integration notes)."
+      "text": "Tested against FreeCAD 1.1.4 on Windows. Other FreeCAD versions in the supported range (0.21 and newer) have not been tested."
     }
   ],
   "runtime": {

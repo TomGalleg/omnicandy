@@ -274,14 +274,26 @@ kills FreeCADCmd; results are written under a temporary name and renamed only wh
 | Package format, signature, install/enable/repair/remove, permission ceiling, unsigned handling, job + cancel, crash, path confinement, argument and geometry errors | `freecad.test.ts` (13 tests): REAL package store, REAL restricted child process, REAL manager; the program is a **test double** |
 | Install through Settings, discovery, commands listed, Connect | `scripts/smoke-freecad.mjs` (6/6) in a scratch profile with the test double |
 | Real Claude finds FreeCAD with `external_apps`, runs `external_run` (create, change parameter) and follows `external_job` (STEP export) | `scripts/smoke-freecad.mjs --claude` (10/10, Claude usage only) against the test double; Claude itself reported that the connected program was a mock folder |
-| **Real FreeCAD** | **NOT VERIFIED. FreeCAD is not installed on this PC.** `freecad_job.py` has never run inside a real FreeCADCmd. The test double (`fixtures/freecad-mock`: a compiled FreeCADCmd.exe launcher plus a Python imitation of the API calls used) proves the adapter logic and the process plumbing only |
-| How to verify | install FreeCAD 0.21+ (free), then `CS_LIVE_TESTS=1 npx vitest run src/main/integrations/freecad.live.test.ts` (it is SKIPPED, not passed, when FreeCAD is absent) |
+| **Real FreeCAD 1.1.4** (Windows x64, official signed installer, installed per user at `E:\FreeCAD 1.1`) | **VERIFIED** by `freecad.live.test.ts` 3/3 (`CS_LIVE_TESTS=1`, `CS_FREECAD_BIN` for a custom install folder): health, parametric create, inspect, parameter change, add box/cylinder/sphere/cone, property edit, save copy, STEP and STL export, error reporting. The generated files were then reopened by a separate FreeCADCmd run outside the adapter: parameters 60 -> 80 mm, volumes 11607.301 -> 15607.301 -> 16964.469 mm3, STEP re-read as 2 valid solids, STL 208 triangles and a closed solid. `smoke-freecad.mjs --claude --real` 10/10: real Claude with `external_apps` / `external_run` / `external_job` on the real program (no mock executable or Python module involved) |
+| Not verified | FreeCAD 0.21 to 1.0 and 1.2+ (only 1.1.4 was available); cancelling a long export on real FreeCAD (real exports finish in well under a second here, so cancel is verified only against the test double); very large models; FreeCAD's own GUI; Linux/macOS |
 
-Risks that only a real FreeCAD can settle: API differences between 0.21 and 1.x in the calls the script uses
-(`Part::Cut` placement expressions, `MeshPart.meshFromShape`, `Spreadsheet` aliases), whether `FreeCADCmd.exe` exits by itself
-after the script (the script ends with `os._exit`), and whether FreeCAD starts with the minimal environment `ctx.runApp`
-gives it (PATH, SystemRoot, TEMP; no APPDATA). If the last one fails the fix is a host-side change (an allow-listed
-environment), not something the package can do.
+Findings from running on real FreeCAD 1.1.4 (all handled inside the package, no core change):
+
+* **Stale bytecode (fixed).** FreeCAD imports the script it is given as a module, so Python cached its bytecode keyed on
+  size and whole-second mtime. Two different jobs of equal size written within one second ran the *previous* job (the live
+  test saw `geometry.add` repeat an earlier output name). FreeCAD is now always started with a constant launcher
+  `_cc_run.py` that reads `_cc_job.py` as text. The test double runs scripts as `__main__`, so it could not show this: a
+  reminder that the mock proves plumbing only.
+* **Discovery of a custom install folder.** The Windows uninstall record of the FreeCAD installer has no InstallLocation and
+  its icon points at `FreeCAD.exe`, so the generic discovery does not find `FreeCADCmd.exe` outside the standard folders
+  (`Program Files\FreeCAD x.y\bin` is found). Use Settings > Integrations > Add location... (user-selected folder).
+  Improving the generic discovery (derive the folder from the uninstall record's icon) would be a core change and was not made.
+* **Stale placeholder row.** After installing the package the list can still show the old "Unsupported" placeholder row of
+  the same program until the next rescan (the manager does not clear its app list when a placeholder is replaced). Harmless.
+* `FreeCADCmd.exe` starts and exits by itself with the minimal environment `ctx.runApp` provides (no APPDATA); no host
+  change was needed.
+* `smoke-external.mjs` matched rows by text, so the FreeCAD placeholder's note (it mentions Blender) broke it once FreeCAD
+  was installed; its locators now match the row's name.
 
 ## Prerequisites from the earlier review: status
 

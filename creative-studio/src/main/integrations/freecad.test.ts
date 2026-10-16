@@ -189,6 +189,9 @@ describe.skipIf(!canRun)('FreeCAD package (against a clearly marked FreeCAD TEST
     expect(copy.ok, copy.message).toBe(true);
     expect(copy.outputs[0]!.bytes).toBeGreaterThan(100);
 
+    // FreeCAD is always started with the constant launcher, never with the changing job file (stale-bytecode bug seen on real FreeCAD).
+    expect(await fs.readFile(path.join(wd(r), '_cc_run.py'), 'utf8')).toMatch(/^exec\(compile\(open\('_cc_job\.py'/m);
+
     // Nothing earlier was touched: every edit made a new file.
     expect(await sha(first)).toBe(originalHash);
     expect((await fs.readdir(wd(r))).filter((n) => n.endsWith('.FCStd')).sort()).toEqual(['Bracket boss wide.FCStd', 'Bracket boss.FCStd', 'Bracket long.FCStd', 'Bracket.FCStd', 'Final.FCStd']);

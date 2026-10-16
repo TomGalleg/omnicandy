@@ -2,7 +2,7 @@
 // It installs the FreeCAD package into a throw-away store, then drives the real FreeCADCmd. Without FreeCAD
 // every test is reported as SKIPPED (never as passed). Nothing outside a temp folder is touched.
 //
-//   CS_LIVE_TESTS=1 npx vitest run src/main/integrations/freecad.live.test.ts
+//   CS_LIVE_TESTS=1 [CS_FREECAD_BIN="E:\FreeCAD 1.1in"] npx vitest run src/main/integrations/freecad.live.test.ts
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -18,22 +18,27 @@ describe.skipIf(!on)('FreeCAD adapter against REAL FreeCAD', { timeout: 300_000 
   let granted: Record<string, Permission[]> = {};
   let m: ReturnType<typeof createIntegrationManager>;
   let key = '';
-  let version: string | null = null;
   beforeAll(async () => {
     tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'cc-freecad-live-'));
     m = createIntegrationManager({
       workDir: async (id) => path.join(tmp, 'work', id),
       permissions: { load: async () => granted, save: async (g) => { granted = g; } },
       approve: async () => 'always',
+      // Discovery finds FreeCAD in standard places. A custom install folder is given like "Add location" does it.
+      userPaths: async () => (process.env.CS_FREECAD_BIN ? [process.env.CS_FREECAD_BIN] : []),
     });
     const pk = new AdapterPackages(path.join(tmp, 'integrations'), m);
     const file = path.join(tmp, 'freecad.ccadapter');
     await fs.writeFile(file, packAdapter({ dir: path.resolve(import.meta.dirname, '..', '..', '..', 'fixtures', 'freecad-adapter') }).bytes);
     await pk.install(file, { permissions: ['read-info', 'execute-scripts', 'write-files'], allowUnsigned: true });
     const found = (await m.scan()).apps.find((a) => a.adapterId === 'freecad');
-    if (found) { key = found.key; version = found.version; }
+    if (found) key = found.key;
   });
-  afterAll(async () => { await m.shutdown(); await fs.rm(tmp, { recursive: true, force: true, maxRetries: 5, retryDelay: 300 }); });
+  afterAll(async () => {
+    await m.shutdown();
+    if (process.env.CS_LIVE_KEEP) console.log('kept: ' + path.join(tmp, 'work', 'freecad'));
+    else await fs.rm(tmp, { recursive: true, force: true, maxRetries: 5, retryDelay: 300 });
+  });
 
   const work = () => path.join(tmp, 'work', 'freecad');
 
@@ -41,7 +46,7 @@ describe.skipIf(!on)('FreeCAD adapter against REAL FreeCAD', { timeout: 300_000 
     if (!key) t.skip();
     const info = await m.connect(key);
     expect(['limited', 'connected']).toContain(info.status);
-    expect(version).toMatch(/^\d+\.\d+/);
+    expect(info.version).toMatch(/^1\.1\.\d+$/);
   });
 
   it('creates, inspects, edits, saves and exports a parametric model and verifies each result', async (t) => {
@@ -68,5 +73,28 @@ describe.skipIf(!on)('FreeCAD adapter against REAL FreeCAD', { timeout: 300_000 
     const head = await fs.readFile(path.join(work(), 'LiveBracket.FCStd'));
     expect(head.subarray(0, 2).toString()).toBe('PK');
     expect(head.includes(Buffer.from('Document.xml'))).toBe(true);
+  });
+
+  it('edits properties, adds every primitive, and reports real FreeCAD errors accurately', async (t) => {
+    if (!key) t.skip();
+    await m.execute(key, 'doc.create', { name: 'LiveEdit', shape: 'box', length: 20, width: 20, height: 20 });
+    const sphere = await m.execute(key, 'geometry.add', { document: 'LiveEdit.FCStd', shape: 'sphere', label: 'Ball', radius: 5, output: 'LiveEdit s' });
+    expect(sphere.ok, sphere.message).toBe(true);
+    const cone = await m.execute(key, 'geometry.add', { document: 'LiveEdit s.FCStd', shape: 'cone', label: 'Tip', radius: 6, radius2: 2, height: 9, x: 30, output: 'LiveEdit sc' });
+    expect(cone.ok, JSON.stringify(cone)).toBe(true);
+    expect(Number(cone.data?.volume_mm3)).toBeCloseTo(Math.PI * 9 * (36 + 12 + 4) / 3, 1);
+    const prop = await m.execute(key, 'object.set_property', { document: 'LiveEdit sc.FCStd', object: String(sphere.data?.object), property: 'Radius', value: '8', output: 'LiveEdit big' });
+    expect(prop.ok, prop.message).toBe(true);
+    expect(Number(prop.data?.volume_after_mm3)).toBeCloseTo(4 / 3 * Math.PI * 512, 1);
+    const moved = await m.execute(key, 'object.set_property', { document: 'LiveEdit big.FCStd', object: 'Cone', property: 'Placement.Base.z', value: '15', output: 'LiveEdit moved' });
+    expect(moved.ok, moved.message).toBe(true);
+    const driven = await m.execute(key, 'object.set_property', { document: 'LiveEdit.FCStd', object: 'Box', property: 'Length', value: '30' });
+    expect(driven.error?.message).toMatch(/param\.set/);
+    expect((await m.execute(key, 'doc.inspect', { document: 'Missing.FCStd' })).error?.kind).toBe('invalid-params');
+    const dup = await m.execute(key, 'doc.save_as', { document: 'LiveEdit.FCStd', output: 'LiveEdit' });
+    expect(dup.error?.message).toMatch(/already exists/);
+    const copy = await m.execute(key, 'doc.save_as', { document: 'LiveEdit moved.FCStd', output: 'LiveEdit copy' });
+    expect(copy.ok, copy.message).toBe(true);
+    expect((await fs.readdir(work())).filter((n) => n.startsWith('_cc_tmp'))).toEqual([]);
   });
 });

@@ -10,6 +10,15 @@ const path = require('path');
 
 const JOB_BODY = fs.readFileSync(path.join(__dirname, 'freecad_job.py'), 'utf8');
 const JOB_FILE = '_cc_job.py';
+// FreeCAD imports the script it is given as a module, and Python then caches bytecode keyed on the source's size and
+// whole-second modification time. Two different jobs written within a second with equal sizes would run the OLD bytecode
+// (seen on real FreeCAD 1.1.4). So FreeCAD is always given this constant launcher, which reads the job source as text.
+const RUN_FILE = '_cc_run.py';
+const RUN_STUB = [
+  '# CreateCraft: runs the generated job as text so no stale bytecode can be used.',
+  "exec(compile(open('_cc_job.py', encoding='utf-8').read(), '_cc_job.py', 'exec'))",
+  '',
+].join('\n');
 const KINDS = new Set(['app-error', 'unsupported', 'invalid-params', 'missing-app', 'verification-failed']);
 const VERSION_RE = /FreeCAD\s+(\d+(?:\.\d+){1,2})/i;
 const STEM_RE = /^[A-Za-z0-9][A-Za-z0-9 _-]{0,59}$/;
@@ -51,8 +60,9 @@ async function runJob(ctx, command, payload, timeoutMs) {
   const head = `# CreateCraft FreeCAD job (generated). Parameters are data; they are never spliced into code.\nimport base64 as _b, json as _j\nCOMMAND = ${JSON.stringify(command)}\nPARAMS = _j.loads(_b.b64decode("${b64}").decode("utf-8"))\n`;
   ctx.progress('Preparing the FreeCAD job', 0.05);
   await ctx.writeFile(JOB_FILE, head + JOB_BODY);
+  await ctx.writeFile(RUN_FILE, RUN_STUB);
   ctx.progress('FreeCAD is working', 0.2);
-  const r = await ctx.runApp([JOB_FILE], { timeoutMs });
+  const r = await ctx.runApp([RUN_FILE], { timeoutMs });
   if (ctx.signal.aborted) throw ctx.error('app-error', 'The operation was cancelled.');
   ctx.progress('Checking the result', 0.9);
   const m = /CREATECRAFT_RESULT (\{.*\})/.exec(r.out);

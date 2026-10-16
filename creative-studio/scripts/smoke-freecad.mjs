@@ -20,20 +20,29 @@ const root = path.resolve(import.meta.dirname, '..');
 const shots = path.join(root, 'docs', 'screenshots');
 fs.mkdirSync(shots, { recursive: true });
 const withClaude = process.argv.includes('--claude');
+// --real "<FreeCAD bin folder>": use a REAL FreeCAD instead of the test double (then nothing mock is built or used).
+const realIdx = process.argv.indexOf('--real');
+const realBin = realIdx > 0 ? process.argv[realIdx + 1] : null;
 const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'cs-smoke-freecad-'));
 const results = [];
 const check = (name, ok, detail = '') => { results.push({ name, ok, detail }); console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${detail ? ` - ${detail}` : ''}`); };
 function* walk(d) { for (const e of fs.readdirSync(d, { withFileTypes: true })) { const p = path.join(d, e.name); if (e.isDirectory()) yield* walk(p); else yield p; } }
 
-// The test double: compile the launcher, copy the mock Python modules next to it.
-const python = execFileSync('python', ['-c', 'import sys;print(sys.executable)'], { encoding: 'utf8' }).trim();
-const mockBin = path.join(profile, 'FreeCAD 1.0 (MOCK)', 'bin');
-fs.mkdirSync(mockBin, { recursive: true });
-fs.cpSync(path.join(root, 'fixtures', 'freecad-mock', 'pylib'), path.join(mockBin, 'pylib'), { recursive: true });
-const cs = path.join(profile, 'FreeCADCmd.cs');
-fs.writeFileSync(cs, fs.readFileSync(path.join(root, 'fixtures', 'freecad-mock', 'FreeCADCmd.cs'), 'utf8').replace('__PYTHON__', python));
-const mockExe = path.join(mockBin, 'FreeCADCmd.exe');
-execFileSync('C:\\Windows\\Microsoft.NET\\Framework64\\v4.0.30319\\csc.exe', ['-nologo', `-out:${mockExe}`, cs]);
+let mockExe;
+if (realBin) {
+  mockExe = path.join(realBin, 'FreeCADCmd.exe');
+  if (!fs.existsSync(mockExe)) throw new Error(`no FreeCADCmd.exe in ${realBin}`);
+} else {
+  // The test double: compile the launcher, copy the mock Python modules next to it.
+  const python = execFileSync('python', ['-c', 'import sys;print(sys.executable)'], { encoding: 'utf8' }).trim();
+  const mockBin = path.join(profile, 'FreeCAD 1.0 (MOCK)', 'bin');
+  fs.mkdirSync(mockBin, { recursive: true });
+  fs.cpSync(path.join(root, 'fixtures', 'freecad-mock', 'pylib'), path.join(mockBin, 'pylib'), { recursive: true });
+  const cs = path.join(profile, 'FreeCADCmd.cs');
+  fs.writeFileSync(cs, fs.readFileSync(path.join(root, 'fixtures', 'freecad-mock', 'FreeCADCmd.cs'), 'utf8').replace('__PYTHON__', python));
+  mockExe = path.join(mockBin, 'FreeCADCmd.exe');
+  execFileSync('C:\\Windows\\Microsoft.NET\\Framework64\\v4.0.30319\\csc.exe', ['-nologo', `-out:${mockExe}`, cs]);
+}
 // Tell the scratch profile where the "installed" program is (what Add location... does in the UI).
 fs.mkdirSync(path.join(profile, 'secrets'), { recursive: true });
 fs.writeFileSync(path.join(profile, 'secrets', 'external-apps.json'), JSON.stringify({ grants: {}, paths: [mockExe] }));
@@ -75,13 +84,15 @@ try {
   const dialogs = await app.evaluate(() => globalThis.__dialogs);
   check('a native confirmation named the integration before installing', dialogs.some((d) => /Install FreeCAD/.test(d.message ?? '')), JSON.stringify(dialogs.map((d) => d.message)));
 
-  const apps = win.locator('.ext-apps > .ext-list > .ext-row', { hasText: 'FreeCAD' });
+  // With a real FreeCAD the list may still hold the stale row of the old placeholder (found through the Windows uninstall record,
+  // same program) until the next rescan; the row of this integration is the one that lists its commands.
+  const apps = win.locator('.ext-apps > .ext-list > .ext-row', { hasText: 'FreeCAD' }).filter({ hasText: 'Create a parametric 3D model' });
   await apps.first().waitFor({ timeout: 30000 });
   const appText = (await apps.first().textContent()) ?? '';
-  check('FreeCAD (the test double) is discovered and its commands are registered', /Create a parametric 3D model/.test(appText) && /Export STEP/.test(appText) && /Change a model parameter/.test(appText), appText.slice(0, 200));
+  check('FreeCAD is discovered and its commands are registered', /Create a parametric 3D model/.test(appText) && /Export STEP/.test(appText) && /Change a model parameter/.test(appText), appText.slice(0, 200));
   await apps.first().getByRole('button', { name: 'Connect', exact: true }).click();
   await apps.first().getByRole('button', { name: 'Disconnect' }).waitFor({ timeout: 30000 });
-  check('Connect reads the version through FreeCADCmd and shows Limited functionality (experimental package)', /Limited functionality/.test((await apps.first().locator('.ext-head').textContent()) ?? '') && /1\.0\.2/.test((await apps.first().textContent()) ?? ''));
+  check('Connect reads the version through FreeCADCmd and shows Limited functionality (experimental package)', /Limited functionality/.test((await apps.first().locator('.ext-head').textContent()) ?? '') && (realBin ? /1\.1\.\d/ : /1\.0\.2/).test((await apps.first().textContent()) ?? ''));
   await win.screenshot({ path: path.join(shots, '111-freecad-installed.png') });
 
   if (withClaude) {
