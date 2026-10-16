@@ -2,6 +2,7 @@
 // web tools, writes a blueprint of its own, CreateCraft validates and mock-tests it, and (with CS_LIVE_TESTS=1 and FreeCAD
 // installed) it is installed and verified on the real program.
 //   CS_CLAUDE_TESTS=1 [CS_LIVE_TESTS=1] npx vitest run src/main/integrations/builder/claude.live.test.ts
+import { execFile } from 'node:child_process';
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import os from 'node:os';
@@ -25,6 +26,17 @@ const closers: Array<() => Promise<unknown>> = [];
 beforeAll(async () => { tmp = await fsp.mkdtemp(path.join(os.tmpdir(), 'cc-claude-b-')); });
 afterAll(async () => { for (const c of closers) await c().catch(() => undefined); await fsp.rm(tmp, { recursive: true, force: true, maxRetries: 8, retryDelay: 400 }); }, 60_000);
 
+/** A separate FreeCADCmd run (not the adapter's code) that opens a produced file and reports what it measures. */
+async function outsideMeasure(file: string): Promise<{ solids: number; valid: boolean; volume: number }> {
+  const dir = await fsp.mkdtemp(path.join(tmp, 'outside-'));
+  const py = ['import FreeCAD, json, sys', `doc = FreeCAD.openDocument(${JSON.stringify(file.split('\\').join('/'))})`, 'shapes = [o.Shape for o in doc.Objects if hasattr(o, "Shape") and not o.Shape.isNull()]', 's = shapes[0]', 'sys.stdout.write("OUTSIDE " + json.dumps({"solids": len(s.Solids), "valid": bool(s.isValid()), "volume": s.Volume}) + chr(10))', 'sys.stdout.flush()', 'import os; os._exit(0)'].join(String.fromCharCode(10));
+  await fsp.writeFile(path.join(dir, 'outside.py'), py);
+  const out = await new Promise<string>((res, rej) => execFile(EXE, ['outside.py'], { cwd: dir, timeout: 120_000, windowsHide: true }, (e, so) => (e ? rej(e) : res(String(so)))));
+  const m = /OUTSIDE (\{.*\})/.exec(out);
+  if (!m) throw new Error(`no outside result: ${out.slice(-300)}`);
+  return JSON.parse(m[1]!);
+}
+
 describe.skipIf(!on)('the real in-app Claude author', () => {
   it('researches, designs and builds an integration; every claim is validated by CreateCraft', async () => {
     const root = path.join(tmp, 'rig');
@@ -39,23 +51,44 @@ describe.skipIf(!on)('the real in-app Claude author', () => {
     await pk.load();
     await mgr.scan();
     const svc = new BuilderService({
+      maxAttempts: 3, // explicit limit of this test: research + generation + at most two Claude corrections
       root: path.join(root, 'builder'), packages: pk, manager: mgr, confirm: async () => true, programs: async () => [], claude: () => ({ ready: true, reason: '' }),
       author: () => new ClaudeAuthor({ model: process.env.CS_CLAUDE_MODEL ?? 'claude-opus-5-5', cwd: path.join(os.tmpdir(), 'cc-claude-live-diag'), web: true }),
     });
-    const c = await svc.create({ appName: 'FreeCAD', exePath: haveFreecad ? EXE : null, goal: 'create a parametric rectangular enclosure with configurable width, height, depth and wall thickness' });
+    const c = await svc.create({ appName: 'FreeCAD', goal: 'create a parametric rectangular enclosure with configurable width, height, depth and wall thickness' });
     const s = await svc.settled(c.id);
     const d = await svc.detail(c.id);
-    const dump = JSON.stringify({ status: s.status, error: s.error, log: d.log.map((l) => l.text), headline: s.headline, usage: d.usage, research: d.research && { sources: d.research.sources.map((x) => x.url), insufficient: d.research.insufficient }, decision: d.decision, commands: d.commands.map((x) => x.id), failed: d.reports.flatMap((r) => r.checks.filter((k) => k.state === 'failed').map((k) => `${r.stage}/${k.id}: ${k.detail}`)), stage: d.stage, author: 'claude (real in-app author)' }, null, 2);
-    fs.writeFileSync(LOG, redact(dump)); // kept outside the scratch profile, secrets removed
-    console.log(redact(dump));
+    const stageReports = d.reports.map((r) => ({ stage: r.stage, state: r.state, mock: !!r.mock, notPassed: r.checks.filter((k) => k.state !== 'passed').map((k) => `${k.state} ${k.id}: ${k.detail}`) }));
+    const dump = (extra: unknown = {}) => redact(JSON.stringify({
+      status: s.status, error: s.error, headline: s.headline, log: d.log.map((l) => l.text),
+      detection: { appInstalledByCreateCraftDetection: s.appInstalled, detectedVersion: s.appVersion },
+      usage: d.usage, research: d.research && { sources: d.research.sources.map((x) => x.url), insufficient: d.research.insufficient },
+      decision: d.decision, commands: d.commands.map((x) => ({ id: x.id, permissions: x.permissions, readOnly: x.readOnly })), stageReports, versions: d.versions.map((v) => v.version),
+      provenance: { research: 'real Claude (web tools + structured output)', blueprint: 'real Claude, unmodified except logged formatting normalization', simulated: 'MOCK program', live: 'real FreeCAD via CreateCraft manager', outsideCheck: 'separate FreeCADCmd process' }, ...(extra as object),
+    }, null, 2));
+    fs.writeFileSync(LOG, dump()); // kept outside the scratch profile, secrets removed
+    console.log(dump());
     expect(['ready-for-approval', 'awaiting-live-verification']).toContain(s.status);
     expect(d.research!.sources.length).toBeGreaterThan(0);
     if (!haveFreecad || s.status !== 'ready-for-approval') return;
+    // The test stands in for the user's approval in a scratch profile (the real flow shows the review and a native confirmation).
     const review = await pk.review(s.packagePath!);
     await pk.install(s.packagePath!, { permissions: review.permissions as Permission[], allowUnsigned: true });
     await svc.syncInstalled(c.id);
-    const rep = await svc.verifyLive(c.id);
-    console.log(JSON.stringify(rep.checks.map((k) => `${k.state}: ${k.title}: ${k.detail}`), null, 2));
+    const outside: string[] = [];
+    const rep = await svc.verifyLive(c.id, {
+      independent: async (_cid, r) => {
+        const f = r.outputs.find((o) => /\.FCStd$/i.test(o.path))?.path;
+        if (!f) return ['(no file produced by this command)'];
+        const m = await outsideMeasure(f);
+        outside.push(`${path.basename(f)}: ${JSON.stringify(m)}`);
+        if (!m.valid || m.solids < 1) throw new Error(`outside check: ${JSON.stringify(m)}`);
+        return [outside.at(-1)!];
+      },
+    });
+    const verif = await svc.store.verifications(c.id);
+    fs.writeFileSync(LOG, dump({ live: rep.checks.map((k) => `${k.state}: ${k.title}: ${k.detail}`), verifications: verif.map((v) => ({ command: v.commandId, state: v.state, appVersion: v.appVersion, evidence: v.evidence })), outside }));
+    console.log(fs.readFileSync(LOG, 'utf8').slice(-3000));
     expect(rep.state).not.toBe('failed');
   }, 1_800_000);
 });

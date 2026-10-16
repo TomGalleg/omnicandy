@@ -44,6 +44,8 @@ export interface BuilderDeps {
   /** Override the installed-program list (tests). */
   programs?: () => Promise<InstalledProgram[]>;
   readDocs?: typeof readDocumentation;
+  /** How many build attempts Claude gets (the first plus corrections). Default 3. A live test sets it explicitly. */
+  maxAttempts?: number;
   /** Skip the simulated stage (tests of other things). */
   skipSimulation?: boolean;
   /** Where to find a Python-free fallback etc. is decided inside the pipeline; nothing else is injected here. */
@@ -172,7 +174,8 @@ export class BuilderService {
     let attempt = 0;
     let problem = '';
     const version = '1.0.0';
-    while (attempt < MAX_ATTEMPTS) {
+    const maxAttempts = this.d.maxAttempts ?? MAX_ATTEMPTS;
+    while (attempt < maxAttempts) {
       attempt++;
       await this.note(rec, attempt === 1 ? 'preparing' : 'building', attempt === 1 ? 'Claude is choosing the safest way to connect and writing the connector.' : `Claude is correcting the connector (attempt ${attempt}).`);
       try {
