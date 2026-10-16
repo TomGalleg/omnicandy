@@ -224,6 +224,7 @@ const api: StudioApi = {
     deleteProject: (id) => ipcRenderer.invoke(IPC.builderDelete, id),
     mine: () => ipcRenderer.invoke(IPC.builderMine),
     compatibility: (id) => ipcRenderer.invoke(IPC.builderCompat, id),
+    refreshDocs: (id) => ipcRenderer.invoke(IPC.builderRefreshDocs, id),
     onProgress: (cb) => {
       const h = (_e: IpcRendererEvent, p: Parameters<typeof cb>[0]) => cb(p);
       ipcRenderer.on(IPC.builderProgress, h);

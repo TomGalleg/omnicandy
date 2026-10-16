@@ -39,6 +39,8 @@ export interface ProjectRecord {
   /** Permissions the user approved when installing (needed to reinstall a rolled-back version). */
   approvedPermissions: string[];
   docNames: string[];
+  /** Documentation that was collected for this project (origin and version are CreateCraft's knowledge, not Claude's claim). */
+  docs: Array<{ origin: string; title: string; url: string; versionNote: string; fetchedAt: string; bytes: number; outdated: boolean }>;
   proposal: RepairProposal | null;
 }
 
@@ -61,7 +63,7 @@ export class BuilderStore {
     const rec: ProjectRecord = {
       id, request, createdAt: now, updatedAt: now, status: 'researching', stage: 'checking', error: null, adapterId: null, version: null, installedVersion: null,
       app: { installed: false, version: null, exePath: request.exePath ?? null, key: null }, research: null, decision: null, author: null, reports: [], versions: [], log: [],
-      nextSteps: [], usage: { calls: 0, costUsd: 0 }, approvedPermissions: [], docNames: [], proposal: null,
+      nextSteps: [], usage: { calls: 0, costUsd: 0 }, approvedPermissions: [], docNames: [], docs: [], proposal: null,
     };
     this.cache.set(id, rec);
     await this.save(rec);

@@ -42,7 +42,7 @@ async function rig(name: string, opts: { exe?: { folder: string; name: string; s
   const confirms: string[] = [];
   const mk = (author: ScriptedAuthor | { error: string }) => new BuilderService({
     root: path.join(root, 'builder'), packages: pk, manager: mgr, author: () => author, claude: () => ({ ready: true, reason: '' }),
-    confirm: async (t) => { confirms.push(t); return true; }, programs: async () => [],
+    confirm: async (t) => { confirms.push(t); return true; }, programs: async () => [], skipDocs: true,
   });
   return { root, mgr, pk, mk, confirms };
 }

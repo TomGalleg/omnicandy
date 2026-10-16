@@ -15,6 +15,8 @@ export interface PythonHost {
   launchArgs: string[];
   /** Modules the host program provides (imports the generated code may use besides the safe standard library). */
   hostModules: string[];
+  /** The program's core modules: a class or function defined anywhere in its documentation counts for a symbol written Core.Name. */
+  coreModules: string[];
   /** Python's bytecode cache keys on size + whole-second mtime; programs that import the script as a module need the launcher indirection. */
   launcher: 'exec-stub' | 'direct';
   /** Symbols CreateCraft recognises. A module-level symbol outside the list is flagged "not recognised" (a warning, never trusted). */
@@ -49,6 +51,7 @@ export const PYTHON_HOSTS: Record<'freecad' | 'blender', PythonHost> = {
     versionArgs: ['--version'], versionRegex: 'FreeCAD\\s+(\\d+(?:\\.\\d+){1,2})',
     launchArgs: ['{run}'],
     hostModules: ['FreeCAD', 'App', 'Part', 'Mesh', 'MeshPart', 'Import', 'Spreadsheet', 'Draft', 'Sketcher', 'PartDesign'],
+    coreModules: ['FreeCAD', 'App'],
     launcher: 'exec-stub', knownSymbols: FREECAD_SYMBOLS,
     docs: ['https://wiki.freecad.org/Python_scripting_tutorial', 'https://wiki.freecad.org/Topological_data_scripting'],
     testedNote: 'FreeCAD 1.1.4 on Windows is the only version CreateCraft has run scripts on.',
@@ -58,6 +61,7 @@ export const PYTHON_HOSTS: Record<'freecad' | 'blender', PythonHost> = {
     versionArgs: ['--version'], versionRegex: 'Blender\\s+(\\d+(?:\\.\\d+){1,2})',
     launchArgs: ['-b', '--factory-startup', '--python', '{run}'],
     hostModules: ['bpy', 'bmesh', 'mathutils'],
+    coreModules: ['bpy'],
     launcher: 'direct', knownSymbols: BLENDER_SYMBOLS,
     docs: ['https://docs.blender.org/api/current/'],
     testedNote: 'Blender 4.0.2 on Windows is the only version CreateCraft has run scripts on.',

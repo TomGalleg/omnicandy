@@ -158,6 +158,7 @@ export const IPC = {
   builderDelete: 'builder:delete',
   builderMine: 'builder:mine',
   builderCompat: 'builder:compat',
+  builderRefreshDocs: 'builder:refresh-docs',
   builderProgress: 'builder:progress',
   localAiStatus: 'localai:status',
   localAiDownloads: 'localai:downloads',
@@ -491,6 +492,8 @@ export interface StudioApi {
     removeIntegration(id: string): Promise<BuilderProjectSummary>;
     deleteProject(id: string): Promise<void>;
     mine(): Promise<MyIntegration[]>;
+    /** Downloads the official documentation for this program again (replaces the stored copy). */
+    refreshDocs(id: string): Promise<{ notes: string[]; count: number }>;
     compatibility(id: string): Promise<{ appVersion: string | null; tested: string[]; needsCheck: boolean; message: string }>;
     onProgress(cb: (p: BuilderProgress) => void): () => void;
   };

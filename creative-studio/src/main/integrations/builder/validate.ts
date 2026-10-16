@@ -18,6 +18,7 @@ import { findPython, guardPython, pythonArgs, type PyGuardReport, type PySource 
 import { argvProblems } from './templates/cli';
 import { JOB_BODY_FILE, resolvePythonHost } from './templates/python';
 import { pluginSourceFindings } from './templates/plugin';
+import { checkCitationsInDocs, type DocIndex } from './docsIndex';
 
 const ok = (id: string, title: string, detail: string): CheckResult => ({ id, title, state: 'passed', detail });
 const bad = (id: string, title: string, detail: string): CheckResult => ({ id, title, state: 'failed', detail });
@@ -161,7 +162,9 @@ async function compilePython(py: string, text: string): Promise<CheckResult> {
 }
 
 /** Stage 2: may this run at all, and does it only touch what it says it touches? */
-export async function securityChecks(bp: Blueprint, a: Assembled, scan: ScanOutcome): Promise<PipelineReport> {
+export interface DocContext { index: DocIndex; coreModules: string[] }
+
+export async function securityChecks(bp: Blueprint, a: Assembled, scan: ScanOutcome, docs?: DocContext): Promise<PipelineReport> {
   const checks: CheckResult[] = [];
   const t = bp.decision.template;
 
@@ -196,6 +199,12 @@ export async function securityChecks(bp: Blueprint, a: Assembled, scan: ScanOutc
 
   // 3. documented interfaces only
   checks.push(documentedInterfaceCheck(bp, scan));
+  if (docs && docs.index.docs.length && bp.decision.template === 'python-script') {
+    const r = checkCitationsInDocs(bp, docs.index, docs.coreModules);
+    checks.push(r.missing.length
+      ? bad('cited-in-docs', 'Citations match the documentation', `These cited symbols do not appear in the collected documentation: ${r.missing.slice(0, 8).map((m) => `${m.command}: ${m.symbol}`).join('; ')}.`)
+      : ok('cited-in-docs', 'Citations match the documentation', `Every cited symbol was found in the ${docs.index.docs.length} collected document${docs.index.docs.length === 1 ? '' : 's'}${r.prose ? ` (${r.prose} descriptive citation${r.prose === 1 ? ' was' : 's were'} not counted as symbols)` : ''}.`));
+  }
 
   // 4. package integrity
   if (a.sourceOnly) {

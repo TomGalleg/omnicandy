@@ -802,6 +802,7 @@ export function registerIpc(d: IpcDeps): void {
       if (claude().state().signedIn === false) return { error: 'Claude is not signed in. Open the Claude panel, click "Sign in to Claude", then try again.' };
       return new ClaudeAuthor({ model: claude().state().model, cwd: builderRoot, web: true });
     },
+    skipDocs: !!(process.env.CS_BUILDER_BLUEPRINT && process.env.CS_USER_DATA_DIR), // smoke scripts do not download documentation
     confirm: async (title, detail, ok) => (await ask({ type: 'question', title, message: title, detail, buttons: ['Cancel', ok], defaultId: 0, cancelId: 0, noLink: true })) === 1,
     emit: (p) => { for (const w of BrowserWindow.getAllWindows()) if (!w.isDestroyed()) w.webContents.send(IPC.builderProgress, p); },
   });
@@ -860,6 +861,7 @@ export function registerIpc(d: IpcDeps): void {
   });
   handle(IPC.builderMine, none, async () => { await packagesReady; return builder.mine(); });
   handle(IPC.builderCompat, z.tuple([projectId]), async (id) => builder.compatibility(id));
+  handle(IPC.builderRefreshDocs, z.tuple([projectId]), async (id) => builder.refreshDocs(id));
 
   let partner: ClaudePartner | null = null;
   resetters.push(() => { partner = null; });

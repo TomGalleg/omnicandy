@@ -30,7 +30,7 @@ function ReportList({ reports }: { reports: PipelineReport[] }) {
   );
 }
 
-function Advanced({ d }: { d: BuilderProjectDetail }) {
+function Advanced({ d, onRefreshDocs, busy }: { d: BuilderProjectDetail; onRefreshDocs: () => void; busy: boolean }) {
   const [tab, setTab] = useState<Tab>('checks');
   const [file, setFile] = useState<string>('adapter.json');
   const shown = d.files.find((f) => f.path === file) ?? d.files[0];
@@ -53,6 +53,11 @@ function Advanced({ d }: { d: BuilderProjectDetail }) {
               <ul className="status-list">{d.research.methods.map((m) => <li key={m.method}><small><strong>{m.method}</strong> ({m.officialSupport} support): {m.note}</small></li>)}</ul>
               {d.research.limitations.length > 0 && <><span className="menu-label">Limits</span><ul className="status-list">{d.research.limitations.map((l) => <li key={l}><small>{l}</small></li>)}</ul></>}
               <small>Licence: {d.research.licensing || 'not stated'}. Needs: {d.research.requiredTools.join('; ') || 'nothing else'}.</small>
+              <span className="menu-label">Documentation used (kept on this computer)</span>
+              {d.documentation.length === 0 ? <small>No documentation was collected by CreateCraft; only what Claude read itself.</small> : (
+                <ul className="status-list">{d.documentation.map((x) => <li key={x.url}><small><strong>{x.title}</strong> · {x.originLabel} · {x.versionNote} · {new Date(x.fetchedAt).toLocaleDateString()}{x.outdated ? ' · outdated' : ''}<span className="ext-block">{x.url}</span></small></li>)}</ul>
+              )}
+              <div className="ext-actions"><button className="btn small" disabled={busy} onClick={onRefreshDocs}>Refresh official documentation</button></div>
               {d.decision && <small>Chosen method: <strong>{TEMPLATE_LABEL[d.decision.template]}</strong> ({INTEGRATION_TYPE_LABEL[d.decision.type]}). {d.decision.rationale}</small>}
             </>
           ) : <small>No research yet.</small>}
@@ -282,7 +287,7 @@ export function ProjectView({ id, onChanged, onRetry }: Props) {
         </details>
       )}
 
-      <Advanced d={d} />
+      <Advanced d={d} busy={!!busy} onRefreshDocs={() => void run('docs', async () => { const r = await window.studio.builder.refreshDocs(id); setNotice(r.notes.join(' ') || `Documentation refreshed (${r.count} documents).`); })} />
     </div>
   );
 }

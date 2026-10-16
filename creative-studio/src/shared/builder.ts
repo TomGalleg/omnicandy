@@ -148,6 +148,8 @@ export interface BuilderProjectDetail extends BuilderProjectSummary {
   usage: { calls: number; costUsd: number };
   /** A repair waiting for approval, if any. */
   proposal: RepairProposal | null;
+  /** Documentation collected for this program: where each document came from and whether it is outdated. */
+  documentation: Array<{ origin: string; originLabel: string; title: string; url: string; versionNote: string; fetchedAt: string; bytes: number; outdated: boolean }>;
 }
 
 export interface BuilderRequest {

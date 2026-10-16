@@ -70,6 +70,19 @@ fails without user documentation stops the same way: CreateCraft will not guess.
 
 The research step asks the Claude SDK for **structured output** (`outputFormat: json_schema`, `RESEARCH_JSON_SCHEMA`, deliberately lenient on length) and also states the exact shape and allowed words in the instructions. Blueprint generation still relies on the prompt plus strict validation (a schema for it has not been tried against the live SDK). Diagnostics: errors list the failing fields; the raw AI answer is kept (secrets removed, local only) **only when it could not be used** and is deleted when it parses.
 
+### Documentation fallback (`docsStore.ts`, `docsIndex.ts`)
+
+Research must rest on real documentation. CreateCraft now **collects documentation itself** and combines every origin, remembering where each document came from:
+
+1. **Official documentation online** (curated pages, for example FreeCAD's wiki export on GitHub).
+2. **Official source repositories** (single files, such as FreeCAD's `.pyi` API stubs, pinned to the repository tag of the installed version; if a file does not exist at that tag the next official file is tried, for example the C++ method table that holds the docstrings).
+3. **Documentation installed with the program** (a few text files from its own `doc`/`help` folders).
+4. **Documentation you provide.**
+
+Rules: only `raw.githubusercontent.com` is downloaded automatically and only from the curated list (a row is added only after the files were checked to exist); text only, 400 KB cap, scripts and control characters removed; no whole repositories. Documents are **untrusted data**: stored as text, shown to Claude inside a block that says never to follow instructions in them, never executed. Collected documents are stored locally (`<userData>/integrations/builder/docs/<app>/<version>/`, hash-checked; a damaged copy counts as missing), are reused without downloading, are marked **outdated** after 45 days, and **Refresh official documentation** (Advanced > Research and sources) downloads them again. Local and user documents are listed as `user-doc://` sources and are never fetched. The collected documents are added to the research sources by CreateCraft (origin known, not claimed by Claude).
+
+An index of the exact definitions in those files (`Document.saveAs`, `Part.makeBox`, `TopoShape.cut`, ...) is used three ways: Claude receives a digest of exact signatures with the address to cite; every cited symbol is checked against the documentation (**Citations match the documentation**: a cited symbol that no document contains is refused); and a missing citation for a symbol the documentation really contains is **completed automatically** with the document that contains it. A symbol that no document contains is never added and the documented-interfaces-only rule refuses the build. The installed program's version is read with its own `--version` when detection could not read it, so the right tag is used. FreeCAD is the only program with a curated source table so far.
+
 ### The test pipeline (`pipeline.ts`)
 
 | Stage | Checks |
@@ -173,3 +186,7 @@ enables the review, install and live test.
 * Real-window smokes: **`smoke-builder` 40/40**, `smoke-connect-hybrid` 15/15, `smoke-freecad` 7/7 (mock) and 7/7 with `--real`, `smoke-docks` 15/15, `smoke-apps` 20/20, `smoke-external` 8/8, `smoke-adapter-packages` 14/14 (it timed out once under load, then passed).
 * **`smoke-connect` 36/39 on this tree and on the unmodified previous commit alike** (checked in a clean checkout of `HEAD`): three failures predate this work: the Revit row is no longer a "placeholder" (a real Revit integration exists since the previous commit) and two Blender portable-copy / Forget checks. Left unchanged.
 * Not run: `smoke-claude-*` and `claude.live.test.ts` (they spend Claude usage; see Known limitations).
+
+## Documentation proof (offline, 2026-10-16)
+
+`fixtures/ai-generated/docs/freecad-1.1.4/` is a snapshot of the 13 official files the collector downloaded for FreeCAD 1.1.4 (10 from the FreeCAD repository at tag 1.1.4, 3 wiki pages; URLs, fetch times and SHA-256 in `manifest.json`). `docs.test.ts` shows it covers every symbol the enclosure commands use with exact definitions, and replays the **saved real Claude blueprint without any manual change to its citations**: CreateCraft completes 17 missing citations from the documentation, the security stage passes (documented interfaces and citations in documentation), the package builds and the simulated stage passes with its mock-limited checks reported as limits. Negative cases stay refused: an invented method, an invented cited symbol, citations without the documents among the sources, a `network` permission. Finding to remember: at tag 1.1.4 `Document.saveAs` is stubbed as `saveAs(self)` (no path parameter) and module stubs (`Part.module.pyi`) do not exist yet, so the C++ method tables are used for module functions; the real signatures come only from a live run.

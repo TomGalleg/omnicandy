@@ -24,6 +24,10 @@ import type { AdapterAuthor, AuthorRequest } from './author';
 import { BlueprintError, type Blueprint } from './blueprint';
 import { EXTERNAL_TEMPLATES } from './assemble';
 import { readDocumentation } from './docs';
+import { collectDocumentation, DOC_ORIGIN_LABEL, DocsStore, docsForAuthor, type Collected, type Fetcher } from './docsStore';
+import { digestOf, mergeDocSources } from './docsIndex';
+import { PYTHON_HOSTS } from './hosts';
+import { execFile } from 'node:child_process';
 import { renderPluginSource } from './templates/plugin';
 import { listInstalledPrograms } from './inventory';
 import { buildCandidate, type CandidateResult } from './pipeline';
@@ -46,6 +50,10 @@ export interface BuilderDeps {
   readDocs?: typeof readDocumentation;
   /** How many build attempts Claude gets (the first plus corrections). Default 3. A live test sets it explicitly. */
   maxAttempts?: number;
+  /** Downloads documentation (tests inject a fake; default is the real fetcher). */
+  docsFetcher?: Fetcher;
+  /** Do not collect documentation (tests of other things). */
+  skipDocs?: boolean;
   /** Skip the simulated stage (tests of other things). */
   skipSimulation?: boolean;
   /** Where to find a Python-free fallback etc. is decided inside the pipeline; nothing else is injected here. */
@@ -56,12 +64,21 @@ const sha = (b: Buffer) => createHash('sha256').update(b).digest('hex');
 const bump = (v: string) => { const p = v.split('.').map(Number); while (p.length < 3) p.push(0); p[2] = (p[2] ?? 0) + 1; return p.join('.'); };
 const MAX_ATTEMPTS = 3;
 
+/** Asks a known program for its version (read-only: its own --version option) when detection could not read it. Only programs in CreateCraft's host table. */
+async function probeVersion(exePath: string): Promise<string | null> {
+  const exe = path.basename(exePath).toLowerCase();
+  const host = Object.values(PYTHON_HOSTS).find((h) => h.exeNames.some((e) => e.toLowerCase() === exe));
+  if (!host) return null;
+  return new Promise((res) => execFile(exePath, host.versionArgs, { timeout: 20_000, windowsHide: true, env: { SystemRoot: process.env.SystemRoot ?? '', windir: process.env.windir ?? '', PATH: process.env.PATH ?? '' } }, (_e, out, err) => res(new RegExp(host.versionRegex, 'i').exec(`${out}\n${err}`)?.[1] ?? null)));
+}
+
 export class BuilderService {
   readonly store: BuilderStore;
+  readonly docs: DocsStore;
   private running = new Map<string, Promise<void>>();
   private aborts = new Map<string, AbortController>();
 
-  constructor(private readonly d: BuilderDeps) { this.store = new BuilderStore(d.root); }
+  constructor(private readonly d: BuilderDeps) { this.store = new BuilderStore(d.root); this.docs = new DocsStore(d.root); }
 
   // ------------------------------------------------------------------ overview
 
@@ -130,7 +147,7 @@ export class BuilderService {
     const wanted = rec.request.appName.toLowerCase();
     const exe = rec.request.exePath?.toLowerCase();
     const hit = list.find((a) => (exe && a.exePath.toLowerCase() === exe)) ?? list.find((a) => a.name.toLowerCase().includes(wanted) || (a.adapterName ?? '').toLowerCase() === wanted);
-    if (hit) { rec.app = { installed: true, version: hit.version, exePath: hit.exePath, key: hit.key }; return; }
+    if (hit) { rec.app = { installed: true, version: hit.version ?? (await probeVersion(hit.exePath)), exePath: hit.exePath, key: hit.key }; return; }
     const programs = await this.programs().catch(() => [] as InstalledProgram[]);
     const p = programs.find((x) => (exe && x.exePath?.toLowerCase() === exe) || x.name.toLowerCase().includes(wanted));
     if (p) rec.app = { installed: true, version: p.version, exePath: p.exePath, key: null };
@@ -149,13 +166,24 @@ export class BuilderService {
     const docs = rec.request.documentation?.length ? await (this.d.readDocs ?? readDocumentation)(rec.request.documentation) : { docs: [], notes: [] };
     rec.docNames = docs.docs.map((x) => x.name);
     for (const n of docs.notes) await this.note(rec, 'checking', n);
-    const req: AuthorRequest = { appName: rec.request.appName, version: rec.app.version, exePath: rec.app.exePath, goal: rec.request.goal, docs: docs.docs };
+    // documentation: official online, official repository, installed with the program, provided by the user (combined, origins tracked)
+    let collected: Collected = { docs: [], notes: [], appSlug: '', refreshed: false, outdated: [] };
+    if (!this.d.skipDocs) {
+      await this.note(rec, 'checking', 'Collecting documentation (official sources first).');
+      collected = await collectDocumentation({ store: this.docs, appName: rec.request.appName, appVersion: rec.app.version, installDir: rec.app.exePath ? path.dirname(rec.app.exePath) : null, userDocs: docs.docs, fetcher: this.d.docsFetcher });
+      for (const n of collected.notes) await this.note(rec, 'checking', n);
+      this.recordDocs(rec, collected);
+    }
+    const authorDocs = collected.docs.length ? docsForAuthor(collected.docs, (d) => digestOf(d)) : docs.docs;
+    const req: AuthorRequest = { appName: rec.request.appName, version: rec.app.version, exePath: rec.app.exePath, goal: rec.request.goal, docs: authorDocs };
 
     // ---- research
     await this.note(rec, 'researching', 'Claude is reading the vendor documentation.', 'researching');
     const r = await a.research(req, ac.signal);
     this.addUsage(rec, r.value && r.usage);
     for (const n of r.notes ?? []) await this.note(rec, 'researching', `Research adjusted: ${n}`);
+    // The collected documents are added to the sources by CreateCraft itself: their origin is known, not claimed.
+    r.value = mergeDocSources(r.value, collected.docs);
     rec.research = { ...r.value };
     rec.author = { ...r.author };
     if (r.value.insufficient || !r.value.sourcesConsulted || !r.value.sources.length) {
@@ -198,8 +226,11 @@ export class BuilderService {
       }
       await this.note(rec, 'building', `Building the integration (${bp.decision.template}).`, 'building');
       cand = await buildCandidate(bp, { version, createdAt: new Date().toISOString(), author: { kind: rec.author?.kind === 'scripted' ? 'scripted' : 'claude', note: rec.author?.note }, projectId: id }, {
-        simulate: !this.d.skipSimulation, onStage: (s) => { void this.note(rec, s === 'simulated' ? 'testing' : 'building', s === 'static' ? 'Checking the connector.' : s === 'security' ? 'Running security checks.' : 'Testing with a simulated program.', s === 'simulated' ? 'testing' : 'building'); },
+        simulate: !this.d.skipSimulation, docs: collected.docs, onStage: (s) => { void this.note(rec, s === 'simulated' ? 'testing' : 'building', s === 'static' ? 'Checking the connector.' : s === 'security' ? 'Running security checks.' : 'Testing with a simulated program.', s === 'simulated' ? 'testing' : 'building'); },
       });
+      bp = cand.blueprint; // citations may have been completed from the documentation
+      for (const a2 of cand.citations.added) await this.note(rec, 'building', `Citation completed from documentation: ${a2.symbol} (${a2.command}) → ${a2.url}`);
+      for (const u of cand.citations.unresolved.slice(0, 6)) await this.note(rec, 'building', `No documentation contains ${u.symbol} (${u.command}); it stays uncited.`);
       if (cand.passed) break;
       problem = cand.reports.flatMap((x) => x.checks.filter((c) => c.state === 'failed').map((c) => `[${x.stage}] ${c.title}: ${c.detail}`)).join('\n').slice(0, 3000);
     }
@@ -233,6 +264,21 @@ export class BuilderService {
       rec.nextSteps = [`${rec.request.appName} is not installed on this computer, so this integration was only tested with simulations. It is saved as "Awaiting live verification".`, `Install ${rec.request.appName}, then open My Custom Integrations and choose "Test on the real program".`];
       await this.note(rec, 'ready', 'Saved. Waiting for the real program to test it.', 'awaiting-live-verification');
     }
+  }
+
+  private recordDocs(rec: ProjectRecord, c: Collected): void {
+    rec.docs = c.docs.map((d) => ({ origin: d.origin, title: d.title, url: d.url, versionNote: d.versionNote, fetchedAt: d.fetchedAt, bytes: d.bytes, outdated: c.outdated.includes(d.title) }));
+    rec.docNames = c.docs.map((d) => d.title);
+  }
+
+  /** Downloads the official documentation for this program again (the stored copy is replaced). Nothing else changes. */
+  async refreshDocs(id: string): Promise<{ notes: string[]; count: number }> {
+    const rec = await this.must(id);
+    const docs = rec.request.documentation?.length ? await (this.d.readDocs ?? readDocumentation)(rec.request.documentation) : { docs: [], notes: [] };
+    const c = await collectDocumentation({ store: this.docs, appName: rec.request.appName, appVersion: rec.app.version, installDir: rec.app.exePath ? path.dirname(rec.app.exePath) : null, userDocs: docs.docs, refresh: true, fetcher: this.d.docsFetcher });
+    this.recordDocs(rec, c);
+    await this.store.save(rec);
+    return { notes: c.notes, count: c.docs.length };
   }
 
   private addUsage(rec: ProjectRecord, u: { calls: number; costUsd: number } | undefined): void {
@@ -309,6 +355,7 @@ export class BuilderService {
       log: rec.log, nextSteps: rec.nextSteps, userGuide: bp?.userGuide ?? null,
       compatibility: { declared, tested, note: tested.length ? `Commands were run and checked on ${tested.join(', ')}. Other versions in the declared range have not been tested.` : 'Not tested on any real version yet.' },
       usage: rec.usage, proposal: rec.proposal,
+      documentation: (rec.docs ?? []).map((x) => ({ ...x, originLabel: DOC_ORIGIN_LABEL[x.origin as keyof typeof DOC_ORIGIN_LABEL] ?? x.origin })),
     };
   }
 
@@ -427,7 +474,9 @@ export class BuilderService {
     const error = why.error ?? failedV?.detail ?? 'No command failed; checking the integration against the installed program version.';
     const evidence = failedV?.evidence ?? [];
     const app = (await this.d.manager.list().catch(() => [])).find((x) => x.adapterId === rec.adapterId);
-    const docs = rec.request.documentation?.length ? await (this.d.readDocs ?? readDocumentation)(rec.request.documentation) : { docs: [], notes: [] };
+    const userDocs = rec.request.documentation?.length ? await (this.d.readDocs ?? readDocumentation)(rec.request.documentation) : { docs: [], notes: [] };
+    const coll = this.d.skipDocs ? null : await collectDocumentation({ store: this.docs, appName: rec.request.appName, appVersion: app?.version ?? rec.app.version, userDocs: userDocs.docs, fetcher: this.d.docsFetcher });
+    const docs = { docs: coll?.docs.length ? docsForAuthor(coll.docs, (d) => digestOf(d)) : userDocs.docs, notes: userDocs.notes };
     const req: AuthorRequest = { appName: rec.request.appName, version: app?.version ?? rec.app.version, exePath: rec.app.exePath, goal: rec.request.goal, docs: docs.docs };
     const diagnosis = [
       `Failing command: ${commandId ?? 'none (compatibility check)'}`, `Error: ${error}`,
@@ -439,7 +488,7 @@ export class BuilderService {
     this.addUsage(rec, fix.usage);
     const next = fix.value.blueprint;
     const toVersion = bump(rec.version);
-    const cand = await buildCandidate(next, { version: toVersion, createdAt: new Date().toISOString(), author: { kind: 'repair', note: fix.author.note }, projectId: id }, { simulate: !this.d.skipSimulation });
+    const cand = await buildCandidate(next, { version: toVersion, createdAt: new Date().toISOString(), author: { kind: 'repair', note: fix.author.note }, projectId: id }, { simulate: !this.d.skipSimulation, docs: coll?.docs });
     const changes = await diffBlueprints(bp, next, fix.value.changes);
     const dir = this.store.proposalDir(id);
     await fs.rm(dir, { recursive: true, force: true });

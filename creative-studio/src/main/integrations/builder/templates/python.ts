@@ -31,7 +31,7 @@ export function resolvePythonHost(bp: Blueprint): { host: PythonHost; problems: 
   return {
     host: {
       id: 'custom', label: bp.application.name, exeNames: bp.application.exeNames, displayNames: bp.application.displayNames,
-      versionArgs: c.versionArgs, versionRegex: c.versionRegex, launchArgs: c.launchArgs, hostModules: c.hostModules, launcher: 'exec-stub',
+      versionArgs: c.versionArgs, versionRegex: c.versionRegex, launchArgs: c.launchArgs, hostModules: c.hostModules, coreModules: [], launcher: 'exec-stub',
       knownSymbols: [], docs: [], testedNote: 'Not yet run on the real program.',
     },
     problems,
