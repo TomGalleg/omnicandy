@@ -560,3 +560,12 @@ h1, h2, h3 { margin: 0; font-weight: 600; }
 .ext-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
 .ext-note { color: var(--text-3); }
 .ext-error { color: var(--warn); }
+
+.ext-packages { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); display: grid; gap: 8px; }
+.ext-review { display: grid; gap: 6px; padding: 10px; border: 1px solid var(--accent); border-radius: 8px; background: var(--surface-2); }
+.ext-review .check { display: flex; align-items: flex-start; gap: 8px; font-size: 12px; }
+.ext-job { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.ext-packages code { font-size: 11px; word-break: break-all; }
+.ext-review label.ext-check { display: flex; flex-direction: row; align-items: flex-start; justify-content: flex-start; gap: 8px; font-size: 12px; text-align: left; }
+.ext-review label.ext-check input { width: 16px; height: 16px; flex: none; margin: 1px 0 0; padding: 0; }
+.ext-packages small, .ext-review small { white-space: normal; overflow-wrap: anywhere; }

@@ -9,6 +9,12 @@ export default tseslint.config(
   ...tseslint.configs.recommended,
   { rules: { '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }] } },
   {
+    // Integration packages are plain CommonJS that runs in its own restricted Node process, not CreateCraft code.
+    files: ['fixtures/sample-adapter/**/*.js'],
+    languageOptions: { sourceType: 'commonjs', globals: globals.node },
+    rules: { '@typescript-eslint/no-require-imports': 'off' },
+  },
+  {
     files: ['src/main/**/*.ts', 'src/preload/**/*.ts', 'src/shared/**/*.ts', 'scripts/**/*', '*.config.ts'],
     languageOptions: { globals: globals.node },
   },

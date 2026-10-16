@@ -130,6 +130,15 @@ export const IPC = {
   extRepair: 'ext:repair',
   extRevoke: 'ext:revoke',
   extAddLocation: 'ext:add-location',
+  extPkgList: 'ext:pkg-list',
+  extPkgPick: 'ext:pkg-pick',
+  extPkgReview: 'ext:pkg-review',
+  extPkgInstall: 'ext:pkg-install',
+  extPkgEnable: 'ext:pkg-enable',
+  extPkgUninstall: 'ext:pkg-uninstall',
+  extPkgRepair: 'ext:pkg-repair',
+  extJobs: 'ext:jobs',
+  extJobCancel: 'ext:job-cancel',
   localAiStatus: 'localai:status',
   localAiDownloads: 'localai:downloads',
   localAiDownload: 'localai:download',
@@ -178,7 +187,7 @@ export interface ProviderStatusDto {
 import type { VideoJob, VideoJobRecord } from './video';
 import type { MotionJob } from './motionEffects';
 import type { DownloadState, LocalAiStatus } from './localAi';
-import type { ExternalAppInfo, ExternalScan } from './integrations';
+import type { ExternalAppInfo, ExternalScan, JobInfo, PackageApproval, PackageListing, PackageReview } from './integrations';
 import type { LocalVideoJob } from './localVideo';
 
 export interface GenerateResultDto {
@@ -414,6 +423,19 @@ export interface StudioApi {
     revoke(key: string): Promise<ExternalAppInfo[]>;
     /** Native picker for a portable copy; rescans. Null when cancelled. */
     addLocation(): Promise<ExternalScan | null>;
+    /** Installed integration packages and packages waiting in the inbox folder. */
+    packages(): Promise<PackageListing>;
+    /** Native picker for a .ccadapter file or a folder; returns its review (nothing is installed or run). Null when cancelled. */
+    pickPackage(kind: 'file' | 'folder'): Promise<PackageReview | null>;
+    /** Review of a package from the inbox. */
+    reviewPackage(path: string): Promise<PackageReview>;
+    /** Installs after a native confirmation dialog; rescans the applications. Returns the new listing. */
+    installPackage(path: string, approval: PackageApproval): Promise<PackageListing>;
+    setPackageEnabled(id: string, enabled: boolean): Promise<PackageListing>;
+    uninstallPackage(id: string): Promise<PackageListing>;
+    repairPackage(id: string): Promise<PackageListing>;
+    jobs(): Promise<JobInfo[]>;
+    cancelJob(id: string): Promise<JobInfo[]>;
   };
   probeApps(): Promise<AppProbeResult[]>;
   integrationStatus(): Promise<IntegrationSnapshot>;

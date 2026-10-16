@@ -4,3 +4,7 @@ dist/
 *.log
 .vite/
 coverage/
+
+# Integration package signing keys and local scratch
+*.key.pem
+.local/

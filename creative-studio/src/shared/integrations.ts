@@ -49,6 +49,14 @@ export interface CommandSpec {
   idempotent?: boolean;
   /** Longest it may run, ms. */
   timeoutMs?: number;
+  /** Runs as a job (renders, exports): returns a job handle at once; progress, cancel and result via the job. */
+  longRunning?: boolean;
+}
+
+/** What an adapter needs before it can work; shown before the user connects. */
+export interface AdapterRequirement {
+  kind: 'application' | 'edition' | 'running' | 'runtime' | 'preference' | 'licence' | 'other';
+  text: string;
 }
 
 export type AdapterMaturity = 'verified' | 'experimental' | 'stub';
@@ -71,7 +79,23 @@ export interface AdapterManifest {
   commands: CommandSpec[];
   /** Plain-language note shown to the user (requirements, administrator rights, licence...). */
   notes?: string;
+  /** The adapter's own version (packages); built-in adapters are versioned with CreateCraft. */
+  version?: string;
+  description?: string;
+  license?: string;
+  /** Several supported application version ranges; `versions` stays the overall hull. */
+  versionRanges?: Array<{ min?: string; max?: string }>;
+  requirements?: AdapterRequirement[];
+  /** Where the adapter came from. */
+  source?: 'built-in' | 'package';
+  /** Packages only: how far the publisher is trusted. */
+  trust?: TrustLevel;
+  /** The adapter needs no installed program (it brings its own logic); CreateCraft lists it directly. */
+  selfContained?: boolean;
 }
+
+/** built-in: ships with CreateCraft. trusted-publisher: signed by a publisher the user trusted. unsigned: no signature. */
+export type TrustLevel = 'built-in' | 'trusted-publisher' | 'unsigned';
 
 export type IntegrationStatus = 'detected' | 'available' | 'connected' | 'limited' | 'unsupported' | 'needs-repair' | 'incompatible' | 'not-running' | 'api-unavailable';
 
@@ -112,6 +136,11 @@ export interface ExternalAppInfo extends DiscoveredApp {
   /** Permissions its commands may ask for. */
   permissionsNeeded: Permission[];
   notes: string | null;
+  adapterVersion: string | null;
+  origin: 'built-in' | 'package' | null;
+  trust: TrustLevel | null;
+  requirements: AdapterRequirement[];
+  selfContained: boolean;
 }
 
 /** Result of a scan: found applications plus adapters whose program was not found. */
@@ -139,7 +168,11 @@ export interface CommandResult {
 
 export interface ProgressEvent { opId: string; appKey: string; commandId: string; stage: string; fraction?: number }
 
-export interface ApprovalRequest { app: ExternalAppInfo; command: CommandSpec; params: Record<string, unknown>; needed: Permission[]; destructive: boolean }
+export interface ApprovalRequest {
+  app: ExternalAppInfo; command: CommandSpec; params: Record<string, unknown>; needed: Permission[]; destructive: boolean;
+  /** An unsigned package: it is asked every time and "always" is not offered. */
+  untrusted?: boolean;
+}
 export type ApprovalAnswer = 'once' | 'always' | 'deny';
 
 /** "major.minor.patch" comparison; missing parts count as 0. */
@@ -153,9 +186,104 @@ export function compareVersions(a: string, b: string): number {
   return 0;
 }
 
-export function versionSupported(v: string | null, range: AdapterManifest['versions']): 'ok' | 'unknown' | 'too-old' | 'too-new' {
+export function versionSupported(v: string | null, range: AdapterManifest['versions'], ranges?: AdapterManifest['versionRanges']): 'ok' | 'unknown' | 'too-old' | 'too-new' {
   if (!v) return 'unknown';
-  if (range.min && compareVersions(v, range.min) < 0) return 'too-old';
-  if (range.max && compareVersions(v, range.max) > 0) return 'too-new';
-  return 'ok';
+  const all = ranges?.length ? ranges : [range];
+  const inside = (r: { min?: string; max?: string }) => (!r.min || compareVersions(v, r.min) >= 0) && (!r.max || compareVersions(v, r.max) <= 0);
+  if (all.some(inside)) return 'ok';
+  // Outside every range: older than the oldest supported version, otherwise newer (or in a gap between ranges).
+  const lowest = all.every((r) => r.min) ? all.map((r) => r.min!).sort(compareVersions)[0] : undefined;
+  return lowest && compareVersions(v, lowest) < 0 ? 'too-old' : 'too-new';
+}
+
+// ---- installable adapter packages ----
+
+export const PACKAGE_MANIFEST_VERSION = 1;
+export const PACKAGE_EXTENSION = '.ccadapter';
+
+export type SignatureState = 'valid' | 'unsigned' | 'invalid';
+
+/** What the user is shown before installing: everything is recomputed in main, never trusted from the renderer. */
+export interface PackageReview {
+  /** Where it was read from (file or folder). */
+  path: string;
+  /** Blocking problems; when non-empty the package cannot be installed. */
+  problems: string[];
+  /** Warnings that do not block (unsigned, new publisher, ...). */
+  warnings: string[];
+  id: string | null;
+  name: string | null;
+  version: string | null;
+  description: string | null;
+  license: string | null;
+  homepage: string | null;
+  publisherName: string | null;
+  /** First 16 bytes of SHA-256 of the signing key, grouped; null when unsigned. */
+  fingerprint: string | null;
+  signature: SignatureState;
+  publisherTrusted: boolean;
+  applicationName: string | null;
+  selfContained: boolean;
+  sdk: { min: number; max: number } | null;
+  requirements: AdapterRequirement[];
+  commands: Array<{ id: string; label: string; description: string; permissions: Permission[]; destructive: boolean; longRunning: boolean }>;
+  /** Union of the permissions its commands may use. */
+  permissions: Permission[];
+  installedVersion: string | null;
+  action: 'install' | 'update' | 'reinstall' | 'blocked';
+  fileCount: number;
+  bytes: number;
+}
+
+export interface PackageApproval {
+  /** Subset of the requested permissions the user allowed. Commands needing others are refused. */
+  permissions: Permission[];
+  /** Required to install an unsigned package. */
+  allowUnsigned?: boolean;
+  /** Required to install a signed package from a publisher not trusted yet; remembers the publisher. */
+  trustPublisher?: boolean;
+}
+
+export type InstalledState = 'ok' | 'disabled' | 'tampered' | 'incompatible' | 'missing-files' | 'crash-disabled';
+
+export interface InstalledAdapter {
+  id: string;
+  name: string;
+  version: string;
+  description: string | null;
+  license: string | null;
+  publisherName: string;
+  fingerprint: string | null;
+  trust: TrustLevel;
+  enabled: boolean;
+  state: InstalledState;
+  stateDetail: string;
+  applicationName: string;
+  selfContained: boolean;
+  sdkCompatible: boolean;
+  requirements: AdapterRequirement[];
+  approvedPermissions: Permission[];
+  requestedPermissions: Permission[];
+  commandCount: number;
+  installedAt: string;
+  /** Ran inside the OS-level Node permission model (no spawning, no writes) as opposed to plain process isolation. */
+  restricted: boolean;
+}
+
+export interface PackageListing { installed: InstalledAdapter[]; inbox: PackageReview[]; inboxDir: string; trustedPublishers: Array<{ fingerprint: string; name: string; addedAt: string }> }
+
+// ---- jobs ----
+
+export type JobStatus = 'running' | 'succeeded' | 'failed' | 'cancelled';
+export interface JobInfo {
+  id: string;
+  appKey: string;
+  appName: string;
+  commandId: string;
+  status: JobStatus;
+  stage: string;
+  fraction: number | null;
+  startedAt: string;
+  finishedAt: string | null;
+  result: CommandResult | null;
 }

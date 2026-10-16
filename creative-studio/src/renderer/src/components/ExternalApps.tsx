@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { PERMISSION_LABEL, STATUS_LABEL, type ExternalAppInfo, type ExternalScan, type IntegrationStatus } from '@shared/integrations';
+import { IntegrationPackages } from './IntegrationPackages';
 
 const CHIP: Record<IntegrationStatus, string> = {
   detected: 'real', available: 'real', connected: 'ok', limited: 'warn', unsupported: 'off', 'needs-repair': 'warn', incompatible: 'warn', 'not-running': 'real', 'api-unavailable': 'warn',
@@ -82,6 +83,7 @@ export function ExternalApps() {
       {scan && scan.missing.length > 0 && (
         <small>Not detected: {scan.missing.map((m) => m.name).join(', ')}. Use “Add application location…” for portable copies.</small>
       )}
+      <IntegrationPackages onChanged={() => void rescan()} />
       <small>Scanning happens on this PC only; nothing about your installed software is sent anywhere. Commands run only after you allow them.</small>
     </div>
   );

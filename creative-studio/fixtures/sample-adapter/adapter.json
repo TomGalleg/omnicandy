@@ -1,0 +1,58 @@
+{
+  "manifestVersion": 1,
+  "id": "sample.textkit",
+  "name": "Sample Text Kit",
+  "version": "1.0.0",
+  "description": "A harmless demonstration integration. It needs no other program: it counts words, writes a small report and shows how long-running jobs and permissions behave.",
+  "license": "MIT",
+  "publisher": { "name": "CreateCraft Samples" },
+  "sdk": { "min": 1, "max": 1 },
+  "application": { "kind": "self-contained", "name": "Sample Text Kit" },
+  "requirements": [
+    { "kind": "other", "text": "Nothing to install. It does not start or change any other program." }
+  ],
+  "runtime": { "entry": "main.js", "dependencies": [] },
+  "methods": ["api"],
+  "capabilities": ["connect", "disconnect", "healthCheck", "executeCommand", "getExecutionStatus", "cancelOperation"],
+  "commands": [
+    {
+      "id": "text.stats",
+      "label": "Count words in text",
+      "description": "Counts the words, lines and characters of the text you give it. Changes nothing.",
+      "params": { "text": { "type": "string", "description": "The text to count.", "required": true } },
+      "permissions": ["read-info"],
+      "idempotent": true,
+      "timeoutMs": 10000
+    },
+    {
+      "id": "report.write",
+      "label": "Write a small text report",
+      "description": "Writes report.txt (title, word count and the text) into this project's external folder.",
+      "params": {
+        "title": { "type": "string", "description": "Report title.", "default": "Sample report" },
+        "text": { "type": "string", "description": "Body text.", "required": true }
+      },
+      "permissions": ["write-files"],
+      "timeoutMs": 10000
+    },
+    {
+      "id": "slow.count",
+      "label": "Count slowly (long job)",
+      "description": "Counts to the number of seconds you choose, reporting progress. Runs as a job you can watch and cancel.",
+      "params": { "seconds": { "type": "number", "description": "How long to count.", "default": 3, "min": 1, "max": 60 } },
+      "permissions": [],
+      "longRunning": true,
+      "timeoutMs": 120000
+    },
+    {
+      "id": "selftest.isolation",
+      "label": "Check the isolation of this integration",
+      "description": "Tries to start a program and to write outside its folder from inside the integration, and reports that the operating system refused both.",
+      "params": {},
+      "permissions": ["read-info"],
+      "idempotent": true,
+      "timeoutMs": 10000
+    }
+  ],
+  "files": {}
+}

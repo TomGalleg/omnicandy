@@ -6,9 +6,9 @@ import { randomUUID } from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import {
-  ADAPTER_SDK_VERSION, METHOD_PREFERENCE, versionSupported,
+  ADAPTER_SDK_VERSION, METHOD_PREFERENCE, PERMISSION_LABEL, versionSupported,
   type AdapterManifest, type ApprovalAnswer, type ApprovalRequest, type CommandErrorKind, type CommandResult, type CommandSpec,
-  type DiscoveredApp, type ExternalAppInfo, type ExternalScan, type IntegrationStatus, type Permission, type ProgressEvent,
+  type DiscoveredApp, type ExternalAppInfo, type ExternalScan, type IntegrationStatus, type JobInfo, type Permission, type ProgressEvent,
 } from '@shared/integrations';
 import { discoverApps, realDiscoveryEnv, type DiscoveryEnv } from './discovery';
 import { AdapterError, validateManifest, type AdapterFactory, type ExternalAdapter } from './sdk';
@@ -32,6 +32,8 @@ export interface AuditEntry { at: string; app: string; command: string; ok: bool
 export type ScanResult = ExternalScan;
 
 const DEFAULT_TIMEOUT = 120_000;
+const MAX_FINISHED_JOBS = 50;
+const SELF_CONTAINED_PREFIX = 'package:';
 
 export class IntegrationManager {
   private factories = new Map<string, AdapterFactory>();
@@ -44,22 +46,62 @@ export class IntegrationManager {
   private ops = new Map<string, AbortController>();
   private grants: Record<string, Permission[]> | null = null;
   private audit: AuditEntry[] = [];
+  private builtin = new Set<AdapterFactory>();
+  /** Placeholder (stub) adapters replaced by a real one; restored when it is removed. */
+  private shadowed = new Map<string, AdapterFactory[]>();
+  private jobMap = new Map<string, JobInfo>();
 
   constructor(private readonly d: ManagerDeps) {}
 
   // ---- registration (plugin loading) ----
 
-  register(f: AdapterFactory): void {
+  /**
+   * Adds an adapter. A real adapter may replace a placeholder (stub) with the same id or the same program;
+   * it can never replace another real adapter. `builtin` adapters cannot be unregistered.
+   */
+  register(f: AdapterFactory, opts: { builtin?: boolean } = {}): void {
     const problems = validateManifest(f.manifest, ADAPTER_SDK_VERSION);
     if (problems.length) throw new Error(`Adapter ${f.manifest.id} rejected: ${problems.join('; ')}`);
-    if (this.factories.has(f.manifest.id)) throw new Error(`Adapter ${f.manifest.id} is already registered.`);
+    const exes = new Set(f.manifest.exeNames.map((e) => e.toLowerCase()));
+    const replaced: AdapterFactory[] = [];
+    for (const other of this.factories.values()) {
+      const sameId = other.manifest.id === f.manifest.id;
+      const sameExe = other.manifest.exeNames.some((e) => exes.has(e.toLowerCase()));
+      if (!sameId && !sameExe) continue;
+      if (other.manifest.maturity === 'stub' && f.manifest.maturity !== 'stub') { replaced.push(other); continue; }
+      throw new Error(sameId ? `Adapter ${f.manifest.id} is already registered.` : `Adapter ${f.manifest.id} drives the same program as ${other.manifest.id}, which already handles it.`);
+    }
+    for (const o of replaced) this.factories.delete(o.manifest.id);
+    if (replaced.length) this.shadowed.set(f.manifest.id, replaced);
     this.factories.set(f.manifest.id, f);
+    if (opts.builtin) this.builtin.add(f);
   }
 
+  /** Removes an installed (non built-in) adapter: ends its sessions and jobs and restores any placeholder it replaced. */
+  async unregister(id: string): Promise<void> {
+    if (this.isBuiltin(id)) throw new Error('Built-in adapters cannot be removed.');
+    const f = this.factories.get(id);
+    if (!f) return;
+    for (const [jobId, j] of this.jobMap) {
+      const app = this.apps.get(j.appKey);
+      if (j.status === 'running' && app && this.factoryFor(app) === f) this.ops.get(jobId)?.abort();
+    }
+    for (const [key, s] of [...this.sessions]) if (s.factory === f) await this.disconnect(key);
+    for (const [key, a] of [...this.apps]) {
+      if (this.factoryFor(a) === f) { this.apps.delete(key); this.versions.delete(key); this.broken.delete(key); this.blocked.delete(key); }
+    }
+    this.factories.delete(id);
+    for (const o of this.shadowed.get(id) ?? []) this.factories.set(o.manifest.id, o);
+    this.shadowed.delete(id);
+  }
+
+  isBuiltin(id: string): boolean { const f = this.factories.get(id); return !!f && this.builtin.has(f); }
   manifests(): AdapterManifest[] { return [...this.factories.values()].map((f) => f.manifest); }
+  factory(id: string): AdapterFactory | null { return this.factories.get(id) ?? null; }
   log(): AuditEntry[] { return [...this.audit]; }
 
   private factoryFor(app: DiscoveredApp): AdapterFactory | null {
+    if (app.key.startsWith(SELF_CONTAINED_PREFIX)) return this.factories.get(app.key.slice(SELF_CONTAINED_PREFIX.length)) ?? null;
     const exe = path.basename(app.exePath).toLowerCase();
     return [...this.factories.values()].find((f) => f.manifest.exeNames.some((e) => e.toLowerCase() === exe)) ?? null;
   }
@@ -67,12 +109,21 @@ export class IntegrationManager {
   // ---- discovery ----
 
   async scan(): Promise<ScanResult> {
-    const targets = this.manifests().map((m) => ({ exeNames: m.exeNames, displayNames: m.displayNames }));
-    const found = await discoverApps(targets, this.d.discovery ?? realDiscoveryEnv, await (this.d.userPaths?.() ?? Promise.resolve([])));
+    const targets = this.manifests().filter((m) => !m.selfContained).map((m) => ({ exeNames: m.exeNames, displayNames: m.displayNames }));
+    const discovered = await discoverApps(targets, this.d.discovery ?? realDiscoveryEnv, await (this.d.userPaths?.() ?? Promise.resolve([])));
+    // Self-contained adapters have no program to find: they are listed directly.
+    const own: DiscoveredApp[] = [...this.factories.values()].filter((f) => f.manifest.selfContained && f.anchorPath).map((f) => ({
+      key: SELF_CONTAINED_PREFIX + f.manifest.id, name: f.manifest.name, publisher: f.manifest.vendor, version: f.manifest.version ?? null,
+      exePath: f.anchorPath!, installType: 'installed' as const, source: 'user' as const,
+    }));
+    const found = [...discovered, ...own];
     this.apps = new Map(found.map((a) => [a.key, a]));
     for (const a of found) {
       const f = this.factoryFor(a);
       if (!f || this.versions.has(a.key)) continue;
+      if (f.manifest.selfContained) { this.versions.set(a.key, f.manifest.version ?? null); continue; }
+      // Unsigned packages do not run until the user presses Connect.
+      if (f.deferProbe) { this.versions.set(a.key, a.version); continue; }
       const probe = f.create();
       try {
         const r = await withTimeout(probe.probe(a), 20_000, 'version check');
@@ -86,7 +137,7 @@ export class IntegrationManager {
     const matched = new Set(found.map((a) => this.factoryFor(a)?.manifest.id));
     return {
       apps: await Promise.all(found.map((a) => this.info(a))),
-      missing: this.manifests().filter((m) => !matched.has(m.id)).map((m) => ({ adapterId: m.id, name: m.name, vendor: m.vendor, maturity: m.maturity })),
+      missing: this.manifests().filter((m) => !m.selfContained && !matched.has(m.id)).map((m) => ({ adapterId: m.id, name: m.name, vendor: m.vendor, maturity: m.maturity })),
     };
   }
 
@@ -108,13 +159,16 @@ export class IntegrationManager {
       status: 'detected', statusDetail: 'Found on this PC.', commands: m?.commands ?? [],
       granted: await this.grantsFor(a.key), permissionsNeeded: [...new Set((m?.commands ?? []).flatMap((c) => c.permissions))],
       notes: m?.notes ?? null,
+      adapterVersion: m?.version ?? null, origin: m?.source ?? (m ? 'built-in' : null), trust: m?.trust ?? (m ? 'built-in' : null),
+      requirements: m?.requirements ?? [], selfContained: !!m?.selfContained,
     };
     const set = (status: IntegrationStatus, statusDetail: string) => ({ ...base, status, statusDetail });
     if (!m) return set('unsupported', 'No adapter for this program yet.');
     if (m.maturity === 'stub') return set('unsupported', 'Detected. Deep integration is planned but not built yet; no commands are offered.');
-    const range = versionSupported(version, m.versions);
-    if (range === 'too-old') return set('incompatible', `Version ${version} is older than the supported ${m.versions.min}.`);
-    if (range === 'too-new') return set('incompatible', `Version ${version} is newer than the tested ${m.versions.max}.`);
+    const range = m.selfContained ? 'ok' : versionSupported(version, m.versions, m.versionRanges);
+    const supported = m.versionRanges?.length ? m.versionRanges.map((r) => `${r.min ?? ''}-${r.max ?? ''}`).join(', ') : `${m.versions.min ?? ''}-${m.versions.max ?? ''}`;
+    if (range === 'too-old') return set('incompatible', `Version ${version} is older than the supported ${supported}.`);
+    if (range === 'too-new') return set('incompatible', `Version ${version} is newer than the supported ${supported}.`);
     const blocked = this.blocked.get(a.key);
     if (blocked && !this.sessions.has(a.key)) return set(blocked.status, blocked.detail);
     const broken = this.broken.get(a.key);
@@ -136,7 +190,7 @@ export class IntegrationManager {
     if (!this.sessions.has(key)) {
       const adapter = f.create();
       try {
-        const probe = await withTimeout(adapter.probe(app), 20_000, 'version check');
+        const probe = f.manifest.selfContained ? { version: f.manifest.version ?? null } : await withTimeout(adapter.probe(app), 20_000, 'version check');
         this.versions.set(key, probe.version ?? app.version);
         await withTimeout(adapter.connect(app), 30_000, 'connect');
         const h = await withTimeout(adapter.healthCheck(), 30_000, 'health check');
@@ -168,6 +222,8 @@ export class IntegrationManager {
   /** Drops the session and the remembered failure, then connects again. */
   async repair(key: string): Promise<ExternalAppInfo> {
     await this.disconnect(key);
+    const app = this.apps.get(key);
+    if (app) this.factoryFor(app)?.reset?.();
     this.broken.delete(key);
     this.blocked.delete(key);
     this.versions.delete(key);
@@ -193,7 +249,21 @@ export class IntegrationManager {
 
   // ---- execution ----
 
-  async execute(key: string, commandId: string, raw: Record<string, unknown> = {}): Promise<CommandResult> {
+  // ---- jobs (long-running operations) ----
+
+  jobs(): JobInfo[] { return [...this.jobMap.values()].sort((a, b) => (a.startedAt < b.startedAt ? 1 : -1)); }
+  job(id: string): JobInfo | null { return this.jobMap.get(id) ?? null; }
+  /** Cancels a running job. The job record keeps the final "cancelled" result. */
+  cancelJob(id: string): boolean {
+    const j = this.jobMap.get(id);
+    return !!j && j.status === 'running' && this.cancel(id);
+  }
+
+  /**
+   * Runs one command. With `background` (or a command marked longRunning) the user is asked and the adapter is
+   * connected first, then a job handle is returned at once; the result arrives on the job.
+   */
+  async execute(key: string, commandId: string, raw: Record<string, unknown> = {}, opts: { background?: boolean } = {}): Promise<CommandResult> {
     const t0 = Date.now();
     const done = (r: Omit<CommandResult, 'durationMs'>, app?: string): CommandResult => {
       this.audit.push({ at: new Date().toISOString(), app: app ?? key, command: commandId, ok: r.ok, kind: r.error?.kind, ms: Date.now() - t0 });
@@ -215,13 +285,19 @@ export class IntegrationManager {
     const params = validateParams(cmd, raw);
     if (typeof params === 'string') return fail('invalid-params', params, app.name);
 
-    // Permissions: ask for what is not granted yet, and always for destructive commands.
+    // An installed package can never exceed what the user approved when installing it, whatever its manifest says.
+    if (f.permissionCeiling) {
+      const over = cmd.permissions.filter((p) => !f.permissionCeiling!.includes(p));
+      if (over.length) return fail('permission-denied', `${f.manifest.name} was not allowed to use: ${over.map((p) => PERMISSION_LABEL[p].toLowerCase()).join(', ')}. Update or reinstall the integration to review its permissions.`, app.name);
+    }
+
+    // Permissions: ask for what is not granted yet, always for destructive commands and for unsigned packages.
     const granted = new Set(await this.grantsFor(key));
     const needed = cmd.permissions.filter((p) => !granted.has(p));
-    if (needed.length || cmd.destructive) {
-      const answer = await this.d.approve({ app: await this.info(app), command: cmd, params, needed, destructive: !!cmd.destructive }).catch(() => 'deny' as const);
+    if (needed.length || cmd.destructive || f.alwaysAsk) {
+      const answer = await this.d.approve({ app: await this.info(app), command: cmd, params, needed, destructive: !!cmd.destructive, untrusted: !!f.alwaysAsk }).catch(() => 'deny' as const);
       if (answer === 'deny') return fail('permission-denied', 'The user did not allow this. Do not ask again unless they bring it up.', app.name);
-      if (answer === 'always' && !cmd.destructive) {
+      if (answer === 'always' && !cmd.destructive && !f.alwaysAsk) {
         for (const p of needed) granted.add(p);
         this.grants = { ...(this.grants ?? {}), [key]: [...granted] };
         await this.d.permissions.save(this.grants).catch(() => undefined);
@@ -238,13 +314,20 @@ export class IntegrationManager {
     const ac = new AbortController();
     this.ops.set(opId, ac);
     const timeoutMs = cmd.timeoutMs ?? DEFAULT_TIMEOUT;
+    const background = opts.background ?? !!cmd.longRunning;
+    const activeSession = session;
+    const runIt = async (): Promise<CommandResult> => {
     const timer = setTimeout(() => ac.abort(new Error('timeout')), timeoutMs);
     try {
       const workDir = await this.d.workDir(f.manifest.id);
       await fs.mkdir(workDir, { recursive: true });
-      const out = await raceAbort(session.adapter.execute(cmd, params, {
+      const out = await raceAbort(activeSession.adapter.execute(cmd, params, {
         app, workDir, signal: ac.signal,
-        progress: (stage, fraction) => this.d.onProgress?.({ opId, appKey: key, commandId, stage, fraction }),
+        progress: (stage, fraction) => {
+          const j = this.jobMap.get(opId);
+          if (j) { j.stage = stage; if (fraction !== undefined) j.fraction = fraction; }
+          this.d.onProgress?.({ opId, appKey: key, commandId, stage, fraction });
+        },
       }), ac.signal);
       // The manager's own verification: every claimed output must exist and not be empty.
       const outputs: CommandResult['outputs'] = [];
@@ -271,6 +354,24 @@ export class IntegrationManager {
       clearTimeout(timer);
       this.ops.delete(opId);
     }
+    };
+
+    if (!background) return runIt();
+    const job: JobInfo = { id: opId, appKey: key, appName: app.name, commandId, status: 'running', stage: 'Starting', fraction: null, startedAt: new Date().toISOString(), finishedAt: null, result: null };
+    this.jobMap.set(opId, job);
+    void runIt().then((r) => {
+      job.result = r;
+      job.status = r.ok ? 'succeeded' : r.error?.kind === 'cancelled' ? 'cancelled' : 'failed';
+      job.finishedAt = new Date().toISOString();
+      job.fraction = r.ok ? 1 : job.fraction;
+      const finished = [...this.jobMap.values()].filter((j) => j.status !== 'running').sort((a, b) => (a.finishedAt! < b.finishedAt! ? -1 : 1));
+      for (const old of finished.slice(0, Math.max(0, finished.length - MAX_FINISHED_JOBS))) this.jobMap.delete(old.id);
+    });
+    return {
+      ok: true, verified: false, evidence: [], outputs: [], durationMs: Date.now() - t0,
+      message: `Started "${cmd.label}" in ${app.name} as job ${opId}. It runs in the background; check it with the job id.`,
+      data: { jobId: opId, status: 'running' },
+    };
   }
 }
 

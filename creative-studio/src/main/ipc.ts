@@ -44,8 +44,8 @@ import { LOCAL_MODELS, modelFit, SDCPP_RUNTIME, tierFor, TIER_LABEL, totalBytes,
 import { MOTION_ASPECTS, MOTION_FPS, MOTION_INTENSITIES, MOTION_PRESETS, MOTION_RESOLUTIONS } from '@shared/motionEffects';
 import { MAX_VIDEO_PROMPT } from '@shared/video';
 import type { SettingsStore } from './settingsStore';
-import { createIntegrationManager } from './integrations';
-import { PERMISSION_LABEL, type ApprovalAnswer, type ExternalAppInfo, type Permission } from '@shared/integrations';
+import { AdapterPackages, createIntegrationManager } from './integrations';
+import { PERMISSION_LABEL, type ApprovalAnswer, type ExternalAppInfo, type PackageApproval, type PackageListing, type Permission } from '@shared/integrations';
 
 export interface IpcDeps {
   window: () => BrowserWindow | null;
@@ -656,20 +656,88 @@ export function registerIpc(d: IpcDeps): void {
         '',
         r.needed.length ? `This lets CreateCraft: ${r.needed.map((p) => PERMISSION_LABEL[p].toLowerCase()).join('; ')}.` : 'No new permissions are needed.',
         Object.keys(r.params).length ? `Settings: ${Object.entries(r.params).map(([k, v]) => `${k} ${String(v)}`).join(', ')}` : '',
+        r.untrusted ? 'This integration is NOT signed, so CreateCraft cannot tell who made it. You are asked every time.' : '',
         r.destructive ? 'This can change or remove existing work and may not be reversible. You are asked every time.' : 'Outputs are written to the external folder of this project; your existing files are not changed.',
       ].filter((x, i, a) => x !== '' || a[i - 1] !== '');
-      const buttons = r.destructive ? ['Cancel', 'Allow once'] : ['Cancel', 'Allow once', `Always allow for ${r.app.adapterName ?? r.app.name}`];
+      const buttons = r.destructive || r.untrusted ? ['Cancel', 'Allow once'] : ['Cancel', 'Allow once', `Always allow for ${r.app.adapterName ?? r.app.name}`];
       const options: Electron.MessageBoxOptions = { type: 'question', title: 'External application', message: `Run "${r.command.label}" in ${r.app.adapterName ?? r.app.name}?`, detail: lines.join(String.fromCharCode(10)), buttons, defaultId: 0, cancelId: 0, noLink: true };
       const res = win && !win.isDestroyed() ? await dialog.showMessageBox(win, options) : await dialog.showMessageBox(options);
       return res.response === 1 ? 'once' : res.response === 2 ? 'always' : 'deny';
     },
   });
-  handle(IPC.extScan, none, () => external.scan());
-  handle(IPC.extList, none, () => external.list());
+  // Installable adapter packages: verified on disk, run in their own restricted process (integrations/packageRunner.ts).
+  const packages = new AdapterPackages(path.join(path.dirname(d.secretsDir), 'integrations'), external);
+  const packagesReady = packages.load().catch(() => undefined);
+  /** Only paths the user picked or the inbox listed can be reviewed or installed: the renderer cannot name arbitrary files. */
+  const allowedPackagePaths = new Set<string>();
+  const listing = async (): Promise<PackageListing> => {
+    await packagesReady;
+    const l = await packages.listing();
+    for (const r of l.inbox) allowedPackagePaths.add(r.path);
+    return l;
+  };
+  const allowedPackage = (p: string): string => {
+    if (!allowedPackagePaths.has(p)) throw new Error('That package was not chosen from the picker or the inbox. Choose it again.');
+    return p;
+  };
+  handle(IPC.extScan, none, async () => { await packagesReady; return external.scan(); });
+  handle(IPC.extList, none, async () => { await packagesReady; return external.list(); });
   handle(IPC.extConnect, z.tuple([z.string().min(1).max(600)]), (k) => external.connect(k));
   handle(IPC.extDisconnect, z.tuple([z.string().min(1).max(600)]), (k) => external.disconnect(k));
   handle(IPC.extRepair, z.tuple([z.string().min(1).max(600)]), (k) => external.repair(k));
   handle(IPC.extRevoke, z.tuple([z.string().min(1).max(600)]), async (k) => { await external.revoke(k); return external.list(); });
+  handle(IPC.extPkgList, none, () => listing());
+  handle(IPC.extPkgPick, z.tuple([z.enum(['file', 'folder'])]), async (kind) => {
+    const win = d.window();
+    const o: Electron.OpenDialogOptions = kind === 'file'
+      ? { title: 'Choose an integration package', properties: ['openFile'], filters: [{ name: 'CreateCraft integration package', extensions: ['ccadapter'] }] }
+      : { title: 'Choose an integration package folder', properties: ['openDirectory'] };
+    const r = await (win ? dialog.showOpenDialog(win, o) : dialog.showOpenDialog(o));
+    const p = r.canceled ? null : r.filePaths[0];
+    if (!p) return null;
+    allowedPackagePaths.add(p);
+    await packagesReady;
+    return packages.review(p);
+  });
+  handle(IPC.extPkgReview, z.tuple([z.string().min(1).max(1000)]), async (p) => { await listing(); return packages.review(allowedPackage(p)); });
+  const approvalSchema = z.object({ permissions: z.array(z.string()).max(20), allowUnsigned: z.boolean().optional(), trustPublisher: z.boolean().optional() });
+  handle(IPC.extPkgInstall, z.tuple([z.string().min(1).max(1000), approvalSchema]), async (p, approval) => {
+    await packagesReady;
+    const src = allowedPackage(p);
+    const rev = await packages.review(src);
+    if (rev.problems.length) throw new Error('This package cannot be installed: ' + rev.problems.join('; '));
+    // A native dialog the renderer and Claude cannot answer: installing adds code that will run on this PC.
+    const win = d.window();
+    const asked = approval.permissions.map((x) => PERMISSION_LABEL[x as Permission]?.toLowerCase() ?? x);
+    const options: Electron.MessageBoxOptions = {
+      type: 'warning', title: 'Install integration', noLink: true, buttons: ['Cancel', rev.action === 'update' ? 'Update' : 'Install'], defaultId: 0, cancelId: 0,
+      message: (rev.action === 'update' ? 'Update ' : 'Install ') + rev.name + ' ' + rev.version + '?',
+      detail: [
+        'Publisher: ' + rev.publisherName + (rev.signature === 'valid' ? ' (signed, key ' + rev.fingerprint + ')' : ' (NOT signed)'),
+        'It may: ' + (asked.length ? asked.join('; ') : 'nothing beyond reading its own files'),
+        'It runs in a separate restricted process. You are still asked before commands that change anything.',
+      ].join(String.fromCharCode(10)),
+    };
+    const res = win && !win.isDestroyed() ? await dialog.showMessageBox(win, options) : await dialog.showMessageBox(options);
+    if (res.response !== 1) throw new Error('Installation was cancelled.');
+    await packages.install(src, approval as PackageApproval);
+    await external.scan();
+    return listing();
+  });
+  handle(IPC.extPkgEnable, z.tuple([z.string().min(1).max(100), z.boolean()]), async (id, on) => { await packagesReady; await packages.setEnabled(id, on); await external.scan(); return listing(); });
+  handle(IPC.extPkgUninstall, z.tuple([z.string().min(1).max(100)]), async (id) => {
+    await packagesReady;
+    const win = d.window();
+    const options: Electron.MessageBoxOptions = { type: 'question', title: 'Remove integration', message: 'Remove ' + id + '?', detail: 'Its files and stored data are deleted. Programs it controlled and your projects are not changed.', buttons: ['Cancel', 'Remove'], defaultId: 0, cancelId: 0, noLink: true };
+    const res = win && !win.isDestroyed() ? await dialog.showMessageBox(win, options) : await dialog.showMessageBox(options);
+    if (res.response !== 1) throw new Error('Removal was cancelled.');
+    await packages.uninstall(id);
+    await external.scan();
+    return listing();
+  });
+  handle(IPC.extPkgRepair, z.tuple([z.string().min(1).max(100)]), async (id) => { await packagesReady; await packages.repair(id); await external.scan(); return listing(); });
+  handle(IPC.extJobs, none, async () => external.jobs());
+  handle(IPC.extJobCancel, z.tuple([z.string().min(1).max(100)]), async (id) => { external.cancelJob(id); return external.jobs(); });
   handle(IPC.extAddLocation, none, async () => {
     const win = d.window();
     const o: Electron.OpenDialogOptions = { title: 'Choose the application (.exe) or its folder', properties: ['openFile'], filters: [{ name: 'Applications', extensions: ['exe'] }] };
@@ -682,7 +750,8 @@ export function registerIpc(d: IpcDeps): void {
   });
   const describeExternal = (a: ExternalAppInfo) => ({
     app_key: a.key, name: a.name, version: a.version, status: a.status, detail: a.statusDetail, adapter: a.adapterId, maturity: a.maturity, methods: a.methods,
-    commands: a.commands.map((c) => ({ id: c.id, label: c.label, description: c.description, settings: c.params, needs: c.permissions, destructive: !!c.destructive })),
+    origin: a.origin, trust: a.trust, requirements: a.requirements.map((r) => r.text),
+    commands: a.commands.map((c) => ({ id: c.id, label: c.label, description: c.description, settings: c.params, needs: c.permissions, destructive: !!c.destructive, long_running: !!c.longRunning })),
   });
 
   let partner: ClaudePartner | null = null;
@@ -732,12 +801,19 @@ export function registerIpc(d: IpcDeps): void {
         const s = await external.scan();
         return JSON.stringify({ applications: s.apps.map(describeExternal), not_found: s.missing.map((m) => `${m.name} (${m.maturity})`), note: 'Only commands listed here exist. status connected/available means usable; unsupported means detected only.' }, null, 2);
       },
-      run: async (app, command, params) => {
+      run: async (app, command, params, background) => {
+        await packagesReady;
         const s = await external.list();
         const a = s.find((x) => x.key === app || x.adapterId === app || x.name.toLowerCase() === app.toLowerCase());
         if (!a) throw new Error(`No detected application "${app}". Use external_apps.`);
-        const r = await external.execute(a.key, command, params);
+        const r = await external.execute(a.key, command, params, background === undefined ? {} : { background });
         return JSON.stringify(r, null, 2);
+      },
+      job: async (id, cancel) => {
+        if (cancel) external.cancelJob(id);
+        const j = external.job(id);
+        if (!j) return JSON.stringify({ error: 'No such job. Jobs: ' + external.jobs().map((x) => x.id).join(', ') });
+        return JSON.stringify({ job_id: j.id, app: j.appName, command: j.commandId, status: j.status, stage: j.stage, progress: j.fraction, started: j.startedAt, finished: j.finishedAt, result: j.result }, null, 2);
       },
     },
     deliver: async () => deliver(),

@@ -2,7 +2,7 @@
 // control method it really has. The manager owns permissions, timeouts, verification and logging, so
 // an adapter only has to do the application-specific part and report facts.
 
-import type { AdapterManifest, CommandSpec, DiscoveredApp } from '@shared/integrations';
+import type { AdapterManifest, CommandSpec, DiscoveredApp, Permission } from '@shared/integrations';
 
 export interface ProbeResult {
   /** Version read from the program itself ("4.0.2"), or null when it could not be read. */
@@ -56,6 +56,19 @@ export interface ExternalAdapter {
 export interface AdapterFactory {
   manifest: AdapterManifest;
   create(): ExternalAdapter;
+  /**
+   * Packages only. The permissions the user approved at install: the manager refuses any command that needs
+   * another one, whatever the manifest declares. Absent for built-in adapters.
+   */
+  permissionCeiling?: Permission[];
+  /** Do not run adapter code while scanning (unsigned packages run only when the user presses Connect). */
+  deferProbe?: boolean;
+  /** Ask before every run and never offer "always allow" (unsigned packages). */
+  alwaysAsk?: boolean;
+  /** Self-contained adapters: a file inside the package that stands in for the program (must exist). */
+  anchorPath?: string;
+  /** Forget crash counters etc. (Repair). */
+  reset?(): void;
 }
 
 const PERMISSIONS = new Set(['read-info', 'launch', 'open-files', 'read-project', 'modify-project', 'write-files', 'execute-scripts', 'ui-automation', 'network']);
@@ -66,7 +79,10 @@ export function validateManifest(m: AdapterManifest, sdkVersion: number): string
   const p: string[] = [];
   if (m.sdkVersion !== sdkVersion) p.push(`built for adapter SDK ${m.sdkVersion}, this CreateCraft speaks ${sdkVersion}`);
   if (!/^[a-z0-9][a-z0-9.-]{1,60}$/.test(m.id)) p.push('id must be lower-case letters, digits, "." or "-"');
-  if (!m.exeNames.length) p.push('exeNames is empty');
+  if (!m.exeNames.length && !m.selfContained) p.push('exeNames is empty');
+  for (const r of m.versionRanges ?? []) {
+    for (const v of [r.min, r.max]) if (v !== undefined && !/^\d+(\.\d+){0,2}$/.test(v)) p.push(`bad version "${v}" in versionRanges`);
+  }
   for (const x of m.methods) if (!METHODS.has(x)) p.push(`unknown control method "${x}"`);
   const ids = new Set<string>();
   for (const c of m.commands) {
