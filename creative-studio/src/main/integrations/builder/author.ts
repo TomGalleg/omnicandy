@@ -222,7 +222,9 @@ export class ClaudeAuthor implements AdapterAuthor {
     let out;
     try { out = await this.ask(RESEARCH_SYSTEM, researchPrompt(req), { tools: web, maxTurns: web.length ? 30 : 1, signal, schema: RESEARCH_JSON_SCHEMA }); }
     catch (e) {
-      if (web.length && !req.docs.length && !(e instanceof Error && /not signed in/.test(e.message))) throw new BlueprintError('Claude could not browse the web for documentation. Add the program\'s documentation or SDK folder yourself and try again.');
+      // Keep the real reason: it used to be replaced by a generic web-browsing message, which hid SDK errors.
+      const why = (e instanceof Error ? e.message : String(e)).replace(/(sk-[A-Za-z0-9_-]{8,}|Bearer\s+[A-Za-z0-9._-]{8,}|eyJ[A-Za-z0-9._-]{20,})/g, '[redacted]').slice(0, 600);
+      if (web.length && !req.docs.length && !(e instanceof Error && /not signed in/.test(e.message))) throw new BlueprintError(`Claude's research step failed before returning an answer: ${why} (If web browsing is unavailable, add the program's documentation or SDK folder yourself.)`);
       throw e;
     }
     let parsed;
