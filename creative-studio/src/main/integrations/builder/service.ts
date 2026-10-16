@@ -176,7 +176,7 @@ export class BuilderService {
       attempt++;
       await this.note(rec, attempt === 1 ? 'preparing' : 'building', attempt === 1 ? 'Claude is choosing the safest way to connect and writing the connector.' : `Claude is correcting the connector (attempt ${attempt}).`);
       try {
-        if (attempt === 1 || !bp) { const g = await a.generate(req, r.value, ac.signal); bp = g.value; this.addUsage(rec, g.usage); }
+        if (attempt === 1 || !bp) { const g = await a.generate(req, r.value, ac.signal); bp = g.value; this.addUsage(rec, g.usage); for (const n of g.notes ?? []) await this.note(rec, 'preparing', `Blueprint formatting adjusted: ${n}`); }
         else {
           const fix = await a.repair({ request: req, current: bp, docs: docs.docs, problem: { commandId: null, error: problem, evidence: [], appVersion: rec.app.version, declaredVersions: JSON.stringify(bp.application.versions) } }, ac.signal);
           bp = fix.value.blueprint; this.addUsage(rec, fix.usage);

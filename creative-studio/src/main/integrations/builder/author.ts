@@ -8,7 +8,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { DENIED_ATTRIBUTES, DENIED_BUILTINS, DENIED_MODULES, PYTHON_HOSTS, SAFE_STDLIB } from './hosts';
-import { BlueprintError, extractJson, parseBlueprint, parseResearchDetailed, type Blueprint, type ResearchData } from './blueprint';
+import { BlueprintError, extractJson, parseBlueprint, parseBlueprintDetailed, parseResearchDetailed, type Blueprint, type ResearchData } from './blueprint';
 
 export interface AuthorDoc { name: string; text: string }
 
@@ -59,7 +59,8 @@ export const PYTHON_RULES = `python-script rules:
 - Per command write TWO complete Python 3.8-compatible sources. source defines exactly: def run(P, H): ... returning {"message": str, "outputs": [file names from H.new_output(...).name], "data": {}, "evidence": [str]}. verifySource defines exactly: def verify(P, R, H): ... which, in a FRESH process, re-opens R["outputs"] (or the document in P) with H.work_path(name), measures it again and calls H.check(condition, message); it returns {"evidence": [str]}. Set outputExtensions to the extensions run may create (empty list for read-only commands).
 - P is a dict of the command's validated settings. H has only: H.new_output(stem, ext) -> a NEW path (a str with .name); H.work_path(name) -> an EXISTING file in the work folder; H.fail(kind, message); H.check(condition, message); H.num(x); H.close_enough(a, b, rel, abs_tol); H.rel(path). Check inputs yourself and call H.fail("invalid-params", message) for impossible combinations.
 - Allowed imports: the program's modules and ${list(SAFE_STDLIB)}. Forbidden: modules ${list(DENIED_MODULES.slice(0, 24))} and the rest of the standard library, built-ins ${list(DENIED_BUILTINS.slice(0, 18))}, attributes such as ${list(DENIED_ATTRIBUTES.slice(0, 14))}, any name or attribute with double underscores, classes, global, string literals that look like paths or URLs. Do not read or write files except through H.
-- Top level of each source: imports, then the def. Helper functions must start with an underscore.`;
+- Top level of each source: imports, then the def. Helper functions must start with an underscore.
+- docRefs for python commands: one entry per documented symbol the code ACTUALLY uses, with symbol written exactly as the code writes it: a dotted module path such as "FreeCAD.newDocument", "FreeCAD.Vector", "Part.makeBox", and for methods called on objects "Document.addObject", "Shape.cut" (the method name must be the last part). Prose descriptions are not accepted as symbols; CreateCraft compares your citations with the code and refuses anything uncited. Every url must be one of research.sources. Keep description at most 400 characters and outputExtensions written with a leading dot (".FCStd").`;
 
 export const CLI_RULES = `cli rules:
 - Top-level "cli": {versionArgs, versionRegex (one capture group), versionExample (what the version option prints)}.
@@ -245,10 +246,10 @@ export class ClaudeAuthor implements AdapterAuthor {
 
   async generate(req: AuthorRequest, research: ResearchData, signal?: AbortSignal): Promise<AuthorOutput<Blueprint>> {
     const out = await this.ask(GENERATE_SYSTEM, generatePrompt(req, research), { tools: [], maxTurns: 1, signal });
-    let value: Blueprint;
-    try { value = parseBlueprint(out.text); } catch (e) { await this.keepRaw(out.text); throw e; }
+    let parsed;
+    try { parsed = parseBlueprintDetailed(out.text); } catch (e) { await this.keepRaw(out.text); throw e; }
     await this.dropRaw();
-    return { value, usage: out.usage, author: { kind: 'claude' } };
+    return { value: parsed.data, usage: out.usage, notes: parsed.notes, author: { kind: 'claude' } };
   }
 
   async repair(req: RepairRequest, signal?: AbortSignal): Promise<AuthorOutput<{ blueprint: Blueprint; changes: string[] }>> {

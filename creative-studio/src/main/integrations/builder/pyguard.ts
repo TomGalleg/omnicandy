@@ -73,6 +73,17 @@ def analyse(src):
     want_args = ["P", "H"] if kind == "run" else ["P", "R", "H"]
     found_entry = False
     aliases = {}
+    STD = set(rules["safeStdlib"])
+    # names bound to safe standard-library modules (math, re, json, ...): their calls are not program API and need no citation
+    std_names = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for a in node.names:
+                if a.name.split(".")[0] in STD:
+                    std_names.add(a.asname or a.name.split(".")[0])
+        elif isinstance(node, ast.ImportFrom) and not node.level and (node.module or "").split(".")[0] in STD:
+            for a in node.names:
+                std_names.add(a.asname or a.name)
     nodes = 0
     for node in tree.body:
         if isinstance(node, (ast.Import, ast.ImportFrom)):
@@ -139,7 +150,9 @@ def analyse(src):
         elif isinstance(node, ast.Call):
             f = node.func
             if isinstance(f, ast.Attribute) and f.attr not in PLAIN:
-                methods.add(f.attr)
+                root = chain(f)
+                if not (root and root[0] in std_names):
+                    methods.add(f.attr)
         elif isinstance(node, ast.Constant) and isinstance(node.value, str):
             s = node.value
             if len(s) < 400 and (ABS_PATH.search(s) or BAD_STR.search(s)):

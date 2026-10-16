@@ -234,12 +234,57 @@ export function parseResearchDetailed(input: unknown): ParsedResearch {
 
 export function parseResearch(input: unknown): ResearchData { return parseResearchDetailed(input).data; }
 
-export function parseBlueprint(input: unknown): Blueprint {
-  const raw = typeof input === 'string' ? extractJson(input) : input;
-  const r = blueprintSchema.safeParse(raw);
-  if (!r.success) { const problems = r.error.issues.slice(0, 10).map((i) => `${i.path.join('.') || 'blueprint'}: ${i.message}`); throw new BlueprintError(`The generated integration is not in the expected form: ${problems.join('; ')}`, problems); }
-  return r.data;
+/**
+ * Formatting-only normalization of a blueprint BEFORE the strict schema. It touches display text (labels, descriptions, guide) that is
+ * slightly too long, and a file extension written without its leading dot ("FCStd" -> ".FCStd"). It changes nothing else: commands,
+ * settings, permissions, executable names, launch lines, source code, citations and file-type lists are never added, removed or
+ * reworded. Every change is reported.
+ */
+export function normalizeBlueprint(raw: unknown): { value: unknown; notes: string[] } {
+  const notes: string[] = [];
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { value: raw, notes };
+  const bp = structuredClone(raw) as Record<string, unknown>;
+  const clip = (o: Record<string, unknown>, key: string, max: number, what: string) => {
+    const v = o[key];
+    if (typeof v === 'string' && v.length > max) { o[key] = `${v.slice(0, max - 1).trimEnd()}…`; notes.push(`${what} was shortened from ${v.length} to ${max} characters.`); }
+  };
+  const dot = (v: unknown, what: string): unknown => {
+    if (typeof v === 'string' && /^[A-Za-z0-9]{1,8}$/.test(v)) { notes.push(`${what} "${v}" was written as ".${v}".`); return `.${v}`; }
+    return v;
+  };
+  const obj = (v: unknown): Record<string, unknown> | null => (v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : null);
+  clip(bp, 'userGuide', 6000, 'The user guide');
+  const dec = obj(bp.decision);
+  if (dec) { clip(dec, 'rationale', 1200, 'The rationale'); clip(dec, 'notFeasibleReason', 1200, 'The reason'); }
+  if (Array.isArray(bp.commands)) {
+    for (const c of bp.commands) {
+      const cmd = obj(c);
+      if (!cmd) continue;
+      const id = typeof cmd.id === 'string' ? cmd.id : 'a command';
+      clip(cmd, 'label', 80, `The label of ${id}`);
+      clip(cmd, 'description', 400, `The description of ${id}`);
+      for (const [k, p] of Object.entries(obj(cmd.params) ?? {})) { const po = obj(p); if (po) clip(po, 'description', 300, `The description of ${id}.${k}`); }
+      for (const d of Array.isArray(cmd.docRefs) ? cmd.docRefs : []) { const dr = obj(d); if (dr) { clip(dr, 'symbol', 160, `A cited symbol of ${id}`); clip(dr, 'note', 200, `A citation note of ${id}`); } }
+      const py = obj(cmd.python);
+      if (py && Array.isArray(py.outputExtensions)) py.outputExtensions = py.outputExtensions.map((e) => dot(e, `An output file type of ${id}`));
+      const cli = obj(cmd.cli);
+      for (const r of Object.values(obj(cli?.rules) ?? {})) { const ro = obj(r); if (ro && Array.isArray(ro.extensions)) ro.extensions = ro.extensions.map((e) => dot(e, `A file type of ${id}`)); }
+      const file = obj(cmd.file);
+      if (file) file.extension = dot(file.extension, `The file type of ${id}`);
+    }
+  }
+  return { value: bp, notes };
 }
+
+export function parseBlueprintDetailed(input: unknown): { data: Blueprint; notes: string[] } {
+  const raw = typeof input === 'string' ? extractJson(input) : input;
+  const n = normalizeBlueprint(raw);
+  const r = blueprintSchema.safeParse(n.value);
+  if (!r.success) { const problems = r.error.issues.slice(0, 10).map((i) => `${i.path.join('.') || 'blueprint'}: ${i.message}`); throw new BlueprintError(`The generated integration is not in the expected form: ${problems.join('; ')}`, problems); }
+  return { data: r.data, notes: n.notes };
+}
+
+export function parseBlueprint(input: unknown): Blueprint { return parseBlueprintDetailed(input).data; }
 
 /** "freecad-enclosure" from any text: lower-case letters, digits and dashes. */
 export function slug(s: string): string {

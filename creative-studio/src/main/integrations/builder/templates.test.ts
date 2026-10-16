@@ -132,6 +132,18 @@ describe('python scan (text layer, always on)', () => {
   });
 });
 
+describe('python scan: calls on safe standard-library modules need no citation', () => {
+  it('re.match is not program API, shape.cut still is', async () => {
+    const text = ['import re', 'import FreeCAD', '', '', 'def run(P, H):', '    m = re.match("a", "b")', '    s = FreeCAD.Vector(1, 2, 3)', '    s.cut(s)', '    return {}', ''].join(String.fromCharCode(10));
+    const r = await guardPython([{ name: 'a#run', kind: 'run', text }], PYTHON_HOSTS.freecad.hostModules);
+    if (r.engine === 'python-ast') {
+      expect(r.findings[0]!.methodCalls).toContain('cut');
+      expect(r.findings[0]!.methodCalls).not.toContain('match');
+      expect(r.findings[0]!.ok).toBe(true);
+    }
+  });
+});
+
 describe('parsers and prompts', () => {
   it('extracts JSON from fences, prose and braces inside strings', () => {
     expect(extractJson('Sure!\n```json\n{"a": "x}y", "b": [1]}\n```\nDone.')).toEqual({ a: 'x}y', b: [1] });
