@@ -15,6 +15,12 @@ plugin bridge, host profiles (Autodesk and Adobe groundwork) and security statem
 [`universal-installer.md`](universal-installer.md), [`installation-profiles.md`](installation-profiles.md) and
 [`release-signing.md`](release-signing.md). Version 1 packages (Blender-style connectors, FreeCAD) keep working unchanged.
 
+**AI Adapter Builder.** Settings > Integrations > Create Custom Integration lets Claude research a program and write a PRIVATE, local
+integration (a manifest-v2 external `.ccadapter` made by CreateCraft's templates from an AI blueprint), tested in four stages and installed
+only through the normal review and native confirmation. Generated packages are unsigned, labelled "Created on this computer (AI-generated)",
+asked about before every command, and never called tested without a real, independently re-checked run. See
+[`ai-adapter-builder.md`](ai-adapter-builder.md). Nothing in the framework described below changed for it.
+
 ## Layout
 
 | Path | Role |

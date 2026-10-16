@@ -209,6 +209,27 @@ const api: StudioApi = {
     forget: (key) => ipcRenderer.invoke(IPC.connectForget, key),
     done: () => ipcRenderer.invoke(IPC.connectDone),
   },
+  builder: {
+    overview: () => ipcRenderer.invoke(IPC.builderOverview),
+    create: (req) => ipcRenderer.invoke(IPC.builderCreate, req),
+    detail: (id) => ipcRenderer.invoke(IPC.builderDetail, id),
+    pickDocs: (kind) => ipcRenderer.invoke(IPC.builderPickDocs, kind),
+    cancel: (id) => ipcRenderer.invoke(IPC.builderCancel, id),
+    sync: (id) => ipcRenderer.invoke(IPC.builderSync, id),
+    verifyLive: (id) => ipcRenderer.invoke(IPC.builderVerify, id),
+    propose: (id, why) => ipcRenderer.invoke(IPC.builderPropose, id, why ?? {}),
+    discardProposal: (id) => ipcRenderer.invoke(IPC.builderDiscard, id),
+    rollback: (id, v) => ipcRenderer.invoke(IPC.builderRollback, id, v),
+    removeIntegration: (id) => ipcRenderer.invoke(IPC.builderRemove, id),
+    deleteProject: (id) => ipcRenderer.invoke(IPC.builderDelete, id),
+    mine: () => ipcRenderer.invoke(IPC.builderMine),
+    compatibility: (id) => ipcRenderer.invoke(IPC.builderCompat, id),
+    onProgress: (cb) => {
+      const h = (_e: IpcRendererEvent, p: Parameters<typeof cb>[0]) => cb(p);
+      ipcRenderer.on(IPC.builderProgress, h);
+      return () => ipcRenderer.removeListener(IPC.builderProgress, h);
+    },
+  },
   probeApps: () => ipcRenderer.invoke(IPC.probeApps),
   integrationStatus: () => ipcRenderer.invoke(IPC.integrationStatus),
   assetUrl: (assetId) => `${ASSET_SCHEME}://asset/${encodeURIComponent(assetId)}`,

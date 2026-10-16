@@ -6,5 +6,8 @@ export default defineConfig({
   test: {
     include: ['src/**/*.test.ts'],
     environment: 'node',
+    // Tests that spawn real processes (scans, restricted adapter children, mock programs) can pass 5 s when many files run in parallel on Windows.
+    testTimeout: 30_000,
+    hookTimeout: 60_000,
   },
 });

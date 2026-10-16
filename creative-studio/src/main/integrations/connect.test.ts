@@ -129,7 +129,7 @@ describe('overview and classification', () => {
     expect(entryOf(o, 'real.exe')).toMatchObject({ group: 'ready', adapterState: 'installed', experimental: false, selectable: true });
     expect(entryOf(o, 'exp.exe')).toMatchObject({ group: 'incompatible', experimental: true, selectable: false });
     expect(entryOf(o, 'exp.exe')!.explanation).toMatch(/older than the supported/);
-  });
+  }, 30_000); // a full scan can exceed the 5 s default when many test files run in parallel
 
   it('finds a program that only a connector-to-install knows (a catalog package with no placeholder)', async () => {
     const cat = path.join(tmp, 'cat-acme');

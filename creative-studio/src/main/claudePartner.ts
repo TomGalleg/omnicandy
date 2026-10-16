@@ -40,7 +40,7 @@ Saving creates a new version in the library; the user's original file is never c
 To deliver finished files (JPEG for the web, PDF, MP4, WAV, GIF and so on), use list_export_formats and export_file. Exports go to the project's exports folder (the Deliver tab) and are made from saved library files, never from unsaved changes in the open app. To hand a file to another app (a Word document to PdfCraft as a PDF, or a PDF to WordCraft as a .docx), export it with export_file and add_to_library set to true, then open the new library file with open_file. The conversion is approximate for layout: tell the user what was kept.
 Keep replies short and plain.
 
-For third-party software that is not one of the ArtCraft apps (Blender, Autodesk, Adobe, FreeCAD, Godot and so on), call external_apps to see what is installed and which commands really exist, then external_run (integrations the user installed appear there too; commands marked long_running return a job id, follow it with external_job). The user approves each run in a dialog. A result is only successful when ok is true; say what the result's evidence lists as verified (files that exist, objects found when the file was re-opened) and nothing more. If the program is missing, unsupported or the command is not listed, say so plainly instead of improvising. Never use external_run for the native Craft apps.
+For third-party software that is not one of the ArtCraft apps (Blender, Autodesk, Adobe, FreeCAD, Godot and so on), call external_apps to see what is installed and which commands really exist, then external_run (integrations the user installed appear there too; commands marked long_running return a job id, follow it with external_job). The user approves each run in a dialog. A result is only successful when ok is true; say what the result's evidence lists as verified (files that exist, objects found when the file was re-opened) and nothing more. If the program is missing, unsupported or the command is not listed, say so plainly instead of improvising. Never use external_run for the native Craft apps. When the user wants a program that has no integration (or a missing capability), you may offer to build a private custom integration with integration_builder_start; the user confirms, Claude researches and writes it in the background, CreateCraft tests it, and only the user can review and install it (Settings > Integrations). Check progress with integration_builder_status. Never describe a custom integration as working or tested until its status says commands were tested on the real program.
 
 You can also create new pictures with generate_image (OpenAI or Google Gemini, using the user's own account). It costs the user money: only generate when they ask for it, keep the count low, and say which model you will use. CreateCraft shows the user the price and asks them to approve every call; if they cancel, accept it and do not ask again unless they bring it up. New images are added to the library as new files; open one with open_file to edit it. For free video on this PC use local_video_status, make_local_video (AI, on the user GPU) or make_motion_video (camera move on a picture, not AI); never switch to a paid provider because local is unavailable, ask first. For paid video use list_video_models and generate_video (Google Veo or Runway): it costs more, takes minutes, the user approves the price, and the clip lands in the library later, so tell the user rather than waiting.
 
@@ -60,7 +60,7 @@ const PLAN_PROMPT = `You are Claude, the Creative Partner inside CreateCraft. Th
 "template": the id of ONE template from the list you are given if it clearly fits the project, otherwise null. Never invent an id.
 Do not start any work and do not mention software internals, node graphs or file formats unless the user did. Write in the user's language.`;
 
-const TOOL_NAMES = ['get_status', 'look_at_document', 'apply_edit', 'photocraft_command', 'undo', 'save_version', 'list_files', 'open_file', 'list_image_models', 'generate_image', 'list_video_models', 'generate_video', 'local_video_status', 'make_local_video', 'make_motion_video', 'request_model_download', 'list_export_formats', 'export_file', 'timeline_add', 'timeline_move_clip', 'timeline_remove_clip', 'workflow_catalog', 'plan_workflow', 'workflow_status', 'run_workflow', 'rerun_workflow', 'pause_workflow', 'resume_workflow', 'cancel_workflow', 'change_workflow_step', 'list_workflow_versions', 'restore_workflow_version', 'save_workflow_template', 'external_apps', 'external_run', 'external_job'];
+const TOOL_NAMES = ['get_status', 'look_at_document', 'apply_edit', 'photocraft_command', 'undo', 'save_version', 'list_files', 'open_file', 'list_image_models', 'generate_image', 'list_video_models', 'generate_video', 'local_video_status', 'make_local_video', 'make_motion_video', 'request_model_download', 'list_export_formats', 'export_file', 'timeline_add', 'timeline_move_clip', 'timeline_remove_clip', 'workflow_catalog', 'plan_workflow', 'workflow_status', 'run_workflow', 'rerun_workflow', 'pause_workflow', 'resume_workflow', 'cancel_workflow', 'change_workflow_step', 'list_workflow_versions', 'restore_workflow_version', 'save_workflow_template', 'external_apps', 'external_run', 'external_job', 'integration_builder_start', 'integration_builder_status'];
 
 export interface WorkflowControlApi {
   /** Snapshot of the run (waits up to `waitSeconds` for it to finish, pause or need the user). */
@@ -105,6 +105,11 @@ export interface ClaudePartnerDeps {
     run: (app: string, command: string, params: Record<string, string | number | boolean>, background?: boolean) => Promise<string>;
     /** Status (and optionally cancel) of a background job started by run. */
     job: (id: string, cancel: boolean) => Promise<string>;
+  };
+  /** AI Adapter Builder: starts a private custom integration (the user confirms in a dialog and approves the result later) and lists projects. */
+  builder: {
+    start: (appName: string, goal?: string) => Promise<string>;
+    status: () => Promise<string>;
   };
   /** Providers with a saved key (status only, never the key). */
   imageModels: () => Promise<ProviderStatusDto[]>;
@@ -472,6 +477,15 @@ Now explain the plan to the user in plain language, including cost and what they
           background: z.boolean().optional().describe('Commands marked long_running start a job and return a job id at once; follow it with external_job. Set false to wait for the result instead.'),
         }, async ({ app, command, settings, background }) => {
           try { activity(`Running ${command} in ${app}`); return text(await this.d.external.run(app, command, settings ?? {}, background)); } catch (e) { return fail(e); }
+        }),
+        tool('integration_builder_start', 'Starts building a PRIVATE custom integration for a program that CreateCraft cannot control yet. The user is asked first. Claude researches the vendor documentation and writes a connector in the background; CreateCraft tests it; the user reviews and installs it in Settings. You cannot install it. Use only when the user asked to connect a program that external_apps shows as unsupported.', {
+          app: z.string().min(1).max(80).describe('Name of the program, for example "Adobe Photoshop".'),
+          goal: z.string().max(400).optional().describe('What the user wants to do with it, in their words.'),
+        }, async ({ app, goal }) => {
+          try { activity(`Starting a custom integration for ${app}`); return text(await this.d.builder.start(app, goal)); } catch (e) { return fail(e); }
+        }),
+        tool('integration_builder_status', 'Progress of custom integrations being built or waiting for the user: status, whether the commands were tested on the real program, and what is needed next.', {}, async () => {
+          try { return text(await this.d.builder.status()); } catch (e) { return fail(e); }
         }),
         tool('external_job', 'Status, progress and result of a background job started by external_run, or cancels it. A job is finished only when status is succeeded, failed or cancelled; report its result exactly, including the verified evidence.', {
           job_id: z.string().max(100),

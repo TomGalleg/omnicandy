@@ -1,0 +1,61 @@
+"""Writes imagemagick.blueprint.json: the blueprint Claude authored for the NOT-INSTALLED application proof of concept.
+ImageMagick is not installed on the development PC, so this candidate can only ever be tested with simulations."""
+import json
+
+OPT = "https://imagemagick.org/command-line-options/"
+IDENT = "https://imagemagick.org/identify/"
+GEOM = "https://imagemagick.org/command-line-processing/"
+
+bp = {
+    "schemaVersion": 1,
+    "application": {"name": "ImageMagick", "publisher": "ImageMagick Studio LLC", "platforms": ["windows", "linux", "macos"],
+                    "versions": [{"min": "7.0", "max": "7.99"}], "exeNames": ["magick.exe"], "displayNames": ["ImageMagick"]},
+    "research": {
+        "application": {"name": "ImageMagick", "publisher": "ImageMagick Studio LLC", "platforms": ["windows", "linux", "macos"], "version": None},
+        "summary": "ImageMagick is a free command-line toolkit for reading, converting and editing images. In version 7 the single 'magick' program runs its tools, for example 'magick identify file' and 'magick input -resize geometry output'.",
+        "sources": [
+            {"title": "ImageMagick: command-line options (includes -resize; 'magick' and 'mogrify' recognise each option)", "url": OPT, "kind": "official", "note": "Read by the authoring session: -resize exists ('Resize an image') and its geometry argument is defined on the Image Geometry page."},
+            {"title": "ImageMagick: identify (reports format and size of image files; 'magick identify rose.jpg')", "url": IDENT, "kind": "official", "note": "Read by the authoring session, including the example output line 'rose.jpg JPEG 70x46 70x46+0+0 8-bit sRGB 2.36KB 0.000u 0:00.000'."},
+            {"title": "ImageMagick: command-line processing and image geometry", "url": GEOM, "kind": "official", "note": "Linked from the -resize entry; not read by the authoring session."},
+        ],
+        "methods": [
+            {"method": "cli", "officialSupport": "official", "note": "ImageMagick is designed to be driven from the command line through the magick program."},
+            {"method": "api", "officialSupport": "official", "note": "MagickWand/Magick++ libraries exist but need compiled code, which this builder does not generate."},
+        ],
+        "scripting": [], "commandLine": ["magick identify <file>", "magick <input> -resize <geometry> <output>"],
+        "fileFormats": ["PNG", "JPEG", "GIF", "TIFF", "BMP", "WebP"],
+        "pluginTechnologies": [],
+        "licensing": "The ImageMagick License permits free personal, company-internal and commercial use.",
+        "requiredTools": ["ImageMagick 7 with magick.exe (free from imagemagick.org)"],
+        "limitations": ["Not installed on this computer: simulated tests only until it is installed.", "Only PNG output and a small set of input formats are exposed.", "Output files always get a new unique name; existing files are never overwritten."],
+        "insufficient": None, "sourcesConsulted": True,
+    },
+    "decision": {"feasible": True, "notFeasibleReason": None, "type": "external", "template": "cli", "methods": ["cli"],
+                 "rationale": "ImageMagick is a documented command-line program, so fixed, typed command lines are the most reliable method. No add-in, scripting engine or screen automation is needed.", "hostProfile": None},
+    "cli": {"versionArgs": ["-version"], "versionRegex": "ImageMagick\\s+(\\d+\\.\\d+(?:\\.\\d+)?)", "versionExample": "Version: ImageMagick 7.1.1-21 Q16-HDRI x64 https://imagemagick.org"},
+    "commands": [
+        {"id": "image.identify", "label": "Describe an image", "description": "Reports the format and pixel size of an image file in this project's work folder. Changes nothing.",
+         "params": {"input": {"type": "string", "description": "Image file name in the project's work folder for this integration.", "required": True}},
+         "permissions": ["execute-scripts", "read-project"], "idempotent": True, "timeoutMs": 60000,
+         "docRefs": [{"symbol": "magick identify", "url": IDENT}],
+         "cli": {"argv": ["identify", "{input}"], "rules": {"input": {"kind": "work-file-in", "extensions": [".png", ".jpg", ".jpeg", ".gif", ".tif", ".tiff", ".bmp", ".webp"]}},
+                 "outputs": [], "expect": {"exitCodes": [0], "stdoutRegex": "[A-Za-z]+ \\d+x\\d+"}},
+         "mock": {"params": {"input": "photo.png"}, "stdout": "photo.png PNG 640x480 640x480+0+0 8-bit sRGB 12345B 0.000u 0:00.001"},
+         "liveTest": {"params": {"input": "photo.png"}, "kind": "read"}},
+        {"id": "image.resize", "label": "Resize an image", "description": "Makes a resized copy of an image as a new PNG file. The original is not changed. The copy is then described with identify as an independent check.",
+         "params": {"input": {"type": "string", "description": "Image file name in the project's work folder for this integration.", "required": True},
+                    "size": {"type": "string", "description": "Geometry such as 50% or 800x600 (see ImageMagick's Image Geometry page).", "required": True},
+                    "output": {"type": "string", "description": "Name for the new image, without extension.", "required": True}},
+         "permissions": ["execute-scripts", "read-project", "write-files"], "timeoutMs": 120000,
+         "docRefs": [{"symbol": "-resize", "url": OPT}, {"symbol": "magick identify", "url": IDENT}],
+         "cli": {"argv": ["{input}", "-resize", "{size}", "{output}"],
+                 "rules": {"input": {"kind": "work-file-in", "extensions": [".png", ".jpg", ".jpeg", ".gif", ".tif", ".tiff", ".bmp", ".webp"]}, "size": {"kind": "text"}, "output": {"kind": "work-file-out", "extensions": [".png"]}},
+                 "outputs": ["{output}"], "expect": {"exitCodes": [0]},
+                 "verify": {"argv": ["identify", "{output}"], "stdoutRegex": "PNG \\d+x\\d+"}},
+         "mock": {"params": {"input": "photo.png", "size": "50%", "output": "small"}, "verifyStdout": "small.png PNG 320x240 320x240+0+0 8-bit sRGB 4096B 0.000u 0:00.001"},
+         "liveTest": {"params": {"input": "photo.png", "size": "50%", "output": "small"}, "kind": "edit"}},
+    ],
+    "userGuide": "Put an image in this project's ImageMagick work folder, then ask Claude to describe it or make a smaller copy, for example \"Make photo.png half the size and call it small.\" The copy is a new PNG; your original is never changed.",
+}
+json.dump(bp, open('imagemagick.blueprint.json', 'w'), indent=2)
+print('ok')

@@ -608,3 +608,16 @@ h1, h2, h3 { margin: 0; font-weight: 600; }
 @media (max-width: 640px) { .connect-card { flex-direction: column; align-items: flex-start; } }
 .ext-review .status-list li { display: block; }
 .connect-prompt .ext-review > .ext-actions { position: sticky; bottom: -1px; z-index: 1; padding: 8px 0 2px; background: var(--surface-2); border-top: 1px solid var(--border); }
+
+/* AI Adapter Builder */
+.builder-tabs { display: flex; flex-wrap: wrap; gap: 6px; }
+.builder-programs { max-height: 220px; overflow: auto; border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 4px 8px; }
+.builder-programs li { padding: 2px 0; }
+.builder-project { display: grid; gap: 10px; }
+.builder-code { margin: 0; max-height: 280px; overflow: auto; padding: 8px 10px; font-size: 11px; line-height: 1.45; background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-sm); white-space: pre-wrap; overflow-wrap: anywhere; color: var(--text); }
+.builder-advanced > .builder-tabs { margin: 8px 0; }
+.builder-proposal { border: 1px solid var(--warn); border-radius: var(--radius-sm); padding: 8px 10px; }
+.builder-reports .menu-label { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.text-input { width: 100%; height: 30px; padding: 0 8px; background: var(--surface-1, var(--surface-2)); color: var(--text); border: 1px solid var(--border-strong); border-radius: var(--radius-sm); }
+.builder-project .status-list li, .builder-reports .status-list li, .builder-advanced .status-list li { display: block; }
+.builder-project .status-list li .chip { vertical-align: middle; }

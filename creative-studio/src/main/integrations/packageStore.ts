@@ -232,8 +232,9 @@ export class PackageStore {
     if (!reg.adapters[id]) throw new PackageError('That integration is not installed.');
     delete reg.adapters[id];
     await this.save();
-    await fs.rm(this.adaptersDir(id), { recursive: true, force: true });
-    if (!keepData) await fs.rm(this.dataDirOf(id), { recursive: true, force: true });
+    // The adapter's process may still be exiting (Windows keeps its folder locked for a moment): retry instead of failing the removal.
+    await fs.rm(this.adaptersDir(id), { recursive: true, force: true, maxRetries: 10, retryDelay: 250 });
+    if (!keepData) await fs.rm(this.dataDirOf(id), { recursive: true, force: true, maxRetries: 10, retryDelay: 250 });
   }
 
   /** Puts back the verified original when installed files were changed or lost. */

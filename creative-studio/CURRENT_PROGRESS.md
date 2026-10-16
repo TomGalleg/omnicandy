@@ -710,3 +710,19 @@ First real Autodesk integration: hybrid package `autodesk.revit` (C# .NET 10 add
 against the installed Revit 2027: install, load, pipe auth, capability registration, real reads, one reversible edit in a scratch
 model, reconnect after a CreateCraft restart, Revit shutdown handling, repair, uninstall. Not yet driven through the Electron
 window. Details, limits and results: `docs/revit-integration.md`. Revit is the only host profile marked `supported`.
+
+## AI Adapter Builder (2026-10-16)
+
+Docs: `docs/ai-adapter-builder.md` (workflow, architecture, templates, pipeline, security, proofs, limits). Settings > Integrations > **Create Custom Integration**
+(pick an installed program without an integration, or type any program name) lets Claude research the program and write a PRIVATE local integration:
+the AI returns a strict JSON *blueprint*; CreateCraft's templates (python-script, cli, file-exchange; add-in source for review only) build a
+manifest-v2 external `.ccadapter`; a four-stage pipeline (static, security incl. a Python syntax-tree scan and "documented interfaces only",
+simulated with a MOCK program incl. timeout/cancel/crash/uninstall, live on the real program) tests it; installation is the unchanged review +
+native confirmation (generated packages are unsigned, publisher fixed to "Created on this computer (AI-generated)", asked before every command).
+Verification is recorded per command and per program version and only by real, independently re-checked runs. **My Integrations** (Official / Custom),
+Repair / Update (AI proposes, CreateCraft tests, user approves, every version kept for rollback), Remove. No community, sharing or marketplace features.
+
+* **Real FreeCAD 1.1.4 proof**: new `enclosure.create` / `enclosure.measure` commands (blueprint authored by Claude in the dev session, provenance "scripted"), built, installed and run on the real program; the file was re-opened by an outside FreeCADCmd (1 valid solid, volume matches the formula, bounding box). `builder/freecad.live.test.ts`, `scripts/smoke-builder.mjs` (40/40 in the real window, screenshots 130 to 138).
+* **Not-installed proof**: ImageMagick (cli template) is built and mock-tested, and stays *Awaiting live verification* with no install offered.
+* **Tests**: default suite 511 passed / 61 skipped; live Blender 6, FreeCAD 3, Resolve 2, Connect 6, builder FreeCAD 1; smokes in the doc. `smoke-connect` 36/39 is identical on the previous commit.
+* **Not verified**: the in-app Claude author end to end (opt-in `claude.live.test.ts`, spends Claude usage); add-in templates (C#, UXP) are source only; only FreeCAD 1.1.4 has run generated scripts; Python in the program is not sandboxed.

@@ -46,6 +46,11 @@ import { MAX_VIDEO_PROMPT } from '@shared/video';
 import type { SettingsStore } from './settingsStore';
 import { AdapterPackages, createIntegrationManager } from './integrations';
 import { ConnectService } from './integrations/connect';
+import { BuilderService } from './integrations/builder/service';
+import { ClaudeAuthor, ScriptedAuthor } from './integrations/builder/author';
+import { parseBlueprint } from './integrations/builder/blueprint';
+import { readFileSync } from 'node:fs';
+import { BUILDER_CONSENT, type BuilderRequest } from '@shared/builder';
 import { bundledPaths, loadBundledPublishers } from './integrations/bundled';
 import { approvalDetail, INSTALL_CANCELLED_MESSAGE, integrationLines, type BrowseResult, type ConnectOutcome, type ConnectOverview, type ForgetResult } from '@shared/connect';
 import { ExternalState } from './integrations/state';
@@ -774,9 +779,91 @@ export function registerIpc(d: IpcDeps): void {
     commands: a.commands.map((c) => ({ id: c.id, label: c.label, description: c.description, settings: c.params, needs: c.permissions, destructive: !!c.destructive, long_running: !!c.longRunning })),
   });
 
+  // AI Adapter Builder: private, local integrations. The AI writes data (a blueprint); CreateCraft's templates and validators decide
+  // whether a package exists; installing still goes through the review + native confirmation above. Nothing is shared or uploaded.
+  const builderRoot = path.join(path.dirname(d.secretsDir), 'integrations', 'builder');
+  const pickedDocs = new Set<string>();
+  const offeredPrograms = new Set<string>();
+  const projectId = z.string().regex(/^p[a-z0-9]{6,30}$/);
+  const ask = async (o: Electron.MessageBoxOptions) => {
+    const win = d.window();
+    return (win && !win.isDestroyed() ? await dialog.showMessageBox(win, o) : await dialog.showMessageBox(o)).response;
+  };
+  const builder: BuilderService = new BuilderService({
+    root: builderRoot, packages, manager: external,
+    claude: () => { const s = claude().state(); return s.signedIn === false ? { ready: false, reason: 'Claude is not signed in. Open the Claude panel and sign in first.' } : { ready: true, reason: '' }; },
+    author: () => {
+      // Test hook for the smoke scripts only (they run in a scratch profile, never against a real Claude): a blueprint authored beforehand.
+      if (process.env.CS_BUILDER_BLUEPRINT && process.env.CS_USER_DATA_DIR) {
+        const read = (f: string) => parseBlueprint(JSON.parse(readFileSync(f, 'utf8')));
+        const repairFile = process.env.CS_BUILDER_REPAIR_BLUEPRINT;
+        return new ScriptedAuthor({ blueprint: read(process.env.CS_BUILDER_BLUEPRINT), note: 'blueprint supplied by a smoke script', ...(repairFile ? { repair: () => ({ blueprint: read(repairFile), changes: ['Applied the supplied corrected blueprint.'] }) } : {}) });
+      }
+      if (claude().state().signedIn === false) return { error: 'Claude is not signed in. Open the Claude panel, click "Sign in to Claude", then try again.' };
+      return new ClaudeAuthor({ model: claude().state().model, cwd: builderRoot, web: true });
+    },
+    confirm: async (title, detail, ok) => (await ask({ type: 'question', title, message: title, detail, buttons: ['Cancel', ok], defaultId: 0, cancelId: 0, noLink: true })) === 1,
+    emit: (p) => { for (const w of BrowserWindow.getAllWindows()) if (!w.isDestroyed()) w.webContents.send(IPC.builderProgress, p); },
+  });
+  const allowPackagesOf = async (id: string) => {
+    const rec = await builder.store.get(id);
+    const sum = rec ? await builder.summary(rec) : null;
+    if (sum?.packagePath) allowedPackagePaths.add(sum.packagePath);
+    if (rec?.proposal?.packagePath) allowedPackagePaths.add(rec.proposal.packagePath);
+    for (const v of rec?.versions ?? []) allowedPackagePaths.add(builder.store.packagePath(id, v.version));
+  };
+  const requestSchema = z.object({ appName: z.string().min(1).max(80), exePath: z.string().max(600).nullable().optional(), documentation: z.array(z.string().max(600)).max(40).optional(), goal: z.string().max(500).optional() });
+  const startBuild = async (req: BuilderRequest) => {
+    if (req.exePath && !offeredPrograms.has(req.exePath.toLowerCase())) throw new Error('Choose the program from the list so CreateCraft knows it is the right one.');
+    for (const p of req.documentation ?? []) if (!pickedDocs.has(p)) throw new Error('Documentation must be chosen with "Add documentation".');
+    return builder.create(req);
+  };
+  handle(IPC.builderOverview, none, async () => {
+    await packagesReady;
+    await listing();
+    const o = await builder.overview();
+    for (const p of o.programs) if (p.exePath) offeredPrograms.add(p.exePath.toLowerCase());
+    for (const p of o.projects) await allowPackagesOf(p.id);
+    return o;
+  });
+  handle(IPC.builderCreate, z.tuple([requestSchema]), async (req) => { await packagesReady; return startBuild({ ...req, exePath: req.exePath ?? null }); });
+  handle(IPC.builderDetail, z.tuple([projectId]), async (id) => { await allowPackagesOf(id); return builder.detail(id); });
+  handle(IPC.builderPickDocs, z.tuple([z.enum(['files', 'folder'])]), async (kind) => {
+    const win = d.window();
+    const o: Electron.OpenDialogOptions = kind === 'files'
+      ? { title: 'Choose documentation or SDK files', properties: ['openFile', 'multiSelections'], filters: [{ name: 'Documentation (text, HTML, source)', extensions: ['md', 'txt', 'html', 'htm', 'json', 'xml', 'py', 'cs', 'js', 'ts', 'h', 'hpp', 'rst'] }] }
+      : { title: 'Choose a documentation or SDK folder', properties: ['openDirectory'] };
+    const r = await (win ? dialog.showOpenDialog(win, o) : dialog.showOpenDialog(o));
+    if (r.canceled) return [];
+    for (const p of r.filePaths) pickedDocs.add(p);
+    return r.filePaths;
+  });
+  handle(IPC.builderCancel, z.tuple([projectId]), async (id) => { builder.cancel(id); });
+  handle(IPC.builderSync, z.tuple([projectId]), async (id) => { await packagesReady; return builder.syncInstalled(id); });
+  handle(IPC.builderVerify, z.tuple([projectId]), async (id) => { await packagesReady; return builder.verifyLive(id); });
+  handle(IPC.builderPropose, z.tuple([projectId, z.object({ commandId: z.string().max(80).optional(), error: z.string().max(1000).optional() })]), async (id, why) => {
+    await packagesReady;
+    const p = await builder.propose(id, why);
+    await allowPackagesOf(id);
+    return p;
+  });
+  handle(IPC.builderDiscard, z.tuple([projectId]), async (id) => builder.discardProposal(id));
+  handle(IPC.builderRollback, z.tuple([projectId, z.string().regex(/^\d+(\.\d+){0,2}$/)]), async (id, v) => { await packagesReady; await allowPackagesOf(id); return builder.rollback(id, v); });
+  handle(IPC.builderRemove, z.tuple([projectId]), async (id) => {
+    await packagesReady;
+    if ((await ask({ type: 'question', title: 'Remove integration', message: 'Remove this custom integration?', detail: 'It is uninstalled and its permissions are forgotten. The saved versions stay so you can install it again. The program is not touched.', buttons: ['Cancel', 'Remove'], defaultId: 0, cancelId: 0, noLink: true })) !== 1) throw new Error('Removal was cancelled.');
+    return builder.removeIntegration(id);
+  });
+  handle(IPC.builderDelete, z.tuple([projectId]), async (id) => {
+    if ((await ask({ type: 'warning', title: 'Delete integration project', message: 'Delete this project and all saved versions?', detail: 'The generated files are deleted from this computer.', buttons: ['Cancel', 'Delete'], defaultId: 0, cancelId: 0, noLink: true })) !== 1) throw new Error('Deletion was cancelled.');
+    await builder.deleteProject(id);
+  });
+  handle(IPC.builderMine, none, async () => { await packagesReady; return builder.mine(); });
+  handle(IPC.builderCompat, z.tuple([projectId]), async (id) => builder.compatibility(id));
+
   let partner: ClaudePartner | null = null;
   resetters.push(() => { partner = null; });
-  const claude = () => (partner ??= new ClaudePartner({
+  const claude = (): ClaudePartner => (partner ??= new ClaudePartner({
     live,
     store: d.project,
     openAsset: async (id, app) => { await openLive(id, app, 'claude'); },
@@ -835,6 +922,15 @@ export function registerIpc(d: IpcDeps): void {
         if (!j) return JSON.stringify({ error: 'No such job. Jobs: ' + external.jobs().map((x) => x.id).join(', ') });
         return JSON.stringify({ job_id: j.id, app: j.appName, command: j.commandId, status: j.status, stage: j.stage, progress: j.fraction, started: j.startedAt, finished: j.finishedAt, result: j.result }, null, 2);
       },
+    },
+    builder: {
+      start: async (appName, goal) => {
+        const r = await ask({ type: 'question', title: 'Create a custom integration', message: `Claude wants CreateCraft to build an integration for ${appName}.`, detail: `${BUILDER_CONSENT}\n\nNothing is installed from this: you review and approve the result in Settings > Integrations.`, buttons: ['Cancel', 'Start building'], defaultId: 0, cancelId: 0, noLink: true });
+        if (r !== 1) return JSON.stringify({ started: false, reason: 'The user declined. Do not ask again unless they bring it up.' });
+        const s = await builder.create({ appName, goal });
+        return JSON.stringify({ started: true, project_id: s.id, note: 'Research and building run in the background. The user reviews and approves the result in Settings > Integrations > Create Custom Integration. You cannot install it.' });
+      },
+      status: async () => JSON.stringify((await builder.overview()).projects.map((p) => ({ project_id: p.id, app: p.appName, status: p.statusLabel, headline: p.headline, installed: p.installed, tested_commands: p.verification.verified })), null, 2),
     },
     deliver: async () => deliver(),
     imageModels: async () => (await providerStatus()).filter((p) => p.configured),

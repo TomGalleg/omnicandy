@@ -144,6 +144,21 @@ export const IPC = {
   connectBrowse: 'connect:browse',
   connectForget: 'connect:forget',
   connectDone: 'connect:done',
+  builderOverview: 'builder:overview',
+  builderCreate: 'builder:create',
+  builderDetail: 'builder:detail',
+  builderPickDocs: 'builder:pick-docs',
+  builderCancel: 'builder:cancel',
+  builderSync: 'builder:sync',
+  builderVerify: 'builder:verify',
+  builderPropose: 'builder:propose',
+  builderDiscard: 'builder:discard',
+  builderRollback: 'builder:rollback',
+  builderRemove: 'builder:remove',
+  builderDelete: 'builder:delete',
+  builderMine: 'builder:mine',
+  builderCompat: 'builder:compat',
+  builderProgress: 'builder:progress',
   localAiStatus: 'localai:status',
   localAiDownloads: 'localai:downloads',
   localAiDownload: 'localai:download',
@@ -195,6 +210,7 @@ import type { DownloadState, LocalAiStatus } from './localAi';
 import type { BrowseResult, ConnectOutcome, ConnectOverview, ForgetResult } from './connect';
 import type { ExternalAppInfo, ExternalScan, JobInfo, PackageApproval, PackageListing, PackageReview } from './integrations';
 import type { LocalVideoJob } from './localVideo';
+import type { BuilderOverview, BuilderProgress, BuilderProjectDetail, BuilderProjectSummary, BuilderRequest, MyIntegration, PipelineReport, RepairProposal } from './builder';
 
 export interface GenerateResultDto {
   assetIds: string[];
@@ -455,6 +471,28 @@ export interface StudioApi {
     forget(key: string): Promise<ForgetResult>;
     /** Remembers that the guided setup was completed once. */
     done(): Promise<void>;
+  };
+  /** AI Adapter Builder: private, local integrations for programs CreateCraft has no connector for. */
+  builder: {
+    overview(): Promise<BuilderOverview>;
+    /** Starts research and building. Returns at once; follow it with onProgress and detail(). */
+    create(req: BuilderRequest): Promise<BuilderProjectSummary>;
+    detail(id: string): Promise<BuilderProjectDetail>;
+    /** Native picker for documentation or SDK files/folders. Returns the chosen paths (nothing is read until you create). */
+    pickDocs(kind: 'files' | 'folder'): Promise<string[]>;
+    cancel(id: string): Promise<void>;
+    /** After an install through the normal review: reads the truth from the installer. */
+    sync(id: string): Promise<BuilderProjectSummary>;
+    /** Live testing on the real program (each command still asks you first). */
+    verifyLive(id: string): Promise<PipelineReport>;
+    propose(id: string, why?: { commandId?: string; error?: string }): Promise<RepairProposal>;
+    discardProposal(id: string): Promise<void>;
+    rollback(id: string, version: string): Promise<BuilderProjectSummary>;
+    removeIntegration(id: string): Promise<BuilderProjectSummary>;
+    deleteProject(id: string): Promise<void>;
+    mine(): Promise<MyIntegration[]>;
+    compatibility(id: string): Promise<{ appVersion: string | null; tested: string[]; needsCheck: boolean; message: string }>;
+    onProgress(cb: (p: BuilderProgress) => void): () => void;
   };
   probeApps(): Promise<AppProbeResult[]>;
   integrationStatus(): Promise<IntegrationSnapshot>;
