@@ -5,6 +5,7 @@
 //   ScriptedAuthor  returns blueprints it was given. Used by tests, by the proof-of-concept scripts and by "import a
 //                   blueprint"; the project records who wrote the blueprint, so a scripted one is never passed off as in-app AI.
 
+import fs from 'node:fs/promises';
 import path from 'node:path';
 import { DENIED_ATTRIBUTES, DENIED_BUILTINS, DENIED_MODULES, PYTHON_HOSTS, SAFE_STDLIB } from './hosts';
 import { BlueprintError, extractJson, parseBlueprint, parseResearch, type Blueprint, type ResearchData } from './blueprint';
@@ -171,9 +172,11 @@ export class ClaudeAuthor implements AdapterAuthor {
         cost += m.total_cost_usd ?? 0;
         const resultText = 'result' in m ? String(m.result ?? '') : '';
         if (/not logged in|\/login/i.test(resultText)) throw new Error('Claude Code on this PC is not signed in. Open the Claude panel, click "Sign in to Claude", then try again.');
-        if (m.is_error) throw new Error('Claude could not finish this step right now. Try again in a moment.');
+        if (m.is_error) throw new Error(`Claude could not finish this step (${'subtype' in m ? String(m.subtype) : 'error'}${'errors' in m && Array.isArray(m.errors) && m.errors.length ? ': ' + m.errors.join('; ').slice(0, 300) : ''}). Try again in a moment.`);
       }
     }
+    // Keep the raw answer (local, secrets removed) so a malformed result can be diagnosed afterwards.
+    try { await fs.mkdir(this.o.cwd, { recursive: true }); await fs.writeFile(path.join(this.o.cwd, 'last-ai-response.txt'), text.replace(/(sk-[A-Za-z0-9_-]{8,}|Bearer\s+[A-Za-z0-9._-]{8,}|eyJ[A-Za-z0-9._-]{20,})/g, '[redacted]')); } catch { /* diagnostics only */ }
     const usage = { calls: 1, costUsd: cost };
     this.o.onUsage?.(usage);
     return { text, usage };

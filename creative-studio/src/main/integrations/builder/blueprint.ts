@@ -208,14 +208,14 @@ export function extractJson(raw: string): unknown {
 export function parseResearch(input: unknown): ResearchData {
   const raw = typeof input === 'string' ? extractJson(input) : input;
   const r = researchSchema.safeParse(raw);
-  if (!r.success) throw new BlueprintError('The research result is not in the expected form.', r.error.issues.slice(0, 8).map((i) => `${i.path.join('.') || 'research'}: ${i.message}`));
+  if (!r.success) { const problems = r.error.issues.slice(0, 8).map((i) => `${i.path.join('.') || 'research'}: ${i.message}`); throw new BlueprintError(`The research result is not in the expected form: ${problems.join('; ')}`, problems); }
   return r.data;
 }
 
 export function parseBlueprint(input: unknown): Blueprint {
   const raw = typeof input === 'string' ? extractJson(input) : input;
   const r = blueprintSchema.safeParse(raw);
-  if (!r.success) throw new BlueprintError('The generated integration is not in the expected form.', r.error.issues.slice(0, 10).map((i) => `${i.path.join('.') || 'blueprint'}: ${i.message}`));
+  if (!r.success) { const problems = r.error.issues.slice(0, 10).map((i) => `${i.path.join('.') || 'blueprint'}: ${i.message}`); throw new BlueprintError(`The generated integration is not in the expected form: ${problems.join('; ')}`, problems); }
   return r.data;
 }
 

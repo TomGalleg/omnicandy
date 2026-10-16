@@ -18,6 +18,9 @@ const live = process.env.CS_LIVE_TESTS === '1';
 const BIN = process.env.CS_FREECAD_BIN ?? 'E:\\FreeCAD 1.1\\bin';
 const EXE = path.join(BIN, 'FreeCADCmd.exe');
 let tmp: string;
+/** Removes anything that looks like a credential before a log is kept. */
+const redact = (t: string) => t.replace(/(sk-[A-Za-z0-9_-]{8,}|Bearer\s+[A-Za-z0-9._-]{8,}|eyJ[A-Za-z0-9._-]{20,}|[A-Fa-f0-9]{40,})/g, '[redacted]').replace(/(token|secret|password|api[_-]?key)(\W{0,3})[^\s,"]{6,}/gi, '$1$2[redacted]');
+const LOG = path.join(os.tmpdir(), 'cc-claude-live-result.json');
 const closers: Array<() => Promise<unknown>> = [];
 beforeAll(async () => { tmp = await fsp.mkdtemp(path.join(os.tmpdir(), 'cc-claude-b-')); });
 afterAll(async () => { for (const c of closers) await c().catch(() => undefined); await fsp.rm(tmp, { recursive: true, force: true, maxRetries: 8, retryDelay: 400 }); }, 60_000);
@@ -37,12 +40,14 @@ describe.skipIf(!on)('the real in-app Claude author', () => {
     await mgr.scan();
     const svc = new BuilderService({
       root: path.join(root, 'builder'), packages: pk, manager: mgr, confirm: async () => true, programs: async () => [], claude: () => ({ ready: true, reason: '' }),
-      author: () => new ClaudeAuthor({ model: process.env.CS_CLAUDE_MODEL ?? 'claude-opus-5-5', cwd: tmp, web: true }),
+      author: () => new ClaudeAuthor({ model: process.env.CS_CLAUDE_MODEL ?? 'claude-opus-5-5', cwd: path.join(os.tmpdir(), 'cc-claude-live-diag'), web: true }),
     });
     const c = await svc.create({ appName: 'FreeCAD', exePath: haveFreecad ? EXE : null, goal: 'create a parametric rectangular enclosure with configurable width, height, depth and wall thickness' });
     const s = await svc.settled(c.id);
     const d = await svc.detail(c.id);
-    console.log(JSON.stringify({ status: s.status, headline: s.headline, usage: d.usage, research: d.research && { sources: d.research.sources.map((x) => x.url), insufficient: d.research.insufficient }, decision: d.decision, commands: d.commands.map((x) => x.id), failed: d.reports.flatMap((r) => r.checks.filter((k) => k.state === 'failed').map((k) => `${r.stage}/${k.id}: ${k.detail}`)) }, null, 2));
+    const dump = JSON.stringify({ status: s.status, error: s.error, log: d.log.map((l) => l.text), headline: s.headline, usage: d.usage, research: d.research && { sources: d.research.sources.map((x) => x.url), insufficient: d.research.insufficient }, decision: d.decision, commands: d.commands.map((x) => x.id), failed: d.reports.flatMap((r) => r.checks.filter((k) => k.state === 'failed').map((k) => `${r.stage}/${k.id}: ${k.detail}`)), stage: d.stage, author: 'claude (real in-app author)' }, null, 2);
+    fs.writeFileSync(LOG, redact(dump)); // kept outside the scratch profile, secrets removed
+    console.log(redact(dump));
     expect(['ready-for-approval', 'awaiting-live-verification']).toContain(s.status);
     expect(d.research!.sources.length).toBeGreaterThan(0);
     if (!haveFreecad || s.status !== 'ready-for-approval') return;
