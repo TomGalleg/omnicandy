@@ -169,23 +169,31 @@ export interface ClaudeAuthorOptions {
   log?: (line: string) => void;
 }
 
+/** The exact SDK request configuration (pure, so a test can check it without calling Claude). */
+export function buildQueryOptions(model: string, cwd: string, system: string, opts: { tools: string[]; maxTurns: number; schema?: Record<string, unknown> }, abort: AbortController) {
+  return {
+    model, systemPrompt: system,
+    // Only the listed built-in tools exist for this call (web research for the research step, none for generation); no user settings,
+    // plug-ins or MCP servers; anything not allowed is refused instead of asked.
+    tools: opts.tools, allowedTools: opts.tools, permissionMode: 'dontAsk' as const, settingSources: [] as never[],
+    maxTurns: opts.maxTurns, cwd, abortController: abort,
+    ...(opts.schema ? { outputFormat: { type: 'json_schema' as const, schema: opts.schema } } : {}),
+    env: { ...process.env, CLAUDE_AGENT_SDK_CLIENT_APP: 'CreateCraft/0.1' } as Record<string, string>,
+  };
+}
+
 export class ClaudeAuthor implements AdapterAuthor {
   readonly canBrowse: boolean;
   constructor(private readonly o: ClaudeAuthorOptions) { this.canBrowse = o.web !== false; }
 
   private async ask(system: string, prompt: string, opts: { tools: string[]; maxTurns: number; signal?: AbortSignal; schema?: Record<string, unknown> }): Promise<{ text: string; usage: AuthorUsage }> {
+    // The SDK starts a child process in this folder; a folder that does not exist makes the start fail at once with a misleading
+    // "failed to launch" message (seen in the second live run), so it is created first.
+    await fs.mkdir(this.o.cwd, { recursive: true });
     const { query } = await import('@anthropic-ai/claude-agent-sdk');
     const abort = new AbortController();
     opts.signal?.addEventListener('abort', () => abort.abort(), { once: true });
-    const q = query({
-      prompt,
-      options: {
-        model: this.o.model, systemPrompt: system, tools: opts.tools, allowedTools: opts.tools, permissionMode: 'dontAsk', settingSources: [],
-        maxTurns: opts.maxTurns, cwd: this.o.cwd, abortController: abort,
-        ...(opts.schema ? { outputFormat: { type: 'json_schema' as const, schema: opts.schema } } : {}),
-        env: { ...process.env, CLAUDE_AGENT_SDK_CLIENT_APP: 'CreateCraft/0.1' } as Record<string, string>,
-      },
-    });
+    const q = query({ prompt, options: buildQueryOptions(this.o.model, this.o.cwd, system, opts, abort) });
     let text = '';
     let cost = 0;
     for await (const m of q) {
