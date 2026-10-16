@@ -9,6 +9,12 @@ Two kinds of adapter share one manager, one permission model, one AI router and 
 * **Installed packages** (`.ccadapter`) are added by the user at run time, verified, and run only in a separate restricted
   process. See [Installable adapter packages](#installable-adapter-packages).
 
+**Universal installer (manifest version 2).** Packages can now be `external` (a connector), `internal` (an add-in inside the program,
+no connector code) or `hybrid` (both), all through the same Connect Applications experience. The manifest, installation manager,
+plugin bridge, host profiles (Autodesk and Adobe groundwork) and security statement are in
+[`universal-installer.md`](universal-installer.md), [`installation-profiles.md`](installation-profiles.md) and
+[`release-signing.md`](release-signing.md). Version 1 packages (Blender-style connectors, FreeCAD) keep working unchanged.
+
 ## Layout
 
 | Path | Role |
@@ -419,7 +425,18 @@ have real labels, status changes are announced through a polite live region, col
   through `runApp` of a program they control; a standalone helper executable is not supported yet.
 * Calls to one adapter run one at a time, so a long job blocks its other commands.
 * `readFile` and `writeFile` only see the project's work folder for that adapter; reading library assets is not wired.
-* The runner relies on `ELECTRON_RUN_AS_NODE`; a packaged build that disables that Electron fuse needs a utility-process runner.
+* The runner relies on `ELECTRON_RUN_AS_NODE`. Verified to work in the packaged (unpacked electron-builder) application with the
+  default fuses; a build that disables that fuse would need a utility-process runner.
 * Resolve is still **not live-verified**: its commands need Resolve Studio with external scripting set to Local.
 * Two PhotoCraft SVG live tests in `photocraftLive.test.ts` fail ("PhotoCraft can't open SVG files" in `liveTask.ts`); they
   predate this work and are tracked separately.
+
+## Universal installer: remaining limitations
+
+* No Autodesk or Adobe add-in exists. Their host profiles are documentation plus installer rules; none is marked ready.
+* The only add-in host that was run is the simulated SimCAD test application. Real hosts will add their own surprises (security prompts, load order, licence dialogs).
+* No administrator elevation helper ships; protected folders are refused with guidance. The elevation gate itself is tested with a fake elevator.
+* The pairing secret protects against other users and remote machines, not against malware running as the same user.
+* No production release key, code-signing certificate, update feed or revocation list exists; see `release-signing.md`.
+* The installer (NSIS) was configured and the unpacked application built and tested; a signed `CreateCraft-Setup.exe` was not produced or run through Windows SmartScreen.
+* Vendor-workflow add-ins (Adobe UXP through Creative Cloud) are guided only; CreateCraft cannot tell that the user finished until the add-in connects.

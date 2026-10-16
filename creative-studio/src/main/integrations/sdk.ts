@@ -67,6 +67,11 @@ export interface AdapterFactory {
   alwaysAsk?: boolean;
   /** Self-contained adapters: a file inside the package that stands in for the program (must exist). */
   anchorPath?: string;
+  /**
+   * Integrations with a plugin inside the program: the commands the plugin has registered right now. Null means "no live
+   * information" (not connected); the manager then does not narrow. Commands outside the set are refused as unsupported.
+   */
+  availableCommands?(): ReadonlySet<string> | null;
   /** Forget crash counters etc. (Repair). */
   reset?(): void;
 }

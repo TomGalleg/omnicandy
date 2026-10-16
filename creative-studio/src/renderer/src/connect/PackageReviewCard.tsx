@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { PERMISSION_PLAIN, PERMISSION_LEVEL_LABEL } from '@shared/connect';
-import { PERMISSION_LABEL, type PackageApproval, type PackageReview, type Permission } from '@shared/integrations';
+import { INTEGRATION_TYPE_LABEL, PERMISSION_LABEL, type PackageApproval, type PackageReview, type Permission } from '@shared/integrations';
 
 export const trustLabel = (r: Pick<PackageReview, 'signature' | 'publisherTrusted'>) =>
   r.signature === 'invalid' ? 'Signature invalid' : r.signature === 'unsigned' ? 'Not signed' : r.publisherTrusted ? 'Signed, trusted publisher' : 'Signed, new publisher';
@@ -16,6 +16,8 @@ interface Props {
   cancelLabel?: string;
   /** Plain-language framing for the guided setup ("Before CreateCraft connects Name…"). */
   intro?: string;
+  /** Reviews the package again (the user closed the program, for example). */
+  onRecheck?(): void;
 }
 
 /**
@@ -23,13 +25,16 @@ interface Props {
  * explicit trust checkboxes. The same card is used by Settings > Integration packages and by the guided setup, so the
  * publisher-trust rules cannot differ between them. Installing stays blocked until the required boxes are ticked.
  */
-export function PackageReviewCard({ review, busy, confirmLabel, onConfirm, onCancel, cancelLabel = 'Cancel', intro }: Props) {
+export function PackageReviewCard({ review, busy, confirmLabel, onConfirm, onCancel, cancelLabel = 'Cancel', intro, onRecheck }: Props) {
+  const integ = review.integration;
+  const stopped = !!integ && integ.blockers.length > 0;
   const [granted, setGranted] = useState<Permission[]>(review.permissions);
   const [confirmUnsigned, setConfirmUnsigned] = useState(false);
   const [confirmPublisher, setConfirmPublisher] = useState(false);
   const blocked = review.problems.length > 0
     || (review.signature === 'unsigned' && !confirmUnsigned)
-    || (review.signature === 'valid' && !review.publisherTrusted && !confirmPublisher);
+    || (review.signature === 'valid' && !review.publisherTrusted && !confirmPublisher)
+    || stopped;
   const label = confirmLabel ?? (review.action === 'update' ? 'Update' : 'Install');
 
   return (
@@ -44,6 +49,24 @@ export function PackageReviewCard({ review, busy, confirmLabel, onConfirm, onCan
       {review.description && <small>{review.description}</small>}
       {review.fingerprint && <small>Publisher key: <code>{review.fingerprint}</code></small>}
       {review.installedVersion && <small>Installed now: version {review.installedVersion}.</small>}
+      {integ && (
+        <div className="field" role="group" aria-label="What setting this up involves">
+          <span className="menu-label">{INTEGRATION_TYPE_LABEL[integ.type]}{integ.simulated ? ' · simulated test program' : ''}</span>
+          <ol className="connect-steps">
+            {integ.steps.map((s) => <li key={s.kind}><strong>{s.title}.</strong> <small>{s.detail.split(String.fromCharCode(10))[0]}</small></li>)}
+          </ol>
+          {integ.blockers.map((b) => <small key={b} className="ext-error" role="alert">{b}</small>)}
+          {stopped && onRecheck && <div className="ext-actions"><button className="btn small" disabled={!!busy} onClick={onRecheck}>Check again</button></div>}
+          <details className="more-details">
+            <summary>Advanced: where files go and how the add-in talks to CreateCraft</summary>
+            {integ.destinations.map((d) => <small key={d.path} className="ext-block">{d.label} ({d.scope === 'machine' ? 'all users' : 'this user'}): <code>{d.path}</code></small>)}
+            {integ.technology && <small className="ext-block">Technology: {integ.technology}</small>}
+            {integ.communication && <small className="ext-block">Local connection: {integ.communication.transport}, protocol {integ.communication.protocol.min}-{integ.communication.protocol.max}, authenticated with a secret created at install. Capabilities: {integ.communication.capabilities.join(', ') || 'none'}.</small>}
+            {integ.dependencies.map((d) => <small key={d.name} className="ext-block">Needs {d.name}{d.min ? ` ${d.min}+` : ''} ({d.kind})</small>)}
+            {integ.vendorWorkflow && <small className="ext-block">{integ.vendorWorkflow.title}: {integ.vendorWorkflow.steps.join(' → ')}</small>}
+          </details>
+        </div>
+      )}
       <small>{review.selfContained ? 'It needs no other program.' : `It controls ${review.applicationName ?? 'a program'} that must already be installed.`}</small>
       {review.requirements.length > 0 && <small className="ext-note">Needs: {review.requirements.map((q) => q.text).join(' · ')}</small>}
       {review.problems.map((p) => <small key={p} className="ext-error" role="alert">{p}</small>)}

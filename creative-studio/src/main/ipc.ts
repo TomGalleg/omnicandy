@@ -46,7 +46,8 @@ import { MAX_VIDEO_PROMPT } from '@shared/video';
 import type { SettingsStore } from './settingsStore';
 import { AdapterPackages, createIntegrationManager } from './integrations';
 import { ConnectService } from './integrations/connect';
-import { approvalDetail, INSTALL_CANCELLED_MESSAGE, type BrowseResult, type ConnectOutcome, type ConnectOverview, type ForgetResult } from '@shared/connect';
+import { bundledPaths, loadBundledPublishers } from './integrations/bundled';
+import { approvalDetail, INSTALL_CANCELLED_MESSAGE, integrationLines, type BrowseResult, type ConnectOutcome, type ConnectOverview, type ForgetResult } from '@shared/connect';
 import { ExternalState } from './integrations/state';
 import { PERMISSION_LABEL, type ApprovalAnswer, type ExternalAppInfo, type PackageApproval, type PackageListing, type Permission } from '@shared/integrations';
 
@@ -642,7 +643,8 @@ export function registerIpc(d: IpcDeps): void {
   // The 13 native Craft apps are NOT routed through it.
   const extStore = new ExternalState(path.join(d.secretsDir, 'external-apps.json'));
   // Connectors that ship with CreateCraft are only LISTED as available; installing one goes through the same review and native confirmation as any package.
-  const catalogDirs = [path.join(app.getAppPath(), 'resources', 'adapters')];
+  const bundled = bundledPaths({ packaged: app.isPackaged, resourcesPath: process.resourcesPath, appPath: app.getAppPath() });
+  const catalogDirs = [bundled.adaptersDir];
   let connect: ConnectService | null = null;
   const external = createIntegrationManager({
     workDir: async (id) => (await d.project()).workDir('external', id),
@@ -659,7 +661,8 @@ export function registerIpc(d: IpcDeps): void {
     },
   });
   // Installable adapter packages: verified on disk, run in their own restricted process (integrations/packageRunner.ts).
-  const packages = new AdapterPackages(path.join(path.dirname(d.secretsDir), 'integrations'), external);
+  const packages = new AdapterPackages(path.join(path.dirname(d.secretsDir), 'integrations'), external, undefined, { bundledPublishers: () => loadBundledPublishers(bundled.publishersFile) });
+  app.on('will-quit', () => { void packages.shutdown(); void external.shutdown(); });
   const packagesReady = packages.load().catch(() => undefined);
   const connectSvc = new ConnectService({ manager: external, packages, state: extStore, catalogDirs });
   connect = connectSvc;
@@ -718,6 +721,7 @@ export function registerIpc(d: IpcDeps): void {
     return packages.review(p);
   });
   handle(IPC.extPkgReview, z.tuple([z.string().min(1).max(1000)]), async (p) => { await listing(); return packages.review(allowedPackage(p)); });
+  // installPlugin / elevate are NOT taken from the screen: main decides them from the native confirmation below.
   const approvalSchema = z.object({ permissions: z.array(z.string()).max(20), allowUnsigned: z.boolean().optional(), trustPublisher: z.boolean().optional() });
   handle(IPC.extPkgInstall, z.tuple([z.string().min(1).max(1000), approvalSchema]), async (p, approval) => {
     await packagesReady;
@@ -733,12 +737,13 @@ export function registerIpc(d: IpcDeps): void {
       detail: [
         'Publisher: ' + rev.publisherName + (rev.signature === 'valid' ? ' (signed, key ' + rev.fingerprint + ')' : ' (NOT signed)'),
         'It may: ' + (asked.length ? asked.join('; ') : 'nothing beyond reading its own files'),
+        ...integrationLines(rev),
         'It runs in a separate restricted process. You are still asked before commands that change anything.',
       ].join(String.fromCharCode(10)),
     };
     const res = win && !win.isDestroyed() ? await dialog.showMessageBox(win, options) : await dialog.showMessageBox(options);
     if (res.response !== 1) throw new Error(INSTALL_CANCELLED_MESSAGE);
-    await packages.install(src, approval as PackageApproval);
+    await packages.install(src, { ...(approval as PackageApproval), installPlugin: !!rev.integration, elevate: false });
     return listing();
   });
   handle(IPC.extPkgEnable, z.tuple([z.string().min(1).max(100), z.boolean()]), async (id, on) => { await packagesReady; await packages.setEnabled(id, on); return listing(); });

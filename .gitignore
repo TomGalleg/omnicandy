@@ -8,3 +8,4 @@ coverage/
 # Integration package signing keys and local scratch
 *.key.pem
 .local/
+creative-studio/release/

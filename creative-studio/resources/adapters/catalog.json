@@ -1,0 +1,12 @@
+{
+  "generatedBy": "development",
+  "adapters": [
+    {
+      "file": "freecad-1.0.0.ccadapter",
+      "id": "freecad",
+      "version": "1.0.0",
+      "fingerprint": "E970 10FE 35FE 418C BDEB 5A19 79DC C0EC",
+      "keyKind": "development"
+    }
+  ]
+}

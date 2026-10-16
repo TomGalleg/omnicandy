@@ -2,8 +2,8 @@
 // Pure types and plain-language helpers shared by main and renderer. Nothing here touches the machine.
 
 import {
-  PERMISSION_LABEL, STATUS_LABEL,
-  type ExternalAppInfo, type IntegrationStatus, type Permission, type SignatureState,
+  INTEGRATION_TYPE_LABEL, PERMISSION_LABEL, STATUS_LABEL,
+  type ExternalAppInfo, type IntegrationStatus, type IntegrationType, type PackageReview, type Permission, type SignatureState,
 } from './integrations';
 
 /** Shown (and matched in main) when the user declines the native install confirmation. */
@@ -25,6 +25,14 @@ export interface AdapterOffer {
   publisherTrusted: boolean;
   /** What its commands may ask for, so the permissions can be explained before anything is installed. */
   permissions: Permission[];
+  /** external: connector only. internal/hybrid: also an add-in inside the program. */
+  integrationType: IntegrationType;
+  /** The program is named here for add-in steps ("Close Revit"). */
+  hostName: string | null;
+  /** SimCAD-style test application, not real software. */
+  simulated: boolean;
+  closeHost: boolean;
+  restartHost: boolean;
 }
 
 /**
@@ -145,6 +153,13 @@ export function classifyApp({ app, offer, forgettable }: ClassifyInput): Connect
 
   if (!hasAdapter) {
     if (offer) {
+      if (offer.integrationType !== 'external') {
+        const host = offer.hostName ?? name;
+        const what = offer.integrationType === 'hybrid' ? 'a connector and a small add-in inside' : 'a small add-in inside';
+        const timing = [offer.closeHost ? `${host} has to be closed while it is installed` : '', offer.restartHost ? `${host} has to be opened (or restarted) afterwards so it loads the add-in` : ''].filter(Boolean).join(', and ');
+        return make('needs-adapter', true, offer.simulated ? 'Add-in available (simulated test program)' : 'Add-in available',
+          `CreateCraft has ${what} ${host}. Setting it up installs it (you review everything first)${timing ? `; ${timing}` : ''}. It is only called connected after the add-in answers a real test.`);
+      }
       return make('needs-adapter', true, 'Connector available',
         `CreateCraft has a connector for ${name}. Setting it up installs the connector (you review it first), then connects and tests ${name}.`);
     }
@@ -196,9 +211,11 @@ export const GROUP_ORDER: ConnectGroup[] = ['ready', 'needs-adapter', 'attention
 export const plainStatusLabel = (s: IntegrationStatus): string => STATUS_LABEL[s];
 
 /** Turns a failed connect into a calm explanation plus what to try. `technical` always carries the raw text. */
-export function explainConnectFailure(status: IntegrationStatus, name: string, raw: string): { headline: string; detail: string } {
+export function explainConnectFailure(status: IntegrationStatus, name: string, raw: string, type: IntegrationType = 'external'): { headline: string; detail: string } {
   switch (status) {
-    case 'not-running': return { headline: `${name} is not open`, detail: `Open ${name}, wait until it has finished starting, then press Try again.` };
+    case 'not-running':
+      if (type !== 'external') return { headline: `${name} is not open, or has not loaded the add-in yet`, detail: `Open ${name}. If it was already open when the add-in was installed, close it and open it again so it loads the add-in. If ${name} asks whether to allow the new add-in, allow it. Then press Try again.` };
+      return { headline: `${name} is not open`, detail: `Open ${name}, wait until it has finished starting, then press Try again.` };
     case 'api-unavailable': return { headline: `${name}’s automation is not available`, detail: `${raw} Check that automation is switched on in ${name}’s preferences (some editions do not include it).` };
     case 'incompatible': return { headline: `This version of ${name} is not supported`, detail: raw };
     default: return { headline: `Could not connect to ${name}`, detail: `CreateCraft could not start or test ${name}. Nothing was changed. You can try again, or use Repair in Settings > Integrations.` };
@@ -247,3 +264,17 @@ export function chipText(e: Pick<ConnectEntry, 'group' | 'status' | 'adapterStat
 
 /** Chip colour class used by the existing `.chip` styles. */
 export const GROUP_CHIP: Record<ConnectGroup, string> = { connected: 'ok', ready: 'real', 'needs-adapter': 'real', attention: 'warn', incompatible: 'warn', unsupported: 'off' };
+
+/** Plain-language lines about the add-in half of an install, for the native confirmation and the review card. Empty for connectors. */
+export function integrationLines(r: Pick<PackageReview, 'integration' | 'integrationType'>): string[] {
+  const i = r.integration;
+  if (!i || r.integrationType === 'external') return [];
+  const host = i.hostName ?? 'the program';
+  const out: string[] = [`Kind: ${INTEGRATION_TYPE_LABEL[i.type]}${i.simulated ? ' (SIMULATED test program, not real software)' : ''}`];
+  for (const d of i.destinations) out.push(`It adds files to ${host}'s plugin folder: ${d.path}${d.scope === 'machine' ? ' (all users)' : ''}`);
+  if (i.closeHost) out.push(`Close ${host} before installing; CreateCraft never closes it for you.`);
+  if (i.restartHost) out.push(`Open or restart ${host} afterwards so it loads the add-in.`);
+  if (i.needsAdmin) out.push('That folder needs administrator rights.');
+  out.push('Only a real answer from the add-in counts as connected.');
+  return out;
+}

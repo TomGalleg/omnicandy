@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { approvalDetail, chipText, classifyApp, explainConnectFailure, installRoot, PERMISSION_PLAIN, sameInstall, type AdapterOffer } from './connect';
+import { approvalDetail, chipText, classifyApp, explainConnectFailure, installRoot, integrationLines, PERMISSION_PLAIN, sameInstall, type AdapterOffer } from './connect';
 import { PERMISSION_LABEL, type ExternalAppInfo, type IntegrationStatus, type Permission } from './integrations';
 
 const app = (over: Partial<ExternalAppInfo> = {}): ExternalAppInfo => ({
@@ -7,7 +7,7 @@ const app = (over: Partial<ExternalAppInfo> = {}): ExternalAppInfo => ({
   adapterId: 'app', adapterName: 'App', maturity: 'verified', methods: ['scripting'], status: 'available', statusDetail: 'Ready to connect.', commands: [],
   granted: [], permissionsNeeded: ['read-info'], notes: null, adapterVersion: null, origin: 'built-in', trust: 'built-in', requirements: [], selfContained: false, ...over,
 });
-const offer: AdapterOffer = { source: 'bundled', path: 'C:\\c\\a.ccadapter', adapterId: 'app', name: 'App', version: '1.0.0', publisherName: 'P', signature: 'valid', publisherTrusted: false, permissions: ['read-info'] };
+const offer: AdapterOffer = { source: 'bundled', path: 'C:\\c\\a.ccadapter', adapterId: 'app', name: 'App', version: '1.0.0', publisherName: 'P', signature: 'valid', publisherTrusted: false, permissions: ['read-info'], integrationType: 'external', hostName: null, simulated: false, closeHost: false, restartHost: false };
 const cls = (a: ExternalAppInfo, o: AdapterOffer | null = null) => classifyApp({ app: a, offer: o, forgettable: false });
 
 describe('classifyApp: every status in plain words', () => {
@@ -99,5 +99,48 @@ describe('failure wording', () => {
     expect(explainConnectFailure('not-running', 'DaVinci Resolve', 'x').detail).toMatch(/Open DaVinci Resolve/);
     expect(explainConnectFailure('api-unavailable', 'R', 'Studio only.').detail).toMatch(/Studio only/);
     expect(explainConnectFailure('needs-repair', 'R', 'spawn error').headline).toBe('Could not connect to R');
+  });
+});
+
+describe('add-in (internal / hybrid) wording', () => {
+  const app0 = app({ adapterId: null, adapterName: null, maturity: null, status: 'unsupported', name: 'SimCAD' });
+  const hybrid: AdapterOffer = { ...offer, integrationType: 'hybrid', hostName: 'SimCAD', simulated: true, closeHost: true, restartHost: true };
+
+  it('explains a hybrid offer: what is installed, close and reopen, and that connected needs a real test', () => {
+    const e = cls(app0, hybrid);
+    expect(e.group).toBe('needs-adapter');
+    expect(e.selectable).toBe(true);
+    expect(e.headline).toBe('Add-in available (simulated test program)');
+    expect(e.explanation).toMatch(/a connector and a small add-in inside SimCAD/);
+    expect(e.explanation).toMatch(/has to be closed while it is installed/);
+    expect(e.explanation).toMatch(/opened \(or restarted\) afterwards/);
+    expect(e.explanation).toMatch(/only called connected after the add-in answers a real test/);
+  });
+
+  it('an internal-only offer says add-in only; a connector-only offer keeps its old wording', () => {
+    expect(cls(app0, { ...hybrid, integrationType: 'internal', simulated: false }).explanation).toMatch(/a small add-in inside SimCAD/);
+    expect(cls(app0, { ...hybrid, integrationType: 'internal', simulated: false }).headline).toBe('Add-in available');
+    expect(cls(app0, offer).headline).toBe('Connector available');
+  });
+
+  it('tells the user to restart the program when the add-in has not loaded yet', () => {
+    const w = explainConnectFailure('not-running', 'SimCAD', 'raw', 'hybrid');
+    expect(w.headline).toMatch(/has not loaded the add-in yet/);
+    expect(w.detail).toMatch(/close it and open it again/);
+    expect(explainConnectFailure('not-running', 'Blender', 'raw').headline).toBe('Blender is not open');
+  });
+
+  it('describes the add-in half in plain language for the native confirmation', () => {
+    const lines = integrationLines({ integrationType: 'hybrid', integration: {
+      type: 'hybrid', hostName: 'SimCAD', simulated: true, pluginName: 'p', technology: 'node-module', steps: [], blockers: [], closeHost: true, restartHost: true,
+      needsAdmin: true, hostRunning: false, destinations: [{ label: 'Plugins', path: 'C:/sim/plugins', scope: 'machine' }], vendorWorkflow: null, communication: null, dependencies: [],
+    } });
+    const t = lines.join('\n');
+    expect(t).toMatch(/SIMULATED test program/);
+    expect(t).toContain('C:/sim/plugins (all users)');
+    expect(t).toMatch(/Close SimCAD before installing; CreateCraft never closes it/);
+    expect(t).toMatch(/Open or restart SimCAD afterwards/);
+    expect(t).toMatch(/administrator rights/);
+    expect(integrationLines({ integrationType: 'external', integration: null })).toEqual([]);
   });
 });

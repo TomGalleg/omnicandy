@@ -26,7 +26,7 @@ export interface ConnectDeps {
   catalogDirs: string[];
 }
 
-interface KnownOffer extends AdapterOffer { exeNames: string[]; displayNames: string[] }
+interface KnownOffer extends AdapterOffer { exeNames: string[]; displayNames: string[]; selfContained: boolean }
 
 const lower = (s: string) => s.toLowerCase();
 const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -48,7 +48,9 @@ export class ConnectService {
     if (!r.id || !r.name || !r.version || r.problems.length || r.action === 'blocked' || r.action === 'reinstall') return null;
     return {
       source, path: r.path, adapterId: r.id, name: r.name, version: r.version, publisherName: r.publisherName,
-      signature: r.signature, publisherTrusted: r.publisherTrusted, permissions: r.permissions, exeNames: r.exeNames, displayNames: r.displayNames,
+      signature: r.signature, publisherTrusted: r.publisherTrusted, permissions: r.permissions, exeNames: r.exeNames, displayNames: r.displayNames, selfContained: r.selfContained,
+      integrationType: r.integrationType, hostName: r.integration?.hostName ?? null, simulated: !!r.integration?.simulated,
+      closeHost: !!r.integration?.closeHost, restartHost: !!r.integration?.restartHost,
     };
   }
 
@@ -78,7 +80,8 @@ export class ConnectService {
   private turnedOff(a: InstalledAdapter): KnownOffer {
     return {
       source: 'installed-off', path: null, adapterId: a.id, name: a.name, version: a.version, publisherName: a.publisherName,
-      signature: a.fingerprint ? 'valid' : 'unsigned', publisherTrusted: !!a.fingerprint, permissions: a.requestedPermissions, exeNames: [], displayNames: [a.applicationName],
+      signature: a.fingerprint ? 'valid' : 'unsigned', publisherTrusted: !!a.fingerprint, permissions: a.requestedPermissions, exeNames: [], displayNames: [a.applicationName], selfContained: a.selfContained,
+      integrationType: a.integrationType, hostName: null, simulated: false, closeHost: false, restartHost: false,
     };
   }
 
@@ -131,6 +134,12 @@ export class ConnectService {
       const state: AdapterState = m.maturity === 'stub' ? (this.offerCache.some((o) => o.adapterId === m.adapterId) ? 'available' : 'planned') : 'installed';
       return { adapterId: m.adapterId, name: m.name, vendor: m.vendor, adapterState: state, experimental: m.maturity === 'experimental' || mf?.source === 'package' };
     });
+    // A connector that brings its own program (self-contained, for example a test application) has nothing to find on this PC:
+    // it is offered directly so the guided setup can install it.
+    for (const o of this.offerCache) {
+      if (!o.selfContained || entries.some((e) => e.adapterId === o.adapterId || e.offer?.adapterId === o.adapterId)) continue;
+      entries.push(classifyApp({ app: offerApp(o), offer: stripInternal(o), forgettable: false }));
+    }
     // Connectors that could be installed for programs that are not on this PC.
     const covered = (o: KnownOffer) => entries.some((e) => e.adapterId === o.adapterId || e.offer?.adapterId === o.adapterId) || notDetected.some((n) => n.adapterId === o.adapterId);
     for (const o of this.offerCache) if (!covered(o)) notDetected.push({ adapterId: o.adapterId, name: o.name, vendor: o.publisherName ?? '', adapterState: 'available', experimental: true });
@@ -149,7 +158,7 @@ export class ConnectService {
       const raw = e instanceof Error ? e.message : String(e);
       const now = (await this.d.manager.list()).find((a) => a.key === key);
       const status = now?.status ?? 'needs-repair';
-      const why = explainConnectFailure(status, name, raw);
+      const why = explainConnectFailure(status, name, raw, this.d.manager.manifests().find((m) => m.id === before?.adapterId)?.integrationType ?? 'external');
       return { key, state: status === 'not-running' || status === 'api-unavailable' ? 'blocked' : 'failed', status, headline: why.headline, detail: why.detail, evidence: [], technical: raw };
     };
     let info: ExternalAppInfo;
@@ -231,6 +240,15 @@ export class ConnectService {
   markOnboarded(): Promise<unknown> { return this.d.state.markOnboarded(); }
 }
 
+/** A stand-in row for a self-contained connector that is not installed yet (no program to point at). */
+function offerApp(o: KnownOffer): ExternalAppInfo {
+  return {
+    key: `offer:${o.adapterId}`, name: o.name, publisher: o.publisherName, version: o.version, exePath: '', installType: 'installed', source: 'user',
+    adapterId: null, adapterName: null, maturity: null, methods: [], status: 'unsupported', statusDetail: 'Not installed yet.', commands: [], granted: [],
+    permissionsNeeded: [], notes: null, adapterVersion: null, origin: null, trust: null, requirements: [], selfContained: true,
+  };
+}
+
 function stripInternal(o: KnownOffer): AdapterOffer {
-  return { source: o.source, path: o.path, adapterId: o.adapterId, name: o.name, version: o.version, publisherName: o.publisherName, signature: o.signature, publisherTrusted: o.publisherTrusted, permissions: o.permissions };
+  return { source: o.source, path: o.path, adapterId: o.adapterId, name: o.name, version: o.version, publisherName: o.publisherName, signature: o.signature, publisherTrusted: o.publisherTrusted, permissions: o.permissions, integrationType: o.integrationType, hostName: o.hostName, simulated: o.simulated, closeHost: o.closeHost, restartHost: o.restartHost };
 }

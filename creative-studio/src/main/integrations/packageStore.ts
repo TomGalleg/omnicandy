@@ -17,7 +17,7 @@ import {
   type InstalledAdapter, type InstalledState, type PackageApproval, type PackageReview, type Permission, type TrustLevel,
 } from '@shared/integrations';
 import {
-  MANIFEST_FILE, SIGNATURE_FILE, parsePackage, readPackageSource, requestedPermissions, sha256,
+  MANIFEST_FILE, SIGNATURE_FILE, entryOf, integrationTypeOf, parsePackage, readPackageSource, requestedPermissions, sha256,
   type PackageManifest,
 } from './packageFormat';
 import { writeZip } from './zip';
@@ -39,6 +39,8 @@ interface RegistryFile { version: 1; adapters: Record<string, InstalledRecord>; 
 export interface StoreHooks {
   /** Problems with registering this manifest next to what CreateCraft already has (id or program taken). */
   conflicts(m: PackageManifest): string[];
+  /** Publisher key fingerprints CreateCraft itself ships as trusted (official release keys). Never a development key. */
+  bundledPublishers?: () => string[];
 }
 
 export class PackageError extends Error {}
@@ -98,6 +100,7 @@ export class PackageStore {
       path: source, problems: [], warnings: [], id: null, name: null, version: null, description: null, license: null, homepage: null,
       publisherName: null, fingerprint: null, signature: 'unsigned', publisherTrusted: false, applicationName: null, exeNames: [], displayNames: [], selfContained: false,
       sdk: null, requirements: [], commands: [], permissions: [], installedVersion: null, action: 'blocked', fileCount: 0, bytes: 0,
+      integrationType: 'external', integration: null,
     };
     let loaded;
     try { loaded = await readPackageSource(source); } catch (e) {
@@ -115,14 +118,15 @@ export class PackageStore {
       sdk: m.sdk,
       requirements: [
         ...(m.requirements ?? []),
-        ...(m.runtime.dependencies ?? []).map((d) => ({ kind: 'runtime' as const, text: `${d.name}${d.min ? ` ${d.min} or newer` : ''}${d.note ? `: ${d.note}` : ''}` })),
+        ...(m.runtime?.dependencies ?? []).map((d) => ({ kind: 'runtime' as const, text: `${d.name}${d.min ? ` ${d.min} or newer` : ''}${d.note ? `: ${d.note}` : ''}` })),
       ],
       commands: m.commands.map((c) => ({ id: c.id, label: c.label, description: c.description, permissions: c.permissions as Permission[], destructive: !!c.destructive, longRunning: !!c.longRunning })),
       permissions: requestedPermissions(m),
       installedVersion: installed?.version ?? null,
+      integrationType: integrationTypeOf(m),
     });
     if (parsed.signature.state === 'invalid') rev.problems.push(`Signature check failed: ${parsed.signature.detail}`);
-    rev.publisherTrusted = !!(parsed.signature.state === 'valid' && parsed.signature.fingerprint && reg.trusted[parsed.signature.fingerprint]);
+    rev.publisherTrusted = !!(parsed.signature.state === 'valid' && parsed.signature.fingerprint && (reg.trusted[parsed.signature.fingerprint] || (this.hooks.bundledPublishers?.() ?? []).includes(parsed.signature.fingerprint)));
     if (parsed.signature.state === 'unsigned') rev.warnings.push('This package is not signed, so CreateCraft cannot tell who made it or whether it was changed. It will ask you before every command it runs.');
     else if (parsed.signature.state === 'valid' && !rev.publisherTrusted) rev.warnings.push(`This publisher is new to you. Only continue if you trust "${m.publisher.name}" (key ${parsed.signature.fingerprint}).`);
     rev.problems.push(...this.hooks.conflicts(m));
@@ -190,7 +194,7 @@ export class PackageStore {
       await fs.rm(this.pkgDirOf(m.id, prev.version), { recursive: true, force: true }).catch(() => undefined);
       await fs.rm(path.join(this.adaptersDir(m.id), `source-${prev.version}.ccadapter`), { force: true }).catch(() => undefined);
     }
-    return { record, manifest: m, pkgDir: finalDir, dataDir: this.dataDirOf(m.id), entry: path.join(finalDir, ...m.runtime.entry.split('/')) };
+    return { record, manifest: m, pkgDir: finalDir, dataDir: this.dataDirOf(m.id), entry: entryOf(m) ? path.join(finalDir, ...entryOf(m)!.split('/')) : '' };
   }
 
   // ---- state ----
@@ -212,7 +216,7 @@ export class PackageStore {
       return { state: 'tampered', detail: 'The signature no longer matches the publisher approved at install.', install: null };
     }
     const m = parsed.manifest;
-    const install: VerifiedInstall = { record: rec, manifest: m, pkgDir, dataDir: this.dataDirOf(id), entry: path.join(pkgDir, ...m.runtime.entry.split('/')) };
+    const install: VerifiedInstall = { record: rec, manifest: m, pkgDir, dataDir: this.dataDirOf(id), entry: entryOf(m) ? path.join(pkgDir, ...entryOf(m)!.split('/')) : '' };
     return { state: rec.enabled ? 'ok' : 'disabled', detail: rec.enabled ? 'Verified.' : 'Turned off.', install };
   }
 
@@ -279,10 +283,11 @@ export class PackageStore {
       applicationName: m?.application.name ?? id, selfContained: m?.application.kind === 'self-contained',
       sdkCompatible: v.state !== 'incompatible', requirements: [
         ...(m?.requirements ?? []),
-        ...(m?.runtime.dependencies ?? []).map((d) => ({ kind: 'runtime' as const, text: `${d.name}${d.min ? ` ${d.min} or newer` : ''}${d.note ? `: ${d.note}` : ''}` })),
+        ...(m?.runtime?.dependencies ?? []).map((d) => ({ kind: 'runtime' as const, text: `${d.name}${d.min ? ` ${d.min} or newer` : ''}${d.note ? `: ${d.note}` : ''}` })),
       ],
       approvedPermissions: rec.approved, requestedPermissions: m ? requestedPermissions(m) : [], commandCount: m?.commands.length ?? 0,
       installedAt: rec.installedAt, restricted: true,
+      integrationType: m ? integrationTypeOf(m) : 'external', pluginState: 'none', pluginDetail: '',
     };
   }
 

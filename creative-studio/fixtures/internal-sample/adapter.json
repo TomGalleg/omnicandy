@@ -1,0 +1,51 @@
+{
+  "manifestVersion": 2,
+  "id": "sample.simcad.internal",
+  "name": "SimCAD Add-in Sample",
+  "version": "1.0.0",
+  "description": "SIMULATED. An add-in only: no connector code runs in CreateCraft. Every command is answered by the add-in inside SimCAD, a built-in test application (not real software).",
+  "license": "MIT",
+  "publisher": { "name": "CreateCraft Samples" },
+  "sdk": { "min": 1, "max": 1 },
+  "application": { "kind": "self-contained", "name": "SimCAD (simulated application)" },
+  "requirements": [
+    { "kind": "other", "text": "Simulated test application: no real software is installed or changed." }
+  ],
+  "integration": {
+    "type": "internal",
+    "host": { "profile": "simcad", "simulated": true, "editions": ["Pro", "Lite"] },
+    "plugin": {
+      "id": "simcad.bridge.internal",
+      "name": "SimCAD add-in",
+      "version": "1.0.0",
+      "technology": "node-module",
+      "mechanism": "file-copy",
+      "destination": "simcad-plugins",
+      "files": [
+        { "from": "plugin/simcad-bridge.plugin.js", "to": "simcad-internal.plugin.js" },
+        { "from": "plugin/ccbridge-client.js", "to": "ccbridge-client.js" }
+      ],
+      "restart": "required",
+      "closeHost": "required",
+      "admin": "never"
+    },
+    "communication": {
+      "transport": "named-pipe",
+      "protocol": { "min": 1, "max": 1 },
+      "capabilities": [
+        { "id": "scene.describe", "permissions": ["read-project"] },
+        { "id": "scene.add_box", "permissions": ["modify-project"] },
+        { "id": "scene.slow_build", "permissions": ["modify-project"] },
+        { "id": "scene.reset", "permissions": ["modify-project"] }
+      ]
+    }
+  },
+  "methods": ["api"],
+  "capabilities": ["connect", "disconnect", "healthCheck", "executeCommand", "cancelOperation"],
+  "commands": [
+    { "id": "scene.describe", "label": "Describe the scene", "description": "Lists the objects in the SimCAD scene. Changes nothing.", "params": {}, "permissions": ["read-project"], "idempotent": true, "timeoutMs": 20000 },
+    { "id": "scene.add_box", "label": "Add a box", "description": "Adds a box to the SimCAD scene.", "params": { "name": { "type": "string", "description": "Name of the box.", "required": true }, "size": { "type": "number", "description": "Edge length.", "default": 1, "min": 0.1, "max": 1000 } }, "permissions": ["modify-project"], "timeoutMs": 20000 },
+    { "id": "scene.slow_build", "label": "Build slowly (long job)", "description": "A long step-by-step build with progress; can be cancelled.", "params": { "steps": { "type": "number", "description": "Number of steps.", "default": 20, "min": 1, "max": 600 } }, "permissions": ["modify-project"], "longRunning": true, "timeoutMs": 120000 },
+    { "id": "scene.reset", "label": "Clear the scene", "description": "Removes every object from the SimCAD scene.", "params": {}, "permissions": ["modify-project"], "destructive": true, "timeoutMs": 20000 }
+  ]
+}

@@ -284,7 +284,9 @@ export function ConnectWizard({ onClose }: { onClose: () => void }) {
                 {e.experimental && <span className="chip warn"><span className="dot" />Experimental</span>}
               </div>
               <ol className="connect-steps">
-                {e.group === 'needs-adapter' && <li>First you review the {nameOf(e)} connector (who made it, what it can do) and decide whether to trust it. Nothing is installed before that.</li>}
+                {e.group === 'needs-adapter' && <li>First you review the {nameOf(e)} {e.offer?.integrationType === 'external' ? 'connector' : 'connector and add-in'} (who made {e.offer?.integrationType === 'external' ? 'it' : 'them'}, what {e.offer?.integrationType === 'external' ? 'it' : 'they'} can do, which folders are used) and decide whether to trust {e.offer?.integrationType === 'external' ? 'it' : 'them'}. Nothing is installed before that.</li>}
+                {e.group === 'needs-adapter' && e.offer && e.offer.integrationType !== 'external' && e.offer.closeHost && <li>{e.offer.hostName ?? nameOf(e)} has to be closed while the add-in is installed. CreateCraft never closes it for you.</li>}
+                {e.group === 'needs-adapter' && e.offer && e.offer.integrationType !== 'external' && e.offer.restartHost && <li>Afterwards you open (or restart) {e.offer.hostName ?? nameOf(e)} so it loads the add-in. If it asks whether to allow the add-in, allow it.</li>}
                 <li>CreateCraft connects to {nameOf(e)} and runs a real test to prove it works. {e.group === 'attention' && e.status === 'not-running' ? `${nameOf(e)} has to be open for this.` : ''}</li>
               </ol>
               <span className="menu-label">What this connector may be allowed to do</span>
@@ -322,9 +324,9 @@ export function ConnectWizard({ onClose }: { onClose: () => void }) {
     <>
       {prompt && (
         <div className="connect-prompt">
-          <p className="connect-lead">Step 1 for {nameOf(prompt.entry)}: review its connector. You decide whether to install and trust it.</p>
+          <p className="connect-lead">Step 1 for {nameOf(prompt.entry)}: review {prompt.entry.offer?.integrationType === 'external' ? 'its connector' : 'its connector and add-in'}. You decide whether to install and trust {prompt.entry.offer?.integrationType === 'external' ? 'it' : 'them'}.</p>
           {prompt.review
-            ? <PackageReviewCard key={prompt.review.path} review={prompt.review} confirmLabel={`Install ${prompt.review.name ?? 'connector'}`} cancelLabel={`Skip ${nameOf(prompt.entry)}`} onConfirm={(approval) => answer({ approval })} onCancel={() => answer(null)} />
+            ? <PackageReviewCard key={prompt.review.path} review={prompt.review} onRecheck={() => { void window.studio.external.reviewPackage(prompt.review!.path).then((rv) => setPrompt((p) => (p ? { ...p, review: rv } : p))).catch((e) => setError(errorText(e))); }} confirmLabel={`Install ${prompt.review.name ?? 'connector'}`} cancelLabel={`Skip ${nameOf(prompt.entry)}`} onConfirm={(approval) => answer({ approval })} onCancel={() => answer(null)} />
             : (
               <div className="ext-row ext-review" role="group" aria-label="Turn on connector">
                 <small>The {prompt.entry.offer?.name} connector is already installed but turned off. Turn it on to continue?</small>

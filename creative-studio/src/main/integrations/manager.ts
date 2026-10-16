@@ -315,6 +315,8 @@ export class IntegrationManager {
     if (!cmd || !f.manifest.capabilities.includes('executeCommand')) {
       return fail('unsupported', `${f.manifest.name} does not support "${commandId}". Supported: ${f.manifest.commands.map((c) => c.id).join(', ') || 'none'}.`, app.name);
     }
+    const live = f.availableCommands?.();
+    if (live && !live.has(cmd.id)) return fail('unsupported', `The add-in inside ${app.name} has not made "${commandId}" available (this version or edition of the program may not support it). Available now: ${[...live].join(', ') || 'none'}.`, app.name);
     const params = validateParams(cmd, raw);
     if (typeof params === 'string') return fail('invalid-params', params, app.name);
 

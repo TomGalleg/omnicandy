@@ -1,0 +1,78 @@
+{
+  "manifestVersion": 2,
+  "id": "sample.simcad.hybrid",
+  "name": "SimCAD Hybrid Sample",
+  "version": "1.0.0",
+  "description": "SIMULATED. A connector plus a companion add-in for SimCAD, a built-in test application (not real software). It proves that CreateCraft can install both halves, connect them securely and run a real command inside the program.",
+  "license": "MIT",
+  "publisher": { "name": "CreateCraft Samples" },
+  "sdk": { "min": 1, "max": 1 },
+  "application": { "kind": "self-contained", "name": "SimCAD (simulated application)" },
+  "requirements": [
+    { "kind": "other", "text": "Simulated test application: no real software is installed or changed." },
+    { "kind": "running", "text": "SimCAD has to be started (or restarted) after the add-in is installed so it loads the add-in." }
+  ],
+  "runtime": { "entry": "main.js", "dependencies": [] },
+  "integration": {
+    "type": "hybrid",
+    "host": { "profile": "simcad", "simulated": true, "editions": ["Pro", "Lite"], "versions": [{ "min": "1.0", "max": "1.9" }] },
+    "plugin": {
+      "id": "simcad.bridge.hybrid",
+      "name": "SimCAD companion add-in",
+      "version": "1.0.0",
+      "technology": "node-module",
+      "mechanism": "file-copy",
+      "destination": "simcad-plugins",
+      "files": [
+        { "from": "plugin/simcad-bridge.plugin.js", "to": "simcad-hybrid.plugin.js" },
+        { "from": "plugin/ccbridge-client.js", "to": "ccbridge-client.js" }
+      ],
+      "restart": "required",
+      "closeHost": "required",
+      "admin": "never"
+    },
+    "communication": {
+      "transport": "named-pipe",
+      "protocol": { "min": 1, "max": 1 },
+      "capabilities": [
+        { "id": "scene.describe", "permissions": ["read-project"] },
+        { "id": "scene.add_box", "permissions": ["modify-project"] },
+        { "id": "scene.slow_build", "permissions": ["modify-project"] },
+        { "id": "scene.reset", "permissions": ["modify-project"] }
+      ]
+    }
+  },
+  "methods": ["api"],
+  "capabilities": ["connect", "disconnect", "healthCheck", "executeCommand", "cancelOperation"],
+  "commands": [
+    {
+      "id": "simcad.describe",
+      "label": "Describe the SimCAD scene",
+      "description": "Asks the add-in inside SimCAD which objects the scene holds. Changes nothing.",
+      "params": {},
+      "permissions": ["read-project"],
+      "idempotent": true,
+      "timeoutMs": 20000
+    },
+    {
+      "id": "simcad.add_box_verified",
+      "label": "Add a box and check it is there",
+      "description": "Adds a box to the SimCAD scene through the add-in, then asks the add-in again to prove the box exists.",
+      "params": {
+        "name": { "type": "string", "description": "Name of the box.", "required": true },
+        "size": { "type": "number", "description": "Edge length.", "default": 1, "min": 0.1, "max": 1000 }
+      },
+      "permissions": ["modify-project", "read-project"],
+      "timeoutMs": 20000
+    },
+    {
+      "id": "simcad.slow_build",
+      "label": "Build slowly (long job)",
+      "description": "Runs a long build step by step inside SimCAD, reporting progress. Can be cancelled.",
+      "params": { "steps": { "type": "number", "description": "Number of steps.", "default": 20, "min": 1, "max": 600 } },
+      "permissions": ["modify-project"],
+      "longRunning": true,
+      "timeoutMs": 120000
+    }
+  ]
+}

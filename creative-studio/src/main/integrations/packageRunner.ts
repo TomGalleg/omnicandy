@@ -16,6 +16,8 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import type { AdapterManifest, CommandSpec, DiscoveredApp, Permission, TrustLevel } from '@shared/integrations';
 import { runProcess } from './process';
+import { pluginHealth } from './bridge/bridgeAdapter';
+import type { PluginLink } from './bridge/link';
 import { AdapterError, type AdapterFactory, type AdapterOutcome, type ExecuteContext, type ExternalAdapter, type HealthResult, type ProbeResult } from './sdk';
 import { safeEntryName } from './zip';
 
@@ -40,6 +42,10 @@ function makeCtx(ac) {
     runApp: function (args, o) { return hostOp('runApp', { args: args, timeoutMs: o && o.timeoutMs }); },
     writeFile: function (name, data) { return hostOp('writeFile', { name: name, data: b64(data) }); },
     readFile: function (name) { return hostOp('readFile', { name: name }).then(function (s) { return Buffer.from(s, 'base64'); }); },
+    plugin: {
+      call: function (name, params) { return hostOp('pluginCall', { name: name, params: params || {} }); },
+      capabilities: function () { return hostOp('pluginCaps', {}); }
+    },
     error: function (kind, message) { var e = new Error(message); e.kind = kind; return e; }
   };
 }
@@ -96,6 +102,8 @@ export interface PackageFactoryOptions {
   execPath?: string;
   /** Called when the child dies unexpectedly (crash accounting is also kept here). */
   onCrash?: (count: number) => void;
+  /** Hybrid integrations: the authenticated link to the plugin inside the program. */
+  plugin?: PluginLink;
 }
 
 /** Crash counters are per installed adapter, shared by every child it ever starts. */
@@ -121,7 +129,7 @@ export function makePackageFactory(o: PackageFactoryOptions): AdapterFactory {
 }
 
 interface Pending { resolve(v: unknown): void; reject(e: Error): void; progress?: (stage: string, fraction?: number) => void }
-interface Current { perms: Set<Permission>; workDir: string | null; app: DiscoveredApp; signal: AbortSignal }
+interface Current { perms: Set<Permission>; workDir: string | null; app: DiscoveredApp; signal: AbortSignal; progress?: Pending['progress'] }
 
 export class PackageAdapter implements ExternalAdapter {
   private child: ChildProcess | null = null;
@@ -160,7 +168,13 @@ export class PackageAdapter implements ExternalAdapter {
     const app = this.app;
     const r = await this.serial(() => this.call<{ ok?: boolean; detail?: string; state?: HealthResult['state'] } | null>('healthCheck', {}, app, { perms: this.lifecyclePerms(), workDir: null }));
     const state = r?.state === 'not-running' || r?.state === 'api-unavailable' ? r.state : undefined;
-    return { ok: !!r?.ok, detail: String(r?.detail ?? (r?.ok ? 'ok' : 'The adapter reported a problem.')).slice(0, 500), state };
+    const own: HealthResult = { ok: !!r?.ok, detail: String(r?.detail ?? (r?.ok ? 'ok' : 'The adapter reported a problem.')).slice(0, 500), state };
+    // Hybrid: the connector alone proves nothing. The add-in inside the program must answer a real check too.
+    if (own.ok && this.o.plugin) {
+      const p = await pluginHealth(this.o.plugin, this.o.manifest.name);
+      return p.ok ? { ok: true, detail: `${own.detail} ${p.detail}`.slice(0, 500) } : p;
+    }
+    return own;
   }
 
   async execute(command: CommandSpec, params: Record<string, string | number | boolean>, ctx: ExecuteContext): Promise<AdapterOutcome> {
@@ -284,7 +298,7 @@ export class PackageAdapter implements ExternalAdapter {
     const child = this.child;
     if (!child) throw new Error(`${this.o.manifest.name} adapter process is not running.`);
     const id = ++this.seq;
-    this.cur = { perms: scope.perms, workDir: scope.workDir, app, signal: scope.signal ?? new AbortController().signal };
+    this.cur = { perms: scope.perms, workDir: scope.workDir, app, signal: scope.signal ?? new AbortController().signal, progress: scope.progress };
     const abort = () => {
       try { child.send({ t: 'cancel' }); } catch { /* gone */ }
       // A well-behaved adapter stops by itself; otherwise the child is ended so it cannot keep working.
@@ -338,6 +352,22 @@ export class PackageAdapter implements ExternalAdapter {
         const st = await fs.stat(src);
         if (!st.isFile() || st.size > MAX_FILE) throw new Error('That is not a readable file.');
         reply(true, (await fs.readFile(src)).toString('base64'));
+      } else if (m.op === 'pluginCaps') {
+        const link = this.o.plugin;
+        if (!link) throw new Error('This integration has no add-in inside the program.');
+        reply(true, link.session()?.capabilities ?? []);
+      } else if (m.op === 'pluginCall') {
+        const link = this.o.plugin;
+        if (!link) throw new Error('This integration has no add-in inside the program.');
+        const name = String(m.args.name ?? '');
+        const need = link.declared.get(name);
+        if (!need) throw new Error(`"${name}" is not one of the add-in's declared capabilities.`);
+        const missing = need.filter((p) => !cur.perms.has(p));
+        if (missing.length) throw new Error(`The add-in capability "${name}" needs permissions this command does not have: ${missing.join(', ')}.`);
+        const params = m.args.params;
+        if (!params || typeof params !== 'object' || Array.isArray(params) || Object.values(params).some((v) => !['string', 'number', 'boolean'].includes(typeof v))) throw new Error('Add-in settings must be text, numbers or true/false.');
+        const r = await link.call(name, params as Record<string, string | number | boolean>, { signal: cur.signal, onProgress: (stage, fraction) => cur.progress?.(stage, fraction) });
+        reply(true, r);
       } else throw new Error(`Unknown host operation "${m.op}".`);
     } catch (e) {
       reply(false, null, e instanceof Error ? e.message : String(e));

@@ -9,7 +9,7 @@ const base = (name: string, over: Partial<ExternalAppInfo> = {}): ExternalAppInf
   permissionsNeeded: [], notes: null, adapterVersion: null, origin: 'built-in', trust: 'built-in', requirements: [], selfContained: false, ...over,
 });
 const ready = (n: string): ConnectEntry => classifyApp({ app: base(n), offer: null, forgettable: false });
-const offerOf = (id: string): AdapterOffer => ({ source: 'bundled', path: `C:\\c\\${id}.ccadapter`, adapterId: id, name: id, version: '1.0.0', publisherName: 'P', signature: 'valid', publisherTrusted: false, permissions: ['read-info'] });
+const offerOf = (id: string): AdapterOffer => ({ source: 'bundled', path: `C:\\c\\${id}.ccadapter`, adapterId: id, name: id, version: '1.0.0', publisherName: 'P', signature: 'valid', publisherTrusted: false, permissions: ['read-info'], integrationType: 'external', hostName: null, simulated: false, closeHost: false, restartHost: false });
 const needs = (n: string): ConnectEntry => classifyApp({ app: base(n, { adapterId: null, adapterName: null, maturity: null, status: 'unsupported' }), offer: offerOf(n), forgettable: false });
 
 const verified = (key: string, name: string): ConnectOutcome => ({ key, state: 'verified', status: 'connected', headline: `${name} is connected and tested`, detail: '', evidence: ['checked'], technical: '' });

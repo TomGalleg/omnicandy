@@ -92,6 +92,8 @@ export interface AdapterManifest {
   trust?: TrustLevel;
   /** The adapter needs no installed program (it brings its own logic); CreateCraft lists it directly. */
   selfContained?: boolean;
+  /** Packages: how the integration reaches the program. Absent means external. */
+  integrationType?: IntegrationType;
 }
 
 /** built-in: ships with CreateCraft. trusted-publisher: signed by a publisher the user trusted. unsigned: no signature. */
@@ -198,8 +200,47 @@ export function versionSupported(v: string | null, range: AdapterManifest['versi
 
 // ---- installable adapter packages ----
 
-export const PACKAGE_MANIFEST_VERSION = 1;
+/** Manifest version written by current tools. Version 1 packages (external adapters only) are still read unchanged. */
+export const PACKAGE_MANIFEST_VERSION = 2;
+export const SUPPORTED_MANIFEST_VERSIONS: readonly number[] = [1, 2];
 export const PACKAGE_EXTENSION = '.ccadapter';
+
+/** external: an adapter process drives the program from outside. internal: a plugin inside the program does the work.
+ *  hybrid: both, talking to each other through the plugin bridge. */
+export type IntegrationType = 'external' | 'internal' | 'hybrid';
+export const INTEGRATION_TYPE_LABEL: Record<IntegrationType, string> = {
+  external: 'Connector', internal: 'Add-in (plugin inside the program)', hybrid: 'Connector and add-in',
+};
+
+export type PluginTechnology = 'dotnet-addin' | 'python-addin' | 'cep' | 'uxp' | 'extendscript' | 'maxscript' | 'bundle' | 'node-module';
+
+export type InstallStepKind = 'close-host' | 'adapter' | 'plugin-files' | 'vendor-workflow' | 'elevation' | 'restart-host' | 'authorize-in-host' | 'verify';
+export interface InstallStepView { kind: InstallStepKind; title: string; detail: string }
+
+/** What installing a package would do beyond the adapter: computed in main from the installer's own rules, never from the renderer. */
+export interface IntegrationReview {
+  type: IntegrationType;
+  hostName: string | null;
+  /** The "program" is a built-in test double, not real software. */
+  simulated: boolean;
+  pluginName: string | null;
+  technology: PluginTechnology | null;
+  steps: InstallStepView[];
+  /** Things that stop the install right now (host open, destination unknown, needs administrator...). Empty means it can proceed. */
+  blockers: string[];
+  closeHost: boolean;
+  restartHost: boolean;
+  needsAdmin: boolean;
+  hostRunning: boolean;
+  /** Where files would go, for the Advanced section. */
+  destinations: Array<{ label: string; path: string; scope: 'user' | 'machine' }>;
+  vendorWorkflow: { title: string; steps: string[]; officialUrl: string | null } | null;
+  communication: { transport: string; protocol: { min: number; max: number }; capabilities: string[] } | null;
+  dependencies: Array<{ kind: string; name: string; min: string | null }>;
+}
+
+/** The state of the in-program part after install. */
+export type PluginState = 'none' | 'installed' | 'restart-needed' | 'connected' | 'modified' | 'missing-files';
 
 export type SignatureState = 'valid' | 'unsigned' | 'invalid';
 
@@ -236,6 +277,10 @@ export interface PackageReview {
   action: 'install' | 'update' | 'reinstall' | 'blocked';
   fileCount: number;
   bytes: number;
+  /** external for version-1 packages. */
+  integrationType: IntegrationType;
+  /** Present for internal and hybrid packages. */
+  integration: IntegrationReview | null;
 }
 
 export interface PackageApproval {
@@ -245,6 +290,10 @@ export interface PackageApproval {
   allowUnsigned?: boolean;
   /** Required to install a signed package from a publisher not trusted yet; remembers the publisher. */
   trustPublisher?: boolean;
+  /** Internal and hybrid packages: the user agreed to put the plugin files into the program's plugin folder shown in the review. */
+  installPlugin?: boolean;
+  /** The destination needs administrator rights and the user agreed to the elevation request. */
+  elevate?: boolean;
 }
 
 export type InstalledState = 'ok' | 'disabled' | 'tampered' | 'incompatible' | 'missing-files' | 'crash-disabled';
@@ -271,6 +320,9 @@ export interface InstalledAdapter {
   installedAt: string;
   /** Ran inside the OS-level Node permission model (no spawning, no writes) as opposed to plain process isolation. */
   restricted: boolean;
+  integrationType: IntegrationType;
+  pluginState: PluginState;
+  pluginDetail: string;
 }
 
 export interface PackageListing { installed: InstalledAdapter[]; inbox: PackageReview[]; inboxDir: string; trustedPublishers: Array<{ fingerprint: string; name: string; addedAt: string }> }

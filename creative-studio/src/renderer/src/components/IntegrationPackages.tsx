@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import {
-  PERMISSION_LABEL,
+  INTEGRATION_TYPE_LABEL, PERMISSION_LABEL,
   type InstalledAdapter, type InstalledState, type JobInfo, type PackageApproval, type PackageListing, type PackageReview,
 } from '@shared/integrations';
 import { announceExternalChanged, errorText, EXTERNAL_CHANGED } from '../connect/events';
@@ -67,6 +67,9 @@ export function IntegrationPackages({ onChanged }: { onChanged: () => void }) {
         </div>
         {a.description && <small>{a.description}</small>}
         <small>{a.stateDetail}</small>
+        {a.integrationType !== 'external' && (
+          <small><strong>{INTEGRATION_TYPE_LABEL[a.integrationType]}.</strong> Add-in: {a.pluginState === 'connected' ? 'connected and tested' : a.pluginDetail}</small>
+        )}
         <small>
           {a.selfContained ? 'Needs no other program.' : `Controls ${a.applicationName}; the program must be installed on this PC.`}
           {' '}Allowed: {a.approvedPermissions.length ? a.approvedPermissions.map((p) => PERMISSION_LABEL[p].toLowerCase()).join(', ') : 'nothing beyond its own files'}.

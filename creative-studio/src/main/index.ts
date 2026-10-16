@@ -3,7 +3,7 @@ import { pathToFileURL } from 'node:url';
 import { app, BrowserWindow, nativeTheme, net, protocol, session, shell } from 'electron';
 import { ASSET_SCHEME } from '@shared/ipc';
 import { PALETTES, resolveTheme } from '@shared/theme';
-import { DockedPanel, trackerScriptPath } from './dockedPanel';
+import { DockedPanel } from './dockedPanel';
 import { EmbeddedApp } from './embeddedApp';
 import { registerIpc } from './ipc';
 import type { ProjectStore } from './projectStore';
@@ -22,14 +22,18 @@ app.setPath('userData', process.env.CS_USER_DATA_DIR ? path.resolve(process.env.
 // One instance per profile: two processes seeding/writing the same project would race.
 if (!app.requestSingleInstanceLock()) app.exit(0);
 
-const appIcon = () => path.join(app.getAppPath(), 'resources', 'icon.ico');
+// Files that must stay plain files next to the program (a PowerShell script cannot be run from inside app.asar): in the installed
+// application they are electron-builder extraResources under process.resourcesPath; in development they are in the repository.
+const resourceDir = app.isPackaged ? process.resourcesPath : path.join(app.getAppPath(), 'resources');
+const trackerScript = path.join(resourceDir, 'window-tracker.ps1');
+const appIcon = () => path.join(resourceDir, 'icon.ico');
 let mainWindow: BrowserWindow | null = null;
 const panelClosedListeners: Array<() => void> = [];
-const embedded = new EmbeddedApp(() => mainWindow, trackerScriptPath(app.getAppPath()), () => { /* app window closed */ });
+const embedded = new EmbeddedApp(() => mainWindow, trackerScript, () => { /* app window closed */ });
 const panel = new DockedPanel({
   preload: path.join(__dirname, '../preload/index.js'),
   icon: appIcon,
-  trackerScript: trackerScriptPath(app.getAppPath()),
+  trackerScript: trackerScript,
   backgroundColor: PALETTES.artcraft.surface,
   load: async (win) => {
     win.webContents.on('will-navigate', (e, url) => { if (!isAppUrl(url)) e.preventDefault(); });
@@ -47,7 +51,7 @@ app.on('second-instance', () => {
 const settings = new SettingsStore(app.getPath('userData'));
 const projects = new ProjectManager(
   path.join(app.getPath('userData'), 'projects'),
-  path.join(app.getAppPath(), 'fixtures', 'sample-project'),
+  app.isPackaged ? path.join(process.resourcesPath, 'sample-project') : path.join(app.getAppPath(), 'fixtures', 'sample-project'),
   path.join(app.getPath('userData'), 'projects.json'),
   (dir) => shell.trashItem(dir),
 );

@@ -13,8 +13,8 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { z } from 'zod';
 import {
-  ADAPTER_SDK_VERSION, PACKAGE_MANIFEST_VERSION, PERMISSION_LABEL,
-  type AdapterManifest, type AdapterRequirement, type CommandSpec, type Permission, type SignatureState,
+  ADAPTER_SDK_VERSION, PERMISSION_LABEL, SUPPORTED_MANIFEST_VERSIONS,
+  type AdapterManifest, type IntegrationType, type AdapterRequirement, type CommandSpec, type Permission, type SignatureState,
 } from '@shared/integrations';
 import { PACKAGE_LIMITS, readZip, safeEntryName, ZipError, type ZipLimits } from './zip';
 
@@ -60,8 +60,45 @@ const dependency = z.object({
 
 const range = z.object({ min: versionStr.optional(), max: versionStr.optional() }).strict();
 
+const idRe = /^[a-z0-9][a-z0-9.-]{1,60}$/;
+const workflow = z.object({ title: text(120), steps: z.array(text(300)).min(1).max(10), officialUrl: z.string().url().max(200).optional() }).strict();
+
+// Manifest version 2: how the integration reaches the program. The manifest only NAMES a host profile and a destination;
+// the folders, file types and limits live in the installer's own table (install/hostProfiles.ts), so a package cannot
+// grant itself a write location. There is deliberately no field for scripts, commands or absolute paths.
+export const integrationSchema = z.object({
+  type: z.enum(['external', 'internal', 'hybrid']),
+  host: z.object({
+    profile: z.string().regex(idRe),
+    simulated: z.boolean().optional(),
+    editions: z.array(text(60)).max(8).optional(),
+    versions: z.array(range).max(8).optional(),
+  }).strict().optional(),
+  plugin: z.object({
+    id: z.string().regex(idRe),
+    name: text(80).optional(),
+    version: versionStr,
+    technology: z.enum(['dotnet-addin', 'python-addin', 'cep', 'uxp', 'extendscript', 'maxscript', 'bundle', 'node-module']),
+    mechanism: z.enum(['file-copy', 'vendor-workflow']),
+    destination: z.string().regex(/^[a-z][a-z0-9-]{0,40}$/),
+    files: z.array(z.object({ from: text(200), to: text(200) }).strict()).max(40),
+    restart: z.enum(['required', 'not-required', 'unknown']),
+    closeHost: z.enum(['required', 'not-required']),
+    admin: z.enum(['never', 'required']),
+    dependencies: z.array(dependency).max(12).optional(),
+    vendorWorkflow: workflow.optional(),
+  }).strict().optional(),
+  communication: z.object({
+    transport: z.literal('named-pipe'),
+    protocol: z.object({ min: z.number().int().min(1), max: z.number().int().min(1) }).strict(),
+    /** Everything the plugin may ever register, with what each needs. */
+    capabilities: z.array(z.object({ id: z.string().regex(/^[a-z][a-z0-9_.-]{0,60}$/), permissions: z.array(z.enum(PERMS)).max(PERMS.length) }).strict()).max(50),
+  }).strict().optional(),
+  uninstall: z.object({ vendorWorkflow: workflow.optional() }).strict().optional(),
+}).strict();
+
 export const packageManifestSchema = z.object({
-  manifestVersion: z.literal(PACKAGE_MANIFEST_VERSION),
+  manifestVersion: z.number().int().refine((v) => SUPPORTED_MANIFEST_VERSIONS.includes(v), 'unsupported manifestVersion (this CreateCraft reads 1 and 2)'),
   id: z.string().regex(/^[a-z0-9][a-z0-9.-]{1,60}$/, 'id: lower-case letters, digits, "." or "-" (2 to 61 characters)'),
   name: text(80),
   version: versionStr,
@@ -79,10 +116,12 @@ export const packageManifestSchema = z.object({
     versions: z.array(range).max(8).optional(),
   }).strict(),
   requirements: z.array(requirement).max(12).optional(),
+  /** Required for external and hybrid integrations; internal-only packages carry no adapter code. */
   runtime: z.object({
     entry: text(200),
     dependencies: z.array(dependency).max(12).optional(),
-  }).strict(),
+  }).strict().optional(),
+  integration: integrationSchema.optional(),
   methods: z.array(z.enum(['api', 'scripting', 'mcp', 'cli', 'file-exchange', 'ui-automation', 'visual'])).min(1).max(7),
   capabilities: z.array(z.enum(['detect', 'inspectCapabilities', 'connect', 'disconnect', 'healthCheck', 'launch', 'openProject', 'executeCommand', 'getExecutionStatus', 'cancelOperation', 'saveProject', 'exportFile', 'importFile', 'getApplicationState', 'dispose'])).max(15),
   commands: z.array(commandSpec).max(50),
@@ -90,12 +129,18 @@ export const packageManifestSchema = z.object({
 }).strict();
 
 export type PackageManifest = z.infer<typeof packageManifestSchema>;
+export type IntegrationSpec = z.infer<typeof integrationSchema>;
+
+export const integrationTypeOf = (m: Pick<PackageManifest, 'integration'>): IntegrationType => m.integration?.type ?? 'external';
+/** Entry script of the adapter part; null for internal-only packages. */
+export const entryOf = (m: Pick<PackageManifest, 'runtime'>): string | null => m.runtime?.entry ?? null;
 
 export const sha256 = (b: Buffer | string) => createHash('sha256').update(b).digest('hex');
 
 /** The set of permissions any command may use. */
-export function requestedPermissions(m: Pick<PackageManifest, 'commands'>): Permission[] {
-  return [...new Set(m.commands.flatMap((c) => c.permissions))].sort();
+export function requestedPermissions(m: Pick<PackageManifest, 'commands' | 'integration'>): Permission[] {
+  const fromPlugin = (m.integration?.communication?.capabilities ?? []).flatMap((c) => c.permissions);
+  return [...new Set([...m.commands.flatMap((c) => c.permissions), ...fromPlugin])].sort();
 }
 
 export interface SignatureInfo { state: SignatureState; fingerprint: string | null; publicKey: string | null; detail: string }
@@ -188,9 +233,16 @@ export function parsePackage(files: Map<string, Buffer>): ParsedPackage | { prob
     try { safeEntryName(name); } catch (e) { problems.push((e as Error).message); }
     if (name === MANIFEST_FILE || name === SIGNATURE_FILE) problems.push(`${name} cannot be listed in files`);
   }
-  try { safeEntryName(m.runtime.entry); } catch (e) { problems.push(`runtime.entry: ${(e as Error).message}`); }
-  if (!/\.c?js$/.test(m.runtime.entry)) problems.push('runtime.entry must be a .js or .cjs file');
-  if (!(m.runtime.entry in m.files)) problems.push('runtime.entry is not listed in files');
+  const type = integrationTypeOf(m);
+  if (m.manifestVersion === 1 && m.integration) problems.push('"integration" needs manifestVersion 2');
+  if (type !== 'internal' && !m.runtime) problems.push(`a ${type} integration needs runtime.entry`);
+  if (type === 'internal' && m.runtime) problems.push('an internal-only integration carries no adapter code: remove runtime');
+  if (m.runtime) {
+    try { safeEntryName(m.runtime.entry); } catch (e) { problems.push(`runtime.entry: ${(e as Error).message}`); }
+    if (!/\.c?js$/.test(m.runtime.entry)) problems.push('runtime.entry must be a .js or .cjs file');
+    if (!(m.runtime.entry in m.files)) problems.push('runtime.entry is not listed in files');
+  }
+  problems.push(...integrationProblems(m, type));
   // Integrity: the package holds exactly the listed files, byte for byte.
   for (const [name, hash] of Object.entries(m.files)) {
     const b = files.get(name);
@@ -204,6 +256,38 @@ export function parsePackage(files: Map<string, Buffer>): ParsedPackage | { prob
   return { manifest: m, manifestBytes: mb, signature, problems };
 }
 
+function integrationProblems(m: PackageManifest, type: IntegrationType): string[] {
+  const out: string[] = [];
+  const i = m.integration;
+  if (!i) return out;
+  if (i.type === 'external') {
+    if (i.plugin || i.communication) out.push('an external integration cannot declare a plugin or communication');
+    return out;
+  }
+  if (!i.plugin) out.push(`a ${type} integration needs integration.plugin`);
+  if (!i.communication) out.push(`a ${type} integration needs integration.communication`);
+  if (!i.host) out.push(`a ${type} integration needs integration.host.profile`);
+  const pl = i.plugin;
+  if (pl) {
+    for (const f of pl.files) {
+      try { safeEntryName(f.to); } catch (e) { out.push(`plugin file target "${f.to}": ${(e as Error).message}`); }
+      if (!(f.from in m.files)) out.push(`plugin file "${f.from}" is not listed in files`);
+    }
+    if (pl.mechanism === 'file-copy' && !pl.files.length) out.push('a file-copy plugin lists no files');
+    if (pl.mechanism === 'vendor-workflow' && !pl.vendorWorkflow) out.push('a vendor-workflow plugin needs vendorWorkflow steps');
+    if (pl.mechanism === 'vendor-workflow' && pl.files.length) out.push('a vendor-workflow plugin must not list files for CreateCraft to copy');
+    if (pl.vendorWorkflow?.officialUrl && !/^https:\/\//.test(pl.vendorWorkflow.officialUrl)) out.push('vendorWorkflow.officialUrl must be https');
+  }
+  const c = i.communication;
+  if (c) {
+    if (c.protocol.min > c.protocol.max) out.push('communication.protocol.min is greater than max');
+    const caps = new Set(c.capabilities.map((x) => x.id));
+    if (caps.size !== c.capabilities.length) out.push('duplicate communication capability');
+    if (type === 'internal') for (const cmd of m.commands) if (!caps.has(cmd.id)) out.push(`command "${cmd.id}" has no matching communication capability`);
+  }
+  return out;
+}
+
 /** Converts a package manifest into the registry's AdapterManifest. Packages are always "experimental": verified is CreateCraft's word. */
 export function toAdapterManifest(m: PackageManifest, trust: 'trusted-publisher' | 'unsigned'): AdapterManifest {
   const ranges = m.application.versions;
@@ -212,7 +296,7 @@ export function toAdapterManifest(m: PackageManifest, trust: 'trusted-publisher'
   const cmp = (a: string, b: string) => a.split('.').map(Number).reduce((d, x, i) => d || x - (Number(b.split('.')[i]) || 0), 0);
   const selfContained = m.application.kind === 'self-contained';
   const reqs: AdapterRequirement[] = [...(m.requirements ?? [])];
-  for (const d of m.runtime.dependencies ?? []) reqs.push({ kind: 'runtime', text: `${d.name}${d.min ? ` ${d.min} or newer` : ''}${d.note ? `: ${d.note}` : ''}` });
+  for (const d of m.runtime?.dependencies ?? []) reqs.push({ kind: 'runtime', text: `${d.name}${d.min ? ` ${d.min} or newer` : ''}${d.note ? `: ${d.note}` : ''}` });
   return {
     id: m.id,
     name: m.name,
@@ -234,5 +318,6 @@ export function toAdapterManifest(m: PackageManifest, trust: 'trusted-publisher'
     source: 'package',
     trust,
     selfContained,
+    integrationType: integrationTypeOf(m),
   };
 }
