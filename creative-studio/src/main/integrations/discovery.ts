@@ -1,7 +1,9 @@
 // Windows Application Discovery Service. Runs locally and only looks for the executables that
 // installed adapters declare (no full inventory is built, nothing is uploaded, no drive scan).
-// Sources: Uninstall registry keys, App Paths, common install folders (two levels deep), PATH,
-// running processes and user-selected folders/files.
+// Sources: Uninstall registry keys (install location, icon folder, uninstaller folder), App Paths, Start Menu
+// shortcuts, common install folders (two levels deep), PATH, running processes, user-selected folders/files and
+// folders remembered from earlier scans. Every source only asks "is one of the wanted executables in this one
+// folder (or its bin subfolder)?"; no drive is ever walked.
 
 import { execFile } from 'node:child_process';
 import fs from 'node:fs/promises';
@@ -49,7 +51,20 @@ const UNINSTALL_KEYS = [
   'HKCU\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall',
 ];
 
-export async function discoverApps(targets: DiscoveryTarget[], d: DiscoveryEnv = realDiscoveryEnv, userPaths: string[] = []): Promise<DiscoveredApp[]> {
+/** Sources whose finding is worth remembering: they depend on records (uninstall entries, shortcuts) that can disappear. */
+export const REMEMBERED_SOURCES: ReadonlyArray<DiscoveredApp['source']> = ['registry', 'app-paths', 'shortcut'];
+
+/** The first program path in an uninstall command such as `"E:\App\unins.exe" /S`, or null (msiexec and the like are ignored). */
+export function programOf(command: string | undefined): string | null {
+  if (!command) return null;
+  const m = /^\s*"([^"]+\.exe)"/i.exec(command) ?? /^\s*([^\s"]+\.exe)/i.exec(command);
+  return m ? m[1]! : null;
+}
+
+// One PowerShell call lists where Start Menu shortcuts point (a cheap, reliable "this is installed here" signal).
+const SHORTCUT_SCRIPT = "$s = New-Object -ComObject WScript.Shell; foreach ($r in @([Environment]::GetFolderPath('CommonPrograms'), [Environment]::GetFolderPath('Programs'))) { if ($r -and (Test-Path $r)) { Get-ChildItem -LiteralPath $r -Filter *.lnk -Recurse -ErrorAction SilentlyContinue | ForEach-Object { try { $s.CreateShortcut($_.FullName).TargetPath } catch {} } } }";
+
+export async function discoverApps(targets: DiscoveryTarget[], d: DiscoveryEnv = realDiscoveryEnv, userPaths: string[] = [], remembered: string[] = []): Promise<DiscoveredApp[]> {
   const exeCase = new Map(targets.flatMap((t) => t.exeNames.map((e) => [lower(e), e] as const)));
   const wantedExe = new Set(exeCase.keys());
   const orig = (e: string) => exeCase.get(e) ?? e;
@@ -62,6 +77,16 @@ export async function discoverApps(targets: DiscoveryTarget[], d: DiscoveryEnv =
     if (!prev || (!prev.version && a.version) || (!prev.publisher && a.publisher)) found.set(key, { ...prev, ...a, name: prev && a.source !== 'registry' ? prev.name : a.name, version: a.version ?? prev?.version ?? null, publisher: a.publisher ?? prev?.publisher ?? null, key });
   };
   const isWanted = (file: string) => wantedExe.has(lower(path.basename(file)));
+  /** The wanted executables that would sit directly in `dir`, or in its `bin` subfolder. */
+  const exesIn = (dir: string) => [...wantedExe].flatMap((e) => [path.join(dir, orig(e)), path.join(dir, 'bin', orig(e))]);
+  /** Adds every wanted executable that really exists in `dir` (or `dir\bin`); returns whether one was found. */
+  const addFrom = async (dir: string, source: DiscoveredApp['source'], installType: DiscoveredApp['installType'], name = path.basename(dir)): Promise<boolean> => {
+    let any = false;
+    for (const exe of exesIn(dir)) {
+      if (await d.exists(exe)) { add({ name: path.basename(path.dirname(exe)).toLowerCase() === 'bin' ? path.basename(path.dirname(path.dirname(exe))) : name, publisher: null, version: null, exePath: exe, installType, source }); any = true; }
+    }
+    return any;
+  };
 
   // 1. Uninstall keys: match by display name, then find the executable under InstallLocation.
   for (const k of UNINSTALL_KEYS) {
@@ -69,10 +94,14 @@ export async function discoverApps(targets: DiscoveryTarget[], d: DiscoveryEnv =
       const name = row.values.DisplayName;
       if (!name || !nameRes.some((r) => r.test(name))) continue;
       const loc = row.values.InstallLocation?.replace(/^"|"$/g, '');
-      const icon = row.values.DisplayIcon?.replace(/^"|"$/g, '').replace(/,\d+$/, '');
+      const icon = row.values.DisplayIcon?.replace(/^"|"$/g, '').replace(/,-?\d+$/, '');
+      // Many installers leave InstallLocation empty; the icon and the uninstaller still say where the program lives.
+      const uninstaller = programOf(row.values.QuietUninstallString) ?? programOf(row.values.UninstallString);
       const candidates: string[] = [];
       if (icon && /\.exe$/i.test(icon)) candidates.push(icon);
-      if (loc) for (const e of wantedExe) candidates.push(path.join(loc, orig(e)), path.join(loc, 'bin', orig(e)));
+      for (const dir of [loc, icon && /\.exe$/i.test(icon) ? path.dirname(icon) : undefined, uninstaller ? path.dirname(uninstaller) : undefined]) {
+        if (dir) candidates.push(...exesIn(dir));
+      }
       for (const c of candidates) {
         if (isWanted(c) && await d.exists(c)) {
           add({ name, publisher: row.values.Publisher ?? null, version: row.values.DisplayVersion ?? null, exePath: c, installType: 'installed', source: 'registry' });
@@ -88,6 +117,16 @@ export async function discoverApps(targets: DiscoveryTarget[], d: DiscoveryEnv =
       const exe = row.values['(Default)']?.replace(/^"|"$/g, '');
       if (exe && isWanted(exe) && await d.exists(exe)) add({ name: path.basename(exe, '.exe'), publisher: null, version: null, exePath: exe, installType: 'installed', source: 'app-paths' });
     }
+  }
+
+  // 2b. Start Menu shortcuts: where each one points tells where the program is installed.
+  if (wantedExe.size) {
+    const dirs = new Set<string>();
+    for (const line of (await d.run('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', SHORTCUT_SCRIPT])).split(/\r?\n/)) {
+      const t = line.trim();
+      if (/^[A-Za-z]:[\\/]/.test(t)) dirs.add(path.dirname(t));
+    }
+    for (const dir of dirs) await addFrom(dir, 'shortcut', 'installed');
   }
 
   // 3. Common install folders, two levels deep (vendor folder, then product folder).
@@ -122,6 +161,11 @@ export async function discoverApps(targets: DiscoveryTarget[], d: DiscoveryEnv =
       const exe = path.join(p, orig(e));
       if (await d.exists(exe)) add({ name: path.basename(p), publisher: null, version: null, exePath: exe, installType: 'portable', source: 'user' });
     }
+  }
+
+  // 5b. Folders found by an earlier scan (kept even while a drive is unplugged: they only count when the file exists).
+  for (const p of remembered) {
+    if (isWanted(p) && await d.exists(p)) add({ name: path.basename(path.dirname(p)).toLowerCase() === 'bin' ? path.basename(path.dirname(path.dirname(p))) : path.basename(path.dirname(p)), publisher: null, version: null, exePath: p, installType: 'installed', source: 'remembered' });
   }
 
   // 6. Running processes (only for executables we know about).

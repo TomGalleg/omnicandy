@@ -69,7 +69,13 @@ export class AdapterPackages {
     if (inst.record.enabled) {
       try { this.register(inst); } catch (e) { this.loadErrors.set(inst.manifest.id, e instanceof Error ? e.message : String(e)); throw e; }
     }
+    await this.rescan();
     return (await this.view(inst.manifest.id))!;
+  }
+
+  /** Lists the applications again so a new, removed or repaired integration shows up (or goes away) at once. */
+  private async rescan(): Promise<void> {
+    try { await this.manager.scan(); } catch { /* the next manual scan will report the problem */ }
   }
 
   async setEnabled(id: string, enabled: boolean): Promise<InstalledAdapter> {
@@ -80,6 +86,7 @@ export class AdapterPackages {
       if (!v.install) throw new PackageError(v.detail);
       this.register(v.install);
     }
+    await this.rescan();
     return (await this.view(id))!;
   }
 
@@ -88,6 +95,7 @@ export class AdapterPackages {
     await this.store.uninstall(id);
     this.crashDisabled.delete(id);
     this.loadErrors.delete(id);
+    await this.rescan();
   }
 
   async repair(id: string): Promise<InstalledAdapter> {
@@ -97,6 +105,7 @@ export class AdapterPackages {
     this.crashDisabled.delete(id);
     this.loadErrors.delete(id);
     if (inst.record.enabled) this.register(inst);
+    await this.rescan();
     return (await this.view(id))!;
   }
 

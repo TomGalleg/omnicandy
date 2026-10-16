@@ -9,6 +9,7 @@ const STATE_LABEL: Record<InstalledState, string> = {
 };
 const STATE_CHIP: Record<InstalledState, string> = { ok: 'ok', disabled: 'off', tampered: 'warn', incompatible: 'warn', 'missing-files': 'warn', 'crash-disabled': 'warn' };
 
+export const EXTERNAL_CHANGED = 'createcraft:external-apps-changed';
 const msg = (e: unknown) => (e instanceof Error ? e.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '') : String(e));
 
 /** Settings > Integrations > installable integration packages, with the review step, permissions and background jobs. */
@@ -25,7 +26,7 @@ export function IntegrationPackages({ onChanged }: { onChanged: () => void }) {
   const run = async (what: string, fn: () => Promise<void>) => {
     setBusy(what);
     setError(null);
-    try { await fn(); } catch (e) { setError(msg(e)); }
+    try { await fn(); if (what !== 'load') window.dispatchEvent(new Event(EXTERNAL_CHANGED)); } catch (e) { setError(msg(e)); }
     setBusy(null);
   };
   const refresh = async () => { setListing(await window.studio.external.packages()); setJobs(await window.studio.external.jobs()); };

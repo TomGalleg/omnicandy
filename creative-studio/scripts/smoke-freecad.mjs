@@ -43,9 +43,10 @@ if (realBin) {
   mockExe = path.join(mockBin, 'FreeCADCmd.exe');
   execFileSync('C:\\Windows\\Microsoft.NET\\Framework64\\v4.0.30319\\csc.exe', ['-nologo', `-out:${mockExe}`, cs]);
 }
-// Tell the scratch profile where the "installed" program is (what Add location... does in the UI).
+// Tell the scratch profile where the "installed" program is (what Add location... does in the UI). A REAL FreeCAD is NOT
+// told: it must be found by CreateCraft's own discovery (uninstall record / Start Menu shortcut).
 fs.mkdirSync(path.join(profile, 'secrets'), { recursive: true });
-fs.writeFileSync(path.join(profile, 'secrets', 'external-apps.json'), JSON.stringify({ grants: {}, paths: [mockExe] }));
+fs.writeFileSync(path.join(profile, 'secrets', 'external-apps.json'), JSON.stringify({ grants: {}, paths: realBin ? [] : [mockExe] }));
 
 const inbox = path.join(profile, 'integrations', 'inbox');
 fs.mkdirSync(inbox, { recursive: true });
@@ -86,7 +87,10 @@ try {
 
   // With a real FreeCAD the list may still hold the stale row of the old placeholder (found through the Windows uninstall record,
   // same program) until the next rescan; the row of this integration is the one that lists its commands.
-  const apps = win.locator('.ext-apps > .ext-list > .ext-row', { hasText: 'FreeCAD' }).filter({ hasText: 'Create a parametric 3D model' });
+  const apps = win.locator('.ext-apps > .ext-list > .ext-row', { hasText: 'FreeCAD' }).filter({ hasText: 'Create a parametric 3D model' })
+    // With a real FreeCAD also installed, the test-double run sees both programs; pick the double (version 1.0.2).
+    .filter({ hasText: realBin ? '' : 'version 1.0.2' });
+  check('no stale "Unsupported" FreeCAD placeholder row remains after the install, without a rescan', (await win.locator('.ext-apps > .ext-list > .ext-row', { hasText: 'FreeCAD' }).filter({ hasText: 'Unsupported' }).count()) === 0);
   await apps.first().waitFor({ timeout: 30000 });
   const appText = (await apps.first().textContent()) ?? '';
   check('FreeCAD is discovered and its commands are registered', /Create a parametric 3D model/.test(appText) && /Export STEP/.test(appText) && /Change a model parameter/.test(appText), appText.slice(0, 200));

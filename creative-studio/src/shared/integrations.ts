@@ -119,7 +119,7 @@ export interface DiscoveredApp {
   version: string | null;
   exePath: string;
   installType: 'installed' | 'portable' | 'path' | 'user' | 'running';
-  source: 'registry' | 'app-paths' | 'common-dir' | 'path' | 'running' | 'user';
+  source: 'registry' | 'app-paths' | 'shortcut' | 'common-dir' | 'path' | 'running' | 'user' | 'remembered';
 }
 
 /** What the UI and the router see for one application. */

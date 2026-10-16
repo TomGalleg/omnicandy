@@ -15,7 +15,7 @@ Two kinds of adapter share one manager, one permission model, one AI router and 
 |---|---|
 | `src/shared/integrations.ts` | Contract: control methods, permissions, capabilities, `CommandSpec`, `AdapterManifest`, statuses, results |
 | `src/main/integrations/sdk.ts` | `ExternalAdapter` interface, `AdapterFactory`, manifest validation |
-| `src/main/integrations/discovery.ts` | Local discovery (registry Uninstall + App Paths, common folders 2 levels, PATH, running processes, user paths) |
+| `src/main/integrations/discovery.ts` | Local discovery (see [Discovery](#discovery)) |
 | `src/main/integrations/manager.ts` | Lifecycle, permissions, parameter validation, timeouts, cancel, output verification, audit log |
 | `src/main/integrations/process.ts` | Shared child-process helpers for adapters: `runProcess`, `safeFileName`, `parseResultLine` |
 | `src/main/integrations/adapters/blender.ts` | First real adapter (scripting, background mode, verified live) |
@@ -30,6 +30,31 @@ Two kinds of adapter share one manager, one permission model, one AI router and 
 | `fixtures/sample-adapter/` | The sample package (self-contained, harmless) |
 | `src/renderer/src/components/ExternalApps.tsx`, `IntegrationPackages.tsx` | Settings > Integrations screen |
 | `claudePartner.ts` tools `external_apps`, `external_run`, `external_job` | The AI router: only listed commands, approval dialog per run, background jobs |
+
+## Discovery
+
+Only executables that registered adapters declare are looked for; nothing is uploaded and no drive is ever walked. Every source asks
+one question: is a wanted executable in this folder or its `bin` subfolder? Sources, in order:
+
+1. **Uninstall records** (HKLM, WOW6432Node, HKCU) matched by display name. The folder comes from `InstallLocation`, **the folder of `DisplayIcon`**
+   and **the folder of the uninstaller** (`QuietUninstallString` / `UninstallString`). Many installers (FreeCAD's among them) leave `InstallLocation`
+   empty, so the icon and uninstaller folders are what finds a program on `D:` or `E:`.
+2. **App Paths**.
+3. **Start Menu shortcuts** (all users and current user): one PowerShell call lists the shortcut targets; each target's folder is checked.
+4. Common install folders two levels under Program Files, Program Files (x86) and `%LOCALAPPDATA%\Programs`.
+5. `PATH`, then user-selected locations (Settings > Integrations > Add location), then **remembered locations**, then running processes.
+
+**Remembered locations.** Programs found through records that can vanish (uninstall record, App Paths, shortcut) are saved in
+`external-apps.json` (`remembered`, at most 100, in the per-user private folder). On later scans they count as long as the file exists, so a
+program is still recognised after its record or shortcut is gone, and again when an unplugged drive returns. Nothing is pruned automatically.
+Several installed versions of one program are separate entries (one per executable path). The user's own locations are unchanged.
+
+**Placeholder replacement.** Registering a real adapter drops the entries of the placeholder it replaces immediately (they were listed as
+"Unsupported"); installing, turning on/off, removing or repairing a package rescans in the same call (`AdapterPackages`), and the Settings
+screen reloads its list on every such action. Removing the package restores the placeholder and its entries on the rescan that follows.
+
+Limits: a program with no uninstall record, no shortcut, not in a standard folder and not on `PATH` still needs Add location once (then it is
+saved); portable copies are the typical case. The shortcut scan adds about a second to a rescan.
 
 ## Writing an adapter
 
@@ -284,12 +309,8 @@ Findings from running on real FreeCAD 1.1.4 (all handled inside the package, no 
   test saw `geometry.add` repeat an earlier output name). FreeCAD is now always started with a constant launcher
   `_cc_run.py` that reads `_cc_job.py` as text. The test double runs scripts as `__main__`, so it could not show this: a
   reminder that the mock proves plumbing only.
-* **Discovery of a custom install folder.** The Windows uninstall record of the FreeCAD installer has no InstallLocation and
-  its icon points at `FreeCAD.exe`, so the generic discovery does not find `FreeCADCmd.exe` outside the standard folders
-  (`Program Files\FreeCAD x.y\bin` is found). Use Settings > Integrations > Add location... (user-selected folder).
-  Improving the generic discovery (derive the folder from the uninstall record's icon) would be a core change and was not made.
-* **Stale placeholder row.** After installing the package the list can still show the old "Unsupported" placeholder row of
-  the same program until the next rescan (the manager does not clear its app list when a placeholder is replaced). Harmless.
+* **Discovery of a custom install folder (fixed in the core, see [Discovery](#discovery)).** The FreeCAD installer leaves `InstallLocation` empty and its icon points at `FreeCAD.exe`; discovery now also uses the icon and uninstaller folders and Start Menu shortcuts, so `E:\FreeCAD 1.1\bin\FreeCADCmd.exe` is found without Add location.
+* **Stale placeholder row (fixed in the core).** The old "Unsupported" row of the replaced placeholder is removed at once; see Discovery.
 * `FreeCADCmd.exe` starts and exits by itself with the minimal environment `ctx.runApp` provides (no APPDATA); no host
   change was needed.
 * `smoke-external.mjs` matched rows by text, so the FreeCAD placeholder's note (it mentions Blender) broke it once FreeCAD

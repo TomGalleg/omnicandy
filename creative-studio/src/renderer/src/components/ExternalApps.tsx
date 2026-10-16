@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { PERMISSION_LABEL, STATUS_LABEL, type ExternalAppInfo, type ExternalScan, type IntegrationStatus } from '@shared/integrations';
-import { IntegrationPackages } from './IntegrationPackages';
+import { EXTERNAL_CHANGED, IntegrationPackages } from './IntegrationPackages';
 
 const CHIP: Record<IntegrationStatus, string> = {
   detected: 'real', available: 'real', connected: 'ok', limited: 'warn', unsupported: 'off', 'needs-repair': 'warn', incompatible: 'warn', 'not-running': 'real', 'api-unavailable': 'warn',
@@ -27,6 +27,15 @@ export function ExternalApps() {
     const apps = await window.studio.external.list();
     setScan((s) => (s ? { ...s, apps } : s));
   };
+  // Installing, removing, turning on/off or repairing an integration changes which applications are supported: main has
+  // already scanned again, so only fetch the list (a replaced placeholder row is gone, the new integration's row is there).
+  useEffect(() => {
+    const onChanged = () => {
+      void window.studio.external.list().then((apps) => setScan((s) => (s ? { apps, missing: s.missing.filter((m) => !apps.some((a) => a.adapterId === m.adapterId)) } : s))).catch(() => undefined);
+    };
+    window.addEventListener(EXTERNAL_CHANGED, onChanged);
+    return () => window.removeEventListener(EXTERNAL_CHANGED, onChanged);
+  }, []);
   // eslint-disable-next-line react-hooks/exhaustive-deps -- once on mount; rescan/refreshList only close over setters
   useEffect(() => { if (!cached) void rescan(); else void refreshList(); }, []);
 

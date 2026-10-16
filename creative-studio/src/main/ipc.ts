@@ -638,10 +638,10 @@ export function registerIpc(d: IpcDeps): void {
   // External third-party applications: one engine for discovery, adapters, permissions and execution.
   // The 13 native Craft apps are NOT routed through it.
   const extFile = path.join(d.secretsDir, 'external-apps.json');
-  const extState = async (): Promise<{ grants: Record<string, Permission[]>; paths: string[] }> => {
-    try { const j = JSON.parse(await fsp.readFile(extFile, 'utf8')) as { grants?: Record<string, Permission[]>; paths?: string[] }; return { grants: j.grants ?? {}, paths: j.paths ?? [] }; } catch { return { grants: {}, paths: [] }; }
+  const extState = async (): Promise<{ grants: Record<string, Permission[]>; paths: string[]; remembered: string[] }> => {
+    try { const j = JSON.parse(await fsp.readFile(extFile, 'utf8')) as { grants?: Record<string, Permission[]>; paths?: string[]; remembered?: string[] }; return { grants: j.grants ?? {}, paths: j.paths ?? [], remembered: j.remembered ?? [] }; } catch { return { grants: {}, paths: [], remembered: [] }; }
   };
-  const extSave = async (s: { grants: Record<string, Permission[]>; paths: string[] }) => {
+  const extSave = async (s: { grants: Record<string, Permission[]>; paths: string[]; remembered: string[] }) => {
     await fsp.mkdir(path.dirname(extFile), { recursive: true });
     await fsp.writeFile(extFile, JSON.stringify(s, null, 2), 'utf8');
   };
@@ -649,6 +649,7 @@ export function registerIpc(d: IpcDeps): void {
     workDir: async (id) => (await d.project()).workDir('external', id),
     permissions: { load: async () => (await extState()).grants, save: async (grants) => extSave({ ...(await extState()), grants }) },
     userPaths: async () => (await extState()).paths,
+    remembered: { load: async () => (await extState()).remembered, save: async (remembered) => extSave({ ...(await extState()), remembered }) },
     approve: async (r): Promise<ApprovalAnswer> => {
       const win = d.window();
       const lines = [
@@ -721,10 +722,9 @@ export function registerIpc(d: IpcDeps): void {
     const res = win && !win.isDestroyed() ? await dialog.showMessageBox(win, options) : await dialog.showMessageBox(options);
     if (res.response !== 1) throw new Error('Installation was cancelled.');
     await packages.install(src, approval as PackageApproval);
-    await external.scan();
     return listing();
   });
-  handle(IPC.extPkgEnable, z.tuple([z.string().min(1).max(100), z.boolean()]), async (id, on) => { await packagesReady; await packages.setEnabled(id, on); await external.scan(); return listing(); });
+  handle(IPC.extPkgEnable, z.tuple([z.string().min(1).max(100), z.boolean()]), async (id, on) => { await packagesReady; await packages.setEnabled(id, on); return listing(); });
   handle(IPC.extPkgUninstall, z.tuple([z.string().min(1).max(100)]), async (id) => {
     await packagesReady;
     const win = d.window();
@@ -732,10 +732,9 @@ export function registerIpc(d: IpcDeps): void {
     const res = win && !win.isDestroyed() ? await dialog.showMessageBox(win, options) : await dialog.showMessageBox(options);
     if (res.response !== 1) throw new Error('Removal was cancelled.');
     await packages.uninstall(id);
-    await external.scan();
     return listing();
   });
-  handle(IPC.extPkgRepair, z.tuple([z.string().min(1).max(100)]), async (id) => { await packagesReady; await packages.repair(id); await external.scan(); return listing(); });
+  handle(IPC.extPkgRepair, z.tuple([z.string().min(1).max(100)]), async (id) => { await packagesReady; await packages.repair(id); return listing(); });
   handle(IPC.extJobs, none, async () => external.jobs());
   handle(IPC.extJobCancel, z.tuple([z.string().min(1).max(100)]), async (id) => { external.cancelJob(id); return external.jobs(); });
   handle(IPC.extAddLocation, none, async () => {

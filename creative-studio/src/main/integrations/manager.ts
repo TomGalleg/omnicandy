@@ -10,7 +10,7 @@ import {
   type AdapterManifest, type ApprovalAnswer, type ApprovalRequest, type CommandErrorKind, type CommandResult, type CommandSpec,
   type DiscoveredApp, type ExternalAppInfo, type ExternalScan, type IntegrationStatus, type JobInfo, type Permission, type ProgressEvent,
 } from '@shared/integrations';
-import { discoverApps, realDiscoveryEnv, type DiscoveryEnv } from './discovery';
+import { discoverApps, REMEMBERED_SOURCES, realDiscoveryEnv, type DiscoveryEnv } from './discovery';
 import { AdapterError, validateManifest, type AdapterFactory, type ExternalAdapter } from './sdk';
 
 export interface PermissionStore { load(): Promise<Record<string, Permission[]>>; save(grants: Record<string, Permission[]>): Promise<void> }
@@ -23,6 +23,8 @@ export interface ManagerDeps {
   approve: (req: ApprovalRequest) => Promise<ApprovalAnswer>;
   discovery?: DiscoveryEnv;
   userPaths?: () => Promise<string[]>;
+  /** Program locations found through indirect signals (uninstall records, shortcuts), kept so they survive those records. */
+  remembered?: { load: () => Promise<string[]>; save: (paths: string[]) => Promise<void> };
   onProgress?: (e: ProgressEvent) => void;
 }
 
@@ -71,7 +73,8 @@ export class IntegrationManager {
       if (other.manifest.maturity === 'stub' && f.manifest.maturity !== 'stub') { replaced.push(other); continue; }
       throw new Error(sameId ? `Adapter ${f.manifest.id} is already registered.` : `Adapter ${f.manifest.id} drives the same program as ${other.manifest.id}, which already handles it.`);
     }
-    for (const o of replaced) this.factories.delete(o.manifest.id);
+    // The replaced placeholder's entries ("Unsupported") must disappear at once, not at the next scan.
+    for (const o of replaced) { this.dropApps(o); this.factories.delete(o.manifest.id); }
     if (replaced.length) this.shadowed.set(f.manifest.id, replaced);
     this.factories.set(f.manifest.id, f);
     if (opts.builtin) this.builtin.add(f);
@@ -87,12 +90,17 @@ export class IntegrationManager {
       if (j.status === 'running' && app && this.factoryFor(app) === f) this.ops.get(jobId)?.abort();
     }
     for (const [key, s] of [...this.sessions]) if (s.factory === f) await this.disconnect(key);
-    for (const [key, a] of [...this.apps]) {
-      if (this.factoryFor(a) === f) { this.apps.delete(key); this.versions.delete(key); this.broken.delete(key); this.blocked.delete(key); }
-    }
+    this.dropApps(f);
     this.factories.delete(id);
     for (const o of this.shadowed.get(id) ?? []) this.factories.set(o.manifest.id, o);
     this.shadowed.delete(id);
+  }
+
+  /** Forgets every discovered application that `f` handles (call before `f` leaves the registry). */
+  private dropApps(f: AdapterFactory): void {
+    for (const [key, a] of [...this.apps]) {
+      if (this.factoryFor(a) === f) { this.apps.delete(key); this.versions.delete(key); this.broken.delete(key); this.blocked.delete(key); }
+    }
   }
 
   isBuiltin(id: string): boolean { const f = this.factories.get(id); return !!f && this.builtin.has(f); }
@@ -110,7 +118,13 @@ export class IntegrationManager {
 
   async scan(): Promise<ScanResult> {
     const targets = this.manifests().filter((m) => !m.selfContained).map((m) => ({ exeNames: m.exeNames, displayNames: m.displayNames }));
-    const discovered = await discoverApps(targets, this.d.discovery ?? realDiscoveryEnv, await (this.d.userPaths?.() ?? Promise.resolve([])));
+    const remembered = await (this.d.remembered?.load() ?? Promise.resolve([])).catch(() => [] as string[]);
+    const discovered = await discoverApps(targets, this.d.discovery ?? realDiscoveryEnv, await (this.d.userPaths?.() ?? Promise.resolve([])), remembered);
+    // Keep what indirect signals found, so the program is still recognised when its uninstall record or shortcut goes away.
+    if (this.d.remembered) {
+      const add = discovered.filter((a) => (REMEMBERED_SOURCES as readonly string[]).includes(a.source)).map((a) => a.exePath).filter((p) => !remembered.some((r) => r.toLowerCase() === p.toLowerCase()));
+      if (add.length) await this.d.remembered.save([...remembered, ...add].slice(-100)).catch(() => undefined);
+    }
     // Self-contained adapters have no program to find: they are listed directly.
     const own: DiscoveredApp[] = [...this.factories.values()].filter((f) => f.manifest.selfContained && f.anchorPath).map((f) => ({
       key: SELF_CONTAINED_PREFIX + f.manifest.id, name: f.manifest.name, publisher: f.manifest.vendor, version: f.manifest.version ?? null,
