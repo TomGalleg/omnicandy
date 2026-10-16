@@ -156,11 +156,11 @@
           "url": "https://wiki.freecad.org/Topological_data_scripting"
         },
         {
-          "symbol": "Shape.cut",
+          "symbol": "TopoShape.cut",
           "url": "https://wiki.freecad.org/Topological_data_scripting"
         },
         {
-          "symbol": "Shape.isValid",
+          "symbol": "TopoShape.isValid",
           "url": "https://wiki.freecad.org/Topological_data_scripting"
         },
         {
@@ -192,15 +192,15 @@
           "url": "https://wiki.freecad.org/Python_scripting_tutorial"
         },
         {
-          "symbol": "Shape.Volume",
+          "symbol": "TopoShape.Volume",
           "url": "https://wiki.freecad.org/Topological_data_scripting"
         },
         {
-          "symbol": "Shape.Solids",
+          "symbol": "TopoShape.Solids",
           "url": "https://wiki.freecad.org/Topological_data_scripting"
         },
         {
-          "symbol": "Shape.BoundBox",
+          "symbol": "ComplexGeoData.BoundBox",
           "url": "https://wiki.freecad.org/Topological_data_scripting"
         }
       ],
@@ -258,19 +258,19 @@
           "url": "https://wiki.freecad.org/Python_scripting_tutorial"
         },
         {
-          "symbol": "Shape.isValid",
+          "symbol": "TopoShape.isValid",
           "url": "https://wiki.freecad.org/Topological_data_scripting"
         },
         {
-          "symbol": "Shape.Volume",
+          "symbol": "TopoShape.Volume",
           "url": "https://wiki.freecad.org/Topological_data_scripting"
         },
         {
-          "symbol": "Shape.Solids",
+          "symbol": "TopoShape.Solids",
           "url": "https://wiki.freecad.org/Topological_data_scripting"
         },
         {
-          "symbol": "Shape.BoundBox",
+          "symbol": "ComplexGeoData.BoundBox",
           "url": "https://wiki.freecad.org/Topological_data_scripting"
         }
       ],
