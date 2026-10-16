@@ -62,6 +62,8 @@ export async function staticChecks(bp: Blueprint, a: Assembled, scan: ScanOutcom
 
   // research and decision
   if (!bp.decision.feasible) checks.push(bad('decision', 'Integration decision', bp.decision.notFeasibleReason ?? 'The research concluded this program cannot be integrated safely.'));
+  else if (EXTERNAL_TEMPLATES.includes(t) && bp.decision.type !== 'external') checks.push(bad('decision', 'Integration decision', `The ${t} template builds an external integration, but the blueprint says "${bp.decision.type}". An add-in inside the program needs the dotnet-addin or uxp-plugin template.`));
+  else if (!EXTERNAL_TEMPLATES.includes(t) && bp.decision.type === 'external') checks.push(bad('decision', 'Integration decision', `The ${t} template is an add-in inside the program, but the blueprint says "external".`));
   else checks.push(ok('decision', 'Integration decision', `${bp.decision.type} integration using ${t} (${bp.decision.methods.join(', ')}).`));
   if (bp.research.insufficient) checks.push(bad('research', 'Research', `Not enough trustworthy information: ${bp.research.insufficient}`));
   else if (!bp.research.sourcesConsulted || !bp.research.sources.length) checks.push(bad('research', 'Research', 'No documentation was consulted, so no capability can be backed by a source.'));

@@ -66,12 +66,14 @@ describe.skipIf(!on)('the real in-app Claude author', () => {
     const s = await svc.settled(c.id);
     const d = await svc.detail(c.id);
     const stageReports = d.reports.map((r) => ({ stage: r.stage, state: r.state, mock: !!r.mock, notPassed: r.checks.filter((k) => k.state !== 'passed').map((k) => `${k.state} ${k.id}: ${k.detail}`) }));
+    const bpNow = await svc.store.readBlueprint(c.id);
+    const generated = bpNow ? { application: bpNow.application, decision: bpNow.decision, python: bpNow.python, commands: bpNow.commands.map((k) => ({ id: k.id, params: k.params, permissions: k.permissions, docRefs: k.docRefs.map((r) => r.symbol), source: k.python?.source, verifySource: k.python?.verifySource })) } : null;
     const dump = (extra: unknown = {}) => redact(JSON.stringify({
       status: s.status, error: s.error, headline: s.headline, log: d.log.map((l) => l.text),
       detection: { appInstalledByCreateCraftDetection: s.appInstalled, detectedVersion: s.appVersion },
       usage: d.usage, research: d.research && { sources: d.research.sources.map((x) => x.url), insufficient: d.research.insufficient },
       documentation: d.documentation.map((x) => ({ origin: x.origin, title: x.title, url: x.url, version: x.versionNote, outdated: x.outdated })),
-      decision: d.decision, commands: d.commands.map((x) => ({ id: x.id, permissions: x.permissions, readOnly: x.readOnly })), stageReports, versions: d.versions.map((v) => v.version),
+      generatedBlueprint: generated, decision: d.decision, commands: d.commands.map((x) => ({ id: x.id, permissions: x.permissions, readOnly: x.readOnly })), stageReports, versions: d.versions.map((v) => v.version),
       provenance: { research: 'real Claude (web tools + structured output)', blueprint: 'real Claude, unmodified except logged formatting normalization', simulated: 'MOCK program', live: 'real FreeCAD via CreateCraft manager', outsideCheck: 'separate FreeCADCmd process' }, ...(extra as object),
     }, null, 2));
     fs.writeFileSync(LOG, dump()); // kept outside the scratch profile, secrets removed

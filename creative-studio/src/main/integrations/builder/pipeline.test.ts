@@ -49,4 +49,26 @@ describe('builder pipeline: FreeCAD enclosure blueprint', () => {
       expect(text).toMatch(re);
     }, 60_000);
   }
+
+  it('refuses an external template that claims to be an add-in (type "internal" with python-script)', async () => {
+    const b = mut((x) => { x.decision.type = 'internal'; });
+    const r = await buildCandidate(b, opts, { simulate: false });
+    expect(r.safe).toBe(false);
+    expect(r.reports[0]!.checks.find((c) => c.id === 'decision')!.detail).toMatch(/builds an external integration/);
+  });
+
+  it('a check the command makes on a placeholder result is a mock limit; a real code error in the command is still a failure', async () => {
+    const NL = String.fromCharCode(10);
+    const limited = mut((x) => { x.commands[0]!.python!.source = x.commands[0]!.python!.source.replace('shell = outer.cut(inner)', 'shell = outer.cut(inner)' + NL + '    if shell.isNull():' + NL + '        H.fail("app-error", "The boolean cut did not produce a valid solid.")'); x.commands[0]!.docRefs.push({ symbol: 'Shape.isNull', url: x.commands[0]!.docRefs[0]!.url }); });
+    const a = await buildCandidate(limited, opts);
+    const sim = a.reports.find((x) => x.stage === 'simulated')!;
+    expect(sim.checks.filter((c) => c.state === 'failed')).toEqual([]);
+    expect(sim.checks.some((c) => c.state === 'warning' && /Check in the command: The boolean cut did not produce a valid solid\..*limit of the simulation/.test(c.detail))).toBe(true);
+    expect(a.passed).toBe(true);
+    const broken = mut((x) => { x.commands[0]!.python!.source = x.commands[0]!.python!.source.replace('shell = outer.cut(inner)', 'shell = outer.cut(innner)'); });
+    const b = await buildCandidate(broken, opts);
+    const sim2 = b.reports.find((x) => x.stage === 'simulated')!;
+    expect(sim2.checks.some((c) => c.state === 'failed' && /NameError/.test(c.detail))).toBe(true);
+    expect(b.passed).toBe(false);
+  }, 120_000);
 });

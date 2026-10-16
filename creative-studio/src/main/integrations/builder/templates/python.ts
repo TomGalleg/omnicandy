@@ -146,7 +146,7 @@ async function runPhase(ctx, phase, command, params, prior, timeoutMs, label) {
   if (!line) throw ctx.error('app-error', 'The program did not report a result (exit ' + r.code + '). ' + tail(r.err || r.out));
   let res;
   try { res = JSON.parse(line); } catch (e) { throw ctx.error('app-error', 'The program reported an unreadable result.'); }
-  if (!res.ok) throw ctx.error(KINDS.has(res.kind) ? res.kind : 'app-error', String(res.error || 'The program reported an error.').slice(0, 1000));
+  if (!res.ok) throw ctx.error(KINDS.has(res.kind) ? res.kind : 'app-error', (res.declared ? 'Check in the command: ' : '') + String(res.error || 'The program reported an error.').slice(0, 1000));
   return res;
 }
 

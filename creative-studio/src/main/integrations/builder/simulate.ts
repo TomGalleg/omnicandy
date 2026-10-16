@@ -144,7 +144,7 @@ export async function simulate(bp: Blueprint, a: Assembled): Promise<SimulationO
         // empty?") can fail for a perfectly good command, and a later command can miss a file the first one could not create. Such
         // failures say nothing about the generated integration: they are reported as a mock limit, not as a defect. Anything else
         // (bad parameters, crashes, timeouts, wrong result shape, forbidden operations) stays a failure.
-        const mockLimit = bp.decision.template === 'python-script' && (r.error?.kind === 'verification-failed' || (mockLimited && r.error?.kind === 'invalid-params' && /No file "/.test(r.error.message)));
+        const mockLimit = bp.decision.template === 'python-script' && (r.error?.kind === 'verification-failed' || /^Check in the command: /.test(r.error?.message ?? '') || (mockLimited && r.error?.kind === 'invalid-params' && /No file "/.test(r.error.message)));
         if (mockLimit) { mockLimited = true; checks.push(warn(`cmd:${c.id}`, `Command ${c.id}`, `The stand-in program cannot judge this command's own check (${r.error?.message}). This is a limit of the simulation, not proof of a defect; only the real program can decide.`)); continue; }
         checks.push(bad(`cmd:${c.id}`, `Command ${c.id}`, `${r.error?.kind}: ${r.error?.message}`)); continue;
       }

@@ -233,6 +233,7 @@ export class BuilderService {
       for (const u of cand.citations.unresolved.slice(0, 6)) await this.note(rec, 'building', `No documentation contains ${u.symbol} (${u.command}); it stays uncited.`);
       if (cand.passed) break;
       problem = cand.reports.flatMap((x) => x.checks.filter((c) => c.state === 'failed').map((c) => `[${x.stage}] ${c.title}: ${c.detail}`)).join('\n').slice(0, 3000);
+      await this.note(rec, 'testing', `Attempt ${attempt} did not pass: ${problem.split(String.fromCharCode(10)).join(' | ').slice(0, 700)}`);
     }
     if (!bp || !cand) throw new Error('Nothing could be generated.');
     await this.store.writeBlueprint(id, bp);

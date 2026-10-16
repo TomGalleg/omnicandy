@@ -19,9 +19,11 @@ _RESULT_PREFIX = 'CREATECRAFT_RESULT_' + NONCE
 
 
 class JobError(Exception):
-    def __init__(self, kind, message):
+    def __init__(self, kind, message, declared=False):
         Exception.__init__(self, message)
         self.kind = kind
+        # True when the command's own code raised it through H.fail / H.check (a check the command itself makes)
+        self.declared = declared
 
 
 class OutFile(str):
@@ -39,11 +41,11 @@ class _Helpers(object):
         self.created = []
 
     def fail(self, kind, message):
-        raise JobError(kind if kind in ('app-error', 'unsupported', 'invalid-params', 'verification-failed') else 'app-error', str(message))
+        raise JobError(kind if kind in ('app-error', 'unsupported', 'invalid-params', 'verification-failed') else 'app-error', str(message), True)
 
     def check(self, condition, message):
         if not condition:
-            raise JobError('verification-failed', str(message))
+            raise JobError('verification-failed', str(message), True)
 
     def num(self, value):
         return float(getattr(value, 'Value', value))
@@ -152,7 +154,7 @@ def _main():
         else:
             raise JobError('app-error', 'Unknown phase.')
     except JobError as e:
-        _finish({'ok': False, 'kind': e.kind, 'error': str(e)[:1000]})
+        _finish({'ok': False, 'kind': e.kind, 'error': str(e)[:1000], 'declared': bool(getattr(e, 'declared', False))})
     except SystemExit:
         raise
     except BaseException as e:
