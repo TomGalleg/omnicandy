@@ -6,6 +6,7 @@
 
 import { z } from 'zod';
 import { PERMISSION_LABEL, type Permission } from '@shared/integrations';
+import { normalizeResearch } from './researchNormalize';
 
 const PERMS = Object.keys(PERMISSION_LABEL) as [Permission, ...Permission[]];
 const text = (max: number) => z.string().min(1).max(max);
@@ -187,30 +188,51 @@ export class BlueprintError extends Error {
   constructor(message: string, readonly problems: string[] = []) { super(message); }
 }
 
-/** Pulls the first JSON object out of the AI's answer (it may arrive in a code fence or with a sentence in front). */
-export function extractJson(raw: string): unknown {
-  const fence = /```(?:json)?\s*([\s\S]*?)```/i.exec(raw);
-  const body = (fence?.[1] ?? raw).trim();
-  const start = body.indexOf('{');
-  if (start < 0) throw new BlueprintError('The AI did not answer with a JSON document.');
-  // Walk to the matching brace so trailing commentary is ignored; strings are skipped so braces inside them do not count.
-  let depth = 0, inStr = false, esc = false;
-  for (let i = start; i < body.length; i++) {
-    const c = body[i]!;
-    if (inStr) { if (esc) esc = false; else if (c === '\\') esc = true; else if (c === '"') inStr = false; continue; }
-    if (c === '"') inStr = true;
-    else if (c === '{') depth++;
-    else if (c === '}') { depth--; if (depth === 0) { try { return JSON.parse(body.slice(start, i + 1)); } catch (e) { throw new BlueprintError(`The AI's JSON could not be read: ${(e as Error).message}`); } } }
+/** Every top-level {...} candidate in a text, honouring strings, so prose with braces in front of the JSON does not hide it. */
+function jsonCandidates(body: string): string[] {
+  const out: string[] = [];
+  for (let start = body.indexOf('{'); start >= 0 && out.length < 12; start = body.indexOf('{', start + 1)) {
+    let depth = 0, inStr = false, esc = false;
+    for (let i = start; i < body.length; i++) {
+      const c = body[i]!;
+      if (inStr) { if (esc) esc = false; else if (c === '\\') esc = true; else if (c === '"') inStr = false; continue; }
+      if (c === '"') inStr = true;
+      else if (c === '{') depth++;
+      else if (c === '}') { depth--; if (depth === 0) { out.push(body.slice(start, i + 1)); break; } }
+    }
   }
-  throw new BlueprintError('The AI\'s JSON document is incomplete.');
+  return out;
 }
 
-export function parseResearch(input: unknown): ResearchData {
-  const raw = typeof input === 'string' ? extractJson(input) : input;
-  const r = researchSchema.safeParse(raw);
-  if (!r.success) { const problems = r.error.issues.slice(0, 8).map((i) => `${i.path.join('.') || 'research'}: ${i.message}`); throw new BlueprintError(`The research result is not in the expected form: ${problems.join('; ')}`, problems); }
-  return r.data;
+/** Pulls the JSON object out of the AI's answer: bare, in one or several code fences, or surrounded by prose. The largest valid object wins. */
+export function extractJson(raw: string): unknown {
+  const bodies = [...raw.matchAll(/```[A-Za-z]*\s*([\s\S]*?)```/g)].map((m) => m[1]!).concat(raw);
+  let firstError: string | null = null;
+  let best: { size: number; value: unknown } | null = null;
+  for (const body of bodies) {
+    for (const c of jsonCandidates(body)) {
+      try { const v = JSON.parse(c); if (v && typeof v === 'object' && (!best || c.length > best.size)) best = { size: c.length, value: v }; } catch (e) { firstError ??= (e as Error).message; }
+    }
+  }
+  if (best) return best.value;
+  if (firstError) throw new BlueprintError(`The AI's JSON could not be read: ${firstError}`);
+  if (raw.includes('{')) throw new BlueprintError("The AI's JSON document is incomplete.");
+  throw new BlueprintError('The AI did not answer with a JSON document.');
 }
+
+export interface ParsedResearch { data: ResearchData; notes: string[] }
+
+/** Research normalization (harmless differences absorbed and reported), then the strict schema. */
+export function parseResearchDetailed(input: unknown): ParsedResearch {
+  const raw = typeof input === 'string' ? extractJson(input) : input;
+  let n;
+  try { n = normalizeResearch(raw); } catch (e) { throw new BlueprintError(`The research cannot be used: ${(e as Error).message}`); }
+  const r = researchSchema.safeParse(n.value);
+  if (!r.success) { const problems = r.error.issues.slice(0, 8).map((i) => `${i.path.join('.') || 'research'}: ${i.message}`); throw new BlueprintError(`The research result is not in the expected form: ${problems.join('; ')}`, problems); }
+  return { data: r.data, notes: n.notes };
+}
+
+export function parseResearch(input: unknown): ResearchData { return parseResearchDetailed(input).data; }
 
 export function parseBlueprint(input: unknown): Blueprint {
   const raw = typeof input === 'string' ? extractJson(input) : input;

@@ -60,6 +60,16 @@ unsupported it must answer `feasible: false` with a reason: the project is then 
 Not enough trustworthy information ends as *Needs documentation* (nothing generated; the user can add docs). Web research that
 fails without user documentation stops the same way: CreateCraft will not guess.
 
+### Three kinds of validation (kept separate)
+
+| Stage | Where | Behaviour |
+|---|---|---|
+| Research normalization | `researchNormalize.ts`, `parseResearchDetailed` | Absorbs harmless differences in Claude's research and **reports each change** in the build log: wrapper objects, extra fields, over-long descriptive text (shortened), missing optional lists, capitalised or alternative enum words, markdown or prose around the JSON. It never invents or repairs a fact: no application name or summary means rejection; sources without a valid https address are dropped; unknown source kinds become "other", unknown support levels become "none", unknown methods are dropped; "documentation read" is never assumed and is forced false when no valid source remains. The strict research schema still runs afterwards. |
+| Blueprint validation | `blueprint.ts` strict schema, `validate.ts` | Unchanged and strict: commands, permissions, executable names, host launch lines, code scan, documented interfaces, package integrity. |
+| Live verification | `service.verifyLive` | Only real, independently re-checked runs are recorded, per command and program version. |
+
+The research step asks the Claude SDK for **structured output** (`outputFormat: json_schema`, `RESEARCH_JSON_SCHEMA`, deliberately lenient on length) and also states the exact shape and allowed words in the instructions. Blueprint generation still relies on the prompt plus strict validation (a schema for it has not been tried against the live SDK). Diagnostics: errors list the failing fields; the raw AI answer is kept (secrets removed, local only) **only when it could not be used** and is deleted when it parses.
+
 ### The test pipeline (`pipeline.ts`)
 
 | Stage | Checks |

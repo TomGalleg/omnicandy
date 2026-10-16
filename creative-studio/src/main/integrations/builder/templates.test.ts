@@ -139,7 +139,7 @@ describe('parsers and prompts', () => {
     expect(() => extractJson('{"a": ')).toThrow(/incomplete/);
   });
   it('rejects unknown fields and malformed research or blueprints with readable problems', () => {
-    expect(() => parseResearch({ nope: 1 })).toThrow(/expected form/);
+    expect(() => parseResearch({ nope: 1 })).toThrow(/cannot be used|expected form/);
     const b = JSON.parse(JSON.stringify(fx('imagemagick.blueprint.json')));
     b.commands[0].runShell = 'rm -rf /';
     expect(() => parseBlueprint(b)).toThrow(/expected form/);

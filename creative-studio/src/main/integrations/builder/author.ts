@@ -8,7 +8,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { DENIED_ATTRIBUTES, DENIED_BUILTINS, DENIED_MODULES, PYTHON_HOSTS, SAFE_STDLIB } from './hosts';
-import { BlueprintError, extractJson, parseBlueprint, parseResearch, type Blueprint, type ResearchData } from './blueprint';
+import { BlueprintError, extractJson, parseBlueprint, parseResearchDetailed, type Blueprint, type ResearchData } from './blueprint';
 
 export interface AuthorDoc { name: string; text: string }
 
@@ -30,7 +30,7 @@ export interface RepairRequest {
 }
 
 export interface AuthorUsage { calls: number; costUsd: number }
-export interface AuthorOutput<T> { value: T; usage: AuthorUsage; author: { kind: 'claude' | 'scripted'; note?: string } }
+export interface AuthorOutput<T> { value: T; usage: AuthorUsage; author: { kind: 'claude' | 'scripted'; note?: string }; /** What research normalization changed (shown in the log). */ notes?: string[] }
 
 export interface AdapterAuthor {
   /** True when this author can browse documentation itself. */
@@ -79,7 +79,31 @@ const SCHEMA_SKELETON = `{
 }
 (Include only the sections your template needs; "python", "cli", "plugin" and each command's implementation key are optional. Every command's mock holds example settings that satisfy the typed limits.)`;
 
-const RESEARCH_SYSTEM = `You are the research step of CreateCraft's AI Adapter Builder. The user wants CreateCraft to control a desktop program. Find out, from OFFICIAL vendor documentation first, how it can be controlled. Do not invent anything: every claim must come from a page you actually read or from documentation the user supplied; otherwise list it under limitations or set "insufficient". Answer with ONE JSON object and nothing else (no code fence) with exactly these keys: ${'application{name,publisher,platforms,version}, summary, sources[{title,url(https),kind,note}], methods[{method,officialSupport,note}], scripting[], commandLine[], fileFormats[], pluginTechnologies[], licensing, requiredTools[], limitations[], insufficient (string or null), sourcesConsulted (boolean)'}. Cover: name and publisher, operating systems, version, official API/SDK, scripting interfaces, plug-in technologies, command-line options, import/export formats, licensing restrictions, required development tools, compatibility limits. Set insufficient to what is missing when you could not find trustworthy documentation, and sourcesConsulted=false in that case. Write for a non-technical reader where you can.`;
+/**
+ * JSON Schema handed to the Claude SDK as the structured-output format for the research step. Deliberately LENIENT (types and the
+ * required keys only, no length limits, extra fields allowed): CreateCraft's own normalization and strict schema decide what is usable.
+ */
+export const RESEARCH_JSON_SCHEMA: Record<string, unknown> = {
+  type: 'object',
+  required: ['application', 'summary', 'sources', 'methods', 'sourcesConsulted'],
+  properties: {
+    application: { type: 'object', required: ['name'], properties: { name: { type: 'string' }, publisher: { type: ['string', 'null'] }, platforms: { type: 'array', items: { type: 'string' } }, version: { type: ['string', 'null'] } } },
+    summary: { type: 'string' },
+    sources: { type: 'array', items: { type: 'object', required: ['title', 'url', 'kind'], properties: { title: { type: 'string' }, url: { type: 'string' }, kind: { type: 'string', enum: ['official', 'vendor-community', 'user-supplied', 'other'] }, note: { type: 'string' } } } },
+    methods: { type: 'array', items: { type: 'object', required: ['method', 'officialSupport', 'note'], properties: { method: { type: 'string', enum: ['api', 'scripting', 'mcp', 'cli', 'file-exchange', 'ui-automation', 'visual'] }, officialSupport: { type: 'string', enum: ['official', 'partial', 'none'] }, note: { type: 'string' } } } },
+    scripting: { type: 'array', items: { type: 'string' } },
+    commandLine: { type: 'array', items: { type: 'string' } },
+    fileFormats: { type: 'array', items: { type: 'string' } },
+    pluginTechnologies: { type: 'array', items: { type: 'string' } },
+    licensing: { type: 'string' },
+    requiredTools: { type: 'array', items: { type: 'string' } },
+    limitations: { type: 'array', items: { type: 'string' } },
+    insufficient: { type: ['string', 'null'] },
+    sourcesConsulted: { type: 'boolean' },
+  },
+};
+
+const RESEARCH_SYSTEM = `You are the research step of CreateCraft's AI Adapter Builder. The user wants CreateCraft to control a desktop program. Find out, from OFFICIAL vendor documentation first, how it can be controlled. Do not invent anything: every claim must come from a page you actually read or from documentation the user supplied; otherwise list it under limitations or set "insufficient". Answer with ONE JSON object and nothing else (no code fence) with exactly these keys: ${'application{name,publisher,platforms,version}, summary, sources[{title,url(https),kind,note}], methods[{method,officialSupport,note}], scripting[], commandLine[], fileFormats[], pluginTechnologies[], licensing, requiredTools[], limitations[], insufficient (string or null), sourcesConsulted (boolean)'}. Cover: name and publisher, operating systems, version, official API/SDK, scripting interfaces, plug-in technologies, command-line options, import/export formats, licensing restrictions, required development tools, compatibility limits. Set insufficient to what is missing when you could not find trustworthy documentation, and sourcesConsulted=false in that case. Write for a non-technical reader where you can. Keep notes short (a sentence or two). Every source url must be a full https address you actually read. Use exactly these words: source kind one of official, vendor-community, user-supplied, other; method one of api, scripting, mcp, cli, file-exchange, ui-automation, visual; officialSupport one of official, partial, none. Example shape: {"application":{"name":"X","publisher":"Y","platforms":["windows"],"version":null},"summary":"...","sources":[{"title":"...","url":"https://...","kind":"official","note":"..."}],"methods":[{"method":"cli","officialSupport":"official","note":"..."}],"scripting":[],"commandLine":[],"fileFormats":[],"pluginTechnologies":[],"licensing":"...","requiredTools":[],"limitations":[],"insufficient":null,"sourcesConsulted":true}`;
 
 const GENERATE_SYSTEM = `You are the generation step of CreateCraft's AI Adapter Builder. Using ONLY the research and documentation you are given, design a small, safe integration and answer with ONE JSON blueprint and nothing else (no code fence).
 
@@ -149,7 +173,7 @@ export class ClaudeAuthor implements AdapterAuthor {
   readonly canBrowse: boolean;
   constructor(private readonly o: ClaudeAuthorOptions) { this.canBrowse = o.web !== false; }
 
-  private async ask(system: string, prompt: string, opts: { tools: string[]; maxTurns: number; signal?: AbortSignal }): Promise<{ text: string; usage: AuthorUsage }> {
+  private async ask(system: string, prompt: string, opts: { tools: string[]; maxTurns: number; signal?: AbortSignal; schema?: Record<string, unknown> }): Promise<{ text: string; usage: AuthorUsage }> {
     const { query } = await import('@anthropic-ai/claude-agent-sdk');
     const abort = new AbortController();
     opts.signal?.addEventListener('abort', () => abort.abort(), { once: true });
@@ -158,6 +182,7 @@ export class ClaudeAuthor implements AdapterAuthor {
       options: {
         model: this.o.model, systemPrompt: system, tools: opts.tools, allowedTools: opts.tools, permissionMode: 'dontAsk', settingSources: [],
         maxTurns: opts.maxTurns, cwd: this.o.cwd, abortController: abort,
+        ...(opts.schema ? { outputFormat: { type: 'json_schema' as const, schema: opts.schema } } : {}),
         env: { ...process.env, CLAUDE_AGENT_SDK_CLIENT_APP: 'CreateCraft/0.1' } as Record<string, string>,
       },
     });
@@ -170,34 +195,50 @@ export class ClaudeAuthor implements AdapterAuthor {
         for (const b of m.message.content) if (b.type === 'tool_use') this.o.log?.(`Claude is looking at ${String((b as { name?: string }).name ?? 'a page')}`);
       } else if (m.type === 'result') {
         cost += m.total_cost_usd ?? 0;
+        const so = (m as { structured_output?: unknown }).structured_output;
+        if (so && typeof so === 'object') text = JSON.stringify(so);
         const resultText = 'result' in m ? String(m.result ?? '') : '';
         if (/not logged in|\/login/i.test(resultText)) throw new Error('Claude Code on this PC is not signed in. Open the Claude panel, click "Sign in to Claude", then try again.');
         if (m.is_error) throw new Error(`Claude could not finish this step (${'subtype' in m ? String(m.subtype) : 'error'}${'errors' in m && Array.isArray(m.errors) && m.errors.length ? ': ' + m.errors.join('; ').slice(0, 300) : ''}). Try again in a moment.`);
       }
     }
-    // Keep the raw answer (local, secrets removed) so a malformed result can be diagnosed afterwards.
-    try { await fs.mkdir(this.o.cwd, { recursive: true }); await fs.writeFile(path.join(this.o.cwd, 'last-ai-response.txt'), text.replace(/(sk-[A-Za-z0-9_-]{8,}|Bearer\s+[A-Za-z0-9._-]{8,}|eyJ[A-Za-z0-9._-]{20,})/g, '[redacted]')); } catch { /* diagnostics only */ }
     const usage = { calls: 1, costUsd: cost };
     this.o.onUsage?.(usage);
     return { text, usage };
   }
 
+  /** Keeps the raw answer (local, secrets removed) ONLY when it could not be used, so it can be diagnosed; deleted again on success. */
+  private async keepRaw(text: string): Promise<void> {
+    try {
+      await fs.mkdir(this.o.cwd, { recursive: true });
+      await fs.writeFile(path.join(this.o.cwd, 'last-ai-response.txt'), text.replace(/(sk-[A-Za-z0-9_-]{8,}|Bearer\s+[A-Za-z0-9._-]{8,}|eyJ[A-Za-z0-9._-]{20,}|[A-Fa-f0-9]{40,})/g, '[redacted]'));
+    } catch { /* diagnostics only */ }
+  }
+
+  private async dropRaw(): Promise<void> { await fs.rm(path.join(this.o.cwd, 'last-ai-response.txt'), { force: true }).catch(() => undefined); }
+
   async research(req: AuthorRequest, signal?: AbortSignal): Promise<AuthorOutput<ResearchData>> {
     const web = this.canBrowse ? ['WebSearch', 'WebFetch'] : [];
     let out;
-    try { out = await this.ask(RESEARCH_SYSTEM, researchPrompt(req), { tools: web, maxTurns: web.length ? 30 : 1, signal }); }
+    try { out = await this.ask(RESEARCH_SYSTEM, researchPrompt(req), { tools: web, maxTurns: web.length ? 30 : 1, signal, schema: RESEARCH_JSON_SCHEMA }); }
     catch (e) {
       if (web.length && !req.docs.length && !(e instanceof Error && /not signed in/.test(e.message))) throw new BlueprintError('Claude could not browse the web for documentation. Add the program\'s documentation or SDK folder yourself and try again.');
       throw e;
     }
-    const value = parseResearch(out.text);
+    let parsed;
+    try { parsed = parseResearchDetailed(out.text); } catch (e) { await this.keepRaw(out.text); throw e; }
+    await this.dropRaw();
+    const value = parsed.data;
     if (!req.docs.length && !web.length) value.sourcesConsulted = false;
-    return { value, usage: out.usage, author: { kind: 'claude', note: web.length ? 'research with web tools' : 'research from supplied documentation only' } };
+    return { value, usage: out.usage, notes: parsed.notes, author: { kind: 'claude', note: web.length ? 'research with web tools' : 'research from supplied documentation only' } };
   }
 
   async generate(req: AuthorRequest, research: ResearchData, signal?: AbortSignal): Promise<AuthorOutput<Blueprint>> {
     const out = await this.ask(GENERATE_SYSTEM, generatePrompt(req, research), { tools: [], maxTurns: 1, signal });
-    return { value: parseBlueprint(out.text), usage: out.usage, author: { kind: 'claude' } };
+    let value: Blueprint;
+    try { value = parseBlueprint(out.text); } catch (e) { await this.keepRaw(out.text); throw e; }
+    await this.dropRaw();
+    return { value, usage: out.usage, author: { kind: 'claude' } };
   }
 
   async repair(req: RepairRequest, signal?: AbortSignal): Promise<AuthorOutput<{ blueprint: Blueprint; changes: string[] }>> {

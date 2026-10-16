@@ -153,6 +153,7 @@ export class BuilderService {
     await this.note(rec, 'researching', 'Claude is reading the vendor documentation.', 'researching');
     const r = await a.research(req, ac.signal);
     this.addUsage(rec, r.value && r.usage);
+    for (const n of r.notes ?? []) await this.note(rec, 'researching', `Research adjusted: ${n}`);
     rec.research = { ...r.value };
     rec.author = { ...r.author };
     if (r.value.insufficient || !r.value.sourcesConsulted || !r.value.sources.length) {
