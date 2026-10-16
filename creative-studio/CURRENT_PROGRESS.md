@@ -703,3 +703,10 @@ Docs: `docs/universal-installer.md` (architecture, protocol, security), `docs/in
 * **Distribution**: `electron-builder.yml` (NSIS, per-user, extraResources `adapters`, `trust`, tracker script, icon, sample project), `npm run dist:dir` / `dist`, installed-layout resource lookup (`process.resourcesPath`), `scripts/release-check.mjs` (blocks dev keys, unlisted keys, unsigned/tampered/sample/simulated packages, private keys, fixtures, any Autodesk/Adobe binaries), `build-catalog.mjs --release <key>`, `resources/trust/release-publishers.json` (empty: no production key).
 * **Tests**: `install/installer.test.ts` 22, `bridge/bridge.test.ts` 22, `hybrid.test.ts` 10, `release.test.ts` 9, shared `connect.test.ts` +4; UI `scripts/smoke-connect-hybrid.mjs` 15/15 from the repository and 18/18 from the packaged application (`--exe release/win-unpacked/CreateCraft.exe`).
 * **Not verified / limits**: see `docs/external-integration-sdk.md` ("Universal installer: remaining limitations"). No real Autodesk or Adobe add-in; Resolve success path still needs a running Resolve Studio; no signed installer.
+
+## Autodesk Revit 2027 integration (2026-10-16)
+
+First real Autodesk integration: hybrid package `autodesk.revit` (C# .NET 10 add-in + connector) on Universal Connect. Verified
+against the installed Revit 2027: install, load, pipe auth, capability registration, real reads, one reversible edit in a scratch
+model, reconnect after a CreateCraft restart, Revit shutdown handling, repair, uninstall. Not yet driven through the Electron
+window. Details, limits and results: `docs/revit-integration.md`. Revit is the only host profile marked `supported`.

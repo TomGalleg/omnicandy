@@ -10,7 +10,8 @@ One architecture for every kind of external-program integration. It extends the 
 | `hybrid` | Both. They are installed, repaired and removed together | The connector orchestrates and verifies; the add-in does what only code inside the program can do | SimCAD hybrid sample |
 
 Autodesk and Adobe are **not** special cases: they are rows in the same host-profile table
-(`src/main/integrations/install/hostProfiles.ts`, documented in `docs/installation-profiles.md`). None is marked ready.
+(`src/main/integrations/install/hostProfiles.ts`, documented in `docs/installation-profiles.md`). Only Revit 2027 is marked `supported`
+(it has a real, live-tested add-in); every other row is still groundwork.
 
 ## Pieces
 
@@ -181,4 +182,5 @@ capability registration, permission refusal, unauthenticated-peer refusal, unins
 
 **Simulated:** SimCAD itself (`fixtures/simcad`), clearly labelled in the review, in the connector list and in the package manifest
 (`host.simulated: true`); simulated packages and the test application are excluded from release builds by `release-check`.
-**Not built:** any Autodesk or Adobe add-in. Their profiles are documentation and installer rules only.
+**Real, live-tested:** the Autodesk Revit 2027 add-in (`docs/revit-integration.md`), run against the installed Revit 2027 on the development PC.
+**Not built:** every other Autodesk and Adobe add-in. Their profiles are documentation and installer rules only.

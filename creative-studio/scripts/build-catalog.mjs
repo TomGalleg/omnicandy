@@ -33,7 +33,7 @@ fs.mkdirSync(out, { recursive: true });
 for (const f of fs.readdirSync(out)) if (/\.ccadapter$/i.test(f)) fs.rmSync(path.join(out, f));
 const catalog = [];
 // Official connectors only. Samples (fixtures/sample-adapter, hybrid-sample, internal-sample) are never part of the catalog.
-for (const dir of ['freecad-adapter']) {
+for (const dir of ['freecad-adapter', 'revit-adapter']) {
   const src = path.join(root, 'fixtures', dir);
   const r = packAdapter({ dir: src, privateKeyPem: fs.readFileSync(key, 'utf8') });
   const file = path.join(out, `${r.manifest.id}-${r.manifest.version}.ccadapter`);

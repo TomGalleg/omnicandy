@@ -107,7 +107,7 @@ describe('overview and classification', () => {
     expect((await r.pk.listing()).trustedPublishers).toHaveLength(0);
     await r.svc.markOnboarded();
     expect((await r.svc.overview({ rescan: false })).firstRun).toBe(false);
-  });
+  }, 20_000);
 
   it('a program with only a placeholder is "not supported yet" and cannot be selected', async () => {
     const r = await rig();

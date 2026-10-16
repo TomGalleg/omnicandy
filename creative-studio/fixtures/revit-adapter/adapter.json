@@ -1,0 +1,386 @@
+{
+  "manifestVersion": 2,
+  "id": "autodesk.revit",
+  "name": "Autodesk Revit",
+  "version": "1.0.0",
+  "description": "Inspect the open Revit project (levels, views, element counts, lighting fixtures) and make approved, reversible edits in scratch models. Uses a small CreateCraft add-in inside Revit 2027.",
+  "license": "MIT",
+  "homepage": "https://www.autodesk.com/products/revit/overview",
+  "publisher": {
+    "name": "CreateCraft Integrations"
+  },
+  "sdk": {
+    "min": 1,
+    "max": 1
+  },
+  "application": {
+    "kind": "program",
+    "name": "Autodesk Revit",
+    "exeNames": [
+      "Revit.exe"
+    ],
+    "displayNames": [
+      "Autodesk Revit"
+    ],
+    "versions": [
+      {
+        "min": "27.0",
+        "max": "27.99"
+      },
+      {
+        "min": "2027",
+        "max": "2027.99"
+      }
+    ]
+  },
+  "requirements": [
+    {
+      "kind": "application",
+      "text": "Autodesk Revit 2027 must be installed. This add-in is built for Revit 2027 only."
+    },
+    {
+      "kind": "running",
+      "text": "Revit has to be closed while the add-in is installed, and started afterwards so it loads the add-in. Revit may ask once whether to load it: choose Always Load."
+    },
+    {
+      "kind": "other",
+      "text": "Reading project information works in any project. Edits are limited to scratch models: a saved copy whose file name contains \"scratch\" (for example CreateCraft-scratch.rvt). Shared (workshared) models are never edited."
+    },
+    {
+      "kind": "licence",
+      "text": "Your own Revit licence is used. CreateCraft does not bypass Autodesk licensing."
+    }
+  ],
+  "runtime": {
+    "entry": "main.js",
+    "dependencies": []
+  },
+  "integration": {
+    "type": "hybrid",
+    "host": {
+      "profile": "autodesk.revit",
+      "versions": [
+        {
+          "min": "27.0",
+          "max": "27.99"
+        },
+        {
+          "min": "2027",
+          "max": "2027.99"
+        }
+      ]
+    },
+    "plugin": {
+      "id": "autodesk.revit.bridge",
+      "name": "CreateCraft add-in for Revit 2027",
+      "version": "1.0.0",
+      "technology": "dotnet-addin",
+      "mechanism": "file-copy",
+      "destination": "revit-addins-user",
+      "files": [
+        {
+          "from": "plugin/CreateCraft.addin",
+          "to": "CreateCraft.addin"
+        },
+        {
+          "from": "plugin/CreateCraft.Revit.dll",
+          "to": "CreateCraft/CreateCraft.Revit.dll"
+        }
+      ],
+      "restart": "required",
+      "closeHost": "required",
+      "admin": "never",
+      "dependencies": [
+        {
+          "kind": "dotnet",
+          "name": ".NET 10 desktop runtime",
+          "min": "10.0",
+          "note": "Installed together with Revit 2027; nothing to install."
+        }
+      ]
+    },
+    "communication": {
+      "transport": "named-pipe",
+      "protocol": {
+        "min": 1,
+        "max": 1
+      },
+      "capabilities": [
+        {
+          "id": "revit.app_info",
+          "permissions": [
+            "read-info"
+          ]
+        },
+        {
+          "id": "revit.project_info",
+          "permissions": [
+            "read-project"
+          ]
+        },
+        {
+          "id": "revit.levels.list",
+          "permissions": [
+            "read-project"
+          ]
+        },
+        {
+          "id": "revit.views.list",
+          "permissions": [
+            "read-project"
+          ]
+        },
+        {
+          "id": "revit.elements.count",
+          "permissions": [
+            "read-project"
+          ]
+        },
+        {
+          "id": "revit.lighting.list",
+          "permissions": [
+            "read-project"
+          ]
+        },
+        {
+          "id": "revit.element.get",
+          "permissions": [
+            "read-project"
+          ]
+        },
+        {
+          "id": "revit.parameter.set",
+          "permissions": [
+            "modify-project"
+          ]
+        },
+        {
+          "id": "revit.element.place_test",
+          "permissions": [
+            "modify-project"
+          ]
+        },
+        {
+          "id": "revit.element.remove_test",
+          "permissions": [
+            "modify-project"
+          ]
+        }
+      ]
+    }
+  },
+  "methods": [
+    "api"
+  ],
+  "capabilities": [
+    "connect",
+    "disconnect",
+    "healthCheck",
+    "executeCommand",
+    "cancelOperation"
+  ],
+  "commands": [
+    {
+      "id": "revit.app_info",
+      "label": "Revit version and connection",
+      "description": "Reports the Revit version and build, the open documents and that the CreateCraft add-in is connected. Changes nothing.",
+      "params": {},
+      "permissions": [
+        "read-info"
+      ],
+      "idempotent": true,
+      "timeoutMs": 30000
+    },
+    {
+      "id": "revit.project_info",
+      "label": "Current Revit project",
+      "description": "Identifies the active project: title, file, project information, whether it is a scratch model that may be edited, and its documentKey (needed for edits). Changes nothing.",
+      "params": {},
+      "permissions": [
+        "read-project"
+      ],
+      "idempotent": true,
+      "timeoutMs": 60000
+    },
+    {
+      "id": "revit.levels.list",
+      "label": "List building levels",
+      "description": "Lists the levels of the open project with their elevations. Changes nothing.",
+      "params": {},
+      "permissions": [
+        "read-project"
+      ],
+      "idempotent": true,
+      "timeoutMs": 60000
+    },
+    {
+      "id": "revit.views.list",
+      "label": "List project views",
+      "description": "Lists floor plans, ceiling plans, sections, 3D views, sheets and other views (view templates excluded). Changes nothing.",
+      "params": {},
+      "permissions": [
+        "read-project"
+      ],
+      "idempotent": true,
+      "timeoutMs": 60000
+    },
+    {
+      "id": "revit.elements.count",
+      "label": "Count elements by category",
+      "description": "Counts the elements of one supported category (Walls, Doors, Windows, Floors, Ceilings, Roofs, Rooms, Columns, Structural Columns, Structural Framing, Stairs, Railings, Furniture, Generic Models, Lighting Fixtures, Electrical Fixtures, Electrical Equipment, Mechanical Equipment, Plumbing Fixtures, Lighting Devices) or of all of them. Changes nothing.",
+      "params": {
+        "category": {
+          "type": "string",
+          "description": "Category name, or leave empty / \"all\" for every supported category."
+        }
+      },
+      "permissions": [
+        "read-project"
+      ],
+      "idempotent": true,
+      "timeoutMs": 60000
+    },
+    {
+      "id": "revit.lighting.list",
+      "label": "List lighting fixtures",
+      "description": "Counts lighting fixtures and lists them with family, type, level, position (mm) and placement kind, plus the lighting fixture types available for placement. Changes nothing.",
+      "params": {
+        "limit": {
+          "type": "number",
+          "description": "Most fixtures to list in detail.",
+          "default": 100,
+          "min": 1,
+          "max": 500
+        }
+      },
+      "permissions": [
+        "read-project"
+      ],
+      "idempotent": true,
+      "timeoutMs": 60000
+    },
+    {
+      "id": "revit.element.get",
+      "label": "Read one element",
+      "description": "Reads category, family, type, level, Comments and Mark of one element. Changes nothing.",
+      "params": {
+        "elementId": {
+          "type": "number",
+          "description": "Revit element id (from a previous list).",
+          "required": true,
+          "min": 1
+        }
+      },
+      "permissions": [
+        "read-project"
+      ],
+      "idempotent": true,
+      "timeoutMs": 60000
+    },
+    {
+      "id": "revit.parameter.set",
+      "label": "Set Comments or Mark on an element",
+      "description": "Changes the Comments or Mark text of one element in a SCRATCH model, inside a Revit transaction (one step in Revit's Undo list). The project must match the documentKey. Reads the value back to prove it.",
+      "params": {
+        "documentKey": {
+          "type": "string",
+          "description": "The documentKey returned by revit.project_info for the project you inspected. The edit is refused if a different project is open now.",
+          "required": true
+        },
+        "elementId": {
+          "type": "number",
+          "description": "Revit element id (from a previous list).",
+          "required": true,
+          "min": 1
+        },
+        "parameter": {
+          "type": "string",
+          "description": "Comments or Mark.",
+          "required": true
+        },
+        "value": {
+          "type": "string",
+          "description": "The new text (up to 250 characters).",
+          "required": true
+        }
+      },
+      "permissions": [
+        "modify-project",
+        "read-project"
+      ],
+      "destructive": true,
+      "timeoutMs": 60000
+    },
+    {
+      "id": "revit.element.place_test",
+      "label": "Place a test family instance",
+      "description": "Places one instance of an already-loaded, level-based family type at a point on a level in a SCRATCH model, marked as a CreateCraft test placement. Does not load families.",
+      "params": {
+        "documentKey": {
+          "type": "string",
+          "description": "The documentKey returned by revit.project_info for the project you inspected. The edit is refused if a different project is open now.",
+          "required": true
+        },
+        "typeName": {
+          "type": "string",
+          "description": "Family type name, as listed by revit.lighting.list or Revit.",
+          "required": true
+        },
+        "familyName": {
+          "type": "string",
+          "description": "Family name when several families share the type name."
+        },
+        "levelName": {
+          "type": "string",
+          "description": "Level to place on.",
+          "required": true
+        },
+        "xMm": {
+          "type": "number",
+          "description": "X position in millimetres.",
+          "required": true,
+          "min": -1000000,
+          "max": 1000000
+        },
+        "yMm": {
+          "type": "number",
+          "description": "Y position in millimetres.",
+          "required": true,
+          "min": -1000000,
+          "max": 1000000
+        }
+      },
+      "permissions": [
+        "modify-project",
+        "read-project"
+      ],
+      "destructive": true,
+      "timeoutMs": 60000
+    },
+    {
+      "id": "revit.element.remove_test",
+      "label": "Remove a test placement",
+      "description": "Deletes an instance that CreateCraft's test placement created (only those). Use it to undo revit.element.place_test.",
+      "params": {
+        "documentKey": {
+          "type": "string",
+          "description": "The documentKey returned by revit.project_info for the project you inspected. The edit is refused if a different project is open now.",
+          "required": true
+        },
+        "elementId": {
+          "type": "number",
+          "description": "Revit element id (from a previous list).",
+          "required": true,
+          "min": 1
+        }
+      },
+      "permissions": [
+        "modify-project",
+        "read-project"
+      ],
+      "destructive": true,
+      "timeoutMs": 60000
+    }
+  ],
+  "files": {}
+}

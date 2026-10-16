@@ -9,7 +9,7 @@
 // A failure in either half undoes the other; nothing is called connected until a real round trip succeeded.
 
 import path from 'node:path';
-import type { InstalledAdapter, PackageApproval, PackageListing, PackageReview, PluginState } from '@shared/integrations';
+import { compareVersions, type InstalledAdapter, type PackageApproval, type PackageListing, type PackageReview, type PluginState } from '@shared/integrations';
 import { BridgeServer } from './bridge/server';
 import { makeBridgeFactory } from './bridge/bridgeAdapter';
 import { makePluginLink, type PluginLink } from './bridge/link';
@@ -140,8 +140,19 @@ export class AdapterPackages {
     const profile = profileById(m.integration?.host?.profile ?? '');
     if (!profile?.exeNames.length) return null;
     const apps = await this.manager.list().catch(() => []);
-    const hit = apps.find((a) => profile.exeNames.some((e) => lower(e) === lower(path.basename(a.exePath))));
-    return hit?.version ?? null;
+    let hits = apps.filter((a) => profile.exeNames.some((e) => lower(e) === lower(path.basename(a.exePath))));
+    // Nothing listed yet (nobody has scanned in this session): look for the program now.
+    if (!hits.length) {
+      const scanned = await this.manager.scan().then((r) => r.apps, () => []);
+      hits = scanned.filter((a) => profile.exeNames.some((e) => lower(e) === lower(path.basename(a.exePath))));
+    }
+    // The release year can be missing from the uninstall record; Autodesk installs live in "Revit 2027"-style folders.
+    const versionOf = (a: (typeof hits)[number]) => a.version ?? /(?<!\d)(20\d\d)(?!\d)/.exec(a.exePath)?.[1] ?? null;
+    // Several release years can be installed side by side: prefer the one this package supports.
+    const ranges = m.integration?.host?.versions ?? [];
+    const fits = (v: string | null) => !!v && (!ranges.length || ranges.some((r) => (!r.min || compareVersions(v, r.min) >= 0) && (!r.max || compareVersions(v, r.max) <= 0)));
+    const hit = hits.find((a) => fits(versionOf(a))) ?? hits[0];
+    return hit ? versionOf(hit) : null;
   }
 
   async review(source: string): Promise<PackageReview> {

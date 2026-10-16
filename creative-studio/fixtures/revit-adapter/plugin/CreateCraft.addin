@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RevitAddIns>
+  <AddIn Type="Application">
+    <Name>CreateCraft</Name>
+    <Assembly>CreateCraft\CreateCraft.Revit.dll</Assembly>
+    <AddInId>7B1E4C52-9A3D-4F68-8E21-5D0C6A93B7F4</AddInId>
+    <FullClassName>CreateCraft.Revit.App</FullClassName>
+    <VendorId>CRCF</VendorId>
+    <VendorDescription>CreateCraft - connects Revit to CreateCraft on this computer</VendorDescription>
+  </AddIn>
+</RevitAddIns>

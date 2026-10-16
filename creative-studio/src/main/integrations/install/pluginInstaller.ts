@@ -157,7 +157,7 @@ export class PluginInstaller {
     }
     if (dest?.admin) steps.push({ kind: 'elevation', title: 'Allow administrator access', detail: `"${dest.label}" is a protected folder. Windows will ask you to approve this once.` });
     if (view.restartHost) steps.push({ kind: 'restart-host', title: `Open or restart ${host}`, detail: profile.restartNote });
-    if (profile.readiness === 'groundwork' && pl.technology === 'dotnet-addin') steps.push({ kind: 'authorize-in-host', title: `Allow the add-in inside ${host}`, detail: `${host} may ask you to approve a new add-in the first time it loads. Choose the option that loads it.` });
+    if (profile.readiness !== 'simulated-test' && pl.technology === 'dotnet-addin') steps.push({ kind: 'authorize-in-host', title: `Allow the add-in inside ${host}`, detail: `${host} may ask you to approve a new add-in the first time it loads. Choose the option that loads it.` });
     steps.push({ kind: 'verify', title: 'Test the connection', detail: 'CreateCraft asks the add-in to run a real check inside the program. Only a reply from the add-in counts as connected.' });
     view.steps = steps;
     return { problems, profile, destination: dest, destRoot, files: planned, blockers, view };

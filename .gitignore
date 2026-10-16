@@ -9,3 +9,7 @@ coverage/
 *.key.pem
 .local/
 creative-studio/release/
+
+# C# add-in build output
+creative-studio/addins/**/bin/
+creative-studio/addins/**/obj/

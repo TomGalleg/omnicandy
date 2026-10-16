@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    CreateCraft add-in for Autodesk Revit 2027 (Revit 2027 runs on .NET 10).
+    Build:  dotnet build -c Release     (needs Revit 2027 installed, only to reference its API assemblies; they are NOT copied)
+    Override the Revit folder with  -p:RevitInstall="D:\Revit 2027"
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>CreateCraft.Revit</AssemblyName>
+    <RootNamespace>CreateCraft.Revit</RootNamespace>
+    <Version>1.0.0</Version>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);MSB3277</NoWarn>
+    <DebugType>none</DebugType>
+    <CopyLocalLockFileAssemblies>false</CopyLocalLockFileAssemblies>
+    <EnableDefaultCompileItems>true</EnableDefaultCompileItems>
+    <RevitInstall Condition="'$(RevitInstall)' == ''">C:\Program Files\Autodesk\Revit 2027</RevitInstall>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="RevitAPI"><HintPath>$(RevitInstall)\RevitAPI.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="RevitAPIUI"><HintPath>$(RevitInstall)\RevitAPIUI.dll</HintPath><Private>false</Private></Reference>
+  </ItemGroup>
+</Project>

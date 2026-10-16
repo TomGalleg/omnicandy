@@ -97,17 +97,18 @@ describe('manifest version 2', () => {
 });
 
 describe('host profiles', () => {
-  it('has profiles for every Autodesk and Adobe program and marks none of them ready', () => {
+  it('has profiles for every Autodesk and Adobe program; only Revit 2027 (a real, live-tested add-in) is marked supported', () => {
     const ids = ['autodesk.revit', 'autodesk.autocad', 'autodesk.fusion', 'autodesk.inventor', 'autodesk.3dsmax', 'adobe.photoshop', 'adobe.illustrator', 'adobe.premiere', 'adobe.aftereffects', 'adobe.indesign'];
     for (const id of ids) {
       const p = profileById(id)!;
       expect(p, id).toBeTruthy();
-      expect(p.readiness).toBe('groundwork');
+      expect(p.readiness).toBe(id === 'autodesk.revit' ? 'supported' : 'groundwork');
       expect(p.technologies.length).toBeGreaterThan(0);
       expect(p.destinations.length).toBeGreaterThan(0);
       expect(p.docs.length + p.vendorInstall.length).toBeGreaterThan(0);
     }
-    expect(VENDOR_PROFILES.every((p) => p.readiness === 'groundwork')).toBe(true);
+    expect(VENDOR_PROFILES.filter((p) => p.readiness === 'supported').map((p) => p.id)).toEqual(['autodesk.revit']);
+    expect(VENDOR_PROFILES.filter((p) => p.readiness !== 'supported').every((p) => p.readiness === 'groundwork')).toBe(true);
     expect(ALL_PROFILES.filter((p) => p.readiness === 'simulated-test').map((p) => p.id)).toEqual(['simcad']);
   });
 

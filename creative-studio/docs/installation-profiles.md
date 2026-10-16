@@ -4,14 +4,16 @@ These profiles live in `src/main/integrations/install/hostProfiles.ts` and are C
 program accepts plugins**. A package can only name a profile and one of its destination ids; the folders, file types, size
 limits and administrator flags below are enforced by the installer independently of any manifest.
 
-> **Status: groundwork. None of these programs is ready to connect.** There is no working CreateCraft add-in for any of them, so
-> none is marked supported, none is selectable in Connect Applications, and nothing here was run against the real software.
+> **Status: Revit 2027 is `supported` (real add-in, live-tested; see `docs/revit-integration.md`). Everything else here is groundwork:**
+> there is no working CreateCraft add-in for any other program, so none is marked supported, none is selectable in Connect
+> Applications, and those entries were not run against the real software.
 > The entries come from vendor documentation and developer-community answers read on 2026-10-16 (links at the end). Entries marked
 > *confirm* are the ones that must be re-checked against the current vendor documentation and a real installation before the first
 > add-in is written. A profile becomes "ready" only together with a real, tested add-in for that program.
 
-Local check on this PC (Windows 11): Revit 2027 is installed (the per-year `Addins` folder convention applies); no other Autodesk or
-Adobe program was found by discovery. The shipped Revit MCP tooling in the project is unrelated to this installer.
+Local check on this PC (Windows 11): Revit 2027 is installed and now has a working add-in (Revit 2027 runs on .NET 10; the add-in
+folder convention was confirmed live). No other Autodesk or Adobe program was found by discovery. The Revit MCP tooling in the
+project is unrelated to this installer.
 
 ## What every profile records
 

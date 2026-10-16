@@ -7,7 +7,8 @@
 // Readiness is deliberately conservative:
 //   simulated-test  a built-in test double (SimCAD). Real code paths, no real software.
 //   groundwork      the vendor mechanism is documented here; NO working CreateCraft plugin exists for it yet.
-// Nothing in this file marks a vendor program as ready to connect.
+//   supported       a real CreateCraft add-in exists AND was run against the real program (see the program's doc for what
+//                   was verified). Only Autodesk Revit 2027 is in this state.
 
 import path from 'node:path';
 import type { PluginTechnology } from '@shared/integrations';
@@ -43,7 +44,7 @@ export interface HostProfile {
   id: string;
   vendor: string;
   name: string;
-  readiness: 'simulated-test' | 'groundwork';
+  readiness: 'simulated-test' | 'groundwork' | 'supported';
   exeNames: string[];
   /** Process names checked to see whether the program is open (never ended by CreateCraft). */
   processNames: string[];
@@ -102,14 +103,14 @@ const AUTODESK_DOCS = 'https://aps.autodesk.com/developer/overview';
 
 export const VENDOR_PROFILES: HostProfile[] = [
   {
-    id: 'autodesk.revit', vendor: 'Autodesk', name: 'Revit', readiness: 'groundwork',
+    id: 'autodesk.revit', vendor: 'Autodesk', name: 'Revit', readiness: 'supported',
     exeNames: ['Revit.exe'], processNames: ['Revit.exe'],
     destinations: [
       { id: 'revit-addins-user', label: 'Revit add-ins (this user)', scope: 'user', admin: false, template: '%APPDATA%/Autodesk/Revit/Addins/{year}', extensions: NET_EXT, maxFileBytes: 64 * MB, maxFiles: 60, technologies: ['dotnet-addin'] },
       { id: 'revit-addins-machine', label: 'Revit add-ins (all users)', scope: 'machine', admin: true, template: '%PROGRAMDATA%/Autodesk/Revit/Addins/{year}', extensions: NET_EXT, maxFileBytes: 64 * MB, maxFiles: 60, technologies: ['dotnet-addin'] },
       { id: 'autodesk-appplugins-user', label: 'Autodesk application plug-ins bundle (this user)', scope: 'user', admin: false, template: '%APPDATA%/Autodesk/ApplicationPlugins', extensions: BUNDLE_EXT.concat(['.addin']), maxFileBytes: 64 * MB, maxFiles: 80, technologies: ['bundle', 'dotnet-addin'] },
     ],
-    supportedVersions: 'A separate add-in build per Revit release year (.NET Framework 4.8 up to Revit 2024, .NET 8 from Revit 2025).',
+    supportedVersions: 'A separate add-in build per Revit release year (.NET Framework 4.8 up to Revit 2024, .NET 8 for 2025 and 2026, .NET 10 for Revit 2027). CreateCraft ships the Revit 2027 build only.',
     technologies: [{ id: 'dotnet-addin', label: '.NET add-in with an .addin manifest', note: 'Revit reads *.addin manifests from the Addins/<year> folders at start-up.' }],
     restart: 'required', restartNote: 'Revit reads add-in manifests when it starts. A running Revit must be restarted.',
     adminNote: 'The per-user folder needs no administrator rights; the all-users ProgramData folder does.',

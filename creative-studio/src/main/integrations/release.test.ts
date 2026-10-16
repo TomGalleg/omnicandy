@@ -55,8 +55,9 @@ describe('bundled resources', () => {
     for (const n of names) {
       const r = inspectPackage(path.join(dir, n));
       expect(r.problems, n).toEqual([]);
-      expect(r.id).toBe('freecad');
+      expect(['freecad', 'autodesk.revit']).toContain(r.id);
     }
+    expect(names.length).toBe(2);
   });
 });
 

@@ -7,6 +7,13 @@
       "version": "1.0.0",
       "fingerprint": "E970 10FE 35FE 418C BDEB 5A19 79DC C0EC",
       "keyKind": "development"
+    },
+    {
+      "file": "autodesk.revit-1.0.0.ccadapter",
+      "id": "autodesk.revit",
+      "version": "1.0.0",
+      "fingerprint": "E970 10FE 35FE 418C BDEB 5A19 79DC C0EC",
+      "keyKind": "development"
     }
   ]
 }
