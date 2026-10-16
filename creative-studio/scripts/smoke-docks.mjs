@@ -57,8 +57,9 @@ try {
   await win.locator('.side-tab.right').click();
   await win.locator('.claude').waitFor({ timeout: 5000 });
   await sleep(300);
-  check('Claude tab opens the Creative Partner; the tab stays on its left edge', await win.locator('.claude').isVisible()
-    && (await win.locator('.side-tab.right').boundingBox()).x < (await win.locator('.claude').boundingBox()).x);
+  check('Claude tab opens the Creative Partner; the tab stays on the far right edge of the window, like Media on the left', await win.locator('.claude').isVisible()
+    && (await win.locator('.side-tab.right').boundingBox()).x > (await win.locator('.claude').boundingBox()).x
+    && Math.abs((await win.locator('.side-tab.right').boundingBox()).x + (await win.locator('.side-tab.right').boundingBox()).width - (await win.evaluate(() => innerWidth))) <= 1);
   await shot(win, '43-shell-media-closed-claude-open');
   await win.keyboard.press('Control+Shift+M');
   await sleep(300);

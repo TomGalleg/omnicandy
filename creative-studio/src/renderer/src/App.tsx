@@ -266,11 +266,12 @@ export function App() {
           </Panel>
           <Separator className="sep" />
           <Panel id="right" defaultSize="22" minSize={RAIL + 260} collapsible collapsedSize={RAIL} panelRef={claude.ref} onResize={claude.onResize}>
-            <div className="dock">
-              <SideTab side="right" label="Claude, your Creative Partner" text="Claude" open={claude.open} onToggle={claude.toggle} controls="dock-claude" shortcut="Ctrl + Shift + C" />
+            <div className="dock dock-right">
               <div id="dock-claude" className="dock-content" hidden={!claude.open}>
                 <ClaudePanel key={projectKey ?? 'none'} selected={selected} integrations={integrations} liveApi={liveApi} />
               </div>
+              {/* The tab stays on the far right edge of the window, like the Media tab stays on the far left. */}
+              <SideTab side="right" label="Claude, your Creative Partner" text="Claude" open={claude.open} onToggle={claude.toggle} controls="dock-claude" shortcut="Ctrl + Shift + C" />
             </div>
           </Panel>
         </Group>

@@ -621,3 +621,10 @@ h1, h2, h3 { margin: 0; font-weight: 600; }
 .text-input { width: 100%; height: 30px; padding: 0 8px; background: var(--surface-1, var(--surface-2)); color: var(--text); border: 1px solid var(--border-strong); border-radius: var(--radius-sm); }
 .builder-project .status-list li, .builder-reports .status-list li, .builder-advanced .status-list li { display: block; }
 .builder-project .status-list li .chip { vertical-align: middle; }
+
+/* Dialogs are rendered inside the header, whose white-space: nowrap was inherited by every paragraph in Settings (text could not wrap and the box needed horizontal scrolling). */
+.modal-backdrop { white-space: normal; }
+.settings-content, .settings-body { min-width: 0; }
+.settings-content { overflow-x: hidden; }
+.dock-right { justify-content: flex-end; }
+.field section > small.menu-label { display: block; margin-top: 6px; }
