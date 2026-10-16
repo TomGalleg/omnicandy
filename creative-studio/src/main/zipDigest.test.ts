@@ -31,6 +31,22 @@ describe('semanticZipDigest', () => {
   });
 });
 
+describe('semanticZipDigest for Office packages', () => {
+  it('ignores the save counter and modified time in core.xml but not real property or body changes', async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'zd-ooxml-'));
+    const core = (rev: number, mod: string, title: string) => `<cp:coreProperties><dc:title>${title}</dc:title><cp:lastModifiedBy>WordCraft User</cp:lastModifiedBy><cp:revision>${rev}</cp:revision><dcterms:created xsi:type="dcterms:W3CDTF">2026-10-15T02:44:45Z</dcterms:created><dcterms:modified xsi:type="dcterms:W3CDTF">${mod}</dcterms:modified></cp:coreProperties>`;
+    const f = async (n: string, files: Record<string, string>) => { const p = path.join(dir, n); await writeFile(p, zip(files)); return semanticZipDigest(p); };
+    const body = '<w:document>Sunset</w:document>';
+    const a = await f('a', { 'word/document.xml': body, 'docProps/core.xml': core(2, '2026-10-16T00:03:32Z', 'Report') });
+    const b = await f('b', { 'word/document.xml': body, 'docProps/core.xml': core(4, '2026-10-16T00:09:59Z', 'Report') });
+    const title = await f('c', { 'word/document.xml': body, 'docProps/core.xml': core(2, '2026-10-16T00:03:32Z', 'Other') });
+    const text = await f('d', { 'word/document.xml': '<w:document>Evening</w:document>', 'docProps/core.xml': core(2, '2026-10-16T00:03:32Z', 'Report') });
+    expect(b).toBe(a);
+    expect(title).not.toBe(a);
+    expect(text).not.toBe(a);
+  });
+});
+
 describe('documentDigest', () => {
   it('compares zips by content and anything else by its bytes', async () => {
     const dir = await mkdtemp(path.join(os.tmpdir(), 'dd-'));

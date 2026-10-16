@@ -2,6 +2,8 @@
 // Spawned with a fixed argv and no shell. Tool errors become thrown Errors with the server's text.
 
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
+import { appendFileSync } from 'node:fs';
+import path from 'node:path';
 
 export class McpClient {
   private nextId = 0;
@@ -10,11 +12,20 @@ export class McpClient {
   private exited = false;
   stderr = '';
 
-  private constructor(private readonly proc: ChildProcessWithoutNullStreams) {
+  /** Opt-in wire trace (CS_MCP_TRACE=<file>): one line per request, response, stderr chunk and exit, with a monotonic time. */
+  private trace(kind: string, data: unknown) {
+    const f = process.env.CS_MCP_TRACE;
+    if (!f) return;
+    try { appendFileSync(f, `${new Date().toISOString()} ${this.label} ${kind} ${typeof data === 'string' ? data : JSON.stringify(data)}
+`); } catch { /* tracing never breaks a call */ }
+  }
+
+  private constructor(private readonly proc: ChildProcessWithoutNullStreams, private readonly label = '') {
     proc.stdout.setEncoding('utf8');
     proc.stdout.on('data', (d: string) => this.onData(d));
-    proc.stderr.on('data', (d: Buffer) => { this.stderr = (this.stderr + d.toString()).slice(-4000); });
-    proc.on('exit', () => {
+    proc.stderr.on('data', (d: Buffer) => { this.stderr = (this.stderr + d.toString()).slice(-4000); this.trace('stderr', d.toString().slice(0, 500)); });
+    proc.on('exit', (code) => {
+      this.trace('exit', String(code));
       this.exited = true;
       for (const p of this.pending.values()) { clearTimeout(p.timer); p.reject(new Error('The automation connection closed.')); }
       this.pending.clear();
@@ -23,7 +34,7 @@ export class McpClient {
   }
 
   static async start(exe: string, args: string[], clientName = 'creative-studio'): Promise<McpClient> {
-    const c = new McpClient(spawn(exe, args, { windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] }));
+    const c = new McpClient(spawn(exe, args, { windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] }), `${path.basename(exe)} ${args.join(' ')}`.slice(0, 120));
     await c.request('initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: clientName, version: '0.1.0' } });
     c.proc.stdin.write(JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }) + '\n');
     return c;
@@ -44,6 +55,7 @@ export class McpClient {
       const p = this.pending.get(msg.id);
       if (!p) continue;
       this.pending.delete(msg.id);
+      this.trace('<-', `#${msg.id} ${line.slice(0, 200)}`);
       clearTimeout(p.timer);
       if (msg.error) p.reject(new Error(msg.error.message ?? 'MCP error'));
       else p.resolve(msg.result);
@@ -54,7 +66,8 @@ export class McpClient {
     if (this.exited) return Promise.reject(new Error('The automation connection is closed.'));
     const id = ++this.nextId;
     return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => { this.pending.delete(id); reject(new Error(`${method} timed out.`)); }, timeoutMs);
+      this.trace('->', `#${id} ${method} ${JSON.stringify(params).slice(0, 200)}`);
+      const timer = setTimeout(() => { this.pending.delete(id); this.trace('timeout', `#${id} ${method} after ${timeoutMs} ms`); reject(new Error(`${method} timed out.`)); }, timeoutMs);
       this.pending.set(id, { resolve, reject, timer });
       this.proc.stdin.write(JSON.stringify({ jsonrpc: '2.0', id, method, params }) + '\n');
     });

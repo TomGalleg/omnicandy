@@ -709,6 +709,13 @@ export class LiveWordCraft extends LiveAppBase {
     return ['Open', ...(h.undo ?? [])];
   }
   async undo() { await this.exec('edit.undo'); }
+  /** Cheap save of the just-opened document, so "unchanged" and "undone" saves can be told apart by content. */
+  async writeBaseline(dir: string, base: string) {
+    const main = path.join(dir, `${base}.docx`);
+    await this.client().callTool('save_document', { path: main });
+    await waitForFile(main);
+    return main;
+  }
   async writeVersion(dir: string, base: string) {
     const main = path.join(dir, `${base}.docx`);
     const preview = path.join(dir, `${base}.png`);
@@ -1135,8 +1142,9 @@ export class LiveDeckCraft extends LiveAppBase {
     return { slideCount: d.slides?.length ?? 0, slides };
   }
   async history() {
-    const d = (await this.client().callTool('inspect_document', {})) as { undo?: string[] };
-    return ['Open', ...(d.undo ?? [])];
+    // inspect_document reports only the newest undo step, as one label (not a list).
+    const d = (await this.client().callTool('inspect_document', {})) as { undo?: string | string[] | null };
+    return ['Open', ...(Array.isArray(d.undo) ? d.undo : d.undo ? [d.undo] : [])];
   }
   async undo() { await this.cmd('edit.undo'); }
   async writeBaseline(dir: string, base: string) {

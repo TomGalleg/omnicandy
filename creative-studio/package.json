@@ -22,7 +22,8 @@
     "smoke:multiclip": "electron-vite build && node scripts/smoke-multiclip.mjs",
     "smoke:workflow": "electron-vite build && node scripts/smoke-workflow.mjs",
     "smoke:docks": "electron-vite build && node scripts/smoke-docks.mjs",
-    "smoke:docs": "electron-vite build && node scripts/smoke-docs.mjs"
+    "smoke:docs": "electron-vite build && node scripts/smoke-docs.mjs",
+    "smoke:reopen": "electron-vite build && node scripts/smoke-reopen.mjs"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.3.296",

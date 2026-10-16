@@ -264,9 +264,12 @@ export class LiveTaskController {
   }
 
   private baselineDigest: string | null = null;
+  /** Content digest and library name of the version saved last in this session (cleared when a document is opened). */
+  private lastSavedDigest: { digest: string; name: string } | null = null;
   /** Semantic digest of the document as opened, for apps that can save a cheap baseline copy. */
   private async captureBaseline() {
     this.baselineDigest = null;
+    this.lastSavedDigest = null;
     try {
       if (!this.doc?.writeBaseline) return;
       const f = await this.doc.writeBaseline(await this.d.writeDir(this.appId!), `baseline-${randomUUID().slice(0, 8)}`);
@@ -281,11 +284,15 @@ export class LiveTaskController {
     if (this.collab.activeOperation) throw new Error('Wait for the current step to finish.');
     const dir = await this.d.writeDir(this.appId);
     const files = await doc.writeVersion(dir, randomUUID().slice(0, 8));
-    if (this.baselineDigest && await documentDigest(files.main).catch(() => null) === this.baselineDigest) {
-      // Same content as when the document was opened (e.g. undo then save): only the app's version stamp may differ.
+    const digest = await documentDigest(files.main).catch(() => null);
+    const same = digest && (digest === this.baselineDigest ? this.asset!.name
+      : digest === this.lastSavedDigest?.digest ? this.lastSavedDigest.name : null);
+    if (same) {
+      // Same content as when the document was opened, or as the version saved last (e.g. undo then save):
+      // only the app's version stamp may differ.
       await fs.rm(files.main, { force: true });
       if (files.preview) await fs.rm(files.preview, { force: true });
-      this.message = `Nothing changed since ${this.asset!.name} was opened, so no new version was made.`;
+      this.message = `Nothing changed since ${same} was ${same === this.asset!.name ? 'opened' : 'saved'}, so no new version was made.`;
       this.publish();
       return this.snapshot();
     }
@@ -318,6 +325,7 @@ export class LiveTaskController {
       saved.push(png.id);
     }
     this.saveCount = n;
+    if (digest) this.lastSavedDigest = { digest, name: main.name };
     this.parentForNextSave = main.id;
     this.savedVersionIds = [...this.savedVersionIds, ...saved];
     const v = await this.currentVersion();

@@ -37,6 +37,9 @@ function grabScreen(x, y, w, h, file) {
 
 const app = await electron.launch({ args: [root], cwd: root, env: { ...process.env, CS_USER_DATA_DIR: profile } });
 const win = await app.firstWindow();
+// Header tabs are addressed by name: use the Advanced navigation (Simplified hides Edit under More).
+await win.evaluate(() => localStorage.setItem('cs-nav-mode', 'advanced'));
+await win.reload();
 const probes = [];
 const toDip = (r) => app.evaluate(({ screen }, rr) => screen.screenToDipRect(null, rr), { x: r.x, y: r.y, width: r.w, height: r.h });
 const stageRect = async () => {
@@ -124,7 +127,7 @@ try {
   const vcPid = await waitPid('vectorcraft.exe');
   await embeddedCheck('VectorCraft', vcPid);
   const pcAfter = pcProbe.state();
-  check('PhotoCraft steps aside (minimized) when another file opens', pcAfter?.minimized === true || pcAfter?.visible === false, JSON.stringify(pcAfter));
+  check('PhotoCraft steps aside (hidden or minimized) when another file opens', pcAfter?.minimized === true || pcAfter?.visible === false, JSON.stringify(pcAfter));
   await win.evaluate(() => window.studio.live.quickEdit('rotate', { angle: 15 }));
   check('an edit in VectorCraft shows up', (await win.evaluate(() => window.studio.live.state())).history.length > 1);
   await desktopShot('21-edit-vectorcraft-embedded');
@@ -135,7 +138,7 @@ try {
   check('Save as new version (VectorCraft) adds .svg + .png', after.length === before + 2 && after.some((a) => a.name === 'harbor-landscape-live1.png' && a.width > 0));
 
   // ---- SoundCraft (WAV) ----
-  await win.getByRole('option', { name: /tone-a440\.wav audio/ }).click();
+  await win.getByRole('option', { name: /tone-a440\.wav/ }).click();
   await win.locator('.edit-bar .chip.real', { hasText: 'SoundCraft' }).waitFor({ timeout: 45000 });
   check('SoundCraft opened automatically for the WAV', true);
   const scPid = await waitPid('soundcraft.exe');

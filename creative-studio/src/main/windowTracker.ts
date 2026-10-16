@@ -3,6 +3,7 @@
 
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { EventEmitter } from 'node:events';
+import { appendFileSync } from 'node:fs';
 
 export interface TrackedWindowState {
   alive: boolean;
@@ -14,10 +15,13 @@ export interface TrackedWindowState {
   owned?: boolean;
 }
 
+let trackerSeq = 0;
+
 export class WindowTracker extends EventEmitter<{ state: [TrackedWindowState]; exit: [] }> {
   private proc: ChildProcessWithoutNullStreams;
   private buf = '';
   last: TrackedWindowState | null = null;
+  private readonly seq = ++trackerSeq;
 
   /** targetPid 0 = pre-started: call target(pid) later. cloak = hide the window the instant it appears. */
   constructor(scriptPath: string, targetPid: number, panelHwnd: bigint, cloak = false) {
@@ -37,6 +41,8 @@ export class WindowTracker extends EventEmitter<{ state: [TrackedWindowState]; e
         try {
           const s = JSON.parse(line) as TrackedWindowState;
           this.last = s;
+          if (process.env.CS_MCP_TRACE) { try { appendFileSync(process.env.CS_MCP_TRACE, `${new Date().toISOString()} window-tracker#${this.seq} <- ${line.slice(0, 200)}
+`); } catch { /* ignore */ } }
           this.emit('state', s);
         } catch { /* ignore partial/garbled line */ }
       }
@@ -46,6 +52,9 @@ export class WindowTracker extends EventEmitter<{ state: [TrackedWindowState]; e
   }
 
   private send(cmd: string) {
+    const trace = process.env.CS_MCP_TRACE; // same opt-in wire trace as McpClient
+    if (trace) { try { appendFileSync(trace, `${new Date().toISOString()} window-tracker#${this.seq} -> ${cmd}
+`); } catch { /* tracing never breaks a call */ } }
     if (this.proc.exitCode === null && this.proc.stdin.writable) this.proc.stdin.write(cmd + '\n');
   }
 

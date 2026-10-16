@@ -633,3 +633,9 @@ Audio + Deliver 13/13 (+ Claude checks 4/4), multi-clip 8/8, workflow 7/7.
 Excluded: `node_modules/`, `out/`, `dist/`, `build/`, caches, sample media fixtures, credentials,
 keys, tokens and `.env` files (none exist in the source; the only key-shaped strings are obvious fake
 values in unit tests, e.g. `AIzaTEST…`).
+
+## Craft app stability fixes (2026-10-15)
+
+Details: `docs/fix-wordcraft-figcraft-open-timeouts.md`. Window lifecycle: an unplaced (cloaked) app window is never hidden before it is embedded, and a put-away app is hidden, not minimized (hiding before the first frame wedged WordCraft's control channel; minimize+restore wedged FigCraft's). WordCraft has a baseline and `docProps/core.xml` save stamps are ignored by `documentDigest`; a save identical to the last saved version makes no new version. `CS_MCP_TRACE=<file>` writes an opt-in wire trace.
+
+Remaining limitations: causes come from on/off experiments (apps' source unavailable); put-away apps have no taskbar entry; saved versions from separate sessions both start at `-live1`; DWG not tested; Grid/Deck/CAD not covered by `smoke:reopen`. `smoke:claude-apps` consumes Claude usage (about $5 for the full run) and is opt-in only; routine validation is lint, typecheck, unit tests and the local smokes (`smoke:apps`, `smoke:docs`, `smoke:docks`, `smoke:reopen`, `smoke:live`).

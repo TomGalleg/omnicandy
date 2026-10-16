@@ -6,6 +6,7 @@ import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import zlib from 'node:zlib';
 import { _electron as electron } from 'playwright';
 
 const root = path.resolve(import.meta.dirname, '..');
@@ -14,7 +15,27 @@ const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'cs-smoke-claude-apps-'));
 const results = [];
 const check = (name, ok, detail = '') => { results.push({ name, ok, detail }); console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${detail ? ` - ${detail}` : ''}`); };
 const started = Date.now();
-const EXES = ['photocraft.exe', 'vectorcraft.exe', 'soundcraft.exe', 'filmcraft.exe', 'lightcraft.exe', 'effectcraft.exe', 'designcraft.exe', 'wordcraft.exe', 'pdfcraft.exe'];
+const EXES = ['photocraft.exe', 'vectorcraft.exe', 'soundcraft.exe', 'filmcraft.exe', 'lightcraft.exe', 'effectcraft.exe', 'designcraft.exe', 'wordcraft.exe', 'pdfcraft.exe', 'gridcraft.exe', 'deckcraft.exe', 'figcraft.exe', 'cadcraft.exe'];
+
+/** Text of every entry of a zip package (docx, figcraft, ...), read straight from the central directory. */
+function zipTexts(file) {
+  const buf = fs.readFileSync(file);
+  let eocd = -1;
+  for (let i = buf.length - 22; i >= Math.max(0, buf.length - 65557); i--) if (buf.readUInt32LE(i) === 0x06054b50) { eocd = i; break; }
+  if (eocd < 0) throw new Error(`${path.basename(file)} is not a zip package`);
+  const out = {};
+  let p = buf.readUInt32LE(eocd + 16);
+  for (let n = buf.readUInt16LE(eocd + 10); n > 0; n--) {
+    const method = buf.readUInt16LE(p + 10), csize = buf.readUInt32LE(p + 20), nameLen = buf.readUInt16LE(p + 28);
+    const extra = buf.readUInt16LE(p + 30), comment = buf.readUInt16LE(p + 32), local = buf.readUInt32LE(p + 42);
+    const name = buf.toString('utf8', p + 46, p + 46 + nameLen);
+    const start = local + 30 + buf.readUInt16LE(local + 26) + buf.readUInt16LE(local + 28);
+    const raw = buf.subarray(start, start + csize);
+    if (!name.endsWith('.png')) out[name] = (method === 8 ? zlib.inflateRawSync(raw) : raw).toString('utf8');
+    p += 46 + nameLen + extra + comment;
+  }
+  return out;
+}
 
 /** Processes of `exe` started by this test run. */
 function ourPids(exe) {
@@ -50,7 +71,11 @@ async function scenario(label, message, verify, shot) {
     const { said } = await ask(message);
     const s = await live();
     const r = await verify(s);
-    check(`${label}`, r.ok, `${r.detail ?? ''} | tab ${await tabNow()} | ${said.slice(0, 300)}`);
+    // A completed turn is not evidence. The app must really be open on a document, without an error, and
+    // Claude must not have reported that an app timed out or could not open the file.
+    const admitted = /timed out|time out|did not open|didn't open|could not open|couldn't open|unable to open|failed to open|not able to open/i.exec(said);
+    const sound = s.status === 'ready' && !s.error && !!s.asset;
+    check(`${label}`, r.ok && sound && !admitted, `${r.detail ?? ''} | tab ${await tabNow()} | status ${s.status}${s.error ? ` error ${s.error}` : ''}${admitted ? ` | CLAUDE REPORTED: "${admitted[0]}"` : ''} | ${said.slice(0, 300)}`);
     check(`${label}: lock released after Claude's turn`, s.collab.lockOwner === null, s.collab.phase);
     if (shot) await win.screenshot({ path: path.join(shots, `${shot}.png`) });
   } catch (e) {
@@ -94,9 +119,41 @@ try {
     async (s) => ({ ok: s.appId === 'designcraft' && s.history.length > 1 && (await tabNow()) === 'Edit', detail: JSON.stringify(s.history) }),
     '72-claude-designcraft');
 
-  await scenario('WordCraft: Claude edits a Word document', 'Open quarterly-report.docx and replace "Sunset Over the Sea" with "Evening Tide". Do not save.',
-    async (s) => ({ ok: s.appId === 'wordcraft' && s.history.length > 1 && (await tabNow()) === 'Edit', detail: JSON.stringify(s.history) }),
-    '73-claude-wordcraft');
+  // WordCraft and FigCraft: the edit must reach a saved FILE, not just Claude's words or the history list.
+  const projectDir = () => {
+    const base = path.join(profile, 'projects');
+    const dir = fs.readdirSync(base).map((d) => path.join(base, d)).find((d) => fs.existsSync(path.join(d, 'project.json')));
+    if (!dir) throw new Error('project folder not found');
+    return dir;
+  };
+  const assetsNow = () => win.evaluate(() => window.studio.loadProject()).then((p) => p.assets);
+  async function savedScenario(label, file, request, ext, expectIn, expectNotIn, shot) {
+    if (only && !only.some((o) => label.startsWith(o))) return;
+    const before = new Set((await assetsNow()).map((a) => a.id));
+    await scenario(label, request, async (s) => {
+      const original = (await assetsNow()).find((a) => a.name === file);
+      const fresh = (await assetsNow()).filter((a) => !before.has(a.id) && a.sourceFormat === ext);
+      const saved = fresh.find((a) => a.parentId === original?.id) ?? fresh[0];
+      if (!saved) return { ok: false, detail: `no new .${ext} version in the library; open asset ${s.asset?.name}; history ${JSON.stringify(s.history)}` };
+      const texts = zipTexts(path.join(projectDir(), saved.relPath));
+      const body = Object.entries(texts).filter(([n]) => expectIn.entries.some((e) => n === e)).map(([, t]) => t).join(String.fromCharCode(10));
+      const has = expectIn.texts.every((t) => body.includes(t));
+      const lacks = expectNotIn.every((t) => !body.includes(t));
+      const untouched = original && fs.readFileSync(path.join(projectDir(), original.relPath)).length > 0;
+      return {
+        ok: s.appId === ({ docx: 'wordcraft', figcraft: 'figcraft' })[ext] && s.asset?.name === file && s.history.length > 1 && has && lacks && !!untouched,
+        detail: `opened ${s.asset?.name}; history ${JSON.stringify(s.history)}; saved ${saved.name}; contains ${JSON.stringify(expectIn.texts)}=${has}; old text gone=${lacks}`,
+      };
+    }, shot);
+  }
+
+  await savedScenario('WordCraft: Claude edits and saves a Word document', 'quarterly-report.docx',
+    'Open quarterly-report.docx, replace "Sunset Over the Sea" with "Evening Tide", then save it as a new version.',
+    'docx', { entries: ['word/document.xml'], texts: ['Evening Tide'] }, ['Sunset Over the Sea'], '73-claude-wordcraft');
+
+  await savedScenario('FigCraft: Claude edits and saves a UI design', 'login-screen.figcraft',
+    'Open login-screen.figcraft, change the text "Welcome back" to "Hello again", then save it as a new version.',
+    'figcraft', { entries: ['document.json'], texts: ['"characters":"Hello again"'] }, ['"characters":"Welcome back"'], '75-claude-figcraft');
 
   await scenario('PdfCraft: Claude edits a PDF', 'Open quarterly-summary.pdf and replace "Sunset Over the Sea" with "Evening Tide", then add the text "Approved" at the bottom of page 1. Do not save.',
     async (s) => ({ ok: s.appId === 'pdfcraft' && s.history.length > 2 && (await tabNow()) === 'Edit', detail: JSON.stringify(s.history) }),

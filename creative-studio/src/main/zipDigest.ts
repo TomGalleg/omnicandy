@@ -7,6 +7,13 @@ import zlib from 'node:zlib';
 /** Entries whose bytes only record who wrote the file. */
 const STAMP_ENTRIES = new Set(['mimetype', 'meta.json']);
 
+/**
+ * Office-style packages (WordCraft .docx) rewrite their save counter and modified time on every save,
+ * even when nothing changed; the rest of docProps/core.xml (title, author, ...) still counts.
+ */
+const OOXML_CORE = 'docProps/core.xml';
+const OOXML_SAVE_STAMPS = /<cp:revision>[^<]*<\/cp:revision>|<dcterms:modified\b[^>]*>[^<]*<\/dcterms:modified>/g;
+
 function entries(buf: Buffer): Array<{ name: string; data: Buffer }> {
   let eocd = -1;
   for (let i = buf.length - 22; i >= Math.max(0, buf.length - 65557); i--) if (buf.readUInt32LE(i) === 0x06054b50) { eocd = i; break; }
@@ -39,6 +46,7 @@ export async function semanticZipDigest(file: string): Promise<string> {
     : v && typeof v === 'object' ? Object.fromEntries(Object.keys(v).sort().map((k) => [k, canon((v as Record<string, unknown>)[k])])) : v);
   for (const e of entries(await fs.readFile(file)).filter((x) => !STAMP_ENTRIES.has(x.name) && !x.name.endsWith('/')).sort((a, b) => a.name.localeCompare(b.name))) {
     h.update(e.name).update('\0');
+    if (e.name === OOXML_CORE) { h.update(e.data.toString('utf8').replace(OOXML_SAVE_STAMPS, '')); continue; }
     if (e.name.endsWith('.json')) {
       try { h.update(JSON.stringify(canon(JSON.parse(e.data.toString('utf8'))))); continue; } catch { /* hash raw bytes */ }
     }

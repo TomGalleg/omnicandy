@@ -366,12 +366,17 @@ describe.skipIf(!has('DeckCraft'))('Live DeckCraft (real window)', () => {
     await t.ctl.quickEdit('replaceText', { find: 'Northern Lights', replace: 'Southern Lights' });
     await expect(t.ctl.quickEdit('replaceText', { find: 'not in this deck', replace: 'x' })).rejects.toThrow(/not found/);
     const h = (await t.ctl.quickEdit('addSlide', { title: 'Closing', body: 'Thank you' })).history;
-    expect(h.length).toBeGreaterThanOrEqual(3);
+    // inspect_document reports only the newest undo step, as one label: whole labels, never one letter per entry.
+    expect(h[0]).toBe('Open');
+    expect(h.length).toBeGreaterThanOrEqual(2);
+    expect(h.slice(1).every((x) => x.length > 1)).toBe(true);
     const d1 = (await g.describe()) as { slideCount: number; slides: Array<{ title?: string }> };
     expect(d1.slideCount).toBe(d0.slideCount + 1);
     expect(d1.slides[0]!.title).toBe('Southern Lights');
     expect(d1.slides[d1.slideCount - 1]!.title).toBe('Closing');
-    expect((await t.ctl.undo()).history.length).toBe(h.length - 1);
+    const afterUndo = (await t.ctl.undo()).history;
+    expect(afterUndo[0]).toBe('Open');
+    expect(afterUndo.slice(1).every((x) => x.length > 1)).toBe(true);
     expect(((await g.describe()) as { slideCount: number }).slideCount).toBe(d0.slideCount);
     const saved = await t.ctl.saveVersion();
     expect(saved.savedVersionIds).toHaveLength(2);

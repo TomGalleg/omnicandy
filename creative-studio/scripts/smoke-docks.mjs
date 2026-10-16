@@ -34,7 +34,7 @@ try {
   await win.getByRole('radio', { name: /^ArtCraft Match/ }).click();
   await win.getByRole('tab', { name: 'Integrations' }).click();
   const apps = await win.locator('.settings .menu-label', { hasText: 'ArtCraft apps' }).textContent();
-  check('Settings > Integrations shows ArtCraft detection', /\d+ of 7 installed/.test(apps ?? ''), apps ?? '');
+  check('Settings > Integrations shows ArtCraft detection', /\d+ of 13 installed/.test(apps ?? ''), apps ?? '');
   await win.locator('.settings .menu-label', { hasText: 'AI image providers' }).waitFor();
   await sleep(500);
   check('Settings > Integrations shows AI provider status', (await win.locator('.settings .status-list li').count()) >= 9);

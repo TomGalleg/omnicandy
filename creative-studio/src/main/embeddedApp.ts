@@ -17,6 +17,13 @@ export class EmbeddedApp {
   private pid: number | null = null;
   private found = false;
   private embeddedOnce = false;
+  /**
+   * The adopted window was caught (cloaked / parked off-screen) the moment it appeared and has not been
+   * placed yet. Such a window is already out of sight, and hiding it as well while the app is still
+   * starting can wedge its control channel (verified with WordCraft: ShowWindow(SW_HIDE) before the
+   * first frame leaves the next tool call unanswered), so it is left alone until it is embedded.
+   */
+  private unplaced = false;
   private viewport: Viewport | null = null;
   mode: EmbedMode = 'embedded';
   /** A tracker already compiled and waiting, so a new app window can be caught the instant it appears. */
@@ -42,6 +49,7 @@ export class EmbeddedApp {
     this.spare = null;
     t.target(pid);
     this.adopt(pid, t);
+    this.unplaced = true;
     setTimeout(() => this.prewarm(), 2000);
   }
 
@@ -54,7 +62,7 @@ export class EmbeddedApp {
     return b.length >= 8 ? b.readBigUInt64LE(0) : BigInt(b.readUInt32LE(0));
   }
 
-  /** Follows the app window of `pid`. A previously attached app is handed back as a normal, minimized window. */
+  /** Follows the app window of `pid`. A previously attached app is handed back as a normal window and put away hidden. */
   attach(pid: number) {
     if (this.pid === pid && this.tracker) { this.apply(); return; }
     this.adopt(pid, new WindowTracker(this.script, pid, 0n));
@@ -65,6 +73,7 @@ export class EmbeddedApp {
     this.pid = pid;
     this.found = false;
     this.embeddedOnce = false;
+    this.unplaced = false;
     this.tracker = t;
     t.on('state', (s: TrackedWindowState) => {
       if (this.tracker !== t) return;
@@ -87,8 +96,11 @@ export class EmbeddedApp {
     const hwnd = this.hostHandle();
     if (!host || !hwnd) return;
     const v = this.viewport;
-    if (!v || !v.visible || v.width < 40 || v.height < 40 || host.isMinimized()) { t.hide(); return; }
-    if (!this.embeddedOnce) { t.embed(hwnd); this.embeddedOnce = true; }
+    if (!v || !v.visible || v.width < 40 || v.height < 40 || host.isMinimized()) {
+      if (!this.unplaced) t.hide();
+      return;
+    }
+    if (!this.embeddedOnce) { t.embed(hwnd); this.embeddedOnce = true; this.unplaced = false; }
     const content = host.getContentBounds();
     const dip = { x: content.x + v.x, y: content.y + v.y, width: v.width, height: v.height };
     t.move(screen.dipToScreenRect(host, dip));
@@ -104,6 +116,7 @@ export class EmbeddedApp {
     t.unembed();
     t.uncloak();
     this.embeddedOnce = false;
+    this.unplaced = false;
     const host = this.host();
     if (host && this.viewport) {
       const c = host.getContentBounds();
@@ -126,9 +139,18 @@ export class EmbeddedApp {
     this.pid = null;
     this.found = false;
     if (!t) return;
-    t.unembed();
-    t.uncloak();
-    if (minimize) t.minimize(); else t.show();
+    if (minimize) {
+      // Put away invisibly. Minimizing here and restoring the window later for the next embed left FigCraft's
+      // control channel unanswered (its next open_file never returned; verified by turning only the minimize
+      // off: 0 of 4 runs hung instead of 5 of 5). Hidden once it has its frame back.
+      t.unembed();
+      t.uncloak();
+      t.hide();
+    } else {
+      t.unembed();
+      t.uncloak();
+      t.show();
+    }
     setTimeout(() => t.stop(), 300);
   }
 }

@@ -40,7 +40,7 @@ describe('ProjectManager', () => {
     expect(await pm.currentKey()).toBe(SAMPLE_KEY);
     const list = await pm.list();
     expect(list).toHaveLength(1);
-    expect(list[0]).toMatchObject({ id: SAMPLE_KEY, name: 'Sample Project', isOpen: true, isSample: true, originals: 13 });
+    expect(list[0]).toMatchObject({ id: SAMPLE_KEY, name: 'Sample Project', isOpen: true, isSample: true, originals: 17 });
     expect(list[0]!.thumbAssetId).toBeTruthy();
   });
 
@@ -58,7 +58,7 @@ describe('ProjectManager', () => {
     expect((await (await again.current()).loadManifest()).assets).toHaveLength(1);
     const list = await again.list();
     expect(list[0]).toMatchObject({ id: key, isOpen: true, originals: 1 });
-    expect((await (await again.open(SAMPLE_KEY)).loadManifest()).assets).toHaveLength(13); // untouched
+    expect((await (await again.open(SAMPLE_KEY)).loadManifest()).assets).toHaveLength(17); // untouched
   });
 
   it('renames projects', async () => {
