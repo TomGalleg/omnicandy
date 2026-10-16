@@ -66,7 +66,15 @@ export class VideoService {
       const f = await this.file(store);
       const tmp = `${f}.${process.pid}.tmp`;
       await fs.writeFile(tmp, JSON.stringify({ version: 1, jobs: jobs.slice(-100) }, null, 2), 'utf8');
-      await fs.rename(tmp, f);
+      // Windows refuses to replace a file another reader (the polling loop, a virus scanner) has open for a
+      // moment (EPERM/EBUSY/EACCES). Without a retry a cancel or a finished download was lost at random.
+      for (let attempt = 0; ; attempt++) {
+        try { await fs.rename(tmp, f); break; } catch (e) {
+          const code = (e as NodeJS.ErrnoException).code;
+          if (attempt >= 8 || (code !== 'EPERM' && code !== 'EBUSY' && code !== 'EACCES')) throw e;
+          await new Promise((r) => setTimeout(r, 15 * (attempt + 1)));
+        }
+      }
       this.d.onChange?.(next);
       return next;
     };

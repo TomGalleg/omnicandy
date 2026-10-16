@@ -73,7 +73,7 @@ export interface AdapterManifest {
   notes?: string;
 }
 
-export type IntegrationStatus = 'detected' | 'available' | 'connected' | 'limited' | 'unsupported' | 'needs-repair' | 'incompatible';
+export type IntegrationStatus = 'detected' | 'available' | 'connected' | 'limited' | 'unsupported' | 'needs-repair' | 'incompatible' | 'not-running' | 'api-unavailable';
 
 export const STATUS_LABEL: Record<IntegrationStatus, string> = {
   detected: 'Detected',
@@ -83,6 +83,8 @@ export const STATUS_LABEL: Record<IntegrationStatus, string> = {
   unsupported: 'Unsupported',
   'needs-repair': 'Needs repair',
   incompatible: 'Incompatible version',
+  'not-running': 'Not running',
+  'api-unavailable': 'Scripting not available',
 };
 
 export interface DiscoveredApp {

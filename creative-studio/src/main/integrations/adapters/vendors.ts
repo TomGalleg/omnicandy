@@ -22,7 +22,6 @@ const STUBS: StubSpec[] = [
   { id: 'adobe.indesign', name: 'InDesign', vendor: 'Adobe', exe: ['InDesign.exe'], display: '^Adobe InDesign', plan: 'Planned: UXP scripting.' },
   { id: 'freecad', name: 'FreeCAD', vendor: 'FreeCAD', exe: ['FreeCAD.exe', 'FreeCADCmd.exe'], display: '^FreeCAD', plan: 'Planned: FreeCADCmd background Python, like the Blender adapter.' },
   { id: 'godot', name: 'Godot', vendor: 'Godot Engine', exe: ['Godot.exe'], display: '^Godot', plan: 'Planned: headless GDScript runs (--headless --script).' },
-  { id: 'davinci.resolve', name: 'DaVinci Resolve', vendor: 'Blackmagic Design', exe: ['Resolve.exe'], display: '^DaVinci Resolve', plan: 'Planned: Resolve scripting API (Python), Studio edition for external scripting.' },
   { id: 'unreal', name: 'Unreal Engine', vendor: 'Epic Games', exe: ['UnrealEditor.exe'], display: '^Unreal Engine', plan: 'Planned: editor Python / Remote Control API.' },
   { id: 'unity', name: 'Unity', vendor: 'Unity Technologies', exe: ['Unity.exe'], display: '^Unity', plan: 'Planned: batch-mode editor scripts.' },
 ];

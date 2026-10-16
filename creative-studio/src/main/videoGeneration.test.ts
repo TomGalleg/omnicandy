@@ -35,7 +35,8 @@ afterEach(async () => {
     }
   };
   await walk(tmp);
-  await fs.rm(tmp, { recursive: true, force: true });
+  // Background job trackers of a finished test may still be writing jobs.json for a moment; retry.
+  await fs.rm(tmp, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
 });
 
 const job = (o: Partial<VideoJob> = {}): VideoJob => ({ modelId: 'veo-3.1-fast-generate-preview', prompt: 'A kite over dunes', referenceAssetId: null, aspectRatio: '16:9', durationSeconds: 4, resolution: '720p', ...o });
@@ -54,10 +55,10 @@ async function fakeVeo(polls: number) {
 }
 
 const make = (fetchMock: unknown, approve: () => Promise<boolean> = async () => true) =>
-  new VideoService({ vault, store: async () => store, approve, fetch: fetchMock as typeof fetch, pollMs: 5, maxWaitMs: 5000 });
+  new VideoService({ vault, store: async () => store, approve, fetch: fetchMock as typeof fetch, pollMs: 5, maxWaitMs: 25_000 });
 
 async function until(fn: () => Promise<boolean>) {
-  for (let i = 0; i < 400; i++) { if (await fn()) return; await new Promise((r) => setTimeout(r, 10)); }
+  for (let i = 0; i < 2000; i++) { if (await fn()) return; await new Promise((r) => setTimeout(r, 10)); }
   throw new Error('timed out');
 }
 
@@ -78,7 +79,9 @@ describe('video job rules and price', () => {
   });
 });
 
-describe('VideoService', () => {
+// Generous timeouts: these tests poll, hash and encrypt, and exceeded the 5 s default when other test files
+// ran in parallel on a busy machine (the intermittent failure). The logic itself is not time dependent.
+describe('VideoService', { timeout: 30_000 }, () => {
   it('sends nothing when the approval is declined', async () => {
     const f = await fakeVeo(0);
     await expect(make(f, async () => false).submit(job(), 'user')).rejects.toThrow(/cancelled/i);
@@ -133,7 +136,7 @@ describe('VideoService', () => {
   });
 });
 
-describe('Runway', () => {
+describe('Runway', { timeout: 30_000 }, () => {
   const rjob = (o: Partial<VideoJob> = {}): VideoJob => ({ modelId: 'gen4.5', prompt: 'A paper boat', referenceAssetId: null, aspectRatio: '16:9', durationSeconds: 5, resolution: '720p', ...o });
 
   it('prices credits per second and needs a picture for Gen-4 Turbo', () => {

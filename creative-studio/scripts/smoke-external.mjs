@@ -49,6 +49,19 @@ try {
     await blender.getByRole('button', { name: 'Connect', exact: true }).waitFor({ timeout: 30000 });
     check('Disconnect returns it to Available to connect', /Available to connect/.test((await blender.locator('.ext-head').textContent()) ?? ''));
   }
+  // Second adapter, same screen: Resolve is listed with the same controls. Connecting must end in a precise
+  // status (Not running / Scripting not available / Connected); never a silent success.
+  const resolve = section.locator('.ext-row', { hasText: 'DaVinci Resolve' });
+  if ((await resolve.count()) > 0) {
+    check('Resolve is listed by the same screen with its commands', /Inspect the open Resolve project/.test((await resolve.textContent()) ?? ''));
+    await resolve.getByRole('button', { name: 'Connect', exact: true }).click();
+    await win.waitForTimeout(6000);
+    const head = (await resolve.locator('.ext-head').textContent()) ?? '';
+    check('Resolve shows an honest status after Connect', /Not running|Scripting not available|Limited functionality|Connected/.test(head), head);
+    await win.screenshot({ path: path.join(shots, '99-external-apps-resolve.png') });
+  } else {
+    console.log('DaVinci Resolve is not installed here: Resolve row not checked.');
+  }
   const stubs = await section.locator('.ext-row').filter({ hasText: 'Detected. Deep integration is planned' }).count();
   check('placeholder adapters (if their program is installed) are shown as unsupported, never as connectable', (await section.locator('.ext-row').filter({ hasText: 'Unsupported' }).getByRole('button', { name: 'Connect', exact: true }).count()) === 0, `${stubs} placeholder(s) found`);
 } catch (e) {

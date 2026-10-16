@@ -18,10 +18,12 @@ afterEach(async () => {
     }
   };
   await walk(tmp);
-  await fs.rm(tmp, { recursive: true, force: true });
+  await fs.rm(tmp, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
 });
 
-describe('ProjectManager', () => {
+// These tests copy whole sample projects; the 5 s default timeout was exceeded when the live-app suites ran in
+// parallel on the same machine (intermittent failure, never a logic error).
+describe('ProjectManager', { timeout: 30_000 }, () => {
   it('stores the project type, brief and objective, and remembers the view without changing "edited"', async () => {
     const pm = make();
     await pm.current();

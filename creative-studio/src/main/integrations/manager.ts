@@ -38,6 +38,8 @@ export class IntegrationManager {
   private apps = new Map<string, DiscoveredApp>();
   private versions = new Map<string, string | null>();
   private broken = new Map<string, string>();
+  /** Why a healthy-looking program could not be driven (not running / scripting unreachable). */
+  private blocked = new Map<string, { status: 'not-running' | 'api-unavailable'; detail: string }>();
   private sessions = new Map<string, Session>();
   private ops = new Map<string, AbortController>();
   private grants: Record<string, Permission[]> | null = null;
@@ -113,6 +115,8 @@ export class IntegrationManager {
     const range = versionSupported(version, m.versions);
     if (range === 'too-old') return set('incompatible', `Version ${version} is older than the supported ${m.versions.min}.`);
     if (range === 'too-new') return set('incompatible', `Version ${version} is newer than the tested ${m.versions.max}.`);
+    const blocked = this.blocked.get(a.key);
+    if (blocked && !this.sessions.has(a.key)) return set(blocked.status, blocked.detail);
     const broken = this.broken.get(a.key);
     if (broken) return set('needs-repair', `Could not read the program: ${broken}`);
     if (this.sessions.has(a.key)) return set(m.maturity === 'experimental' ? 'limited' : 'connected', m.maturity === 'experimental' ? 'Connected, experimental adapter.' : 'Connected and healthy.');
@@ -136,11 +140,16 @@ export class IntegrationManager {
         this.versions.set(key, probe.version ?? app.version);
         await withTimeout(adapter.connect(app), 30_000, 'connect');
         const h = await withTimeout(adapter.healthCheck(), 30_000, 'health check');
-        if (!h.ok) throw new Error(h.detail);
+        if (!h.ok) {
+          if (h.state) { this.blocked.set(key, { status: h.state, detail: h.detail }); throw new BlockedError(h.detail); }
+          throw new Error(h.detail);
+        }
         this.broken.delete(key);
+        this.blocked.delete(key);
         this.sessions.set(key, { app, adapter, factory: f, version: probe.version });
       } catch (e) {
-        this.broken.set(key, errMsg(e));
+        // A blocked program is not "broken": keep the precise status, do not ask for repair.
+        if (!(e instanceof BlockedError)) { this.broken.set(key, errMsg(e)); this.blocked.delete(key); }
         await adapter.dispose().catch(() => undefined);
         throw e;
       }
@@ -160,6 +169,7 @@ export class IntegrationManager {
   async repair(key: string): Promise<ExternalAppInfo> {
     await this.disconnect(key);
     this.broken.delete(key);
+    this.blocked.delete(key);
     this.versions.delete(key);
     return this.connect(key);
   }
@@ -263,6 +273,8 @@ export class IntegrationManager {
     }
   }
 }
+
+class BlockedError extends Error {}
 
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
 

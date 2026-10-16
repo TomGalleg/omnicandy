@@ -4,10 +4,10 @@
 // parameters travel in a JSON file and are never spliced into code. Version differences are handled
 // inside the templates (only API calls that are stable across 3.6 to 4.x are used).
 
-import { spawn } from 'node:child_process';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { ADAPTER_SDK_VERSION, type AdapterManifest, type CommandSpec, type DiscoveredApp } from '@shared/integrations';
+import { runProcess, safeFileName, parseResultLine, type RunResult } from '../process';
 import { AdapterError, type AdapterFactory, type AdapterOutcome, type ExecuteContext, type ExternalAdapter, type HealthResult, type ProbeResult } from '../sdk';
 
 const COMMANDS: CommandSpec[] = [
@@ -104,27 +104,11 @@ _result(_summary())
 `,
 };
 
-interface RunResult { code: number | null; out: string; err: string }
-
 export function runBlender(exe: string, args: string[], signal: AbortSignal | undefined, timeoutMs: number): Promise<RunResult> {
-  return new Promise((resolve, reject) => {
-    const p = spawn(exe, args, { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
-    let out = '', err = '';
-    p.stdout.on('data', (d: Buffer) => { out = (out + d.toString()).slice(-200_000); });
-    p.stderr.on('data', (d: Buffer) => { err = (err + d.toString()).slice(-20_000); });
-    const kill = () => { try { p.kill(); } catch { /* gone */ } };
-    const timer = setTimeout(() => { kill(); reject(new AdapterError('app-error', `Blender did not finish within ${Math.round(timeoutMs / 1000)} s.`)); }, timeoutMs);
-    signal?.addEventListener('abort', kill, { once: true });
-    p.on('error', (e) => { clearTimeout(timer); reject(new AdapterError('missing-app', `Could not start Blender: ${e.message}`)); });
-    p.on('close', (code) => { clearTimeout(timer); signal?.removeEventListener('abort', kill); resolve({ code, out, err }); });
-  });
+  return runProcess(exe, args, { signal, timeoutMs, label: 'Blender' });
 }
 
-const safeName = (n: string, ext: string): string => {
-  const base = path.basename(String(n)).replace(/\.[^.]*$/, '').replace(/[^A-Za-z0-9 _-]/g, '').trim().slice(0, 60);
-  if (!base) throw new AdapterError('invalid-params', 'The file name has no usable letters or digits.');
-  return `${base}${ext}`;
-};
+const safeName = safeFileName;
 
 class BlenderAdapter implements ExternalAdapter {
   private app: DiscoveredApp | null = null;
@@ -161,12 +145,12 @@ class BlenderAdapter implements ExternalAdapter {
     await fs.writeFile(js, JSON.stringify(params));
     try {
       const r = await runBlender(this.app!.exePath, ['--background', '--factory-startup', '--python', py, '--', js], ctx.signal, 300_000);
-      const m = /CREATECRAFT_RESULT (\{.*\})/.exec(r.out);
-      if (r.code !== 0 || !m) {
+      const summary = parseResultLine(r.out);
+      if (r.code !== 0 || !summary) {
         const tail = (r.err || r.out).trim().split(/\r?\n/).slice(-6).join(' | ');
         throw new AdapterError('app-error', `Blender stopped with exit code ${r.code}: ${tail.slice(0, 400)}`);
       }
-      return { summary: JSON.parse(m[1]!) as Record<string, unknown>, r };
+      return { summary, r };
     } finally { await fs.rm(py, { force: true }); await fs.rm(js, { force: true }); }
   }
 

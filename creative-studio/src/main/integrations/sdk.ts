@@ -10,7 +10,12 @@ export interface ProbeResult {
   detail?: string;
 }
 
-export interface HealthResult { ok: boolean; detail: string }
+/**
+ * `state` lets an adapter say WHY it is not usable, so the UI can show a precise status instead of a
+ * generic failure: the program is not running (live-session applications such as Resolve), or it runs
+ * but its scripting interface is not reachable (edition or preference).
+ */
+export interface HealthResult { ok: boolean; detail: string; state?: 'not-running' | 'api-unavailable' }
 
 export interface ExecuteContext {
   app: DiscoveredApp;

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { PERMISSION_LABEL, STATUS_LABEL, type ExternalAppInfo, type ExternalScan, type IntegrationStatus } from '@shared/integrations';
 
 const CHIP: Record<IntegrationStatus, string> = {
-  detected: 'real', available: 'real', connected: 'ok', limited: 'warn', unsupported: 'off', 'needs-repair': 'warn', incompatible: 'warn',
+  detected: 'real', available: 'real', connected: 'ok', limited: 'warn', unsupported: 'off', 'needs-repair': 'warn', incompatible: 'warn', 'not-running': 'real', 'api-unavailable': 'warn',
 };
 
 /** Last scan, kept while Settings is closed and reopened so switching tabs does not rescan. */
@@ -31,16 +31,20 @@ export function ExternalApps() {
 
   const act = (key: string, what: 'connect' | 'disconnect' | 'repair' | 'revoke') =>
     run(`${what}:${key}`, async () => {
-      if (what === 'connect') await window.studio.external.connect(key);
-      else if (what === 'disconnect') await window.studio.external.disconnect(key);
-      else if (what === 'repair') await window.studio.external.repair(key);
-      else await window.studio.external.revoke(key);
-      await refreshList();
+      try {
+        if (what === 'connect') await window.studio.external.connect(key);
+        else if (what === 'disconnect') await window.studio.external.disconnect(key);
+        else if (what === 'repair') await window.studio.external.repair(key);
+        else await window.studio.external.revoke(key);
+      } finally {
+        // A failed connect still changes the status (Not running, Scripting not available): show it.
+        await refreshList().catch(() => undefined);
+      }
     });
 
   const row = (a: ExternalAppInfo) => {
     const working = busy?.endsWith(`:${a.key}`);
-    const canConnect = a.status === 'available' || a.status === 'needs-repair';
+    const canConnect = a.status === 'available' || a.status === 'needs-repair' || a.status === 'not-running' || a.status === 'api-unavailable';
     return (
       <li key={a.key} className="ext-row">
         <div className="ext-head">
@@ -56,7 +60,7 @@ export function ExternalApps() {
         {a.notes && <small className="ext-note">{a.notes}</small>}
         <div className="ext-actions">
           {(a.status === 'connected' || a.status === 'limited') && <button className="btn small" disabled={!!busy} onClick={() => void act(a.key, 'disconnect')}>Disconnect</button>}
-          {canConnect && a.status === 'available' && <button className="btn small primary" disabled={!!busy} onClick={() => void act(a.key, 'connect')}>{working ? 'Connecting…' : 'Connect'}</button>}
+          {canConnect && a.status !== 'needs-repair' && <button className="btn small primary" disabled={!!busy} onClick={() => void act(a.key, 'connect')}>{working ? 'Connecting…' : 'Connect'}</button>}
           {(a.status === 'needs-repair' || a.status === 'limited') && <button className="btn small" disabled={!!busy} onClick={() => void act(a.key, 'repair')}>Repair integration</button>}
           {a.granted.length > 0 && <button className="btn small ghost" disabled={!!busy} onClick={() => void act(a.key, 'revoke')}>Forget permissions</button>}
         </div>
