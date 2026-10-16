@@ -2,7 +2,7 @@
 
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { BrowserWindow, clipboard, dialog, ipcMain, nativeTheme, safeStorage, shell, type IpcMainInvokeEvent } from 'electron';
+import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeTheme, safeStorage, shell, type IpcMainInvokeEvent } from 'electron';
 import { z } from 'zod';
 import { IPC, type GenerateResultDto, type ImportResult, type IntegrationSnapshot, type ProviderStatusDto } from '@shared/ipc';
 import { formatUsd, MAX_PROMPT, PROVIDERS } from '@shared/generation';
@@ -45,6 +45,9 @@ import { MOTION_ASPECTS, MOTION_FPS, MOTION_INTENSITIES, MOTION_PRESETS, MOTION_
 import { MAX_VIDEO_PROMPT } from '@shared/video';
 import type { SettingsStore } from './settingsStore';
 import { AdapterPackages, createIntegrationManager } from './integrations';
+import { ConnectService } from './integrations/connect';
+import { approvalDetail, INSTALL_CANCELLED_MESSAGE, type BrowseResult, type ConnectOutcome, type ConnectOverview, type ForgetResult } from '@shared/connect';
+import { ExternalState } from './integrations/state';
 import { PERMISSION_LABEL, type ApprovalAnswer, type ExternalAppInfo, type PackageApproval, type PackageListing, type Permission } from '@shared/integrations';
 
 export interface IpcDeps {
@@ -637,31 +640,20 @@ export function registerIpc(d: IpcDeps): void {
   });
   // External third-party applications: one engine for discovery, adapters, permissions and execution.
   // The 13 native Craft apps are NOT routed through it.
-  const extFile = path.join(d.secretsDir, 'external-apps.json');
-  const extState = async (): Promise<{ grants: Record<string, Permission[]>; paths: string[]; remembered: string[] }> => {
-    try { const j = JSON.parse(await fsp.readFile(extFile, 'utf8')) as { grants?: Record<string, Permission[]>; paths?: string[]; remembered?: string[] }; return { grants: j.grants ?? {}, paths: j.paths ?? [], remembered: j.remembered ?? [] }; } catch { return { grants: {}, paths: [], remembered: [] }; }
-  };
-  const extSave = async (s: { grants: Record<string, Permission[]>; paths: string[]; remembered: string[] }) => {
-    await fsp.mkdir(path.dirname(extFile), { recursive: true });
-    await fsp.writeFile(extFile, JSON.stringify(s, null, 2), 'utf8');
-  };
+  const extStore = new ExternalState(path.join(d.secretsDir, 'external-apps.json'));
+  // Connectors that ship with CreateCraft are only LISTED as available; installing one goes through the same review and native confirmation as any package.
+  const catalogDirs = [path.join(app.getAppPath(), 'resources', 'adapters')];
+  let connect: ConnectService | null = null;
   const external = createIntegrationManager({
     workDir: async (id) => (await d.project()).workDir('external', id),
-    permissions: { load: async () => (await extState()).grants, save: async (grants) => extSave({ ...(await extState()), grants }) },
-    userPaths: async () => (await extState()).paths,
-    remembered: { load: async () => (await extState()).remembered, save: async (remembered) => extSave({ ...(await extState()), remembered }) },
+    permissions: { load: async () => (await extStore.read()).grants, save: async (grants) => { await extStore.update((st) => { st.grants = grants; }); } },
+    userPaths: async () => (await extStore.read()).paths,
+    extraTargets: async () => (await connect?.extraTargets()) ?? [],
+    remembered: { load: async () => (await extStore.read()).remembered, save: async (remembered) => { await extStore.update((st) => { st.remembered = remembered; }); } },
     approve: async (r): Promise<ApprovalAnswer> => {
       const win = d.window();
-      const lines = [
-        r.command.description,
-        '',
-        r.needed.length ? `This lets CreateCraft: ${r.needed.map((p) => PERMISSION_LABEL[p].toLowerCase()).join('; ')}.` : 'No new permissions are needed.',
-        Object.keys(r.params).length ? `Settings: ${Object.entries(r.params).map(([k, v]) => `${k} ${String(v)}`).join(', ')}` : '',
-        r.untrusted ? 'This integration is NOT signed, so CreateCraft cannot tell who made it. You are asked every time.' : '',
-        r.destructive ? 'This can change or remove existing work and may not be reversible. You are asked every time.' : 'Outputs are written to the external folder of this project; your existing files are not changed.',
-      ].filter((x, i, a) => x !== '' || a[i - 1] !== '');
       const buttons = r.destructive || r.untrusted ? ['Cancel', 'Allow once'] : ['Cancel', 'Allow once', `Always allow for ${r.app.adapterName ?? r.app.name}`];
-      const options: Electron.MessageBoxOptions = { type: 'question', title: 'External application', message: `Run "${r.command.label}" in ${r.app.adapterName ?? r.app.name}?`, detail: lines.join(String.fromCharCode(10)), buttons, defaultId: 0, cancelId: 0, noLink: true };
+      const options: Electron.MessageBoxOptions = { type: 'question', title: 'External application', message: `Run "${r.command.label}" in ${r.app.adapterName ?? r.app.name}?`, detail: approvalDetail(r), buttons, defaultId: 0, cancelId: 0, noLink: true };
       const res = win && !win.isDestroyed() ? await dialog.showMessageBox(win, options) : await dialog.showMessageBox(options);
       return res.response === 1 ? 'once' : res.response === 2 ? 'always' : 'deny';
     },
@@ -669,6 +661,8 @@ export function registerIpc(d: IpcDeps): void {
   // Installable adapter packages: verified on disk, run in their own restricted process (integrations/packageRunner.ts).
   const packages = new AdapterPackages(path.join(path.dirname(d.secretsDir), 'integrations'), external);
   const packagesReady = packages.load().catch(() => undefined);
+  const connectSvc = new ConnectService({ manager: external, packages, state: extStore, catalogDirs });
+  connect = connectSvc;
   /** Only paths the user picked or the inbox listed can be reviewed or installed: the renderer cannot name arbitrary files. */
   const allowedPackagePaths = new Set<string>();
   const listing = async (): Promise<PackageListing> => {
@@ -681,6 +675,29 @@ export function registerIpc(d: IpcDeps): void {
     if (!allowedPackagePaths.has(p)) throw new Error('That package was not chosen from the picker or the inbox. Choose it again.');
     return p;
   };
+  // Universal Connect (guided setup): the same manager, packages and trust system, in plain language.
+  const pickProgram = async (kind: 'file' | 'folder'): Promise<string | null> => {
+    const win = d.window();
+    const o: Electron.OpenDialogOptions = kind === 'file'
+      ? { title: 'Choose the program (.exe)', properties: ['openFile'], filters: [{ name: 'Programs', extensions: ['exe'] }] }
+      : { title: 'Choose the folder the program lives in', properties: ['openDirectory'] };
+    const r = await (win ? dialog.showOpenDialog(win, o) : dialog.showOpenDialog(o));
+    return r.canceled ? null : r.filePaths[0] ?? null;
+  };
+  handle(IPC.connectOverview, z.tuple([z.boolean()]), async (rescan): Promise<ConnectOverview> => {
+    await packagesReady;
+    const o = await connectSvc.overview({ rescan });
+    for (const p of connectSvc.offerPaths()) allowedPackagePaths.add(p);
+    return o;
+  });
+  handle(IPC.connectApp, z.tuple([z.string().min(1).max(600)]), async (k): Promise<ConnectOutcome> => { await packagesReady; return connectSvc.connectAndVerify(k); });
+  handle(IPC.connectBrowse, z.tuple([z.enum(['file', 'folder'])]), async (kind): Promise<BrowseResult> => {
+    await packagesReady;
+    const p = await pickProgram(kind);
+    return p ? connectSvc.browse(p) : { kind: 'cancelled' };
+  });
+  handle(IPC.connectForget, z.tuple([z.string().min(1).max(600)]), async (k): Promise<ForgetResult> => { await packagesReady; return connectSvc.forget(k); });
+  handle(IPC.connectDone, none, async () => { await connectSvc.markOnboarded(); });
   handle(IPC.extScan, none, async () => { await packagesReady; return external.scan(); });
   handle(IPC.extList, none, async () => { await packagesReady; return external.list(); });
   handle(IPC.extConnect, z.tuple([z.string().min(1).max(600)]), (k) => external.connect(k));
@@ -720,7 +737,7 @@ export function registerIpc(d: IpcDeps): void {
       ].join(String.fromCharCode(10)),
     };
     const res = win && !win.isDestroyed() ? await dialog.showMessageBox(win, options) : await dialog.showMessageBox(options);
-    if (res.response !== 1) throw new Error('Installation was cancelled.');
+    if (res.response !== 1) throw new Error(INSTALL_CANCELLED_MESSAGE);
     await packages.install(src, approval as PackageApproval);
     return listing();
   });
@@ -743,8 +760,7 @@ export function registerIpc(d: IpcDeps): void {
     const r = await (win ? dialog.showOpenDialog(win, o) : dialog.showOpenDialog(o));
     const p = r.canceled ? null : r.filePaths[0];
     if (!p) return null;
-    const st = await extState();
-    if (!st.paths.includes(p)) await extSave({ ...st, paths: [...st.paths, p].slice(-50) });
+    await extStore.addPath(p);
     return external.scan();
   });
   const describeExternal = (a: ExternalAppInfo) => ({

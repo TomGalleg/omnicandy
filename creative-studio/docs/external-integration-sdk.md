@@ -29,6 +29,7 @@ Two kinds of adapter share one manager, one permission model, one AI router and 
 | `scripts/pack-adapter.mjs` | Packs a folder into a `.ccadapter` (hashes, optional signature) |
 | `fixtures/sample-adapter/` | The sample package (self-contained, harmless) |
 | `src/renderer/src/components/ExternalApps.tsx`, `IntegrationPackages.tsx` | Settings > Integrations screen |
+| `src/shared/connect.ts`, `connectFlow.ts`, `src/main/integrations/connect.ts`, `state.ts`, `src/renderer/src/connect/` | Universal Connect guided setup (see [Universal Connect](#universal-connect-guided-setup-for-beginners)) |
 | `claudePartner.ts` tools `external_apps`, `external_run`, `external_job` | The AI router: only listed commands, approval dialog per run, background jobs |
 
 ## Discovery
@@ -315,6 +316,85 @@ Findings from running on real FreeCAD 1.1.4 (all handled inside the package, no 
   change was needed.
 * `smoke-external.mjs` matched rows by text, so the FreeCAD placeholder's note (it mentions Blender) broke it once FreeCAD
   was installed; its locators now match the row's name.
+
+## Universal Connect (guided setup for beginners)
+
+Settings > Integrations starts with a **Connect Applications…** card. It opens a four-step dialog (Find, Allow, Set up, Done) that
+sits on top of the framework described above and changes none of it: the manager, adapter SDK, discovery, AI router, permission
+model, package store and trust rules are the ones already in use. Words such as "adapter", "API" and "scripting" are not used in
+the beginner text; the technical names stay one click away under **Details** / **Technical details**.
+
+| Path | Role |
+|---|---|
+| `src/shared/connect.ts` | Types and plain-language wording: `classifyApp` (framework record to group, headline, explanation), `PERMISSION_PLAIN` (plain permission titles and impact), `approvalDetail` (text of the native "Run X?" question), `explainConnectFailure`, `sameInstall` |
+| `src/shared/connectFlow.ts` | `runSetup`: the multi-program run as plain logic (no UI): one program after another, each with its own connector decision, install, connection and test |
+| `src/main/integrations/connect.ts` | `ConnectService`: `overview` (scan, connectors that could be installed, one row per installation), `connectAndVerify`, `browse`, `forget` |
+| `src/main/integrations/state.ts` | `ExternalState`: grants, user-chosen locations, remembered locations and the first-run flag in `external-apps.json` (same file and format as before; writes are serialised) |
+| `src/renderer/src/connect/` | `ConnectApplicationsCard`, `ConnectWizard`, `PackageReviewCard` (the package review, now shared with Settings > Integration packages), `PermissionExplainer`, `events.ts` |
+| `resources/adapters/` | Connectors that ship with CreateCraft (today `freecad-1.0.0.ccadapter`, signed). They are only LISTED; nothing is installed or trusted until the user does it. Rebuild with `node scripts/build-catalog.mjs` |
+
+### What the dialog does
+
+1. **Find.** Scans on open (same discovery as before, plus the programs the available connectors drive). Each installation is **one** row
+   with its version, publisher and a plain status. Groups: *Ready to connect*, *Connector available*, *Needs attention*, *Already
+   connected*, *Version not supported*, *Found, but not supported yet*. Chips tell the connector state (installed / available / planned /
+   none) and **Experimental** (Resolve, and every package connector, by design). Programs the PC lacks are listed under "Supported, but not found".
+   A detected program with no usable connector gets a short explanation (placeholder: "cannot control it yet"; none: "has no connector for it"), is
+   never selectable, and nothing about it is changed.
+2. **Allow.** For every chosen program: what will happen, and what its connector may be allowed to do in plain language with an impact label
+   (Low impact / Writes files / Powerful). Technical names, commands, method, trust and location are under a disclosure. Connecting grants nothing
+   by itself; the existing per-command approval still asks the first time a command needs a permission, now with the same plain wording first
+   and the technical names after it. Destructive commands and unsigned packages are still asked every time.
+3. **Set up** (one program at a time; native dialogs are modal):
+   * *Connector needed:* the package review (publisher, key fingerprint, commands, per-permission checkboxes, trust checkboxes) is shown **per program**.
+     Install stays disabled until the unsigned/new-publisher boxes are ticked, then the existing native confirmation appears. Declining skips only that program.
+     A connector that is installed but turned off is offered with a "Turn on" button instead.
+   * *Connect and verify:* `ConnectService.connectAndVerify` connects, then runs the adapter's own **health check again** (a real tiny run of the
+     program). Only if that passes is the outcome `verified` (or `verified-limited` for experimental connectors). If the second check fails the session is ended,
+     so the list cannot say Connected. A program that is not open or has scripting off is `blocked` with an instruction, not a vague failure.
+4. **Done.** One result card per program ("Connected and tested", "Connected (experimental)", "Needs your action", "Not connected", "Skipped",
+   "Not set up") with what was checked and a **Try again** for the ones that need it. The headline counts only verified programs.
+
+Independence: `runSetup` catches everything per program; a refused connector, a failed install, a failed test, a thrown exception or a cancel for one
+program never changes another program's outcome (unit tests for every combination, plus a service test with a real package install next to a failing and a succeeding program).
+**Cancel setup** stops before the next step; the program that is finishing keeps its real result and the rest are "Not set up".
+
+### Browse for Application and Forget Application
+
+* **Browse for Application…** (program file) and **Choose a program folder…** (also finds it in the folder's `bin`). Only programs CreateCraft has a connector for, or a planned one, are
+  saved (as before, in `external-apps.json` `paths`); anything else gets "has no connector for it" and nothing is saved. A program already listed is not added twice.
+* **Forget** (inline confirmation) disconnects the program, forgets its permissions and removes its saved/remembered location (also the folder or `bin`-parent the user chose, never a parent drive). It never touches the program.
+  If Windows still lists the program (uninstall record, shortcut) it comes back on the next scan and the message says so instead of pretending.
+* The list refreshes by itself after install, connect, disconnect, repair, remove, forget and browse: main rescans, and the `createcraft:external-apps-changed` event reloads both the dialog and the Settings list behind it.
+
+First run: a welcome note is shown until the dialog has been closed or a setup finished once (`onboarded` in `external-apps.json`).
+
+Accessibility: dialog with `aria-modal` and a labelled heading, focus moves into it and back to the button, Tab is trapped, Escape closes only the wizard (a running setup is cancelled instead), checkboxes
+have real labels, status changes are announced through a polite live region, colours come from the theme tokens (light and dark checked for contrast).
+
+### Verification (this machine: Windows 11, Blender 4.0.2, FreeCAD 1.1.4 at `E:\FreeCAD 1.1`, DaVinci Resolve 21.0.4.5 installed but not running, Revit 2027)
+
+| Item | Evidence |
+|---|---|
+| Wording, grouping, every status, jargon-free beginner text, permission titles, native-question text | `src/shared/connect.test.ts` (10) |
+| Multi-program run: partial failure, exception, blocked, declined / cancelled / failed install, key change after install, incompatible after install, cancel at every point | `src/shared/connectFlow.test.ts` (15) |
+| Overview from real manager, real package store and the real signed FreeCAD connector; first-run flag; one row per installation; damaged package; connector for a program only the catalog knows; experimental / incompatible; connect-then-verify incl. second-check failure and blocked; Browse (file, folder with `bin`, stranger, non-exe, duplicate, portable FreeCAD placeholder); Forget (state, grants, honest "still listed"); state store; a real package install next to a failing and a succeeding program | `src/main/integrations/connect.test.ts` (24; the programs themselves are fake adapters, the FreeCAD package is real but its program is a fake .exe) |
+| **Real programs**: Blender 4.0.2 verified, FreeCAD 1.1.4 connector installed after trust then verified (experimental), Resolve blocked ("not running") without affecting the others, real Browse/Forget | `src/main/integrations/connect.live.test.ts` (6, `CS_LIVE_TESTS=1`) |
+| **Real UI** in the real window, scratch profiles | `scripts/smoke-connect.mjs` 39/39: first-run welcome, card order, scan with versions, Experimental and Revit explanations, keyboard selection (Space), focus trap, Escape, plain permissions + disclosure, connector review gate, native confirmation, **2 of 3 connected and tested (Resolve closed: "Needs your action")**, list refresh without rescan, welcome shown once, Forget (ask, Keep it, honest message, Blender unaffected), Browse (stranger refused; portable copy recognised, pre-selected, connected with the real test, forgotten), dark and light contrast, restart persistence, cancel during review leaves nothing installed or trusted. Screenshots `120` to `127` |
+| Regression | lint, typecheck clean; `npx vitest run` 402 passed / 58 skipped; live Blender, Resolve, FreeCAD, Connect 17/17 (run one file at a time: see limits); `smoke-adapter-packages` 14/14, `smoke-external` 8/8, `smoke-freecad` 7/7 (test double) and 7/7 with `--real` |
+
+### Limits of this work (read before relying on it)
+
+* The install confirmation and the file/folder pickers are native dialogs; the UI smoke answers them on the user's behalf, and the unit/service/live tests play "the user" through the same install calls. A human has not yet clicked through it.
+* The "portable copy" in the smoke is a **directory junction** to the real Blender folder (a different path, the real Blender runs from it), not a copied portable install.
+* Resolve was **closed**, so only its honest "Needs your action" state was verified; a successful Resolve connection (and its commands) are still unverified against a real Resolve.
+* Missing and incompatible connectors are verified by unit and service tests with fake adapters. There is no real incompatible program version on this PC.
+* A forgotten program that Windows still lists comes back by design; there is no "hide" list.
+* The signing key of the bundled FreeCAD connector lives in `.local/` (ignored by git). If it is lost, a rebuilt connector has a different publisher key and users are asked to trust it again; an update over an older install from the old key is refused by the existing rule. There is no packaging configuration yet, so `resources/adapters` is not yet shipped by an installer.
+* The overview runs the full discovery (registry and a PowerShell shortcut scan, a few seconds) every time the dialog opens or Scan again is pressed.
+* `Add application location…` in the older list below the dialog entry still adds a location without feedback; the new Browse button is the guided version.
+* Keyboard and ARIA are checked automatically; it was not tried with a screen reader.
+* The live test files collide when Vitest runs several of them in parallel (the FreeCAD `beforeAll` fails, also on the commit before this work); run them with `--no-file-parallelism`.
 
 ## Prerequisites from the earlier review: status
 

@@ -139,6 +139,11 @@ export const IPC = {
   extPkgRepair: 'ext:pkg-repair',
   extJobs: 'ext:jobs',
   extJobCancel: 'ext:job-cancel',
+  connectOverview: 'connect:overview',
+  connectApp: 'connect:app',
+  connectBrowse: 'connect:browse',
+  connectForget: 'connect:forget',
+  connectDone: 'connect:done',
   localAiStatus: 'localai:status',
   localAiDownloads: 'localai:downloads',
   localAiDownload: 'localai:download',
@@ -187,6 +192,7 @@ export interface ProviderStatusDto {
 import type { VideoJob, VideoJobRecord } from './video';
 import type { MotionJob } from './motionEffects';
 import type { DownloadState, LocalAiStatus } from './localAi';
+import type { BrowseResult, ConnectOutcome, ConnectOverview, ForgetResult } from './connect';
 import type { ExternalAppInfo, ExternalScan, JobInfo, PackageApproval, PackageListing, PackageReview } from './integrations';
 import type { LocalVideoJob } from './localVideo';
 
@@ -436,6 +442,19 @@ export interface StudioApi {
     repairPackage(id: string): Promise<PackageListing>;
     jobs(): Promise<JobInfo[]>;
     cancelJob(id: string): Promise<JobInfo[]>;
+  };
+  /** Universal Connect: guided setup for external applications (plain language over the same framework). */
+  connect: {
+    /** Programs found on this PC, classified for a beginner; `rescan` false reuses the last scan. */
+    overview(rescan: boolean): Promise<ConnectOverview>;
+    /** Connects one program and tests it for real; never reports success without the test passing. */
+    connectApp(key: string): Promise<ConnectOutcome>;
+    /** Native picker for a portable or unregistered program (file or its folder). */
+    browse(kind: 'file' | 'folder'): Promise<BrowseResult>;
+    /** Forgets the saved location and permissions of a program; the program itself is not touched. */
+    forget(key: string): Promise<ForgetResult>;
+    /** Remembers that the guided setup was completed once. */
+    done(): Promise<void>;
   };
   probeApps(): Promise<AppProbeResult[]>;
   integrationStatus(): Promise<IntegrationSnapshot>;

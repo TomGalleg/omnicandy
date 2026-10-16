@@ -10,7 +10,7 @@ import {
   type AdapterManifest, type ApprovalAnswer, type ApprovalRequest, type CommandErrorKind, type CommandResult, type CommandSpec,
   type DiscoveredApp, type ExternalAppInfo, type ExternalScan, type IntegrationStatus, type JobInfo, type Permission, type ProgressEvent,
 } from '@shared/integrations';
-import { discoverApps, REMEMBERED_SOURCES, realDiscoveryEnv, type DiscoveryEnv } from './discovery';
+import { discoverApps, REMEMBERED_SOURCES, realDiscoveryEnv, type DiscoveryEnv, type DiscoveryTarget } from './discovery';
 import { AdapterError, validateManifest, type AdapterFactory, type ExternalAdapter } from './sdk';
 
 export interface PermissionStore { load(): Promise<Record<string, Permission[]>>; save(grants: Record<string, Permission[]>): Promise<void> }
@@ -23,6 +23,8 @@ export interface ManagerDeps {
   approve: (req: ApprovalRequest) => Promise<ApprovalAnswer>;
   discovery?: DiscoveryEnv;
   userPaths?: () => Promise<string[]>;
+  /** Programs to look for although no adapter for them is active yet (connectors that can be installed). */
+  extraTargets?: () => Promise<DiscoveryTarget[]>;
   /** Program locations found through indirect signals (uninstall records, shortcuts), kept so they survive those records. */
   remembered?: { load: () => Promise<string[]>; save: (paths: string[]) => Promise<void> };
   onProgress?: (e: ProgressEvent) => void;
@@ -117,7 +119,8 @@ export class IntegrationManager {
   // ---- discovery ----
 
   async scan(): Promise<ScanResult> {
-    const targets = this.manifests().filter((m) => !m.selfContained).map((m) => ({ exeNames: m.exeNames, displayNames: m.displayNames }));
+    const targets: DiscoveryTarget[] = this.manifests().filter((m) => !m.selfContained).map((m) => ({ exeNames: m.exeNames, displayNames: m.displayNames }));
+    targets.push(...await (this.d.extraTargets?.() ?? Promise.resolve([])).catch(() => [] as DiscoveryTarget[]));
     const remembered = await (this.d.remembered?.load() ?? Promise.resolve([])).catch(() => [] as string[]);
     const discovered = await discoverApps(targets, this.d.discovery ?? realDiscoveryEnv, await (this.d.userPaths?.() ?? Promise.resolve([])), remembered);
     // Keep what indirect signals found, so the program is still recognised when its uninstall record or shortcut goes away.
@@ -223,6 +226,22 @@ export class IntegrationManager {
       }
     }
     return this.info(app);
+  }
+
+  /**
+   * Checks a connected application again with the adapter's own health check (a real, tiny run of the program) and
+   * reports what it found. Used to confirm a connection before it is called a success; changes nothing.
+   */
+  async verify(key: string): Promise<{ ok: boolean; detail: string; version: string | null }> {
+    const s = this.sessions.get(key);
+    if (!s) return { ok: false, detail: 'Not connected.', version: null };
+    try {
+      const h = await withTimeout(s.adapter.healthCheck(), 30_000, 'health check');
+      if (!h.ok && h.state) this.blocked.set(key, { status: h.state, detail: h.detail });
+      return { ok: h.ok, detail: h.detail, version: this.versions.get(key) ?? s.version };
+    } catch (e) {
+      return { ok: false, detail: errMsg(e), version: this.versions.get(key) ?? s.version };
+    }
   }
 
   async disconnect(key: string): Promise<ExternalAppInfo | null> {

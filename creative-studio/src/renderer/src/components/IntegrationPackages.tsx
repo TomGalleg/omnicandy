@@ -1,24 +1,22 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   PERMISSION_LABEL,
-  type InstalledAdapter, type InstalledState, type JobInfo, type PackageListing, type PackageReview, type Permission,
+  type InstalledAdapter, type InstalledState, type JobInfo, type PackageApproval, type PackageListing, type PackageReview,
 } from '@shared/integrations';
+import { announceExternalChanged, errorText, EXTERNAL_CHANGED } from '../connect/events';
+import { PackageReviewCard, trustChip, trustLabel } from '../connect/PackageReviewCard';
 
 const STATE_LABEL: Record<InstalledState, string> = {
   ok: 'Ready', disabled: 'Turned off', tampered: 'Files changed', incompatible: 'Needs a newer CreateCraft', 'missing-files': 'Files missing', 'crash-disabled': 'Stopped after crashes',
 };
 const STATE_CHIP: Record<InstalledState, string> = { ok: 'ok', disabled: 'off', tampered: 'warn', incompatible: 'warn', 'missing-files': 'warn', 'crash-disabled': 'warn' };
 
-export const EXTERNAL_CHANGED = 'createcraft:external-apps-changed';
-const msg = (e: unknown) => (e instanceof Error ? e.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '') : String(e));
+export { EXTERNAL_CHANGED };
 
 /** Settings > Integrations > installable integration packages, with the review step, permissions and background jobs. */
 export function IntegrationPackages({ onChanged }: { onChanged: () => void }) {
   const [listing, setListing] = useState<PackageListing | null>(null);
   const [review, setReview] = useState<PackageReview | null>(null);
-  const [granted, setGranted] = useState<Permission[]>([]);
-  const [confirmUnsigned, setConfirmUnsigned] = useState(false);
-  const [confirmPublisher, setConfirmPublisher] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [jobs, setJobs] = useState<JobInfo[]>([]);
@@ -26,7 +24,7 @@ export function IntegrationPackages({ onChanged }: { onChanged: () => void }) {
   const run = async (what: string, fn: () => Promise<void>) => {
     setBusy(what);
     setError(null);
-    try { await fn(); if (what !== 'load') window.dispatchEvent(new Event(EXTERNAL_CHANGED)); } catch (e) { setError(msg(e)); }
+    try { await fn(); if (what !== 'load') announceExternalChanged(); } catch (e) { setError(errorText(e)); }
     setBusy(null);
   };
   const refresh = async () => { setListing(await window.studio.external.packages()); setJobs(await window.studio.external.jobs()); };
@@ -40,16 +38,11 @@ export function IntegrationPackages({ onChanged }: { onChanged: () => void }) {
     return () => clearInterval(t);
   }, [running]);
 
-  const open = (r: PackageReview) => {
-    setReview(r);
-    setGranted(r.permissions);
-    setConfirmUnsigned(false);
-    setConfirmPublisher(false);
-  };
+  const open = (r: PackageReview) => setReview(r);
 
   const pick = (kind: 'file' | 'folder') => run('pick', async () => { const r = await window.studio.external.pickPackage(kind); if (r) open(r); });
-  const install = () => review && run('install', async () => {
-    const l = await window.studio.external.installPackage(review.path, { permissions: granted, allowUnsigned: confirmUnsigned, trustPublisher: confirmPublisher });
+  const install = (approval: PackageApproval) => review && run('install', async () => {
+    const l = await window.studio.external.installPackage(review.path, approval);
     setListing(l);
     setReview(null);
     onChanged();
@@ -61,14 +54,6 @@ export function IntegrationPackages({ onChanged }: { onChanged: () => void }) {
     setListing(l);
     onChanged();
   });
-
-  const blocked = !review || review.problems.length > 0
-    || (review.signature === 'unsigned' && !confirmUnsigned)
-    || (review.signature === 'valid' && !review.publisherTrusted && !confirmPublisher);
-
-  const trustLabel = (r: Pick<PackageReview, 'signature' | 'publisherTrusted'>) =>
-    r.signature === 'invalid' ? 'Signature invalid' : r.signature === 'unsigned' ? 'Not signed' : r.publisherTrusted ? 'Signed, trusted publisher' : 'Signed, new publisher';
-  const trustChip = (r: Pick<PackageReview, 'signature' | 'publisherTrusted'>) => (r.signature === 'valid' && r.publisherTrusted ? 'ok' : 'warn');
 
   const row = (a: InstalledAdapter) => {
     const working = busy?.endsWith(`:${a.id}`);
@@ -102,61 +87,6 @@ export function IntegrationPackages({ onChanged }: { onChanged: () => void }) {
     );
   };
 
-  const reviewPanel = useMemo(() => {
-    if (!review) return null;
-    const requested = review.permissions;
-    return (
-      <div className="ext-row ext-review" role="group" aria-label="Review integration package">
-        <div className="ext-head">
-          <strong>{review.name ?? 'Unreadable package'}</strong>
-          {review.version && <small>version {review.version}</small>}
-          {review.publisherName && <small>by {review.publisherName}</small>}
-          <span className={`chip ${trustChip(review)}`}><span className="dot" />{trustLabel(review)}</span>
-        </div>
-        {review.description && <small>{review.description}</small>}
-        {review.fingerprint && <small>Publisher key: <code>{review.fingerprint}</code></small>}
-        {review.installedVersion && <small>Installed now: version {review.installedVersion}.</small>}
-        <small>{review.selfContained ? 'It needs no other program.' : `It controls ${review.applicationName ?? 'a program'} that must already be installed.`}</small>
-        {review.requirements.length > 0 && <small className="ext-note">Needs: {review.requirements.map((q) => q.text).join(' · ')}</small>}
-        {review.problems.map((p) => <small key={p} className="ext-error" role="alert">{p}</small>)}
-        {review.warnings.map((w) => <small key={w} className="ext-note">{w}</small>)}
-        {review.commands.length > 0 && (
-          <div className="field">
-            <span className="menu-label">What it can do</span>
-            <ul className="status-list">
-              {review.commands.map((c) => (
-                <li key={c.id}><small><strong>{c.label}</strong>: {c.description}{c.destructive ? ' (can change existing work; asked every time)' : ''}{c.longRunning ? ' (runs as a background job)' : ''}</small></li>
-              ))}
-            </ul>
-          </div>
-        )}
-        {requested.length > 0 && (
-          <div className="field">
-            <span className="menu-label">Permissions it asks for</span>
-            {requested.map((p) => (
-              <label key={p} className="ext-check">
-                <input type="checkbox" checked={granted.includes(p)} onChange={(e) => setGranted((g) => (e.target.checked ? [...g, p] : g.filter((x) => x !== p)))} />
-                {PERMISSION_LABEL[p]}
-              </label>
-            ))}
-            <small>Unchecked permissions are refused for good: commands that need them will not run. You are also asked when a command first needs one.</small>
-          </div>
-        )}
-        {review.signature === 'unsigned' && (
-          <label className="ext-check"><input type="checkbox" checked={confirmUnsigned} onChange={(e) => setConfirmUnsigned(e.target.checked)} />I understand this package is not signed and will ask me before every command.</label>
-        )}
-        {review.signature === 'valid' && !review.publisherTrusted && (
-          <label className="ext-check"><input type="checkbox" checked={confirmPublisher} onChange={(e) => setConfirmPublisher(e.target.checked)} />I trust {review.publisherName} (key {review.fingerprint}).</label>
-        )}
-        <div className="ext-actions">
-          <button className="btn small primary" disabled={blocked || !!busy} onClick={() => void install()}>{busy === 'install' ? 'Installing…' : review.action === 'update' ? 'Update' : 'Install'}</button>
-          <button className="btn small ghost" disabled={!!busy} onClick={() => setReview(null)}>Cancel</button>
-        </div>
-      </div>
-    );
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- install/trust helpers close over the state listed
-  }, [review, granted, confirmUnsigned, confirmPublisher, busy]);
-
   const installed = listing?.installed ?? [];
   const inbox = (listing?.inbox ?? []).filter((r) => r.action !== 'reinstall');
   const recentJobs = jobs.slice(0, 5);
@@ -171,7 +101,7 @@ export function IntegrationPackages({ onChanged }: { onChanged: () => void }) {
         <button className="btn small ghost" disabled={!!busy} onClick={() => void run('load', refresh)}>Refresh</button>
       </div>
       {error && <small className="ext-error" role="alert">{error}</small>}
-      {reviewPanel}
+      {review && <PackageReviewCard key={review.path} review={review} busy={busy === 'install'} onConfirm={(a) => void install(a)} onCancel={() => setReview(null)} />}
       {installed.length === 0 && !review && <small>No integration packages are installed.</small>}
       <ul className="status-list ext-list">{installed.map(row)}</ul>
       {inbox.length > 0 && (

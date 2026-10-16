@@ -1,0 +1,197 @@
+[
+  {
+    "name": "a prominent Connect Applications card is the first thing in Settings > Integrations",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "first run: a welcome explains that scanning is local and nothing is changed without consent",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "the scan found this PC’s programs automatically with versions",
+    "ok": true,
+    "detail": "Connect ApplicationsStep 1 of 4 · Find · Allow · Set up · Done✕Scan finished. 4 programs found.Welco"
+  },
+  {
+    "name": "Blender is in \"Ready to connect\", not experimental",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "Resolve is marked Experimental",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "FreeCAD (no connector installed yet) is \"Connector available\", once",
+    "ok": true,
+    "detail": "FreeCADversion 1.1.4 · FreeCAD TeamConnector availableConnector available. CreateCraft has a connector for FreeCAD. Setting it up installs the connector (you re"
+  },
+  {
+    "name": "Revit (placeholder) is explained plainly and cannot be selected",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "Details reveals technical information for advanced users",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "Continue is disabled until something is selected",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "Tab never leaves the dialog (focus is trapped)",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "Escape closes only the wizard; Settings stays open and focus returns to the button",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "programs are selected with the keyboard (Space)",
+    "ok": true,
+    "detail": "Blender, DaVinci Resolve, FreeCAD"
+  },
+  {
+    "name": "permissions are explained in plain language, per program",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "technical details stay available behind a disclosure",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "the FreeCAD connector is REVIEWED first and cannot be installed until its publisher is trusted",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "nothing was installed or trusted yet",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "Blender: connected and tested (real health check)",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "FreeCAD: connector installed after review, then connected (experimental) and tested",
+    "ok": true,
+    "detail": "FreeCADConnected (experimental)✓ Connector reviewed and installed✓ Connected and testedFreeCAD is connected (experimental) FreeCAD passed its connection test. This connector is experimental, so some f"
+  },
+  {
+    "name": "Resolve (closed): honest \"needs your action\", NOT connected, others unaffected",
+    "ok": true,
+    "detail": "blocked: DaVinci ResolveNeeds your action✗ Could not connect and testDaVinci Resolve is not open Open DaVinci Resolve, wait until it has finished starting, then press Tr"
+  },
+  {
+    "name": "partial failure: the summary counts only verified programs",
+    "ok": true,
+    "detail": "2 of 3 connected and tested. 1 needs attention."
+  },
+  {
+    "name": "the native confirmation named the publisher key and the permissions",
+    "ok": true,
+    "detail": "[\"Install FreeCAD 1.0.0?\"]"
+  },
+  {
+    "name": "Settings list updated by itself: Blender shows Connected with a Disconnect button",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "…and FreeCAD shows its new connector (placeholder row replaced, no manual rescan)",
+    "ok": true,
+    "detail": "Limited functionalityFreeCADversion 1.1.4 · FreeCAD Team"
+  },
+  {
+    "name": "the welcome is shown only the first time",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "Blender is now under \"Already connected\" and cannot be picked again",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "Forget asks first and says the program is NOT uninstalled",
+    "ok": true,
+    "detail": "Forget FreeCAD? CreateCraft stops remembering where it is and forgets the permissions you gave it. The program itself is not uninstalled or changed.Forget FreeC"
+  },
+  {
+    "name": "\"Keep it\" changes nothing",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "Forget reports what happened honestly (Windows still lists the installed program)",
+    "ok": true,
+    "detail": "CreateCraft no longer remembers where FreeCAD is and forgot the permissions you gave it. Windows still lists it as installed, so it appears in the list again."
+  },
+  {
+    "name": "after Forget FreeCAD is no longer \"connected\" but Blender still is (independent)",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "the real FreeCAD program is untouched",
+    "ok": true,
+    "detail": "E:\\FreeCAD 1.1\\bin\\FreeCADCmd.exe"
+  },
+  {
+    "name": "Browse: a program CreateCraft has no connector for gets a plain explanation and is not saved",
+    "ok": true,
+    "detail": "CreateCraft has no connector for “notepad”, so it cannot control it. Nothing was saved. It can only connect programs it knows; Settings > In"
+  },
+  {
+    "name": "Browse: a portable copy is recognised, listed as portable and pre-selected",
+    "ok": true,
+    "detail": "Blenderversion 4.0.2Ready to connectPortable copy you addedReady to connect. The connector for Blender is installed. Connecting starts it an"
+  },
+  {
+    "name": "the portable Blender connected and passed the real test",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "Forget removes the portable entry (nothing else knew it) and leaves the files alone",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "Studio Dark: dialog text has readable contrast",
+    "ok": true,
+    "detail": "rgb(169, 175, 189) on rgb(21, 23, 28) = 8.2"
+  },
+  {
+    "name": "Light: dialog text has readable contrast",
+    "ok": true,
+    "detail": "rgb(69, 69, 79) on rgb(246, 246, 248) = 8.8"
+  },
+  {
+    "name": "after restart: the first-run welcome is not shown again (remembered on disk)",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "cancelling setup while reviewing a connector: outcome \"Not set up\"",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "…and nothing was installed or trusted",
+    "ok": true,
+    "detail": ""
+  }
+]

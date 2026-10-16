@@ -157,8 +157,8 @@ export async function discoverApps(targets: DiscoveryTarget[], d: DiscoveryEnv =
   // 5. User-selected files or folders (portable copies).
   for (const p of userPaths) {
     if (isWanted(p) && await d.exists(p)) { add({ name: path.basename(p, '.exe'), publisher: null, version: null, exePath: p, installType: 'portable', source: 'user' }); continue; }
-    for (const e of wantedExe) {
-      const exe = path.join(p, orig(e));
+    // A portable folder holds the program directly, or in its bin subfolder.
+    for (const exe of exesIn(p)) {
       if (await d.exists(exe)) add({ name: path.basename(p), publisher: null, version: null, exePath: exe, installType: 'portable', source: 'user' });
     }
   }

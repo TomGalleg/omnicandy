@@ -7,6 +7,7 @@ import type { LiveSnapshot } from '@shared/live';
 import { ACCENT_PRESETS, THEME_OPTIONS } from '@shared/theme';
 import type { AppProbeResult } from '@shared/types';
 import { setOverlayOpen } from '../overlay';
+import { ConnectApplicationsCard } from '../connect/ConnectApplicationsCard';
 import { ExternalApps } from './ExternalApps';
 import type { useAppearance } from '../useAppearance';
 
@@ -184,6 +185,7 @@ function IntegrationSettings({ apps }: { apps: AppProbeResult[] }) {
   const installed = apps.filter((a) => a.installed).length;
   return (
     <>
+      <ConnectApplicationsCard />
       <div className="field">
         <span className="menu-label">ArtCraft apps · {installed} of {apps.length} installed</span>
         <ul className="status-list">

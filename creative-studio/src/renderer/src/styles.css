@@ -569,3 +569,42 @@ h1, h2, h3 { margin: 0; font-weight: 600; }
 .ext-review label.ext-check { display: flex; flex-direction: row; align-items: flex-start; justify-content: flex-start; gap: 8px; font-size: 12px; text-align: left; }
 .ext-review label.ext-check input { width: 16px; height: 16px; flex: none; margin: 1px 0 0; padding: 0; }
 .ext-packages small, .ext-review small { white-space: normal; overflow-wrap: anywhere; }
+
+/* ---------- Universal Connect (guided setup) ---------- */
+.connect-card { display: flex; gap: 16px; align-items: center; justify-content: space-between; padding: 14px; border: 1px solid var(--accent); border-radius: var(--radius); background: var(--surface-2); }
+.connect-card h3 { font-size: 14px; margin-bottom: 4px; }
+.connect-card p { margin: 0; color: var(--text-2); font-size: 12px; max-width: 46ch; }
+.connect-card .btn { flex: none; height: 32px; }
+.connect-backdrop { z-index: 110; }
+.connect-dialog { width: min(760px, calc(100vw - 32px)); height: min(640px, calc(100vh - 48px)); box-shadow: var(--shadow); grid-template-rows: auto 1fr auto; padding: 0; gap: 0; }
+.connect-dialog h2 { font-size: 15px; outline: none; }
+.connect-body { overflow: auto; padding: 14px; display: grid; gap: 12px; align-content: start; }
+.connect-foot { display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-top: 1px solid var(--border); }
+.connect-foot .spacer { flex: 1; }
+.connect-lead { margin: 0; font-size: 13px; color: var(--text); }
+.connect-welcome { display: grid; gap: 4px; padding: 10px 12px; border-radius: var(--radius); background: var(--surface-2); border: 1px dashed var(--border-strong); }
+.connect-welcome small { color: var(--text-2); }
+.connect-empty { display: grid; gap: 4px; padding: 16px; text-align: center; border: 1px dashed var(--border-strong); border-radius: var(--radius); color: var(--text-2); }
+.connect-notice { padding: 6px 10px; border-radius: var(--radius-sm); background: var(--surface-2); border: 1px solid var(--border); color: var(--text); }
+.connect-row .ext-head input[type='checkbox'] { width: 16px; height: 16px; flex: none; margin: 0; padding: 0; }
+.connect-nopick { width: 16px; height: 16px; flex: none; }
+.connect-row small, .connect-dialog small { white-space: normal; overflow-wrap: anywhere; }
+.connect-confirm { display: grid; gap: 4px; padding: 8px 10px; border: 1px solid var(--warn); border-radius: var(--radius-sm); }
+.connect-details { display: grid; gap: 6px; padding-top: 6px; border-top: 1px solid var(--border); }
+.connect-steps, .connect-progress { margin: 0; padding-left: 18px; display: grid; gap: 2px; font-size: 12px; color: var(--text-2); }
+.connect-progress { list-style: none; padding-left: 0; }
+.connect-progress .step-done { color: var(--ok); }
+.connect-progress .step-failed { color: var(--warn); }
+.connect-progress .step-running { color: var(--text); }
+.connect-prompt { display: grid; gap: 8px; }
+.connect-missing { list-style: none; margin: 4px 0 0; padding: 0; display: grid; gap: 2px; }
+.perm-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.perm-list li { display: grid; grid-template-columns: 96px 1fr; gap: 8px; align-items: start; font-size: 12px; }
+.perm-level { font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; padding: 1px 6px; border-radius: 4px; background: var(--surface-3); color: var(--text-2); text-align: center; }
+.perm-level.high { color: var(--warn); }
+.ext-block { display: block; }
+.connect-dialog .kv { grid-template-columns: 110px 1fr; }
+.connect-dialog code { font-size: 11px; word-break: break-all; }
+@media (max-width: 640px) { .connect-card { flex-direction: column; align-items: flex-start; } }
+.ext-review .status-list li { display: block; }
+.connect-prompt .ext-review > .ext-actions { position: sticky; bottom: -1px; z-index: 1; padding: 8px 0 2px; background: var(--surface-2); border-top: 1px solid var(--border); }

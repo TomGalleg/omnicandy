@@ -223,6 +223,9 @@ export interface PackageReview {
   signature: SignatureState;
   publisherTrusted: boolean;
   applicationName: string | null;
+  /** Executable names and name patterns of the program it controls (empty for self-contained packages). */
+  exeNames: string[];
+  displayNames: string[];
   selfContained: boolean;
   sdk: { min: number; max: number } | null;
   requirements: AdapterRequirement[];

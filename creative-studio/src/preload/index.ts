@@ -202,6 +202,13 @@ const api: StudioApi = {
     jobs: () => ipcRenderer.invoke(IPC.extJobs),
     cancelJob: (id) => ipcRenderer.invoke(IPC.extJobCancel, id),
   },
+  connect: {
+    overview: (rescan) => ipcRenderer.invoke(IPC.connectOverview, rescan),
+    connectApp: (key) => ipcRenderer.invoke(IPC.connectApp, key),
+    browse: (kind) => ipcRenderer.invoke(IPC.connectBrowse, kind),
+    forget: (key) => ipcRenderer.invoke(IPC.connectForget, key),
+    done: () => ipcRenderer.invoke(IPC.connectDone),
+  },
   probeApps: () => ipcRenderer.invoke(IPC.probeApps),
   integrationStatus: () => ipcRenderer.invoke(IPC.integrationStatus),
   assetUrl: (assetId) => `${ASSET_SCHEME}://asset/${encodeURIComponent(assetId)}`,

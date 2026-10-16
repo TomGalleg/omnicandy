@@ -96,7 +96,7 @@ export class PackageStore {
   async review(source: string): Promise<PackageReview> {
     const empty: PackageReview = {
       path: source, problems: [], warnings: [], id: null, name: null, version: null, description: null, license: null, homepage: null,
-      publisherName: null, fingerprint: null, signature: 'unsigned', publisherTrusted: false, applicationName: null, selfContained: false,
+      publisherName: null, fingerprint: null, signature: 'unsigned', publisherTrusted: false, applicationName: null, exeNames: [], displayNames: [], selfContained: false,
       sdk: null, requirements: [], commands: [], permissions: [], installedVersion: null, action: 'blocked', fileCount: 0, bytes: 0,
     };
     let loaded;
@@ -111,7 +111,7 @@ export class PackageStore {
     const installed = reg.adapters[m.id];
     Object.assign(rev, {
       id: m.id, name: m.name, version: m.version, description: m.description ?? null, license: m.license ?? null, homepage: m.homepage ?? null,
-      publisherName: m.publisher.name, applicationName: m.application.name, selfContained: m.application.kind === 'self-contained',
+      publisherName: m.publisher.name, applicationName: m.application.name, exeNames: m.application.exeNames ?? [], displayNames: m.application.displayNames ?? [], selfContained: m.application.kind === 'self-contained',
       sdk: m.sdk,
       requirements: [
         ...(m.requirements ?? []),
