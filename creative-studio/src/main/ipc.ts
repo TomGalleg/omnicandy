@@ -1131,7 +1131,7 @@ export function registerIpc(d: IpcDeps): void {
   handle(IPC.claudeSeed, z.tuple([z.string().max(4000), z.string().max(4000)]), (u, c) => claude().seed(u, c));
   handle(IPC.setProjectMeta, z.tuple([z.object({
     objective: z.string().max(600).optional(),
-    view: z.object({ workspace: z.enum(['home', 'media', 'edit', 'generate', 'workflow', 'effects', 'color', 'audio', 'deliver']), assetId: z.string().max(128).optional() }).optional(),
+    view: z.object({ workspace: z.enum(['home', 'media', 'edit', 'generate', 'workflow', 'effects', 'color', 'audio', 'deliver', 'planner']), assetId: z.string().max(128).optional() }).optional(),
   })]), async (patch) => (await d.project()).setMeta(patch));
   handle(IPC.claudeStop, none, () => claude().stop());
   handle(IPC.claudeReset, none, () => { claude().reset(); return claude().state(); });

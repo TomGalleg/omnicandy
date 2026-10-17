@@ -42,14 +42,14 @@ try {
   check('a new project is created in the default folder and opens', m1.name === 'Linux smoke project', m1.name);
   const dir = await win.evaluate((k) => window.studio.projects.list().then((l) => l.find((p) => p.id === k)?.folder ?? null), key).catch(() => null);
   if (dir) check('the project folder has the shared layout', fs.existsSync(path.join(dir, 'project.json')) && fs.existsSync(path.join(dir, 'Assets')), dir);
-  await win.evaluate(() => window.studio.setProjectMeta({ brief: 'Edited then reopened' }));
+  await win.evaluate(() => window.studio.setProjectMeta({ objective: 'Edited then reopened', view: { workspace: 'planner' } }));
   await app.close();
   ({ app, win } = await launch());
   const list = await win.evaluate(() => window.studio.projects.list());
   check('the project is still listed after a restart', list.some((p) => p.name === 'Linux smoke project'));
   await win.evaluate((k) => window.studio.projects.open(k), key);
   const m2 = await win.evaluate(() => window.studio.loadProject());
-  check('it reopens with its saved brief', m2.name === 'Linux smoke project' && /Edited then reopened/.test(m2.brief ?? ''), String(m2.brief).slice(0, 40));
+  check('it reopens with its saved objective and last workspace (including the Planner)', m2.name === 'Linux smoke project' && /Edited then reopened/.test(m2.objective ?? '') && m2.view?.workspace === 'planner', `${m2.objective} / ${m2.view?.workspace}`);
 
   // adapters: Windows-only adapters are refused on Linux and never run
   const ext = await win.evaluate(() => window.studio.external.list());
