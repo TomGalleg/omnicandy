@@ -398,6 +398,7 @@ export function registerIpc(d: IpcDeps): void {
     const ctl = await live();
     const pid = await currentPid();
     if (!pid) throw new Error('The app is not running.');
+    if (!d.embedded.supported) { ctl.setPoppedOut(true); return ctl.snapshot(); } // no embedding here: the app already has its own window
     d.embedded.popOut();
     await d.panel.open(pid);
     ctl.setPoppedOut(true);
@@ -406,6 +407,7 @@ export function registerIpc(d: IpcDeps): void {
   /** Puts the app back inside CreateCraft's Edit area. */
   const popIn = async () => {
     const ctl = await live();
+    if (!d.embedded.supported) return ctl.snapshot(); // nothing to put back: the app keeps its own window
     d.panel.close();
     d.embedded.popIn();
     ctl.setPoppedOut(false);
@@ -418,6 +420,7 @@ export function registerIpc(d: IpcDeps): void {
     const s = await ctl.open(id, app, by);
     await syncAppTheme();
     const pid = await currentPid();
+    if (pid && !d.embedded.supported) { ctl.setPoppedOut(true); return ctl.snapshot(); } // Linux: the app opens in its own window
     if (pid) {
       d.embedded.attach(pid);
       if (d.embedded.mode === 'window') { d.embedded.popOut(); d.panel.close(); await d.panel.open(pid); ctl.setPoppedOut(true); return ctl.snapshot(); }

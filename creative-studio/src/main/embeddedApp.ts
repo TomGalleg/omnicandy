@@ -8,6 +8,7 @@
 
 import { screen, type BrowserWindow } from 'electron';
 import { WindowTracker, type TrackedWindowState } from './windowTracker';
+import { currentOs, type OsId } from '@shared/platform';
 
 export interface Viewport { x: number; y: number; width: number; height: number; visible: boolean }
 export type EmbedMode = 'embedded' | 'window';
@@ -29,14 +30,23 @@ export class EmbeddedApp {
   /** A tracker already compiled and waiting, so a new app window can be caught the instant it appears. */
   private spare: WindowTracker | null = null;
 
+  /**
+   * Whether this system can place another program's window inside ours. Only Windows can today (Win32 owned windows through the
+   * tracker script). Elsewhere every method below does nothing: the Craft app simply keeps its own independent window and the
+   * Edit area says so. A Linux window manager (X11 reparenting, a Wayland portal) can be added later behind this same class.
+   */
+  readonly supported: boolean;
+
   constructor(
     private readonly host: () => BrowserWindow | null,
     private readonly script: string,
     private readonly onGone: () => void,
-  ) {}
+    os: OsId = currentOs(),
+  ) { this.supported = os === 'win32'; }
 
   /** Starts a waiting tracker (call once the app is up; again after each use). */
   prewarm() {
+    if (!this.supported) return;
     if (!this.spare) this.spare = new WindowTracker(this.script, 0, 0n, true);
   }
 
@@ -45,6 +55,7 @@ export class EmbeddedApp {
    * only revealed once it is placed inside the Edit area (no flash of the app on its own).
    */
   prepare(pid: number) {
+    if (!this.supported) return;
     const t = this.spare ?? new WindowTracker(this.script, 0, 0n, true);
     this.spare = null;
     t.target(pid);
@@ -64,6 +75,7 @@ export class EmbeddedApp {
 
   /** Follows the app window of `pid`. A previously attached app is handed back as a normal window and put away hidden. */
   attach(pid: number) {
+    if (!this.supported) return;
     if (this.pid === pid && this.tracker) { this.apply(); return; }
     this.adopt(pid, new WindowTracker(this.script, pid, 0n));
   }
@@ -84,6 +96,7 @@ export class EmbeddedApp {
   }
 
   setViewport(v: Viewport | null) {
+    if (!this.supported) return;
     this.viewport = v;
     this.apply();
   }
@@ -110,6 +123,7 @@ export class EmbeddedApp {
 
   /** Gives the app back its own window (frame, taskbar), placed where it was. */
   popOut() {
+    if (!this.supported) return;
     this.mode = 'window';
     const t = this.tracker;
     if (!t) return;
@@ -128,12 +142,14 @@ export class EmbeddedApp {
 
   /** Puts the app back inside the Edit area. */
   popIn() {
+    if (!this.supported) return;
     this.mode = 'embedded';
     this.apply();
   }
 
   /** Stops following; restores the app window to normal so no work is lost. */
   release(minimize: boolean) {
+    if (!this.supported) return;
     const t = this.tracker;
     this.tracker = null;
     this.pid = null;
