@@ -179,7 +179,7 @@ Planner, workflow engine, project formats and MCP protocol were already OS-neutr
 | `scripts/smoke-planner.mjs` in the real Electron window on Linux (WSLg) | **22/22** (mixed project, MCP executor, outdated-report guard, paste path, restart) |
 | `scripts/smoke-linux.mjs` (real window, no keyring) | **9/9** |
 | `scripts/smoke-linux.mjs` (real window, session bus + GNOME Keyring) | **9/9**, key storage "GNOME Keyring", `safeStorage` encrypt/decrypt round trip ok |
-| `smoke-nav` 7/7, `smoke-docks` 14/14, `smoke-projects` 13/13, `smoke-templates` 6/6 on Linux | pass |
+| `smoke-nav` 7/7 (ALL PASSED); `smoke-docks`, `smoke-projects`, `smoke-templates` on Linux | every printed check passed, no FAIL line (output was trimmed to the last 14 lines, so counts are not claimed) |
 | `smoke-theme` | fails on Linux by design: it opens a real PhotoCraft (Windows only). Not a regression |
 | Project create, save, reopen after restart, last workspace (incl. Planner) | verified on Linux (smoke-linux) |
 | 13 Craft apps | all reported "not installed, no Linux version known" on Linux (smoke-linux) |
