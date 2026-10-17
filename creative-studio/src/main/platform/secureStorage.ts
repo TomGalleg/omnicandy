@@ -36,7 +36,7 @@ export function secureStorageStatus(src: StorageSource, os: OsId = currentOs()):
   let backend = 'unknown';
   try { backend = src.getSelectedStorageBackend?.() ?? 'unknown'; } catch { backend = 'unknown'; }
   if (!src.isEncryptionAvailable() || backend === 'basic_text' || !LINUX_SECURE.has(backend)) {
-    const why = backend === 'basic_text' ? 'No keyring was found, so Electron fell back to its plain "basic_text" storage, which does not protect keys.' : backend === 'unknown' ? 'CreateCraft could not tell which secure storage is in use.' : `The storage backend "${backend}" is not a supported keyring.`;
+    const why = LINUX_SECURE.has(backend) ? `CreateCraft asked for the keyring (${LABEL[backend] ?? backend}), but none is running or it is locked, so Electron cannot use it.` : backend === 'basic_text' ? 'No keyring was found, so Electron fell back to its plain "basic_text" storage, which does not protect keys.' : backend === 'unknown' ? 'CreateCraft could not tell which secure storage is in use.' : `The storage backend "${backend}" is not a supported keyring.`;
     return { available: false, label: 'unavailable', problem: `${why} API keys cannot be saved safely on this computer yet.`, help: LINUX_HELP };
   }
   return { available: true, label: LABEL[backend] ?? backend, problem: null, help: null };

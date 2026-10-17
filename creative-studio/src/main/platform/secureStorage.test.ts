@@ -26,7 +26,9 @@ describe('secure credential storage', () => {
   it('Linux rejects an unknown backend and a missing backend report', () => {
     expect(secureStorageStatus(src(true, 'weird'), 'linux').available).toBe(false);
     expect(secureStorageStatus(src(true), 'linux').available).toBe(false);
-    expect(secureStorageStatus(src(false, 'gnome_libsecret'), 'linux').available).toBe(false);
+    const down = secureStorageStatus(src(false, 'gnome_libsecret'), 'linux');
+    expect(down.available).toBe(false);
+    expect(down.problem).toMatch(/none is running or it is locked/);
   });
   it('the vault encryptor says no, and explains, without ever touching a secret', () => {
     const e = secureEncryptor(src(true, 'basic_text'), 'linux');
