@@ -27,14 +27,14 @@ try {
   check('Simplified is the default', JSON.stringify(await navTexts(win)) === JSON.stringify(['Project', 'Create', 'AI Generate', 'Deliver', 'More']), (await navTexts(win)).join(', '));
   await win.getByRole('button', { name: 'More', exact: false }).filter({ hasText: /^More/ }).click();
   const items = await win.locator('.more-list [role=menuitem]').allTextContents();
-  check('More lists the specialist tools', items.join(',') === 'Media,Workflow,Effects,Color,Audio', items.join(','));
+  check('More lists the specialist tools', items.join(',') === 'Media,Workflow,Effects,Color,Audio,Planner', items.join(','));
   await win.screenshot({ path: path.join(shots, '48-nav-simplified-more.png') });
   await win.locator('.more-list [role=menuitem]', { hasText: 'Workflow' }).click();
   await win.locator('.workspaces button[aria-current=page]').first().waitFor();
   check('Choosing a tool under More opens it and marks More', /More: Workflow/.test(await win.locator('.workspaces button[aria-current=page]').textContent()));
   await win.getByRole('button', { name: 'Simplified', exact: true }).click();
   const adv = await navTexts(win);
-  check('Advanced shows the full navigation', adv.join(',') === 'Home,Media,Edit,AI Generate,Workflow,Effects,Color,Audio,Deliver', adv.join(','));
+  check('Advanced shows the full navigation', adv.join(',') === 'Home,Media,Edit,AI Generate,Workflow,Effects,Color,Audio,Deliver,Planner', adv.join(','));
   check('Same workspace stays open across modes', /Workflow/.test(await win.locator('.workspaces button[aria-current=page]').textContent()));
   await win.screenshot({ path: path.join(shots, '49-nav-advanced.png') });
   await app.close();

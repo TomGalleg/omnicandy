@@ -46,6 +46,8 @@ import { MAX_VIDEO_PROMPT } from '@shared/video';
 import type { SettingsStore } from './settingsStore';
 import { AdapterPackages, createIntegrationManager } from './integrations';
 import { ConnectService } from './integrations/connect';
+import { createPlanner, registerPlannerIpc } from './planner/ipc';
+import { McpSession } from './planner/mcp';
 import { BuilderService } from './integrations/builder/service';
 import { ClaudeAuthor, ScriptedAuthor } from './integrations/builder/author';
 import { parseBlueprint } from './integrations/builder/blueprint';
@@ -75,6 +77,9 @@ const strip = (e: { id: string; app: string; assetId: string; assetName: string;
   ({ id: e.id, app: e.app, assetId: e.assetId, assetName: e.assetName, workPath: e.workPath, openedAt: e.openedAt });
 
 export function registerIpc(d: IpcDeps): void {
+  const planner = createPlanner(path.dirname(d.secretsDir));
+  const plannerSession = new McpSession(planner.service, ['read', 'execute'], { kind: 'createcraft', name: 'CreateCraft Claude' });
+  registerPlannerIpc({ service: planner.service, dir: planner.dir, isTrustedSender: d.isTrustedSender, window: d.window });
   const handle = <A extends unknown[]>(channel: string, schema: z.ZodType<A>, fn: (...args: A) => unknown) => {
     ipcMain.handle(channel, (e, ...raw) => {
       if (!d.isTrustedSender(e)) throw new Error('Untrusted sender.');
@@ -923,6 +928,15 @@ export function registerIpc(d: IpcDeps): void {
         const j = external.job(id);
         if (!j) return JSON.stringify({ error: 'No such job. Jobs: ' + external.jobs().map((x) => x.id).join(', ') });
         return JSON.stringify({ job_id: j.id, app: j.appName, command: j.commandId, status: j.status, stage: j.stage, progress: j.fraction, started: j.startedAt, finished: j.finishedAt, result: j.result }, null, 2);
+      },
+    },
+    planner: {
+      call: async (tool, args) => {
+        const out = await plannerSession.handle({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: tool, arguments: args } });
+        const r = out?.result as { isError?: boolean; content?: Array<{ text?: string }> } | undefined;
+        const t = r?.content?.[0]?.text ?? out?.error?.message ?? 'No answer.';
+        if (r?.isError) throw new Error(t);
+        return t;
       },
     },
     builder: {

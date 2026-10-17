@@ -160,6 +160,7 @@ export const IPC = {
   builderCompat: 'builder:compat',
   builderRefreshDocs: 'builder:refresh-docs',
   builderProgress: 'builder:progress',
+  plannerCall: 'planner:call',
   localAiStatus: 'localai:status',
   localAiDownloads: 'localai:downloads',
   localAiDownload: 'localai:download',
@@ -211,6 +212,7 @@ import type { DownloadState, LocalAiStatus } from './localAi';
 import type { BrowseResult, ConnectOutcome, ConnectOverview, ForgetResult } from './connect';
 import type { ExternalAppInfo, ExternalScan, JobInfo, PackageApproval, PackageListing, PackageReview } from './integrations';
 import type { LocalVideoJob } from './localVideo';
+import type { PlannerApi } from './plannerApi';
 import type { BuilderOverview, BuilderProgress, BuilderProjectDetail, BuilderProjectSummary, BuilderRequest, MyIntegration, PipelineReport, RepairProposal } from './builder';
 
 export interface GenerateResultDto {
@@ -497,6 +499,8 @@ export interface StudioApi {
     compatibility(id: string): Promise<{ appVersion: string | null; tested: string[]; needsCheck: boolean; message: string }>;
     onProgress(cb: (p: BuilderProgress) => void): () => void;
   };
+  /** Project Planner: plans, execution packages, reports and the connection details for AI clients. */
+  planner: PlannerApi;
   probeApps(): Promise<AppProbeResult[]>;
   integrationStatus(): Promise<IntegrationSnapshot>;
   /** URL the renderer can use in <img src>, served read-only by main from the project root. */

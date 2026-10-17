@@ -7,7 +7,7 @@ describe('navigation', () => {
     const ids = [...SIMPLE_NAV, ...MORE_NAV].map((n) => n.id).sort();
     expect(ids).toEqual(ADVANCED_NAV.map((n) => n.id).sort());
     expect(SIMPLE_NAV.map((n) => n.label)).toEqual(['Project', 'Create', 'AI Generate', 'Deliver']);
-    expect(MORE_NAV.map((n) => n.id)).toEqual(['media', 'workflow', 'effects', 'color', 'audio']);
+    expect(MORE_NAV.map((n) => n.id)).toEqual(['media', 'workflow', 'effects', 'color', 'audio', 'planner']);
   });
   it('detects specialist workspaces and parses the saved preference', () => {
     expect(isMoreWorkspace('audio')).toBe(true);

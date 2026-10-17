@@ -99,7 +99,7 @@ export interface AppearanceSettings {
   syncApps: boolean;
 }
 
-export type WorkspaceId = 'home' | 'media' | 'edit' | 'generate' | 'workflow' | 'effects' | 'color' | 'audio' | 'deliver';
+export type WorkspaceId = 'home' | 'media' | 'edit' | 'generate' | 'workflow' | 'effects' | 'color' | 'audio' | 'deliver' | 'planner';
 
 export type IntegrationStatus = 'real-verified' | 'mocked' | 'blocked' | 'untested' | 'not-installed';
 

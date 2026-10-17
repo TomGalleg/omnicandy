@@ -7,6 +7,7 @@ import { AppWorkspace, EditWorkspace } from './EditWorkspace';
 import { GenerateWorkspace } from './GenerateWorkspace';
 import { HomeWorkspace } from './HomeWorkspace';
 import { WorkflowEditor } from './WorkflowEditor';
+import { PlannerWorkspace } from '../planner/PlannerWorkspace';
 
 interface Props {
   workspace: WorkspaceId;
@@ -34,6 +35,7 @@ export function WorkspaceView(p: Props) {
     case 'effects': return <AppWorkspace tab="effects" manifest={p.manifest} selected={p.selected} liveApi={p.liveApi} onProjectChanged={p.onProjectChanged} onSelectAsset={p.onSelectAsset} log={p.log} />;
     case 'color': return <AppWorkspace tab="color" manifest={p.manifest} selected={p.selected} liveApi={p.liveApi} onProjectChanged={p.onProjectChanged} onSelectAsset={p.onSelectAsset} log={p.log} />;
     case 'audio': return <AppWorkspace tab="audio" manifest={p.manifest} selected={p.selected} liveApi={p.liveApi} onProjectChanged={p.onProjectChanged} onSelectAsset={p.onSelectAsset} log={p.log} />;
+    case 'planner': return <PlannerWorkspace manifest={p.manifest} projectKey={p.projectKey} />;
     case 'deliver': return <DeliverWorkspace manifest={p.manifest} selected={p.selected} liveApi={p.liveApi} onSelectAsset={p.onSelectAsset} log={p.log} />;
   }
 }

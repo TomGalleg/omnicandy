@@ -3,23 +3,15 @@
 //   node planner-mcp.cjs --http --port 8765 --token-file <file> --scopes read   local HTTP, bearer token required
 // The folder is --dir, else CREATECRAFT_PLANNER_DIR, else <CreateCraft user data>/planner. Nothing is sent anywhere.
 import { createServer } from 'node:http';
-import os from 'node:os';
 import path from 'node:path';
 import fs from 'node:fs';
 import { createInterface } from 'node:readline';
 import { timingSafeEqual } from 'node:crypto';
 import { ACTOR_KINDS, type Actor } from '@shared/planner';
+import { defaultPlannerDir } from './dir';
 import { McpSession, type RpcResponse } from './mcp';
 import { PlannerService } from './service';
 import { PlannerStore } from './store';
-
-export function defaultPlannerDir(env: NodeJS.ProcessEnv = process.env): string {
-  if (env.CREATECRAFT_PLANNER_DIR) return path.resolve(env.CREATECRAFT_PLANNER_DIR);
-  const userData = env.CS_USER_DATA_DIR ? path.resolve(env.CS_USER_DATA_DIR)
-    : process.platform === 'win32' ? path.join(env.APPDATA ?? path.join(os.homedir(), 'AppData', 'Roaming'), 'creative-studio')
-      : path.join(env.XDG_CONFIG_HOME ?? path.join(os.homedir(), '.config'), 'creative-studio');
-  return path.join(userData, 'planner');
-}
 
 function parseArgs(argv: string[]) {
   const o: Record<string, string | true> = {};
@@ -70,7 +62,7 @@ async function main() {
           try { body = JSON.parse(Buffer.concat(chunks).toString('utf8')); } catch { return send(400, { jsonrpc: '2.0', id: null, error: { code: -32700, message: 'Parse error' } }); }
           const batch = Array.isArray(body);
           const out: RpcResponse[] = [];
-          for (const m of batch ? body : [body]) { const r = await session.handle(m as never); if (r) out.push(r); }
+          for (const m of (batch ? body : [body]) as unknown[]) { const r = await session.handle(m as never); if (r) out.push(r); }
           if (!out.length) { res.writeHead(202); return void res.end(); }
           send(200, batch ? out : out[0]);
         })();

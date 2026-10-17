@@ -16,6 +16,7 @@ export const ADVANCED_NAV: NavItem[] = [
   { id: 'color', label: 'Color' },
   { id: 'audio', label: 'Audio' },
   { id: 'deliver', label: 'Deliver' },
+  { id: 'planner', label: 'Planner' },
 ];
 
 /** Simplified mode shows these directly; everything else sits under "More". */

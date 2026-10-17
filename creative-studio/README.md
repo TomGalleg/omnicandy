@@ -135,6 +135,13 @@ by copying `fixtures/sample-project`. Appearance settings are stored in `%APPDAT
 - **ArtCraft detection (real).** Main checks each `*-cli.exe` and reads `--version`. The header shows
   "N installed · 0 connected".
 
+## Project Planner
+
+A plain planning workspace (**More > Planner**) that keeps one current plan per project while you brainstorm elsewhere and execute in Claude Code,
+Cowork or CreateCraft. Works with no AI and no API key (copy and paste); an optional local MCP server lets Claude Code read the plan, claim
+tasks and report back. An executor's report is never acceptance: only you accept. Status of each client (verified / untested / unavailable) and
+how it works: [docs/project-planner.md](docs/project-planner.md).
+
 ## Security posture
 
 - `contextIsolation: true`, `nodeIntegration: false`, `sandbox: true`. The preload exposes one

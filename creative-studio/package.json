@@ -7,7 +7,8 @@
   "main": "out/main/index.js",
   "scripts": {
     "dev": "electron-vite dev",
-    "build": "npm run typecheck && electron-vite build",
+    "build": "npm run typecheck && electron-vite build && node scripts/build-planner-mcp.mjs",
+    "build:planner-mcp": "node scripts/build-planner-mcp.mjs",
     "start": "electron-vite preview",
     "typecheck": "tsc -p tsconfig.node.json --noEmit && tsc -p tsconfig.web.json --noEmit",
     "lint": "eslint .",
@@ -15,8 +16,8 @@
     "check": "npm run lint && npm run typecheck && npm test",
     "catalog": "node scripts/build-catalog.mjs",
     "release:check": "node scripts/release-check.mjs resources",
-    "dist:dir": "electron-vite build && electron-builder --dir",
-    "dist": "electron-vite build && node scripts/release-check.mjs resources && electron-builder",
+    "dist:dir": "electron-vite build && node scripts/build-planner-mcp.mjs && electron-builder --dir",
+    "dist": "electron-vite build && node scripts/build-planner-mcp.mjs && node scripts/release-check.mjs resources && electron-builder",
     "smoke:installed": "node scripts/smoke-installed.mjs",
     "smoke:connect-hybrid": "electron-vite build && node scripts/smoke-connect-hybrid.mjs",
     "smoke": "electron-vite build && node scripts/smoke.mjs",
@@ -30,6 +31,7 @@
     "smoke:docks": "electron-vite build && node scripts/smoke-docks.mjs",
     "smoke:docs": "electron-vite build && node scripts/smoke-docs.mjs",
     "smoke:reopen": "electron-vite build && node scripts/smoke-reopen.mjs",
+    "smoke:planner": "electron-vite build && node scripts/build-planner-mcp.mjs && node scripts/smoke-planner.mjs",
     "smoke:external": "electron-vite build && node scripts/smoke-external.mjs",
     "smoke:claude-external": "electron-vite build && node scripts/smoke-claude-external.mjs"
   },

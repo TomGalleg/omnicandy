@@ -24,6 +24,9 @@ extraResources:
     filter: ['*.ccadapter', 'catalog.json']
   - from: resources/trust
     to: trust
+  # The planner's MCP server: one file that runs with CreateCraft's own runtime (ELECTRON_RUN_AS_NODE=1), so AI clients can launch it.
+  - from: out/planner-mcp.cjs
+    to: planner-mcp.cjs
   - from: resources/window-tracker.ps1
     to: window-tracker.ps1
   - from: resources/icon.ico

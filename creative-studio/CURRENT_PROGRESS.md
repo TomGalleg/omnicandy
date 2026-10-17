@@ -728,3 +728,21 @@ Repair / Update (AI proposes, CreateCraft tests, user approves, every version ke
 * **Not verified**: the in-app Claude author end to end (opt-in `claude.live.test.ts`, spends Claude usage); add-in templates (C#, UXP) are source only; only FreeCAD 1.1.4 has run generated scripts; Python in the program is not sandboxed.
 
 * **Documentation fallback (2026-10-16)**: the builder now collects official documentation itself (online, official repository files at the installed version's tag, files installed with the program, user documents), stores it locally with origin and version, flags outdated copies (Refresh in Advanced), builds an index of exact API definitions, checks every citation against it and completes missing citations only where the documentation really contains the symbol. The saved real Claude blueprint now passes the citation checks with no manual change (offline replay). See `docs/ai-adapter-builder.md` (Documentation fallback). Not yet verified live.
+
+## Project Planner (2026-10-16)
+
+Docs: `docs/project-planner.md`. New workspace **Planner** (More in Simplified, in the toolbar in Advanced): one current plan per project of any type
+(brief, ideas, references, questions, accepted requirements and decisions with reasons, tasks with dependencies and completion checks, assets and
+output versions, milestones, activity history, every version of the accepted plan). Templates are editable defaults and can be mixed. Handoff round
+trip: proposals (kept apart from the plan) -> user accepts -> immutable execution package (plan revision, requirements, decisions, scope, assets,
+checks, report instructions) -> executor claims a task and submits a structured report -> user reviews. **Reported complete is never accepted** until the
+user accepts; outdated plans are flagged on packages and reports; edits and proposals that conflict are refused, duplicate reports and double claims are
+prevented; everything survives a restart (atomic writes under a lock, so the app and the MCP server can write at once).
+
+* **Copy and paste**: package as Markdown/JSON; paste a JSON or Markdown report, preview (with what was guessed) before anything is applied, original kept.
+* **MCP server** (`out/planner-mcp.cjs`, `npm run build:planner-mcp`): stdio plus token-protected 127.0.0.1 HTTP; scopes `read`, `propose`, `package`, `execute`
+  (editing and accepting cannot be granted to a connection). CreateCraft's own Claude uses the same session through four `planner_*` tools.
+* **Verified**: real MCP round trips across real processes; Claude Code's own `claude mcp list` (isolated config, no model call) connected to the server.
+* **Not verified**: a model-driven Claude Code session (paid); Cowork, ChatGPT and the Gemini app cannot reach a local server (copy and paste works; remote
+  hosting is not built); Gemini CLI configuration is untested (not installed). Client table with sources: `docs/project-planner.md`.
+* **Tests**: 20 planner unit/integration tests, `scripts/smoke-planner.mjs` 22/22 in the real window (screenshots 140-149). Spend: $0.
