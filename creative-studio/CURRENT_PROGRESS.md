@@ -1,10 +1,17 @@
 # CreateCraft: current progress (review package)
 
-Date: 2026-10-14 · Branch: `main` (local only, not pushed) · Last commit: Phase 1.3-1.4
+Updated: 2026-10-17 · Branch: `main` (local commits only, **no remote, nothing pushed**) · Windows is the primary platform; Linux is maintained from the
+same codebase (see "Linux compatibility" at the end of this file).
 
-CreateCraft is a Windows desktop app (Electron + React + TypeScript) that embeds and drives the
-seven installed ArtCraft apps (PhotoCraft, VectorCraft, SoundCraft, FilmCraft, LightCraft,
-EffectCraft, DesignCraft) with Claude as a Creative Partner.
+CreateCraft is a Windows-first desktop app (Electron + React + TypeScript) that embeds and drives the 13 first-party Craft apps (PhotoCraft,
+VectorCraft, SoundCraft, FilmCraft, LightCraft, EffectCraft, DesignCraft, WordCraft, PDFCraft, GridCraft, DeckCraft, FigCraft, CADCraft) with Claude as a
+Creative Partner, plus third-party software (Blender, FreeCAD, Revit, DaVinci Resolve) through an adapter framework, and a Project Planner.
+
+**How to read this file.** The dated sections from "Craft app stability fixes (2026-10-15)" down to "Linux compatibility" are the current picture.
+Everything between this header and those sections (the master-plan table, the per-phase notes and sections 1-10) is the **historical record of
+2026-10-14**: it is kept because its evidence (tests, screenshots, commands) is still valid for what it describes, but its counts, "next milestones"
+and "not implemented" lists are superseded by the summary below. For a one-page snapshot use `docs/STATUS_FOR_ANALYSIS.md`; for each subsystem see
+the matching file in `docs/`.
 
 **Status labels used below**
 
@@ -15,14 +22,40 @@ EffectCraft, DesignCraft) with Claude as a Creative Partner.
 | **MOCK** | Present in the UI but backed by a labelled mock; no real work is done. |
 | **NOT IMPLEMENTED** | Not built yet. |
 
-Evidence for each integration (exact commands, versions and test results) is in
-`docs/integration-audit.md` (the "Integration truth table"). Note: `README.md` is out of date (it
-still describes "Phase 2, steps 1–2"); this file and the audit are the current picture.
+Evidence for each integration (exact commands, versions and test results) is in `docs/integration-audit.md` (the "Integration truth table").
 
-**Resume here (new conversation):** follow Tomas's Master Development Instructions (phases 0–10).
-Phase 0 audit, Phase 1, Phase 2 and Phase 3 (3.1-3.4, plus the two gap fixes below) are done (see "Master plan status" below). Phase 4 (Simplified / Advanced navigation) is done too. Phase 5 (parts 1 and 2: Claude builds, runs and monitors workflows on the shared engine; pause, manual control, rerun of affected steps, versions, templates) is done; Phase 6 (real image generation, spending limit, Workflow AI step) is done and verified; **Phase 7 (AI video) is done for Veo and verified; Runway and Luma are not built; Phase 8 (templates) is done.** Keep work in small milestones and replies short.
+## Where things stand (2026-10-17)
 
-## Master plan status (Phase 0 audit, 2026-10-14)
+| Area | Status |
+|---|---|
+| Core app: projects in user-chosen folders, Home with Claude-created projects, Simplified/Advanced navigation, docks, themes, live control of the Craft apps, multi-clip editing, Deliver, workflow editor and shared engine, 11 built-in templates | **WORKING** (Phases 0-5 and 8 of the master plan; verified on the real installed apps in 2026-10-14) |
+| Paid AI generation: OpenAI image, Gemini image, Veo video | **WORKING**, one approved real run each (2026-10-14); spending limit and ledger. Runway built, not live-tested; Luma **NOT IMPLEMENTED** |
+| Local free video (Wan via stable-diffusion.cpp/Vulkan) and the free "motion" render | **WORKING** on this PC's GPU for the listed models only |
+| External integrations: adapter SDK, `.ccadapter` packages, Universal Connect, universal installer, plugin bridge | **WORKING**; real software verified: Blender 4.0.2, FreeCAD 1.1.4, Autodesk Revit 2027. DaVinci Resolve **PARTIAL** (adapter exists, commands never live-verified on this PC). Other Autodesk/Adobe profiles are data and docs only |
+| AI Adapter Builder | **PARTIAL**: proven on real FreeCAD with a scripted blueprint; the in-app live-Claude author path is only exercised by an opt-in test that spends Claude usage |
+| Project Planner (workspace, copy-and-paste handoff, MCP server, in-app Claude tools) | **WORKING** in automated runs only (`smoke-planner` 22/22 on Windows and on Linux); not yet used by hand; no model-driven client session has used the MCP tools |
+| Linux (Ubuntu 24.04 on WSL2) | **PARTIAL**: unit tests, Planner/MCP, `smoke-linux` and several UI smokes pass; no Craft apps exist for Linux; AppImage/deb **not built**; AMD/Vulkan/local AI and Claude sign-in not tested. Postponed by decision |
+| Installer, signing, first-run, backup and recovery, updates (master plan Phase 10) | **NOT IMPLEMENTED** (NSIS and Linux packaging configuration exist; no signed installer was built) |
+
+**Tests.** `npm run check` (eslint, both tsc projects, Vitest) is the gate. Counts change with every feature, so see the dated sections for the number
+at the time. The last count recorded for Windows is in "Linux compatibility" below (640 passed / 62 skipped on 2026-10-17); the 62 skips are opt-in live
+tests that need installed apps, a running Resolve, the network or paid Claude calls. Two older live PhotoCraft SVG tests are known failures when live
+tests are enabled. Most smoke scripts passed when written; only the Planner and navigation smokes are known to have been re-run after the latest changes.
+
+**Known gaps (current).** Nothing is backed up remotely; the Planner has had no hand use; packaging is not finished; adapter isolation is Node's
+permission model, not an OS sandbox; DesignCraft text colour is black/white only; the multi-clip strip has no drag-and-drop; no MP3 export; native
+confirmation dialogs were answered by script, not by a human. See `docs/STATUS_FOR_ANALYSIS.md` section 4.
+
+**Resume here (new conversation).** Follow Tomas's Master Development Instructions (phases 0-10). Done: Phases 0-8 (audit, docks and settings, project
+storage, Project Home and AI-first creation, Simplified/Advanced navigation, Claude-driven workflows, real image generation, Veo video, templates), then
+the external integration work (framework, installer, Revit, Builder) and the Planner. Open: Phase 9 documentation refresh (this file and the README are
+being brought in line) and Phase 10 (installer, first run, backup, recovery). Working agreement: develop and debug on Windows, local commits only, no
+push, no paid calls without approval; after changes to shared components or platform behaviour, run the Linux tests too (workflow in
+`docs/linux-compatibility.md`). Keep work in small milestones and replies short.
+
+> Historical record (2026-10-14) from here to the "Craft app stability fixes (2026-10-15)" section. Superseded items are marked where they matter.
+
+## Master plan status (Phase 0 audit, 2026-10-14; historical)
 
 Verified against the code at `fab6ab7` plus the Phase 1 commit. Baseline before changes: lint 0,
 typecheck 0, Vitest 135 passed / 14 skipped (opt-in live tests).
@@ -554,7 +587,7 @@ window opened).
 
 **Known issues**
 
-* `README.md` is out of date (Phase 2 text) and some fixture/README strings show mis-encoded dashes (`â€"`).
+* ~~`README.md` is out of date~~ (refreshed 2026-10-17); some fixture strings may still show mis-encoded dashes (`â€"`).
 * FilmCraft timeline panel: with music added, the music track can be below the fold of the bottom panel (scrolls).
 * Multi-clip video: clips are appended and moved one step at a time (no drag-and-drop on the strip); pictures last 3 s; music cannot loop or run longer than its file.
 * Deliver: no MP3 export; progress is per job (no percentage within one export).
@@ -563,7 +596,7 @@ window opened).
 * Live/smoke tests that open app windows are opt-in and must be run on a PC with the ArtCraft apps installed.
 * The renderer console logs a harmless warning that the CSP `frame-ancestors` directive is ignored in a `<meta>` tag.
 
-**Incomplete / not implemented**
+**Incomplete / not implemented (2026-10-14 list; since done: user-selected project storage, Simplified/Advanced navigation, the real AI Generate node, saved workflows and templates, Claude-built workflows, real paid generation; still open: window capture service, installer/first-run/backup, push to a remote)**
 
 * User-selected project storage location; open/move project folders.
 * Simplified / Advanced navigation modes.
@@ -572,7 +605,7 @@ window opened).
 * A real paid AI generation (awaiting the user's key and OK).
 * Windows installer / packaging, first-run guide; code not yet pushed to a remote.
 
-**Recommended next milestones**
+**Recommended next milestones (2026-10-14; milestones 1, 2 and 5 are done, see the summary at the top)**
 
 1. Workflow step two (AI node with approval, saved workflows and starters, Claude builds/runs workflows).
 2. Project storage choice (pick a folder, open existing project folders) and Simplified/Advanced navigation.
@@ -624,7 +657,7 @@ Audio + Deliver 13/13 (+ Claude checks 4/4), multi-clip 8/8, workflow 7/7.
 
 ## What is in this ZIP
 
-* `README.md` (out of date, see above), `CURRENT_PROGRESS.md`, `package.json`, `package-lock.json`
+* `README.md`, `CURRENT_PROGRESS.md`, `package.json`, `package-lock.json`
 * `src/main/`, `src/renderer/`, `src/shared/`, `src/preload/` (all source and tests)
 * `docs/` (`architecture.md`, `integration-audit.md` from the repository's top-level `docs/`, and all screenshots)
 * Configuration: `tsconfig.node.json`, `tsconfig.web.json`, `electron.vite.config.ts`, `eslint.config.mjs`, `vitest.config.ts`, `.gitignore`, `.gitattributes`
@@ -746,3 +779,20 @@ prevented; everything survives a restart (atomic writes under a lock, so the app
 * **Not verified**: a model-driven Claude Code session (paid); Cowork, ChatGPT and the Gemini app cannot reach a local server (copy and paste works; remote
   hosting is not built); Gemini CLI configuration is untested (not installed). Client table with sources: `docs/project-planner.md`.
 * **Tests**: 20 planner unit/integration tests, `scripts/smoke-planner.mjs` 22/22 in the real window (screenshots 140-149). Spend: $0.
+
+## Linux compatibility (2026-10-17)
+
+Docs: `docs/linux-compatibility.md` (audit, changes, evidence tables, findings). Decision: Windows stays the primary development platform; Linux is
+maintained from the same codebase, and Linux packaging, native AMD GPU validation and extensive Linux integration testing are postponed.
+
+* **Code**: shared OS helpers (`src/shared/platform.ts`, `src/main/platform/`); on Linux the 13 Craft apps are reported unavailable (no Linux build is known), window
+  embedding is Windows-only (apps open in their own window elsewhere), credentials require a real keyring (GNOME Keyring or KWallet, `basic_text` refused),
+  adapters declare `platforms` (default Windows only; the manager never runs adapter code on another system), Linux discovery, GPU/Vulkan detection and
+  a Linux local-video engine download entry exist, AppImage/deb configuration and `Run CreateCraft.sh` exist.
+* **Verified on Ubuntu 24.04 (WSL2)**: lint and typecheck clean; Vitest 557 passed / 0 failed / 145 skipped; real Planner MCP processes (stdio and HTTP);
+  `smoke-planner` 22/22 and `smoke-linux` 9/9 (with and without a keyring) in the real window; `smoke-nav` 7/7. Windows on the same commits: 640 passed / 62 skipped.
+* **Found and fixed by running on Linux**: Electron chose `basic_text` on unrecognised desktops even with a keyring (CreateCraft now asks for libsecret
+  explicitly); tests relied on a case-insensitive file system; the Planner workspace was not accepted when saving a project's last workspace (also a
+  Windows bug).
+* **Not verified on Linux**: Craft apps (none exist), Blender/FreeCAD adapters (declared Windows-only), GPU/Vulkan/AMD and local video, Claude sign-in and live
+  session, AppImage/deb build, the AI Adapter Builder's mock-program simulation (Windows launcher), first run/backup/upgrade.

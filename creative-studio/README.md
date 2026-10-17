@@ -1,19 +1,25 @@
 # CreateCraft
 
-CreateCraft is a Windows-first desktop app for creative editing. Claude acts as a Creative
-Partner that coordinates the ArtCraft apps (PhotoCraft, VectorCraft, LightCraft, EffectCraft,
-DesignCraft, SoundCraft, FilmCraft) and optional BYOK generation providers.
+CreateCraft is a Windows-first desktop app for creative production. Claude acts as a Creative
+Partner that coordinates the 13 first-party Craft apps (PhotoCraft, VectorCraft, SoundCraft, FilmCraft,
+LightCraft, EffectCraft, DesignCraft, WordCraft, PDFCraft, GridCraft, DeckCraft, FigCraft, CADCraft),
+third-party software through an adapter framework, and optional generation providers (bring your own keys).
 
-**Status: Phase 2, steps 1–2.** The UI, data model, contracts and safety state machines are real and
-tested. **PhotoCraft edits run for real** (headless, through the installed `photocraft-cli`) from
-workflow ArtCraft Edit nodes, and Export nodes write real files. Live control of PhotoCraft, VectorCraft
-and SoundCraft, the Claude Creative Partner and BYOK AI image generation (OpenAI, Google Gemini,
-approval before every paid call) are connected. Window capture is **not connected yet**. The app says so wherever they would appear. See [`../docs/integration-audit.md`](../docs/integration-audit.md)
-for what was verified on this machine.
+**Status (2026-10-17).** Working and verified on the author's Windows PC: projects in folders you choose,
+a prompt-first Home where Claude can create a project, Simplified and Advanced navigation, live control of
+the Craft apps (embedded in the Edit area on Windows), a visual workflow editor with one shared engine that
+Claude can plan and run, 11 built-in templates, real image generation (OpenAI, Gemini) and Veo video with
+approval before every paid call, an integration framework (Blender and FreeCAD verified, Autodesk Revit 2027
+verified, DaVinci Resolve unverified), an AI Adapter Builder, and the Project Planner. **Not built yet:**
+installer, signing, first-run guide, backup/recovery; Luma video; Runway is untested. Linux runs from the same
+code (tests and Planner verified on Ubuntu 24.04 under WSL2) but no Craft apps exist for Linux and no
+AppImage/deb has been built. The current state, with evidence and gaps, is in
+[`CURRENT_PROGRESS.md`](CURRENT_PROGRESS.md) and [`docs/STATUS_FOR_ANALYSIS.md`](docs/STATUS_FOR_ANALYSIS.md);
+the integration evidence is in [`../docs/integration-audit.md`](../docs/integration-audit.md).
 
 ## Run it
 
-Requires Node 22+ on Windows.
+Requires Node 22+ (Windows is the primary platform; on Linux use `../Run CreateCraft.sh`, see [`docs/linux-compatibility.md`](docs/linux-compatibility.md)).
 
 ```bash
 npm install
@@ -37,7 +43,9 @@ npm run dev
 | `npm start` | Run the production bundle |
 | `npm test` | Unit tests (Vitest) |
 | `npm run lint` / `npm run typecheck` | ESLint / tsc for main+preload and renderer |
-| `npm run check` | lint + typecheck + test |
+| `npm run check` | lint + typecheck + test (the gate before every commit) |
+| `npm run dist:dir` / `npm run dist` | Unpacked / NSIS installer build (configuration only; no signed installer has been produced). `npm run dist:linux` builds AppImage and deb (never run) |
+| `npm run smoke:planner`, `smoke:external`, `smoke:docks`, ... | One script per area, see `package.json` and `scripts/smoke-*.mjs`; most need the Craft apps installed |
 | `npm run smoke` | Build, then drive the real app with Playwright-Electron in an isolated profile; writes `docs/screenshots/` |
 | `npm run smoke:generate` | AI Generate: Mock generation, key entry (fake key), approval gate stubbed to Cancel, Open in Edit. No paid calls |
 | `node scripts/smoke-claude-generate.mjs` | Claude's `generate_image` tool (needs Claude Code signed in): one Mock image plus one cancelled OpenAI request |
@@ -49,7 +57,9 @@ npm run dev
 On first launch the app creates a sample project in `%APPDATA%\creative-studio\projects\sample-project`
 by copying `fixtures/sample-project`. Appearance settings are stored in `%APPDATA%\creative-studio\appearance.json`.
 
-## What works (Phase 1)
+## What works
+
+The list below describes the core app; later areas (integrations, AI Adapter Builder, generation, templates, Planner) are summarised in the status above and documented in `docs/`.
 
 - **Projects.** The **Home** tab (or the project name in the header) shows Project Home: every
   project as a card with a thumbnail, file/version counts and last change; create, open, rename,
@@ -60,7 +70,7 @@ by copying `fixtures/sample-project`. Appearance settings are stored in `%APPDAT
   refused while an edit task, workflow or Claude is busy, and app windows left open are not closed.
 - **Shell.** Resizable, collapsible panes, with layout remembered per user: media browser and
   inspector on the left, workspace in the centre, Claude panel on the right, and a context-sensitive
-  bottom pane. Eight workspaces: Media, Edit, AI Generate, Workflow, Effects, Color, Audio, Deliver.
+  bottom pane. Workspaces: Home, Media, Edit, AI Generate, Workflow, Effects, Color, Audio, Deliver and Planner (Simplified mode shows Project, Create, AI Generate and Deliver, with the rest under More).
 - **Appearance.** Four choices, switched instantly and remembered: **ArtCraft Match** (charcoal,
   measured from PhotoCraft's own "proMedium" theme so CreateCraft and the embedded app read as one
   application), **Studio Dark** (the original near-black look), **Light** (coordinated with
@@ -84,13 +94,12 @@ by copying `fixtures/sample-project`. Appearance settings are stored in `%APPDAT
 - **Workflow.** React Flow graph with typed ports (`image`, `document`). Node types: Import,
   AI Generate, ArtCraft Edit, Approval, Export. Connections are validated live (type mismatch,
   doubled input, cycle, self-loop). The graph autosaves to `workflow.json` and is re-validated in
-  main. "Run demo" uses the **MOCK** executor: real topological ordering, node states, an approval
-  gate that blocks downstream nodes, and cancel. It makes no network calls, writes no files and
-  drives no app.
+  main. "Run demo" uses the **MOCK** executor (no network, no files, no app). Real runs use the shared
+  workflow engine, which Claude can also plan, run, pause and rerun; paid AI steps wait for your approval.
 - **Collaboration state machine.** Planning, Ready, Running, Pausing, Paused, Manual Control,
   Awaiting Approval, then Completed, Failed or Cancelled. There is a single edit lock. Pause and
   Take Control wait for the active operation to finish. Resume compares the document version and
-  replans if it changed. The Claude panel drives a labelled mock task through it.
+  replans if it changed. The Claude panel and live app tasks run through it.
 - **PhotoCraft edits (real, headless).** An ArtCraft Edit node runs one allowlisted PhotoCraft
   command (17 presets such as Hue/Saturation, Levels, Photo Filter, Gaussian Blur and Oil Paint, or
   any other adjustment, filter or rotation id) with JSON parameters. Each run adds an editable
@@ -132,8 +141,7 @@ by copying `fixtures/sample-project`. Appearance settings are stored in `%APPDAT
   the main window.
 - **Export (real).** Export nodes convert the upstream version into `<project>/exports/`
   (PNG, JPG, WebP, TIFF, PSD or PCRAFT). Deliver lists the exports with "Show in folder".
-- **ArtCraft detection (real).** Main checks each `*-cli.exe` and reads `--version`. The header shows
-  "N installed · 0 connected".
+- **ArtCraft detection (real).** Main checks each app's CLI and reads `--version`; on Linux all 13 report "not installed, no Linux version known".
 
 ## Project Planner
 
@@ -152,12 +160,12 @@ how it works: [docs/project-planner.md](docs/project-planner.md).
 - CSP is `default-src 'self'`. Images load only from `self`, `data:` or the read-only
   `studio-asset:` protocol, which resolves asset IDs through the manifest. Navigation is
   restricted to the app, `window.open` is denied, and permission requests are denied.
-- Provider API keys (OpenAI, Google Gemini) are BYOK. The main process reads them from the
-  clipboard, encrypts them with Windows DPAPI (`safeStorage`) and clears the clipboard. They never
+- Provider API keys (OpenAI, Google Gemini, Runway) are BYOK. The main process reads them from the
+  clipboard, encrypts them with Electron `safeStorage` (Windows DPAPI; on Linux only GNOME Keyring or KWallet are accepted, never plaintext) and clears the clipboard. They never
   reach the renderer, logs, project files or Claude.
 - Every paid generation shows a native approval dialog in main with the price estimate (Cancel is
   the default). The Generate tab and Claude's `generate_image` tool share this path. Results become
   new read-only originals with provenance: prompt, provider, model, settings, estimate and who asked.
-  The workflow executor still refuses billable providers.
+  Workflow AI steps and Claude's generation tools use the same approval and spending limit.
 
 See [`docs/architecture.md`](docs/architecture.md) for structure, decisions and risks.

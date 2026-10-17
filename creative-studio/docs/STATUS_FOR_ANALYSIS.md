@@ -3,8 +3,7 @@
 Written 2026-10-17 from the repository at `E:\ClaudeCraft` (git `main`, local only, **no remote, nothing pushed**, 85 commits; latest `34a4d0d`).
 Primary sources inside the repo: `creative-studio/CURRENT_PROGRESS.md` (long, dated log), `creative-studio/docs/*.md` (one per subsystem),
 `creative-studio/README.md`. Status words used here: WORKING (verified on this PC), PARTIAL, MOCK, UNTESTED, NOT BUILT.
-Caveat: `README.md` and `CURRENT_PROGRESS.md` were written in many sessions; the progress file's top paragraphs are partly stale (they still
-describe the 2026-10-14 state), the dated sections at the bottom are current.
+Caveat: `README.md` and `CURRENT_PROGRESS.md` were written in many sessions; the progress file's old 2026-10-14 sections are a labelled historical record; its new top summary and the dated sections at the bottom are current.
 
 ## 1. What it is
 
@@ -25,7 +24,7 @@ multiple projects (open, duplicate, verified move, locate), virtual collections,
 call verified), Simplified/Advanced navigation, docked Media and Claude panels, themes (ArtCraft Match, Studio Dark, Light, System), live
 control of ArtCraft apps with edit locks and manual takeover, multi-clip video and audio editing and export, Deliver queue, visual node workflow
 editor with a single shared execution engine (Claude can plan, run, pause, rerun affected steps, version and template workflows; user approves
-paid steps), nine workflow templates.
+paid steps), eleven built-in workflow templates.
 
 **Paid AI generation (VERIFIED once each, 2026-10-14):** OpenAI image and Gemini image (one approved real image each), Veo video (one approved
 clip, about $0.20). Spending limit + ledger exist. Runway built but not live-tested; Luma not built. Local free video (Wan via sd.cpp/Vulkan) and
@@ -68,8 +67,8 @@ reported as live.
 
 ## 3. Test and verification state
 
-* `npm run check` (eslint + both tsc projects + Vitest) passes: 602 passed, 62 skipped (skipped = opt-in live tests needing installed apps, a
-  running Resolve, network, or paid Claude calls). Run 2026-10-16 after the Planner work.
+* `npm run check` (eslint + both tsc projects + Vitest) passes: 640 passed, 62 skipped (skipped = opt-in live tests needing installed apps, a
+  running Resolve, network, or paid Claude calls). Re-run 2026-10-17 after the Linux work (it was 602 passed / 62 skipped on 2026-10-16). On Ubuntu 24.04 (WSL2): 557 passed, 0 failed, 145 skipped.
 * Planner: 20 targeted tests (real service; real MCP server processes over stdio and HTTP) and `scripts/smoke-planner.mjs` 22/22 in the real
   Electron window with a real MCP executor process (screenshots `docs/screenshots/140-149`). `smoke-nav.mjs` 7/7 re-run after adding Planner.
 * Earlier smoke scripts (docks, projects, workflow, live apps, connect, builder, adapters) passed when written; only `smoke-nav` and
@@ -86,7 +85,7 @@ reported as live.
 3. **Packaging**: `electron-builder` NSIS config exists and `dist:dir` was prepared, but no installer was built or signed in the latest work; first-run
    setup, backup and update strategy (master plan Phase 10) are not built. The planner MCP server in an installed app is meant to run with
    `ELECTRON_RUN_AS_NODE=1`; tried only with the dev Electron binary.
-4. **Docs drift**: README and the top of CURRENT_PROGRESS.md are partly out of date; many numbers in older sections are historical.
+4. **Docs drift** (fixed 2026-10-17): README and the top of CURRENT_PROGRESS.md were refreshed; the 2026-10-14 sections of CURRENT_PROGRESS.md are kept as a labelled historical record, so their numbers are old.
 5. **Security model limits**: adapter isolation is Node's permission model, not an OS sandbox; generated adapters are unsigned and ask before every
    command; the MCP HTTP bearer token is a single shared secret; planner data is stored unencrypted on disk (it holds no credentials by design).
 6. **Integration coverage**: only Blender, FreeCAD, Revit are verified against real software; Resolve unverified; Adobe untouched beyond profiles.
