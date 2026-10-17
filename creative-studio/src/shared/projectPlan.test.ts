@@ -20,4 +20,8 @@ describe('parseProjectPlan', () => {
     expect(p.steps).toHaveLength(8);
     expect(p.aiTools).toHaveLength(5);
   });
+  it('reads list entries that Claude wrote as objects (model + purpose)', () => {
+    const p = parseProjectPlan(JSON.stringify({ ...plan, aiTools: [{ model: 'Nano Banana', purpose: 'the dragon artwork' }, { name: 'GPT Image', for: 'text' }] }));
+    expect(p.aiTools).toEqual(['Nano Banana - the dragon artwork', 'GPT Image - text']);
+  });
 });

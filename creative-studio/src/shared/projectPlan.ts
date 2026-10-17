@@ -35,7 +35,9 @@ export type ProjectPlan = z.infer<typeof projectPlanSchema>;
 function trimToLimits(raw: unknown): unknown {
   if (!raw || typeof raw !== 'object') return raw;
   const o = { ...(raw as Record<string, unknown>) };
-  const cut = (v: unknown, n: number) => (typeof v === 'string' ? v.trim().slice(0, n) : v);
+  // Claude sometimes answers a list entry as an object ({ model, purpose }) instead of one sentence: join its text values.
+  const text = (v: unknown): unknown => (v && typeof v === 'object' && !Array.isArray(v) ? Object.values(v as Record<string, unknown>).filter((x) => typeof x === 'string' && x.trim()).join(' - ') : v);
+  const cut = (v: unknown, n: number) => { const t = text(v); return typeof t === 'string' ? t.trim().slice(0, n) : t; };
   const list = (v: unknown, max: number, n: number) => (Array.isArray(v) ? v.map((x) => cut(x, n)).filter((x) => x !== '').slice(0, max) : v);
   o.name = cut(o.name, 80); o.finishedOutput = cut(o.finishedOutput, 300); o.summary = cut(o.summary, 600);
   if ('apps' in o) o.apps = list(o.apps, 13, 40);
