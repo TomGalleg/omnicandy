@@ -27,17 +27,38 @@ extraResources:
   # The planner's MCP server: one file that runs with CreateCraft's own runtime (ELECTRON_RUN_AS_NODE=1), so AI clients can launch it.
   - from: out/planner-mcp.cjs
     to: planner-mcp.cjs
-  - from: resources/window-tracker.ps1
-    to: window-tracker.ps1
-  - from: resources/icon.ico
-    to: icon.ico
+  - from: resources/icon.png
+    to: icon.png
   - from: fixtures/sample-project
     to: sample-project
 win:
+  # Windows only: the PowerShell window tracker that embeds a Craft app's window, and the .ico.
+  extraResources:
+    - from: resources/window-tracker.ps1
+      to: window-tracker.ps1
+    - from: resources/icon.ico
+      to: icon.ico
   target:
     - target: nsis
       arch: [x64]
   icon: resources/icon.ico
+# Linux (Ubuntu x86-64 first). UNTESTED: nothing here has been built or installed on Linux yet (docs/linux-compatibility.md).
+# No window tracker: Craft apps open in their own windows. Keys need a keyring, so the deb recommends one.
+linux:
+  target:
+    - target: AppImage
+      arch: [x64]
+    - target: deb
+      arch: [x64]
+  icon: resources/icon.png
+  category: Graphics
+  artifactName: CreateCraft-${version}-linux-${arch}.${ext}
+  maintainer: CreateCraft
+  synopsis: AI-assisted creative production
+  executableName: createcraft
+deb:
+  depends: [libgtk-3-0, libnotify4, libnss3, libxss1, libxtst6, xdg-utils, libatspi2.0-0, libuuid1, libsecret-1-0]
+  recommends: [gnome-keyring, libvulkan1, mesa-vulkan-drivers]
   # Code signing of the executable and installer is a release step with the organisation's certificate (docs/release-signing.md).
   signAndEditExecutable: false
 nsis:

@@ -26,7 +26,7 @@ if (!app.requestSingleInstanceLock()) app.exit(0);
 // application they are electron-builder extraResources under process.resourcesPath; in development they are in the repository.
 const resourceDir = app.isPackaged ? process.resourcesPath : path.join(app.getAppPath(), 'resources');
 const trackerScript = path.join(resourceDir, 'window-tracker.ps1');
-const appIcon = () => path.join(resourceDir, 'icon.ico');
+const appIcon = () => path.join(resourceDir, process.platform === 'win32' ? 'icon.ico' : 'icon.png');
 let mainWindow: BrowserWindow | null = null;
 const panelClosedListeners: Array<() => void> = [];
 const embedded = new EmbeddedApp(() => mainWindow, trackerScript, () => { /* app window closed */ });
