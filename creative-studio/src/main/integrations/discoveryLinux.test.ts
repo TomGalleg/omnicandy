@@ -3,6 +3,9 @@ import { describe, expect, it } from 'vitest';
 import { discoverApps, type DiscoveryEnv } from './discovery';
 import { execOfDesktop } from './discoveryLinux';
 
+// Simulates Windows (backslash paths, registry text, a compiled mock program): not meaningful on other systems.
+const onWindows = process.platform === 'win32';
+
 const targets = [{ exeNames: ['blender.exe', 'FreeCADCmd.exe'], displayNames: ['^Blender'] }];
 
 function machine(files: string[], dirs: Record<string, Array<{ name: string; dir: boolean }>> = {}, texts: Record<string, string> = {}, env: NodeJS.ProcessEnv = { PATH: '/usr/bin:/bin', HOME: '/home/ada' }): DiscoveryEnv {
@@ -27,7 +30,7 @@ describe('Linux application discovery', () => {
     const apps = await discoverApps(targets, machine(['/data/Blender/bin/blender', '/old/blender']), ['/data/Blender'], ['/old/blender', '/gone/blender']);
     expect(apps.map((a) => a.exePath).sort()).toEqual(['/data/Blender/bin/blender', '/old/blender']);
   });
-  it('Windows discovery is unchanged when no OS is given', async () => {
+  it.skipIf(!onWindows)('Windows discovery is unchanged when no OS is given', async () => {
     const pf = 'C:\\Program Files';
     const exe = pf + '\\Blender Foundation\\Blender 4.0\\blender.exe';
     const win: DiscoveryEnv = { env: { ProgramFiles: pf, PATH: '' }, exists: async (p) => p.toLowerCase() === exe.toLowerCase(), listDir: async (p) => (p === pf ? [{ name: 'Blender Foundation', dir: true }] : p.endsWith('Blender Foundation') ? [{ name: 'Blender 4.0', dir: true }] : []), run: async () => '' };

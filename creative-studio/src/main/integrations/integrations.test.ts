@@ -7,6 +7,9 @@ import { discoverApps, parseRegQuery, type DiscoveryEnv } from './discovery';
 import { createIntegrationManager, IntegrationManager } from './index';
 import { AdapterError, validateManifest, type AdapterFactory, type ExternalAdapter } from './sdk';
 
+// Simulates Windows (backslash paths, registry text, a compiled mock program): not meaningful on other systems.
+const onWindows = process.platform === 'win32';
+
 let tmp: string;
 beforeAll(async () => { tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'cc-int-')); });
 afterAll(async () => { await fs.rm(tmp, { recursive: true, force: true }); });
@@ -109,7 +112,7 @@ describe('discovery', () => {
     const rows = parseRegQuery('HKEY_LOCAL_MACHINE\\X\\Blender\r\n    DisplayName    REG_SZ    Blender 4.0\r\n    DisplayVersion    REG_SZ    4.0.2\r\n');
     expect(rows[0]!.values).toMatchObject({ DisplayName: 'Blender 4.0', DisplayVersion: '4.0.2' });
   });
-  it('finds apps from the registry, common folders and user paths, and never reports others', async () => {
+  it.skipIf(!onWindows)('finds apps from the registry, common folders and user paths, and never reports others', async () => {
     const reg = 'HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Blender\r\n    DisplayName    REG_SZ    Blender 4.0\r\n    Publisher    REG_SZ    Blender Foundation\r\n    DisplayVersion    REG_SZ    4.0.2\r\n    InstallLocation    REG_SZ    D:\\Apps\\Blender\r\n'
       + 'HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Other\r\n    DisplayName    REG_SZ    Some Game\r\n';
     const env = fakeEnv({ files: ['D:\\Apps\\Blender\\blender.exe', 'C:\\Program Files\\Autodesk\\Revit 2024\\Revit.exe', 'C:\\Portable\\FreeCAD\\bin\\FreeCAD.exe'], reg, dirs: { 'C:\\Program Files': ['Autodesk'], 'C:\\Program Files\\Autodesk': ['Revit 2024'] } });

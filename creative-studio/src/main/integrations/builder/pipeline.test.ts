@@ -6,6 +6,9 @@ import { describe, expect, it } from 'vitest';
 import { parseBlueprint, type Blueprint } from './blueprint';
 import { buildCandidate } from './pipeline';
 
+// Simulates Windows (backslash paths, registry text, a compiled mock program): not meaningful on other systems.
+const onWindows = process.platform === 'win32';
+
 const fixture = path.resolve(import.meta.dirname, '..', '..', '..', '..', 'fixtures', 'ai-generated', 'freecad-enclosure.blueprint.json');
 const load = (): Blueprint => parseBlueprint(JSON.parse(fs.readFileSync(fixture, 'utf8')));
 const opts = { version: '1.0.0', createdAt: '2026-01-01T00:00:00Z', author: { kind: 'scripted' as const }, projectId: 't1' };
@@ -57,7 +60,7 @@ describe('builder pipeline: FreeCAD enclosure blueprint', () => {
     expect(r.reports[0]!.checks.find((c) => c.id === 'decision')!.detail).toMatch(/builds an external integration/);
   });
 
-  it('a check the command makes on a placeholder result is a mock limit; a real code error in the command is still a failure', async () => {
+  it.skipIf(!onWindows)('a check the command makes on a placeholder result is a mock limit; a real code error in the command is still a failure', async () => {
     const NL = String.fromCharCode(10);
     const limited = mut((x) => { x.commands[0]!.python!.source = x.commands[0]!.python!.source.replace('shell = outer.cut(inner)', 'shell = outer.cut(inner)' + NL + '    if shell.isNull():' + NL + '        H.fail("app-error", "The boolean cut did not produce a valid solid.")'); x.commands[0]!.docRefs.push({ symbol: 'Shape.isNull', url: x.commands[0]!.docRefs[0]!.url }); });
     const a = await buildCandidate(limited, opts);

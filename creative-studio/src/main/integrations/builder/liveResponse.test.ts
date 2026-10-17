@@ -6,6 +6,9 @@ import { describe, expect, it } from 'vitest';
 import { parseBlueprint, parseBlueprintDetailed } from './blueprint';
 import { buildCandidate } from './pipeline';
 
+// Simulates Windows (backslash paths, registry text, a compiled mock program): not meaningful on other systems.
+const onWindows = process.platform === 'win32';
+
 const raw = fs.readFileSync(path.resolve(import.meta.dirname, '..', '..', '..', '..', 'fixtures', 'ai-generated', 'live-claude-blueprint-attempt1.raw.txt'), 'utf8');
 const opts = { version: '1.0.0', createdAt: '2026-10-16T00:00:00Z', author: { kind: 'claude' as const, note: 'replayed live answer' }, projectId: 'replay' };
 
@@ -54,7 +57,7 @@ describe('replay of the real Claude blueprint (live run 2026-10-16)', () => {
     expect(r.bytes).not.toBeNull(); // and the package is built (the simulated stage is not run here: see the docs)
   }, 60_000);
 
-  it('the simulated stage reports the stand-in program being unable to judge a code check as a mock limit, not as a defect', async () => {
+  it.skipIf(!onWindows)('the simulated stage reports the stand-in program being unable to judge a code check as a mock limit, not as a defect', async () => {
     const bp = structuredClone(parseBlueprintDetailed(raw).data);
     const url = bp.research.sources[0]!.url;
     for (const c of bp.commands) for (const sym of ['FreeCAD.Placement', 'FreeCAD.Rotation', 'FreeCAD.Vector', 'FreeCAD.closeDocument', 'FreeCAD.newDocument', 'FreeCAD.openDocument', 'Document.addObject', 'Document.recompute', 'Document.saveAs', 'Shape.cut', 'Shape.isValid', 'Spreadsheet.set', 'Spreadsheet.setAlias', 'Spreadsheet.setExpression', 'Document.getObject', 'Shape.isNull']) if (!c.docRefs.some((d) => d.symbol === sym)) c.docRefs.push({ symbol: sym, url });

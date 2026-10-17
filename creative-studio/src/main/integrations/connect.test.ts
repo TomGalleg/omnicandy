@@ -16,6 +16,9 @@ import { AdapterPackages, createIntegrationManager } from './index';
 import type { AdapterFactory, ExternalAdapter, HealthResult } from './sdk';
 import { ExternalState } from './state';
 
+// Simulates Windows (backslash paths, registry text, a compiled mock program): not meaningful on other systems.
+const onWindows = process.platform === 'win32';
+
 const root = path.resolve(import.meta.dirname, '..', '..', '..');
 const BUNDLED = path.join(root, 'resources', 'adapters');
 const HKLM = 'HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall';
@@ -377,7 +380,7 @@ describe('external state', () => {
     expect(v.onboarded).toBe(true);
   });
 
-  it('removing by program path also removes the folder or bin-parent the user chose, but never a parent drive', async () => {
+  it.skipIf(!onWindows)('removing by program path also removes the folder or bin-parent the user chose, but never a parent drive', async () => {
     const s = new ExternalState(path.join(tmp, 'state-b', 'x.json'));
     await s.update((x) => { x.paths = ['E:\\FreeCAD 1.1', 'E:\\']; x.remembered = ['E:\\FreeCAD 1.1\\bin\\FreeCADCmd.exe', 'E:\\Other\\o.exe']; });
     expect(await s.removePath('E:\\FreeCAD 1.1\\bin\\FreeCADCmd.exe')).toBe(true);

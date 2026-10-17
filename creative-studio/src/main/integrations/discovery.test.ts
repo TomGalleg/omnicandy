@@ -29,7 +29,10 @@ function fakeEnv(o: Env = {}): DiscoveryEnv & { listed: string[]; existsCalls: n
 }
 const FC = [{ exeNames: ['FreeCADCmd.exe'], displayNames: ['^FreeCAD'] }];
 
-describe('discovery of programs in custom locations', () => {
+// These tests simulate a Windows PC (backslash paths, registry text). Linux discovery is covered in discoveryLinux.test.ts.
+const onWindows = process.platform === 'win32';
+
+describe.skipIf(!onWindows)('discovery of programs in custom locations', () => {
   it('parses the program out of an uninstall command', () => {
     expect(programOf('"E:\\FreeCAD 1.1\\Uninstall.exe" /S')).toBe('E:\\FreeCAD 1.1\\Uninstall.exe');
     expect(programOf('D:\\Tools\\unins000.exe /SILENT')).toBe('D:\\Tools\\unins000.exe');
@@ -112,7 +115,7 @@ const realFactory = (): AdapterFactory => ({
 });
 const noPerms = { load: async () => ({}), save: async () => undefined };
 
-describe('remembered locations and placeholder replacement in the manager', () => {
+describe.skipIf(!onWindows)('remembered locations and placeholder replacement in the manager', () => {
   it('remembers a program found through an uninstall record and still finds it after the record is gone', async () => {
     let stored: string[] = [];
     const withRecord = fakeEnv({ files: ['E:\\FreeCAD 1.1\\bin\\FreeCADCmd.exe'], uninstall: [{ DisplayName: 'FreeCAD 1.1.4', DisplayIcon: 'E:\\FreeCAD 1.1\\bin\\FreeCAD.exe' }] });

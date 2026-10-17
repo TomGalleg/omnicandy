@@ -133,7 +133,7 @@ describe('deliver queue', () => {
     expect(a).toMatchObject({ kind: 'image', sourceFormat: 'png', parentId: src });
     expect(a.name).toBe('sunset-still-from-jpg.png');
     expect(a.provenance.source).toMatch(/hand-off/);
-    expect(existsSync(path.join(own.root, 'exports', r!.output!))).toBe(true);
+    expect(existsSync(path.join(await own.exportsDir(), r!.output!))).toBe(true); // 'Exports' or 'exports' depending on layout: a case-sensitive file system tells them apart
     expect(existsSync(path.join(own.root, 'work', 'deliver-handoff', r!.id))).toBe(false);
   });
 
