@@ -9,6 +9,8 @@ import { execFile } from 'node:child_process';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import type { DiscoveredApp } from '@shared/integrations';
+import { currentOs, type OsId } from '@shared/platform';
+import { discoverAppsLinux } from './discoveryLinux';
 
 export interface DiscoveryTarget { exeNames: string[]; displayNames: string[] }
 
@@ -16,6 +18,8 @@ export interface DiscoveryEnv {
   /** Runs a command and returns stdout ('' on failure). */
   run(file: string, args: string[]): Promise<string>;
   env: NodeJS.ProcessEnv;
+  /** Which system's sources to use. Missing means Windows (the original behaviour). */
+  os?: OsId;
   exists(p: string): Promise<boolean>;
   listDir(p: string): Promise<Array<{ name: string; dir: boolean }>>;
 }
@@ -25,6 +29,7 @@ export const realDiscoveryEnv: DiscoveryEnv = {
     execFile(file, args, { windowsHide: true, timeout: 20_000, maxBuffer: 16 * 1024 * 1024 }, (_e, out) => res(String(out ?? '')));
   }),
   env: process.env,
+  os: currentOs(),
   exists: (p) => fs.stat(p).then(() => true, () => false),
   listDir: (p) => fs.readdir(p, { withFileTypes: true }).then((es) => es.map((e) => ({ name: e.name, dir: e.isDirectory() })), () => []),
 };
@@ -65,6 +70,7 @@ export function programOf(command: string | undefined): string | null {
 const SHORTCUT_SCRIPT = "$s = New-Object -ComObject WScript.Shell; foreach ($r in @([Environment]::GetFolderPath('CommonPrograms'), [Environment]::GetFolderPath('Programs'))) { if ($r -and (Test-Path $r)) { Get-ChildItem -LiteralPath $r -Filter *.lnk -Recurse -ErrorAction SilentlyContinue | ForEach-Object { try { $s.CreateShortcut($_.FullName).TargetPath } catch {} } } }";
 
 export async function discoverApps(targets: DiscoveryTarget[], d: DiscoveryEnv = realDiscoveryEnv, userPaths: string[] = [], remembered: string[] = []): Promise<DiscoveredApp[]> {
+  if (d.os && d.os !== 'win32') return discoverAppsLinux(targets, d, userPaths, remembered);
   const exeCase = new Map(targets.flatMap((t) => t.exeNames.map((e) => [lower(e), e] as const)));
   const wantedExe = new Set(exeCase.keys());
   const orig = (e: string) => exeCase.get(e) ?? e;
