@@ -153,3 +153,49 @@ Planner, workflow engine, project formats and MCP protocol were already OS-neutr
 2. `npm ci`, `npm run check` on Linux. Record every failure here as a separate "Linux results" table.
 3. Launch under WSLg: startup, project create / save / reopen, Planner round trip, Claude connectivity (the user signs in), workflows.
 4. Report GPU/Vulkan detection results from WSL as what they are (WSL virtual GPU).
+
+---
+
+# Linux results (2026-10-17): ACTUAL runs on Ubuntu 24.04 (WSL2), kept apart from the predictions above
+
+## The environment
+
+* Ubuntu 24.04.5 LTS under WSL2 (kernel 5.15.167.4-microsoft-standard-WSL2, WSLg for windows), installed with `wsl --install Ubuntu-24.04 --location E:\WSL\Ubuntu-24.04 --no-launch`. WSL 2.4.13 supports `--location`; the virtual disk was then **confirmed at `E:\WSL\Ubuntu-24.04\ext4.vhdx`** (1 GB at install, no Ubuntu disk under C:). E: is NTFS, 1.6 TB free, **a spinning hard disk (Seagate ST2000DM001)**, so Linux disk I/O is slower than on the SSDs. Default user `dev` (`/etc/wsl.conf`).
+* Installed inside Ubuntu only: git, curl, ca-certificates, xz-utils, unzip, pciutils, the Electron runtime libraries (GTK3, NSS, GBM, ALSA, X libs), `libsecret-1-0`, `gnome-keyring`, `dbus-x11`, `libvulkan1`, `mesa-vulkan-drivers`, `vulkan-tools`, `xdg-utils`; Node.js 22.23.3 (official tarball, SHA-256 checked) and npm 10.9.9. No build-essential (nothing needs compiling).
+* Checkout: `/home/dev/ClaudeCraft` on Ubuntu's own ext4, made with `git clone --no-hardlinks --origin windows /mnt/e/ClaudeCraft`: **same HEAD and all 102 commits** as the Windows repository (one branch, `main`; there are no others). The remote `windows` is the local Windows checkout, its push URL is disabled, nothing is ever pushed. Untracked Windows-only folders (test projects, a zip) were not copied. Workflow: edit and commit on Windows, `git pull --ff-only windows main` in Ubuntu.
+* Nothing on Windows was moved or deleted; the Windows CreateCraft and repository were not touched except for commits.
+* `chrome-sandbox` of the Linux Electron needed `chown root` + `chmod 4755` (root inside WSL) to run with the normal sandbox.
+
+## Results
+
+| Check | Result |
+|---|---|
+| `npm ci` | 560 packages in 12 s. Installs `claude-agent-sdk-linux-x64`: the SDK's Linux binary is available (an earlier worry is resolved) |
+| `eslint .` | clean |
+| `tsc` (node + web projects) | clean |
+| Vitest, first run on Linux (before fixes) | 515 passed, **57 failed**, 129 skipped |
+| Vitest after this phase's fixes | **557 passed, 0 failed, 145 skipped** (Windows: 640 passed, 62 skipped). The extra 83 skips on Linux are tests that simulate Windows (registry text, backslash paths, a compiled mock program) or need the Craft apps |
+| Planner + MCP on Linux | service tests 15/15, MCP session 2/2, **real MCP server processes over stdio and local HTTP 3/3**, platform tests: all pass |
+| `scripts/smoke-planner.mjs` in the real Electron window on Linux (WSLg) | **22/22** (mixed project, MCP executor, outdated-report guard, paste path, restart) |
+| `scripts/smoke-linux.mjs` (real window, no keyring) | **9/9** |
+| `scripts/smoke-linux.mjs` (real window, session bus + GNOME Keyring) | **9/9**, key storage "GNOME Keyring", `safeStorage` encrypt/decrypt round trip ok |
+| `smoke-nav` 7/7, `smoke-docks` 14/14, `smoke-projects` 13/13, `smoke-templates` 6/6 on Linux | pass |
+| `smoke-theme` | fails on Linux by design: it opens a real PhotoCraft (Windows only). Not a regression |
+| Project create, save, reopen after restart, last workspace (incl. Planner) | verified on Linux (smoke-linux) |
+| 13 Craft apps | all reported "not installed, no Linux version known" on Linux (smoke-linux) |
+| Claude connectivity on Linux | **not tested**: needs your Claude sign-in; the SDK binary is present. No paid call was made |
+| Workflows | the workflow templates smoke ran (6/6); running a workflow needs apps or paid providers, not run |
+| GPU / Vulkan / local AI | **not meaningful in WSL**: `mesa-vulkan-drivers` and `vulkan-tools` are installed, but WSL exposes a virtual GPU; no engine download or generation was attempted |
+| AppImage / deb | not built |
+
+## What running on real Linux found (and fixed)
+
+1. **Electron picks `basic_text` on unrecognised desktops even with a running keyring.** Verified: with the GNOME Keyring on the session bus, `safeStorage` reported `basic_text` / unavailable unless `XDG_CURRENT_DESKTOP=GNOME` or `--password-store=gnome-libsecret` was given. Fix: on Linux, when the desktop is not one Chromium recognises, CreateCraft passes `--password-store=gnome-libsecret` (libsecret works with any Secret Service). With a keyring: "GNOME Keyring", round trip ok. Without one: unavailable, with the message "none is running or it is locked" and setup help.
+2. **Tests relied on Windows' case-insensitive file system** (`exports/` vs `Exports/`): fixed to use the store's folder.
+3. **Test fixtures assumed Windows adapters run everywhere**: adapter fixtures that are plain Node code now declare `platforms: ["win32","linux"]`; Windows-simulating tests skip elsewhere with a stated reason. `binName` replaces `.exe` literals in tests.
+4. **A bug from the Planner work**: saving a project's last-used workspace rejected `planner` (two enums were not updated), so the Planner tab was not restored. Fixed and covered by smoke-linux.
+5. Linux's `.exe`-less names: the builder's mock program host is a compiled Windows launcher, so the Adapter Builder's *mock simulation* cannot run on Linux yet (two tests skip). The builder's Linux support is a known gap.
+
+## Still unverified on Linux
+
+Craft apps (none known), Blender and FreeCAD adapters (declared Windows-only, refused on Linux), GPU/Vulkan/AMD and local AI video, Claude sign-in and a live Claude session, AppImage/deb build and install, first run/backup/recovery/upgrade, the plugin bridge Unix socket against a real host.
