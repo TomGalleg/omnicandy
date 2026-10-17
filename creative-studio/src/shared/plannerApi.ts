@@ -1,6 +1,6 @@
 // What the Planner workspace may ask main to do (always as the user). Types only; main/planner/ipc.ts implements it.
 import type {
-  ActivityEntry, AppRef, ExecPackage, ItemStatus, ItemType, PlanAsset, PlanDrift, PlanItem, PlannerProject, PlanReport, PlanTask, Priority, ProjectInput, ProjectSummary, ReportDraft, Actor,
+  ActivityEntry, AppRef, ExecPackage, ItemStatus, ItemType, PlanAsset, PlanDrift, PlanItem, PlannerProject, PlanReport, PlanTask, Priority, ProjectInput, ProjectSummary, ReportDraft, Actor, Proposal, ProposalChange,
 } from './planner';
 
 export interface PlannerTaskInput {
@@ -44,6 +44,12 @@ export interface PlannerApi {
   removeMilestone(id: string, msId: string): Promise<void>;
   decideProposal(id: string, proposalId: string, accept: boolean, only?: number[]): Promise<void>;
   createPackage(id: string, req: { taskIds: string[]; objective?: string; note?: string }): Promise<ExecPackage>;
+  /** Send to AI: reuses an identical open package instead of superseding it. */
+  prepareSend(id: string, req: { taskIds: string[]; objective?: string; note?: string; destination?: 'createcraft' | 'tools' | 'chat'; forceInclude?: string[] }): Promise<{ package: ExecPackage; reused: boolean; replaced: number[] }>;
+  /** Stores pasted AI suggestions as a pending proposal (never applied). */
+  importSuggestions(id: string, req: { proposer?: Actor; note?: string; changes: ProposalChange[]; rawText: string }): Promise<Proposal>;
+  /** The plan approved on Home becomes a Planner project with its steps as pending suggestions (never accepted automatically). */
+  createFromHomePlan(input: { title: string; goal: string; kind?: string; steps: string[]; questions: string[] }): Promise<{ project: PlannerProject; proposal: Proposal }>;
   cancelPackage(id: string, pkgId: string): Promise<void>;
   packageView(id: string, pkgId: string): Promise<PackageView>;
   /** Saves the package as Markdown (and JSON beside it) through a native Save dialog. Returns the Markdown path or null. */

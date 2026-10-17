@@ -87,6 +87,9 @@ export function registerPlannerIpc(d: Deps): void {
     removeMilestone: (id: string, mid: string) => s.removeMilestone(u, id, mid),
     decideProposal: async (id: string, pid: string, accept: boolean, only?: number[]) => { await s.decideProposal(u, id, pid, accept, only); },
     createPackage: (id: string, req: never) => s.createPackage(u, id, req),
+    prepareSend: (id: string, req: never) => s.prepareSend(u, id, req),
+    importSuggestions: (id: string, req: never) => s.importSuggestions(u, id, req),
+    createFromHomePlan: (input: never) => s.createFromHomePlan(u, input),
     cancelPackage: (id: string, pkgId: string) => s.cancelPackage(u, id, pkgId),
     packageView: async (id: string, pkgId: string): Promise<PackageView> => { const v = await s.getPackage(u, id, pkgId); return { ...v, json: JSON.stringify(v.package, null, 2) }; },
     savePackage: async (id: string, pkgId: string) => {

@@ -6,12 +6,14 @@ import { createHash, randomBytes } from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import {
-  type Actor, type ActivityEntry, type AppRef, CONNECTION_SCOPES, type ExecPackage, isClaimLive, type ItemStatus, type ItemType, type Milestone, type PackageTask,
+  type Actor, type ActivityEntry, changeSchema, type AppRef, CONNECTION_SCOPES, type ExecPackage, isClaimLive, type ItemStatus, type ItemType, type Milestone, type PackageTask,
   type PlanAsset, type PlanItem, type PlannerProject, type PlanReport, type PlanTask, planDrift, type PlanDrift, PLANNER_FORMAT, type Priority, type Proposal, type ProposalChange,
   type ReportDraft, reportDraftSchema, type Scope, SCOPES, snapshotOf, type TaskStatus, templateById, unmetDependencies, uncoveredChecks, USER_ACTOR, wouldCycle, canonical,
   projectInputSchema, type ProjectInput, type ProjectSummary,
 } from '@shared/planner';
+import { buildContext, type Delivery } from '@shared/plannerContext';
 import { packageToMarkdown, reportInstructionsFor } from '@shared/plannerHandoff';
+import type { DestinationId } from '@shared/plannerSend';
 import { readZip, writeZip } from '../integrations/zip';
 import { newId, PlannerError, type LogFn, type PlannerStore } from './store';
 
@@ -366,35 +368,81 @@ export class PlannerService {
     }
   }
 
+  /** The parts of a package that depend on what is being sent. Shared by createPackage (to build it) and prepareSend (to recognise an identical one). */
+  private packageParts(p: PlannerProject, tasks: PlanTask[], req: { objective?: string; note?: string }) {
+    const pkgTasks: PackageTask[] = tasks.map((t) => ({ id: t.id, title: t.title, description: t.description, priority: t.priority, dependsOn: [...t.dependsOn], completionChecks: t.completionChecks.map((k) => ({ ...k })), expectedOutputs: [...t.expectedOutputs], appRef: t.appRef, assetIds: [...t.assetIds] }));
+    const wanted = new Set([...tasks.flatMap((t) => t.assetIds), ...p.assets.filter((a) => a.role === 'reference').map((a) => a.id)]);
+    return {
+      plan: snapshotOf(p), tasks: pkgTasks,
+      assets: p.assets.filter((a) => wanted.has(a.id)).map((a) => ({ id: a.id, role: a.role, title: a.title, source: a.source, path: a.path, url: a.url, note: a.note })),
+      objective: req.objective?.trim() || `Complete: ${tasks.map((t) => t.title).join('; ')}`, context: req.note ?? '',
+    };
+  }
+  /** Identifies what an AI would receive, ignoring the package number, id and time, so an identical re-send can reuse the open package. */
+  private contentKeyOf(p: PlannerProject, tasks: PlanTask[], req: { objective?: string; note?: string }, delivery?: Delivery): string {
+    // Only what the AI would receive counts (not the destination or budget), so the same content for another AI is the same brief.
+    return hash({ ...this.packageParts(p, tasks, req), planRevision: p.planRevision, delivery: delivery && { includedIds: delivery.includedIds, omitted: delivery.omitted, upstream: delivery.upstream } });
+  }
+
+  private checkSendable(p: PlannerProject, tasks: PlanTask[], now: Date) {
+    for (const t of tasks) {
+      if (isClaimLive(t.claim, now)) throw new PlannerError('claimed', `"${t.title}" is claimed by ${t.claim?.executor.name}. Release the claim before preparing a new package for it.`);
+      if (!['todo', 'revision'].includes(t.status)) throw new PlannerError('blocked', `"${t.title}" is ${t.status}; only tasks that are to do (or sent back for revision) can be handed off.`);
+      const missing = t.dependsOn.map((d) => find(p.tasks, d, 'task')).filter((d) => d.status !== 'accepted' && d.status !== 'cancelled' && !tasks.some((x) => x.id === d.id));
+      if (missing.length) throw new PlannerError('blocked', `"${t.title}" waits for "${missing[0]?.title}". Include it in the package or finish it first.`);
+    }
+  }
+
+  private buildPackage(p: PlannerProject, actor: Actor, now: Date, log: LogFn, tasks: PlanTask[], req: { objective?: string; note?: string }, delivery?: Delivery): ExecPackage {
+    const parts = this.packageParts(p, tasks, req);
+    const number = ++p.counters.package;
+    const prior = tasks.map((t) => t.packageId).filter((x): x is string => !!x);
+    const pkg: ExecPackage = {
+      id: newId('pkg'), projectId: p.id, number, planRevision: p.planRevision, createdAt: now.toISOString(), createdBy: actor,
+      objective: parts.objective, context: parts.context, plan: parts.plan, tasks: parts.tasks, assets: parts.assets,
+      reportInstructions: '', contentHash: '', state: 'open', ...(prior.length ? { supersedes: prior[0] } : {}), ...(delivery ? { delivery } : {}),
+    };
+    pkg.reportInstructions = reportInstructionsFor(pkg, p.title);
+    pkg.contentHash = hash({ ...pkg, id: undefined, createdAt: undefined, contentHash: undefined });
+    pkg.contentKey = this.contentKeyOf(p, tasks, req, delivery); // set after the hash, so contentHash is exactly what it was before this field existed
+    p.packages.push(pkg);
+    for (const t of tasks) { t.packageId = pkg.id; t.claim = null; t.rev++; t.updatedAt = pkg.createdAt; }
+    this.refreshPackages(p);
+    log('package.created', `Prepared execution package ${number} (${tasks.length} task(s), plan revision ${p.planRevision}); nothing was started`, { targetId: pkg.id });
+    return pkg;
+  }
+
   async createPackage(c: Ctx, id: string, req: { taskIds: string[]; objective?: string; note?: string }): Promise<ExecPackage> {
     need(c, 'package');
     if (!req.taskIds.length) throw new PlannerError('invalid', 'Select at least one task.');
     return this.store.mutate(id, c.actor, (p, log, now) => {
       const tasks = [...new Set(req.taskIds)].map((tid) => find(p.tasks, tid, 'task'));
-      for (const t of tasks) {
-        if (isClaimLive(t.claim, now)) throw new PlannerError('claimed', `"${t.title}" is claimed by ${t.claim?.executor.name}. Release the claim before preparing a new package for it.`);
-        if (!['todo', 'revision'].includes(t.status)) throw new PlannerError('blocked', `"${t.title}" is ${t.status}; only tasks that are to do (or sent back for revision) can be handed off.`);
-        const missing = t.dependsOn.map((d) => find(p.tasks, d, 'task')).filter((d) => d.status !== 'accepted' && d.status !== 'cancelled' && !tasks.some((x) => x.id === d.id));
-        if (missing.length) throw new PlannerError('blocked', `"${t.title}" waits for "${missing[0]?.title}". Include it in the package or finish it first.`);
-      }
-      const snap = snapshotOf(p);
-      const number = ++p.counters.package;
-      const pkgTasks: PackageTask[] = tasks.map((t) => ({ id: t.id, title: t.title, description: t.description, priority: t.priority, dependsOn: [...t.dependsOn], completionChecks: t.completionChecks.map((k) => ({ ...k })), expectedOutputs: [...t.expectedOutputs], appRef: t.appRef, assetIds: [...t.assetIds] }));
-      const wanted = new Set([...tasks.flatMap((t) => t.assetIds), ...p.assets.filter((a) => a.role === 'reference').map((a) => a.id)]);
-      const prior = tasks.map((t) => t.packageId).filter((x): x is string => !!x);
-      const pkg: ExecPackage = {
-        id: newId('pkg'), projectId: p.id, number, planRevision: p.planRevision, createdAt: now.toISOString(), createdBy: c.actor,
-        objective: req.objective?.trim() || `Complete: ${tasks.map((t) => t.title).join('; ')}`, context: req.note ?? '', plan: snap, tasks: pkgTasks,
-        assets: p.assets.filter((a) => wanted.has(a.id)).map((a) => ({ id: a.id, role: a.role, title: a.title, source: a.source, path: a.path, url: a.url, note: a.note })),
-        reportInstructions: '', contentHash: '', state: 'open', ...(prior.length ? { supersedes: prior[0] } : {}),
-      };
-      pkg.reportInstructions = reportInstructionsFor(pkg, p.title);
-      pkg.contentHash = hash({ ...pkg, id: undefined, createdAt: undefined, contentHash: undefined });
-      p.packages.push(pkg);
-      for (const t of tasks) { t.packageId = pkg.id; t.claim = null; t.rev++; t.updatedAt = pkg.createdAt; if (t.status === 'revision') t.status = 'revision'; }
-      this.refreshPackages(p);
-      log('package.created', `Prepared execution package ${number} (${tasks.length} task(s), plan revision ${p.planRevision}); nothing was started`, { targetId: pkg.id });
-      return pkg;
+      this.checkSendable(p, tasks, now);
+      return this.buildPackage(p, c.actor, now, log, tasks, req);
+    });
+  }
+
+  /**
+   * "Send to AI": the same package as createPackage, except that an identical open package (same tasks, same accepted plan, same
+   * content) is returned as it is instead of making package N+1 that supersedes it. Runs in one locked step, so two callers sending the
+   * same tasks at once end up with one package.
+   */
+  async prepareSend(c: Ctx, id: string, req: { taskIds: string[]; objective?: string; note?: string; destination?: DestinationId; forceInclude?: string[] }): Promise<{ package: ExecPackage; reused: boolean; replaced: number[] }> {
+    need(c, 'package');
+    if (!req.taskIds.length) throw new PlannerError('invalid', 'Select at least one task.');
+    return this.store.mutate(id, c.actor, (p, log, now) => {
+      const wanted = [...new Set(req.taskIds)].map((tid) => find(p.tasks, tid, 'task'));
+      const tasks = p.tasks.filter((t) => wanted.includes(t)); // project order, so the same selection always gives the same package
+      // With a destination the brief carries only what fits it (everything for tools; budgeted for chats) and says what was left out.
+      const delivery: Delivery | undefined = req.destination ? (({ rules: _r, size: _s, ...d }) => d)(buildContext(p, { purpose: 'execute', taskIds: tasks.map((t) => t.id), destination: req.destination, forceInclude: req.forceInclude })) : undefined;
+      const key = this.contentKeyOf(p, tasks, req, delivery);
+      const same = p.packages.find((k) => k.state === 'open' && k.contentKey === key && k.tasks.length === tasks.length && tasks.every((t) => t.packageId === k.id && k.tasks.some((x) => x.id === t.id)));
+      if (same) return { package: same, reused: true, replaced: [] };
+      this.checkSendable(p, tasks, now);
+      const open = new Set(p.packages.filter((k) => k.state === 'open').map((k) => k.id));
+      const pkg = this.buildPackage(p, c.actor, now, log, tasks, req, delivery);
+      const replaced = p.packages.filter((k) => open.has(k.id) && k.state === 'superseded').map((k) => k.number);
+      return { package: pkg, reused: false, replaced };
     });
   }
   async cancelPackage(c: Ctx, id: string, pkgId: string): Promise<void> {
@@ -515,6 +563,49 @@ export class PlannerService {
     });
     if (!res.duplicate) await this.store.saveRaw(id, res.report.id, req.rawText);
     return res;
+  }
+
+  /**
+   * The plan approved on Home ("Create with Claude") becomes a Planner project whose steps and questions are only SUGGESTIONS: one
+   * pending proposal (source "home"). Nothing joins the plan until the owner accepts it; there is no second plan.
+   */
+  async createFromHomePlan(c: Ctx, input: { title: string; goal: string; kind?: string; steps: string[]; questions: string[] }): Promise<{ project: PlannerProject; proposal: Proposal }> {
+    need(c, 'edit'); need(c, 'review');
+    const kinds: Record<string, string> = { image: 'art', design: 'art', video: 'media', audio: 'media' };
+    const created = await this.createProject(c, { title: input.title.slice(0, 120) || 'Untitled project', goal: input.goal.slice(0, 2000) });
+    if (input.kind && kinds[input.kind]) await this.updateProject(c, created.id, { kinds: [kinds[input.kind] as string] });
+    const clip = (t: string) => t.replace(/\s+/g, ' ').trim().slice(0, 200);
+    const changes: ProposalChange[] = [
+      ...input.steps.slice(0, 8).filter((t) => clip(t)).map((t) => changeSchema.parse({ op: 'add_task', title: clip(t) })),
+      ...input.questions.slice(0, 3).filter((t) => clip(t)).map((t) => changeSchema.parse({ op: 'add_item', itemType: 'question', title: clip(t), text: 'Asked while planning the project.' })),
+    ];
+    if (!changes.length) throw new PlannerError('invalid', 'The plan has no steps to suggest.');
+    const proposal = await this.store.mutate(created.id, c.actor, (p, log, now) => {
+      const made = this.addProposal(p, { kind: 'createcraft', name: 'CreateCraft Claude' }, now, 'Steps and questions from the plan you approved on Home', changes, 'home');
+      log('proposal.created', `${changes.length} suggestion(s) from the plan approved on Home; waiting for your decision`, { targetId: made.id });
+      return made;
+    });
+    return { project: await this.store.read(created.id), proposal };
+  }
+
+  /**
+   * The owner pasted an AI's plan suggestions. They are stored as a PENDING proposal (source "pasted"); nothing joins the plan until
+   * decideProposal. The proposer is the AI named in the text (a claim, shown as such); the history actor is whoever entered it.
+   */
+  async importSuggestions(c: Ctx, id: string, req: { proposer?: Actor; note?: string; changes: ProposalChange[]; rawText: string }): Promise<Proposal> {
+    need(c, 'review');
+    if (!req.changes.length) throw new PlannerError('invalid', 'There is nothing to add.');
+    // The renderer is trusted, but the changes are checked here like every other path (the MCP boundary does the same).
+    const checked = changeSchema.array().max(30).safeParse(req.changes);
+    if (!checked.success) throw new PlannerError('invalid', `Those suggestions are not valid: ${checked.error.issues[0]?.message ?? 'unreadable'}.`);
+    const proposer: Actor = req.proposer ?? { kind: 'other', name: 'Pasted suggestion' };
+    const pr = await this.store.mutate(id, c.actor, (p, log, now) => {
+      const made = this.addProposal(p, proposer, now, req.note || 'Pasted from an AI answer', checked.data, 'pasted');
+      log('proposal.created', `${c.actor.name} pasted ${req.changes.length} suggestion(s) from ${proposer.name}; waiting for your decision`, { targetId: made.id });
+      return made;
+    });
+    await this.store.saveRaw(id, pr.id, req.rawText);
+    return pr;
   }
 
   async rawReport(c: Ctx, id: string, reportId: string): Promise<string | null> { need(c, 'read'); return this.store.readRaw(id, reportId); }

@@ -126,7 +126,7 @@ export interface Proposal {
   status: 'pending' | 'accepted' | 'rejected';
   decidedAt?: string;
   /** Where it came from: a connection, or a returned report. */
-  source: 'connection' | 'report' | 'pasted';
+  source: 'connection' | 'report' | 'pasted' | 'home';
   reportId?: string;
 }
 
@@ -150,6 +150,10 @@ export interface ExecPackage {
   assets: Array<{ id: string; role: PlanAsset['role']; title: string; source: PlanAsset['source']; path: string; url: string; note: string }>;
   reportInstructions: string;
   contentHash: string;
+  /** Identifies what was sent (plan, tasks, assets, objective, note) without the number or time, so an identical Send reuses this package. Absent on older packages. */
+  contentKey?: string;
+  /** Which accepted rules this brief carried and which it left out (the full plan snapshot above stays for stale-work checks). Absent on briefs made before Send to AI. */
+  delivery?: import('./plannerContext').Delivery;
   state: 'open' | 'closed' | 'cancelled' | 'superseded';
   supersedes?: string;
 }

@@ -28,12 +28,18 @@ const bullets = (items: string[], empty = '- (none)') => (items.length ? items.m
 
 export function packageToMarkdown(pkg: ExecPackage, projectTitle: string): string {
   const p = pkg.plan;
+  // A brief made by Send to AI lists only the rules it carried (the owner can see what was left out); older briefs carry them all.
+  const d = pkg.delivery;
+  const reqs = d ? p.requirements.filter((r) => d.includedIds.includes(r.id)) : p.requirements;
+  const decs = d ? p.decisions.filter((x) => d.includedIds.includes(x.id)) : p.decisions;
   const out: string[] = [
     `# Execution package ${pkg.number}: ${projectTitle}`,
     `Package id: \`${pkg.id}\` · project id: \`${pkg.projectId}\` · plan revision: ${pkg.planRevision} · created ${pkg.createdAt}`,
     '', '## Objective', pkg.objective, '', '## Context', p.goal || '(no goal written)', p.description ? `\n${p.description}` : '',
-    '', '## Accepted requirements', bullets(p.requirements.map((r) => `**${r.title}**${r.text ? `: ${r.text}` : ''}  \`${r.id}\``)),
-    '', '## Accepted decisions', bullets(p.decisions.map((d) => `**${d.title}**${d.text ? `: ${d.text}` : ''}${d.reason ? ` (why: ${d.reason})` : ''}  \`${d.id}\``)),
+    '', '## Accepted requirements', bullets(reqs.map((r) => `**${r.title}**${r.text ? `: ${r.text}` : ''}  \`${r.id}\``)),
+    '', '## Accepted decisions', bullets(decs.map((d) => `**${d.title}**${d.text ? `: ${d.text}` : ''}${d.reason ? ` (why: ${d.reason})` : ''}  \`${d.id}\``)),
+    ...(d?.omitted.length ? ['', `Not included here (they were judged unrelated to these tasks; ask the owner if one might matter): ${d.omitted.map((o) => o.title).join('; ')}`] : []),
+    ...(d?.upstream.length ? ['', '## Results of earlier tasks you can build on (accepted by the owner)', ...d.upstream.flatMap((u) => [`- **${u.title}**: ${u.summary}`, ...u.outputs.map((o) => `  - ${o.description}${o.path ? ` (${o.path})` : ''}`)])] : []),
     '', '## Scope', p.scope || '(not stated)', '', '## Constraints', bullets(p.constraints), '',
     '## Project deliverables', bullets(p.deliverables), '', '## Relevant assets',
     bullets(pkg.assets.map((a) => `${a.title} [${a.role}] ${a.path || a.url || (a.source === 'createcraft' ? '(CreateCraft asset)' : '')}${a.note ? ` - ${a.note}` : ''}`)),

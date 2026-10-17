@@ -141,7 +141,7 @@ export class PlannerStore {
     await fs.writeFile(path.join(dir, `${reportId}.txt`), text.slice(0, 200_000), 'utf8');
   }
   async readRaw(id: string, reportId: string): Promise<string | null> {
-    if (!/^rep_[a-z0-9]+$/.test(reportId)) return null;
+    if (!/^(rep|prop)_[a-z0-9]+$/.test(reportId)) return null;
     return fs.readFile(path.join(this.dir(id), 'raw', `${reportId}.txt`), 'utf8').catch(() => null);
   }
 }
