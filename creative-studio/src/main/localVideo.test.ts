@@ -6,6 +6,7 @@ import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { LocalVideoService, type Spawner } from './localVideo';
 import { ProjectStore } from './projectStore';
+import { binName } from '@shared/platform';
 
 const job = { modelId: 'wan-2.1-t2v-1.3b', prompt: 'a lighthouse at dusk', preset: 'experimental' as const, width: 0, height: 0, frames: 0, steps: 0 };
 
@@ -17,7 +18,7 @@ describe('local video runner (simulated engine)', () => {
     tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'cs-lv-'));
     modelDir = path.join(tmp, 'models');
     await fs.mkdir(path.join(modelDir, 'sdcpp-vulkan-runtime'), { recursive: true });
-    await fs.writeFile(path.join(modelDir, 'sdcpp-vulkan-runtime', 'sd-cli.exe'), 'x');
+    await fs.writeFile(path.join(modelDir, 'sdcpp-vulkan-runtime', binName('sd-cli')), 'x');
     store = new ProjectStore(path.join(tmp, 'p'));
     await store.create('lv');
   });

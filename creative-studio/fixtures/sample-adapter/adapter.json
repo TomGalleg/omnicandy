@@ -1,5 +1,6 @@
 {
   "manifestVersion": 1,
+  "platforms": ["win32", "linux"],
   "id": "sample.textkit",
   "name": "Sample Text Kit",
   "version": "1.0.0",

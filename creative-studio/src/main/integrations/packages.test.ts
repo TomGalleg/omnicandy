@@ -93,7 +93,7 @@ async function makePackage(o: PkgOpts = {}): Promise<{ file: string; dir: string
   const dir = path.join(tmp, `src-${id}-${o.version ?? '1.0.0'}-${Math.random().toString(36).slice(2, 6)}`);
   await fs.mkdir(dir, { recursive: true });
   const manifest = {
-    manifestVersion: 1, id, name: `Test ${id}`, version: o.version ?? '1.0.0', description: 'a test integration', license: 'MIT',
+    manifestVersion: 1, platforms: ['win32', 'linux'], id, name: `Test ${id}`, version: o.version ?? '1.0.0', description: 'a test integration', license: 'MIT',
     publisher: { name: o.publisher ?? 'Test Publisher' },
     sdk: o.sdk ?? { min: 1, max: 1 },
     application: o.program

@@ -25,7 +25,7 @@ function fakeEnv(opts: { files?: string[]; reg?: string; tasks?: string; dirs?: 
 }
 
 const manifest = (over: Partial<AdapterManifest> = {}): AdapterManifest => ({
-  id: 'mock.app', name: 'Mock App', vendor: 'Test', sdkVersion: ADAPTER_SDK_VERSION, maturity: 'experimental',
+  id: 'mock.app', platforms: ['win32', 'linux'], name: 'Mock App', vendor: 'Test', sdkVersion: ADAPTER_SDK_VERSION, maturity: 'experimental',
   exeNames: ['mockapp.exe'], displayNames: ['^Mock App'], versions: { min: '2.0', max: '3.9' },
   methods: ['scripting'], capabilities: ['executeCommand', 'connect', 'disconnect'],
   commands: [

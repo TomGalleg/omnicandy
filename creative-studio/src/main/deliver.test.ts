@@ -10,6 +10,7 @@ import { DELIVER_PRESETS, laterVersions, lineage, presetById, presetsFor, type D
 import { deliverCommand, DeliverQueue } from './deliver';
 import { sniffMedia } from './media';
 import { ProjectStore } from './projectStore';
+import { binName } from '@shared/platform';
 
 const PF = process.env.ProgramFiles ?? 'C:\\Program Files';
 const FIXTURES = path.resolve(__dirname, '../../fixtures/sample-project');
@@ -94,7 +95,7 @@ describe('deliver queue', () => {
     const again = await q.enqueue(still, ['image-png']);
     const done = await q.wait([...jobs, ...again].map((j) => j.id));
     expect(done.map((j) => [j.status, j.output])).toEqual([['done', 'sunset-still.png'], ['done', 'sunset-still.jpg'], ['done', 'sunset-still-2.png']]);
-    expect(calls[0]!.exe).toBe(path.join('C:\\Apps\\photocraft', 'photocraft-cli.exe'));
+    expect(calls[0]!.exe).toBe(path.join('C:\\Apps\\photocraft', binName('photocraft-cli')));
     expect(events.some((e) => e.filter((j) => j.status === 'running').length > 1)).toBe(false);
     const hist = await q.history(still);
     expect(hist).toHaveLength(3);

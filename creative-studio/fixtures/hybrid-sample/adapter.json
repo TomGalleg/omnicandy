@@ -1,5 +1,6 @@
 {
   "manifestVersion": 2,
+  "platforms": ["win32", "linux"],
   "id": "sample.simcad.hybrid",
   "name": "SimCAD Hybrid Sample",
   "version": "1.0.0",

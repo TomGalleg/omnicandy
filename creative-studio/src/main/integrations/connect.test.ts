@@ -35,7 +35,7 @@ async function exeAt(dir: string, name: string): Promise<string> {
 interface Behaviour { health: Array<HealthResult | Error>; version: string }
 function fakeAdapter(id: string, exe: string, maturity: AdapterManifest['maturity'], b: Behaviour): AdapterFactory {
   const manifest: AdapterManifest = {
-    id, name: `Fake ${id}`, vendor: 'Test', sdkVersion: ADAPTER_SDK_VERSION, maturity, exeNames: [exe], displayNames: [`^Fake ${id}`],
+    id, platforms: ['win32', 'linux'], name: `Fake ${id}`, vendor: 'Test', sdkVersion: ADAPTER_SDK_VERSION, maturity, exeNames: [exe], displayNames: [`^Fake ${id}`],
     versions: { min: '1.0', max: '9.9' }, methods: ['scripting'], capabilities: ['connect', 'disconnect', 'healthCheck', 'executeCommand'],
     commands: [{ id: 'ping', label: 'Ping', description: 'pings', params: {}, permissions: ['read-info', 'execute-scripts'] }],
   };

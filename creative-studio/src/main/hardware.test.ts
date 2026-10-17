@@ -64,7 +64,7 @@ describe('hardware detection', () => {
     expect(b.find((x) => x.id === 'cpu')!.found).toBe(true);
   });
   it('detectHardware assembles a report from injected output', async () => {
-    const r = await detectHardware(path.join(os.tmpdir(), 'cs-models-test'), async (cmd) => { if (cmd === 'powershell.exe') return amdJson; throw new Error('no'); });
+    const r = await detectHardware(path.join(os.tmpdir(), 'cs-models-test'), async (cmd) => { if (cmd === 'powershell.exe') return amdJson; throw new Error('no'); }, 'win32');
     expect(r.gpus).toHaveLength(2);
     expect(r.ramGb).toBeGreaterThan(0);
     expect(r.freeDiskGb).not.toBeNull();
