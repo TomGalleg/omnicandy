@@ -50,8 +50,9 @@ const tab = (win, name) => win.getByRole('tab', { name, exact: false }).first().
 let { app, win } = await launch();
 let executor;
 try {
-  await openPlanner(win);
-  check('Planner opens from More in Simplified mode', (await win.locator('.planner h2').first().textContent())?.includes('Project Planner'));
+  await win.getByRole('button', { name: 'Plan a project' }).click();
+  await win.locator('.planner').waitFor();
+  check('The Home screen has a Plan a project button that opens the Planner', (await win.locator('.planner h2').first().textContent())?.includes('Project Planner'));
 
   // ---- create a mixed project: research + document + image, only a title is required
   await win.getByLabel('Title').fill('Garden club newsletter');

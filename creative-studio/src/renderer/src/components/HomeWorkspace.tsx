@@ -130,6 +130,7 @@ Needs: ${t.needs}` : ''}`, objective: t.description };
           <button className="btn" disabled={busy}
             onClick={() => void run(async () => { const key = await window.studio.projects.openExisting(); if (key) { await window.studio.projects.open(key); onSwitched(key); } })}>Open existing project…</button>
           <button className="btn" disabled={busy} aria-pressed={showTemplates} onClick={openTemplates}>Templates</button>
+          <button className="btn" disabled={busy} title="Plan any project, hand work to Claude Code or Cowork, and review what comes back" onClick={() => onGoto('planner')}>Plan a project</button>
           <button className="btn small ghost" type="button" disabled={busy} title={location ?? 'Uses the project folder from Settings'}
             onClick={() => void window.studio.projects.pickFolder().then((d) => { if (d) setLocation(d); })}>
             {folderLabel ? `Save in: ${folderLabel}` : 'Default folder · Choose…'}
