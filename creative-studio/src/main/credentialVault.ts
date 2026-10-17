@@ -1,5 +1,5 @@
 // Provider API keys, encrypted with Electron safeStorage (Windows DPAPI: only this Windows user can
-// decrypt). Lives in the main process only: keys are never sent to the renderer, written to logs or
+// decrypt; Linux: only through a real keyring, see platform/secureStorage.ts). Lives in the main process only: keys are never sent to the renderer, written to logs or
 // project files, or shown to Claude. The renderer only ever sees {configured, savedAt, lastTest}.
 //
 //   <secretsDir>/providers/<id>.key    encrypted key (DPAPI blob)
@@ -13,6 +13,8 @@ export interface Encryptor {
   isEncryptionAvailable(): boolean;
   encryptString(s: string): Buffer;
   decryptString(b: Buffer): string;
+  /** Why keys cannot be saved, in plain words (shown to the user). */
+  unavailableReason?(): string;
 }
 
 export interface KeyTest { ok: boolean; at: string; message: string; models?: string[] }
@@ -57,7 +59,7 @@ export class SafeStorageVault implements CredentialVault {
   }
 
   async save(providerId: string, rawKey: string): Promise<void> {
-    if (!this.available) throw new Error('Windows protected storage is not available, so the key cannot be saved safely.');
+    if (!this.available) throw new Error(this.crypto.unavailableReason?.() || 'Protected storage is not available, so the key cannot be saved safely.');
     const key = checkKeyShape(providerId, rawKey);
     await fs.mkdir(this.dir, { recursive: true });
     const tmp = `${this.file(providerId, 'key')}.tmp`;

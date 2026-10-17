@@ -188,7 +188,7 @@ export interface IntegrationSnapshot {
   appAdapters: Array<{ id: string; isMock: boolean }>;
   realExport: boolean;
   windowCapture: { available: boolean; reason: string | null };
-  credentialVault: { available: boolean };
+  credentialVault: { available: boolean; label: string; problem: string | null; help: string | null };
   claude: { connected: boolean; reason: string };
   providers: Array<{ id: string; label: string; isMock: boolean; billable: boolean }>;
 }
@@ -203,6 +203,8 @@ export interface ProviderStatusDto {
   lastTest: { ok: boolean; at: string; message: string; models?: string[] } | null;
   /** False when Windows protected storage is unavailable (keys can't be saved). */
   encryptionAvailable: boolean;
+  /** Why keys cannot be saved (and what to do), or null. */
+  encryptionProblem?: string | null;
   keyHint: string;
 }
 

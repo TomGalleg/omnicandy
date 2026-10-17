@@ -233,7 +233,7 @@ function Diagnostics({ apps, integrations }: { apps: AppProbeResult[]; integrati
         <span className="menu-label">Services</span>
         <dl className="kv">
           <dt>Claude</dt><dd>{claudeText(claude)}{claude ? ` · model ${claude.model}` : ''}</dd>
-          <dt>Key storage</dt><dd>{integrations?.credentialVault.available ? 'Windows protected storage' : 'unavailable'}</dd>
+          <dt>Key storage</dt><dd>{integrations?.credentialVault.available ? integrations.credentialVault.label : (integrations?.credentialVault.problem ?? 'unavailable')}</dd>
           <dt>Exports</dt><dd>{integrations?.realExport ? 'real (app command-line tools)' : 'mock'}</dd>
           <dt>Window capture</dt><dd>{integrations ? (integrations.windowCapture.available ? 'available' : `not connected${integrations.windowCapture.reason ? `: ${integrations.windowCapture.reason}` : ''}`) : '…'}</dd>
           {integrations?.appAdapters.map((a) => <Fragment key={a.id}><dt>{a.id} workflow steps</dt><dd>{a.isMock ? 'MOCK' : 'real (headless)'}</dd></Fragment>)}

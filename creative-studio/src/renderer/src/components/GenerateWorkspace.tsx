@@ -102,7 +102,7 @@ export function GenerateWorkspace({ manifest, selected, onGoto, log }: Props) {
         <div className="panel-card">
           <h3>Providers</h3>
           <p className="asset-meta">Use your own OpenAI or Google account. Copy your API key, then click <strong>Paste key</strong>: CreateCraft reads it straight from the clipboard, encrypts it with Windows (only your Windows account can unlock it) and clears the clipboard. The key is never shown, logged, saved in projects or given to Claude.</p>
-          {providers?.find((p) => !p.encryptionAvailable) && <div className="wf-msg error">Windows protected storage is unavailable, so keys can't be saved.</div>}
+          {providers?.find((p) => !p.encryptionAvailable) && <div className="wf-msg error">{providers.find((p) => !p.encryptionAvailable)?.encryptionProblem ?? "Protected storage is unavailable, so keys can't be saved."}</div>}
           {providers?.filter((p) => p.billable).map((p) => (
             <div key={p.id} className="provider-row" aria-label={`${p.label} provider`}>
               <div className="provider-head">

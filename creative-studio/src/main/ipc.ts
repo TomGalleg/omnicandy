@@ -32,6 +32,7 @@ import type { ProjectStore } from './projectStore';
 import { parseWorkflow } from './schemas';
 import { UnavailableWindowCapture } from './services';
 import { SafeStorageVault } from './credentialVault';
+import { secureEncryptor, secureStorageStatus } from './platform/secureStorage';
 import { GenerationService, type ApprovalRequest } from './generation';
 import { VideoService } from './videoGeneration';
 import { MotionService } from './motionEffects';
@@ -92,7 +93,8 @@ export function registerIpc(d: IpcDeps): void {
   const resetters: Array<() => void> = [];
 
   const capture = new UnavailableWindowCapture();
-  const vault = new SafeStorageVault(path.join(d.secretsDir, 'providers'), safeStorage);
+  const vault = new SafeStorageVault(path.join(d.secretsDir, 'providers'), secureEncryptor(safeStorage));
+  const storageStatus = () => secureStorageStatus(safeStorage);
   const mockProvider = new MockGenerationProvider();
   // PhotoCraft is REAL when photocraft-cli.exe is installed; otherwise a labelled mock stands in.
   let depsPromise: Promise<RunnerDeps> | null = null;
@@ -476,6 +478,7 @@ export function registerIpc(d: IpcDeps): void {
         savedAt: s?.meta?.savedAt ?? null,
         lastTest: s?.meta?.lastTest ?? null,
         encryptionAvailable: vault.available,
+        encryptionProblem: storageStatus().problem ? `${storageStatus().problem} ${storageStatus().help ?? ''}`.trim() : null,
         keyHint: p.keyHint,
       };
     });
@@ -1245,7 +1248,7 @@ export function registerIpc(d: IpcDeps): void {
     appAdapters: Object.values((await runnerDeps()).apps).map((a) => ({ id: a.id, isMock: a.isMock })),
     realExport: !!(await runnerDeps()).exportAsset,
     windowCapture: { available: capture.available, reason: capture.unavailableReason() },
-    credentialVault: { available: vault.available },
+    credentialVault: { available: vault.available, label: storageStatus().label, problem: storageStatus().problem, help: storageStatus().help },
     claude: { connected: false, reason: 'Claude integration is not configured in this build.' },
     providers: PROVIDERS.map((p) => ({ id: p.id, label: p.label, isMock: p.id === 'mock', billable: p.billable })),
   }));
