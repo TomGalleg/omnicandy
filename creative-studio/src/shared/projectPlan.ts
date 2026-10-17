@@ -53,7 +53,10 @@ export function parseProjectPlan(reply: string): ProjectPlan {
   let raw: unknown;
   try { raw = JSON.parse(reply.slice(start, end + 1)); } catch { throw new Error('Claude\'s plan could not be read. Try again.'); }
   const r = projectPlanSchema.safeParse(trimToLimits(raw));
-  if (!r.success) throw new Error('Claude\'s plan was incomplete. Try again with a little more detail.');
+  if (!r.success) {
+    const why = r.error.issues.slice(0, 3).map((i) => `${i.path.join('.') || 'plan'}: ${i.message}`).join('; ');
+    throw new Error(`Claude's plan was incomplete (${why}). Try again with a little more detail.`);
+  }
   return r.data;
 }
 
