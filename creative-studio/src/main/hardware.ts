@@ -6,7 +6,10 @@ import { execFile } from 'node:child_process';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { currentOs, type OsId } from '@shared/platform';
 import { isIntegrated, vendorOf, type BackendProbe, type GpuInfo, type HardwareReport } from '@shared/localAi';
+
+import { detectGpusLinux, hasAvx2, probeBackendsLinux, realSysFs, type SysFs } from './platform/gpuLinux';
 
 export type Run = (cmd: string, args: string[]) => Promise<string>;
 
@@ -65,9 +68,10 @@ export async function probeBackends(gpus: GpuInfo[], run: Run, env: NodeJS.Proce
   return out;
 }
 
-export async function detectHardware(modelDir: string, run: Run = defaultRun): Promise<HardwareReport> {
+export async function detectHardware(modelDir: string, run: Run = defaultRun, osId: OsId = currentOs(), fsx: SysFs = realSysFs): Promise<HardwareReport> {
   let gpus: GpuInfo[] = [];
-  try { gpus = parseGpus(await run('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', GPU_SCRIPT])); } catch { gpus = []; }
+  if (osId === 'linux') gpus = await detectGpusLinux(run, fsx).catch(() => []);
+  else try { gpus = parseGpus(await run('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', GPU_SCRIPT])); } catch { gpus = []; }
   let freeDiskGb: number | null = null;
   try {
     await fs.mkdir(modelDir, { recursive: true });
@@ -77,10 +81,10 @@ export async function detectHardware(modelDir: string, run: Run = defaultRun): P
   const cpus = os.cpus();
   return {
     os: `${os.type()} ${os.release()} (${os.arch()})`,
-    cpu: { model: cpus[0]?.model.trim() ?? 'unknown', cores: cpus.length, avx2: null },
+    cpu: { model: cpus[0]?.model.trim() ?? 'unknown', cores: cpus.length, avx2: osId === 'linux' ? hasAvx2(await fsx.readText('/proc/cpuinfo')) : null },
     ramGb: Math.round((os.totalmem() / 1024 ** 3) * 10) / 10,
     gpus, freeDiskGb, modelDir,
-    backends: await probeBackends(gpus, run),
+    backends: osId === 'linux' ? await probeBackendsLinux(gpus, run, fsx) : await probeBackends(gpus, run),
     checkedAt: new Date().toISOString(),
   };
 }
