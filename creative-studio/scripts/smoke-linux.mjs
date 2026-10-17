@@ -18,7 +18,7 @@ async function launch() {
   const app = await electron.launch({ args: [root], cwd: root, env: { ...process.env, CS_USER_DATA_DIR: profile } });
   const win = await app.firstWindow();
   await win.setViewportSize({ width: 1500, height: 950 }).catch(() => {});
-  await win.locator('.asset').first().waitFor({ state: 'attached', timeout: 40000 });
+  await win.locator('nav.workspaces').waitFor({ timeout: 40000 });
   return { app, win };
 }
 
@@ -31,7 +31,7 @@ try {
   if (linux) {
     check('all 13 Craft apps are reported as not installed, with the reason', apps.length === 13 && apps.every((a) => !a.installed && /No Linux version/.test(a.notes.join(' '))), `${apps.length} apps`);
     check('key storage is a real keyring, or refused with setup help (never basic_text)', vault.available ? /GNOME Keyring|KWallet/.test(vault.label) : /basic_text|keyring|secure storage/i.test(vault.problem ?? '') && /gnome-keyring|KWallet/i.test(vault.help ?? ''), vault.label);
-    check('CreateCraft itself started and shows the sample project', (await win.locator('.asset').count()) > 0);
+    check('CreateCraft itself started and shows its workspaces', (await win.locator('nav.workspaces button').count()) >= 4);
   } else {
     check('Windows: ArtCraft detection is attempted at the Program Files location', apps.length === 13);
   }
