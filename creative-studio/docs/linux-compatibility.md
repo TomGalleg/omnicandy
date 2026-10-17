@@ -98,3 +98,58 @@ Phase 3 needs the environment decision above plus the vendor answer on Craft app
 ## 7. Verified vs predicted
 
 Nothing is verified on Linux. The existing Windows results (13 apps, Blender, FreeCAD, Revit, Planner) are unchanged and not affected by this audit.
+
+---
+
+# Phase 2 progress (2026-10-17): the foundation, and what is and is not proven
+
+Decisions applied (from the approval): the Craft apps are unavailable on Linux until a real Linux build is confirmed (no invented paths, no Wine);
+Ubuntu 24.04 under WSL2 is the first Linux environment (**not installed yet: waiting for approval**, see below); Craft apps open in their own windows on Linux
+while Windows keeps Win32 embedding; Linux requires a real keyring and rejects `basic_text`.
+
+## What changed (one shared codebase, Windows behaviour unchanged)
+
+| Area | Change | Files |
+|---|---|---|
+| OS facts | `OsId`, `binName`, `supportsOs` (pure, injectable) | `src/shared/platform.ts` |
+| Craft apps | `craftInstallDir/Bin`: Program Files on Windows; on Linux none, so each app reports "no Linux version known" and the 13 probe results say unavailable. All former `ProgramFiles` and `.exe` literals in `appEditors`, `liveApps`, `photocraftLive`, `deliver`, `localVideo`, `artcraftProbe`, `ipc` go through it | `src/main/platform/craftApps.ts` |
+| Credentials | Linux accepts only `gnome_libsecret` / `kwallet*`; rejects `basic_text`, unknown, or unavailable backends with setup instructions (no secrets); Settings and AI Generate show the reason; non-credential features keep working | `src/main/platform/secureStorage.ts`, `credentialVault.ts` |
+| GPU / Vulkan / ROCm | Linux detection from `lspci -mm -nn`, amdgpu sysfs (VRAM), Vulkan ICD folders (RADV, software-only llvmpipe is reported as CPU), `libvulkan.so.1`, `/proc/cpuinfo` AVX2; Windows path untouched | `src/main/platform/gpuLinux.ts`, `hardware.ts` |
+| Claude | `defaultClaudeCliPath` (`~/.local/bin/claude` on Linux), sign-in opens the first installed terminal (x-terminal-emulator, gnome-terminal, konsole, xfce4-terminal, xterm) or says what to run | `src/main/platform/exec.ts`, `claudePartner.ts` |
+| Python / processes | `python3` then `python` on Linux; process check via `ps -A -o comm=` | `exec.ts`, `pyguard.ts`, `install/processes.ts` |
+| Window embedding | `EmbeddedApp.supported` is true only on Windows; elsewhere every call is a no-op and the Edit area shows "open in its own window". Same class, so a Linux window manager can be added later | `src/main/embeddedApp.ts`, `ipc.ts` |
+| Adapters | Manifest and command `platforms` (missing = Windows only). The manager marks an unsupported adapter "incompatible", never runs its code (not even to read a version), and refuses commands with "not available on Linux" | `shared/integrations.ts`, `packageFormat.ts`, `manager.ts` |
+| Discovery | Linux discovery: PATH, `/usr/local/bin`, `/usr/bin`, `/snap/bin`, `~/.local/bin`, `/opt/<product>` and `/opt/<vendor>/<product>` (+ `bin`), `.desktop` `Exec=` lines, user folders, remembered folders | `integrations/discoveryLinux.ts`, `discovery.ts` |
+| Local video engine | Per-system engine download. Linux entry is the official `sd-master-1d0a58a-bin-Linux-Ubuntu-24.04-x86_64-vulkan.zip` with the size and SHA-256 GitHub reports (same release as the Windows one, whose reported hash matched ours). Unpack chain: `unzip`, Python `zipfile`, built-in reader; executable bit set before running | `shared/localAi.ts`, `platform/archive.ts`, `modelDownloads.ts`, `localVideo.ts` |
+| Packaging config | `linux:` AppImage + deb targets, PNG icon, Windows-only resources moved under `win`, deb recommends keyring and Vulkan packages, `npm run dist:linux`, `Run CreateCraft.sh` | `electron-builder.yml`, `package.json` |
+
+Planner, workflow engine, project formats and MCP protocol were already OS-neutral and are untouched: project and Planner files are the same on both systems.
+
+## Evidence (read this table carefully)
+
+| Claim | Evidence | Status |
+|---|---|---|
+| Windows behaviour unchanged | `npm run check`: lint and both typechecks clean; Vitest 639 passed, 62 skipped (same opt-in skips as before; 604 before this phase) | **verified on Windows** |
+| Platform logic is correct for Linux inputs | 35 new unit tests inject `linux` (OS, file system, command output). **Inputs are synthetic text written from documented formats, not captured from a Linux machine** | **predicted** (unit-tested only) |
+| Anything runs on Linux | none run | **not verified** |
+| Real Linux startup, project create/save/reopen, Planner, MCP, Claude connectivity, workflows | not run: no Linux environment installed yet | **not verified** |
+| Native Craft apps on Linux | none exist as far as known | **unavailable** |
+| GPU acceleration, AMD, Vulkan, local AI video on Linux | detection and download code written, never executed on Linux or against a GPU | **untested** |
+| Blender / FreeCAD on Linux | adapters are Windows-only by declaration, so they are refused on Linux until tested and declared | **not enabled** |
+| AppImage / deb | configuration only; nothing built | **untested** |
+
+## Known limitations / blockers
+
+* **Blocker for Phase 3:** installing Ubuntu 24.04 in WSL2 needs your approval (download, disk, Node, git, build tools inside it). Not done.
+* WSL2's GPU is not representative of a real AMD Vulkan setup; AMD/Vulkan verification needs your own Ubuntu machine or a GPU-capable setup.
+* `claude-agent-sdk` ships the native binary as a per-platform package; Linux needs `npm install` on Linux to fetch `claude-agent-sdk-linux-x64`. Not checked.
+* `release-check.mjs` reports "NOT RELEASABLE" for the bundled FreeCAD and Revit adapters because they are signed with the development key rather than an official release key. This predates Phase 2 and is a release-signing task.
+* 12+ smoke scripts and the Craft-app live tests call PowerShell or Windows paths; they stay Windows-only. Unit tests that use `C:\` fixtures still pass on Windows; whether each passes on Linux is unknown until run there (expected to need conditionals).
+* The 2-process planner lock and the plugin bridge Unix socket have only been exercised on Windows.
+
+## Next (Phase 3), in order, after your approval
+
+1. `wsl --install Ubuntu-24.04` (location of your choice), then Node 22, git, build-essential, `libsecret-1-0`, `gnome-keyring`, `libvulkan1`, `mesa-vulkan-drivers` inside it; clone the repo into the Linux filesystem (`git clone` from the Windows checkout, history preserved, no remote).
+2. `npm ci`, `npm run check` on Linux. Record every failure here as a separate "Linux results" table.
+3. Launch under WSLg: startup, project create / save / reopen, Planner round trip, Claude connectivity (the user signs in), workflows.
+4. Report GPU/Vulkan detection results from WSL as what they are (WSL virtual GPU).
