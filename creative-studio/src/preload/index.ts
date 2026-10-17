@@ -231,7 +231,7 @@ const api: StudioApi = {
       return () => ipcRenderer.removeListener(IPC.builderProgress, h);
     },
   },
-  planner: Object.fromEntries(['list', 'get', 'activity', 'assetHealth', 'create', 'update', 'addItem', 'updateItem', 'setItemStatus', 'removeItem', 'addTask', 'updateTask', 'setTaskStatus', 'removeTask', 'releaseClaim', 'addAsset', 'pickAssets', 'removeAsset', 'addMilestone', 'removeMilestone', 'decideProposal', 'createPackage', 'cancelPackage', 'packageView', 'savePackage', 'importReport', 'reviewReport', 'rawReport', 'exportProject', 'importProject', 'connectionInfo', 'openFolder'].map((m) => [m, (...a: unknown[]) => ipcRenderer.invoke(IPC.plannerCall, m, a)])) as unknown as StudioApi['planner'],
+  planner: Object.fromEntries(['list', 'get', 'activity', 'assetHealth', 'create', 'update', 'addItem', 'updateItem', 'setItemStatus', 'removeItem', 'addTask', 'updateTask', 'setTaskStatus', 'removeTask', 'releaseClaim', 'addAsset', 'pickAssets', 'removeAsset', 'addMilestone', 'removeMilestone', 'decideProposal', 'createPackage', 'prepareSend', 'importSuggestions', 'createFromHomePlan', 'cancelPackage', 'packageView', 'savePackage', 'importReport', 'reviewReport', 'rawReport', 'exportProject', 'importProject', 'connectionInfo', 'openFolder'].map((m) => [m, (...a: unknown[]) => ipcRenderer.invoke(IPC.plannerCall, m, a)])) as unknown as StudioApi['planner'],
   probeApps: () => ipcRenderer.invoke(IPC.probeApps),
   integrationStatus: () => ipcRenderer.invoke(IPC.integrationStatus),
   assetUrl: (assetId) => `${ASSET_SCHEME}://asset/${encodeURIComponent(assetId)}`,

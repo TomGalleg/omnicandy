@@ -686,3 +686,12 @@ h1, h2, h3 { margin: 0; font-weight: 600; }
 .pl-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
 .pl-table th, .pl-table td { text-align: left; vertical-align: top; padding: 6px; border-top: 1px solid var(--border); overflow-wrap: anywhere; }
 .pl-preview { border: 1px dashed var(--border-strong); border-radius: var(--radius-sm); padding: 10px; }
+.pl-needs { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 6px 14px; border-bottom: 1px solid var(--border); background: var(--surface); }
+.pl-head .pl-check { margin: 0; white-space: nowrap; }
+.pl-dests { border: 1px solid var(--border); border-radius: 6px; padding: 6px 10px; margin: 8px 0; }
+.pl-dest { align-items: flex-start; }
+.pl-sent { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--border); }
+
+.pl-status-note { display: block; font-size: 12px; color: var(--text-2); white-space: normal; overflow-wrap: anywhere; margin: 2px 0; }
+.pl-status-note.bad { color: var(--danger, #c0392b); }
+.pl-task .pl-status { white-space: normal; height: auto; max-width: 100%; }

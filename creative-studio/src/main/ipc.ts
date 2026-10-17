@@ -81,7 +81,7 @@ const strip = (e: { id: string; app: string; assetId: string; assetName: string;
 
 export function registerIpc(d: IpcDeps): void {
   const planner = createPlanner(path.dirname(d.secretsDir));
-  const plannerSession = new McpSession(planner.service, ['read', 'execute'], { kind: 'createcraft', name: 'CreateCraft Claude' });
+  const plannerSession = new McpSession(planner.service, ['read', 'propose', 'execute'], { kind: 'createcraft', name: 'CreateCraft Claude' });
   registerPlannerIpc({ service: planner.service, dir: planner.dir, isTrustedSender: d.isTrustedSender, window: d.window });
   const handle = <A extends unknown[]>(channel: string, schema: z.ZodType<A>, fn: (...args: A) => unknown) => {
     ipcMain.handle(channel, (e, ...raw) => {
