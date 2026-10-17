@@ -13,11 +13,11 @@ import { checkEditValues, EDITOR_APPS, editorFor, photocraftCommand, vectorcraft
 import type { Asset } from '@shared/types';
 import { PhotoCraftCliAdapter } from './photocraftCli';
 import { sha256File, type ProjectStore } from './projectStore';
+import { craftBin, craftInstallDir } from './platform/craftApps';
 
-const PF = () => process.env.ProgramFiles ?? 'C:\\Program Files';
 const exe = (app: EditorAppId, gui = false) => {
   const folder = EDITOR_APPS[app].name;
-  return path.join(PF(), folder, `${folder.toLowerCase()}${gui ? '' : '-cli'}.exe`);
+  return craftBin(craftInstallDir(folder), `${folder.toLowerCase()}${gui ? '' : '-cli'}`);
 };
 
 function run(file: string, args: string[], cwd: string): Promise<string> {

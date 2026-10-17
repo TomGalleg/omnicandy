@@ -16,6 +16,7 @@ import type { TimelineDto, TimelineEdit } from '@shared/live';
 import type { AppOperation } from '@shared/contracts';
 import { McpClient } from './mcpClient';
 import { freePort, waitForPort, type LiveDoc } from './photocraftLive';
+import { binName } from '@shared/platform';
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -64,18 +65,18 @@ abstract class LiveAppBase implements LiveDoc {
     if (this.o.headless) {
       const args = this.headlessArgs();
       if (!args) throw new Error(`The ${this.appId} engine can't run without its window.`);
-      this.mcp = await McpClient.start(path.join(this.o.installDir, `${this.exeName}-cli.exe`), args);
+      this.mcp = await McpClient.start(path.join(this.o.installDir, binName(`${this.exeName}-cli`)), args);
       return;
     }
     const port = await freePort();
-    const gui = spawn(path.join(this.o.installDir, `${this.exeName}.exe`), this.guiArgs(port), {
+    const gui = spawn(path.join(this.o.installDir, binName(this.exeName)), this.guiArgs(port), {
       env: { ...process.env, ...this.guiEnv(port) }, stdio: 'ignore', windowsHide: false,
     });
     this.gui = gui;
     if (gui.pid) this.o.onSpawn?.(gui.pid);
     gui.on('exit', () => { if (this.gui === gui) { this.gui = null; this.mcp?.close(); this.mcp = null; } });
     await waitForPort(port, 30_000, () => gui.exitCode !== null);
-    this.mcp = await McpClient.start(path.join(this.o.installDir, `${this.exeName}-cli.exe`), this.bridgeArgs(port));
+    this.mcp = await McpClient.start(path.join(this.o.installDir, binName(`${this.exeName}-cli`)), this.bridgeArgs(port));
   }
 
   protected client(): McpClient {
@@ -177,7 +178,7 @@ export class LiveSoundCraft extends LiveAppBase {
 
   private cliInfo(file: string): Promise<{ seconds?: number }> {
     return new Promise((resolve, reject) => {
-      execFile(path.join(this.o.installDir, 'soundcraft-cli.exe'), ['info', file], { windowsHide: true, timeout: 30_000 }, (err, out) => {
+      execFile(path.join(this.o.installDir, binName('soundcraft-cli')), ['info', file], { windowsHide: true, timeout: 30_000 }, (err, out) => {
         if (err) reject(err); else { try { resolve(JSON.parse(String(out))); } catch (e) { reject(e); } }
       });
     });
@@ -502,7 +503,7 @@ export class LiveLightCraft extends LiveAppBase {
   /** settings.appearanceMode through the control channel (`lightcraft-cli run --connect … ui.set`). */
   async applyTheme(value: string): Promise<string | null> {
     const out = await new Promise<string>((resolve, reject) => {
-      execFile(path.join(this.o.installDir, 'lightcraft-cli.exe'), ['run', '--connect', `127.0.0.1:${this.port}`, 'ui.set', JSON.stringify({ settings: { appearanceMode: value } })],
+      execFile(path.join(this.o.installDir, binName('lightcraft-cli')), ['run', '--connect', `127.0.0.1:${this.port}`, 'ui.set', JSON.stringify({ settings: { appearanceMode: value } })],
         { windowsHide: true, timeout: 30_000, maxBuffer: 8 * 1024 * 1024 }, (err, stdout) => (err ? reject(err) : resolve(String(stdout))));
     });
     const m = /"appearanceMode"\s*:\s*"(\w+)"/.exec(out);
@@ -773,12 +774,12 @@ export class LivePdfCraft extends LiveAppBase {
   private async startPdf(): Promise<void> {
     this.stop();
     await fs.mkdir(this.o.writeRoot, { recursive: true });
-    const cli = path.join(this.o.installDir, 'pdfcraft-cli.exe');
+    const cli = path.join(this.o.installDir, binName('pdfcraft-cli'));
     this.mcp = await McpClient.start(cli, ['mcp', '--root', this.o.writeRoot]);
     if (this.o.headless) return;
     const ctlFile = path.join(this.o.writeRoot, 'pdfcraft-control.json');
     await fs.rm(ctlFile, { force: true });
-    const gui = spawn(path.join(this.o.installDir, 'pdfcraft.exe'), ['--control', ctlFile], { stdio: 'ignore', windowsHide: false });
+    const gui = spawn(path.join(this.o.installDir, binName('pdfcraft')), ['--control', ctlFile], { stdio: 'ignore', windowsHide: false });
     this.gui = gui;
     if (gui.pid) this.o.onSpawn?.(gui.pid);
     gui.on('exit', () => { if (this.gui === gui) { this.gui = null; this.mcp?.close(); this.mcp = null; this.control = null; } });

@@ -16,6 +16,7 @@ import { photocraftCommand, type EditValues } from '@shared/appEditors';
 import type { AppOperation } from '@shared/contracts';
 import type { TimelineDto, TimelineEdit } from '@shared/live';
 import { McpClient } from './mcpClient';
+import { binName } from '@shared/platform';
 
 /** What the live task controller needs from an open document. Implemented for real below; faked in tests. */
 export interface LiveDoc {
@@ -122,7 +123,7 @@ export class LivePhotoCraft implements LiveDoc {
     await fs.writeFile(tokenFile, randomBytes(32).toString('hex'), { mode: 0o600 });
     const port = await freePort();
 
-    const gui = spawn(path.join(this.o.installDir, 'photocraft.exe'), ['--control', String(port)], {
+    const gui = spawn(path.join(this.o.installDir, binName('photocraft')), ['--control', String(port)], {
       env: {
         ...process.env,
         PHOTOCRAFT_CONTROL_TOKEN_FILE: tokenFile,
@@ -137,7 +138,7 @@ export class LivePhotoCraft implements LiveDoc {
     gui.on('exit', () => { if (this.gui === gui) { this.gui = null; this.mcp?.close(); this.mcp = null; } });
 
     await waitForPort(port, 30_000, () => gui.exitCode !== null);
-    this.mcp = await McpClient.start(path.join(this.o.installDir, 'photocraft-cli.exe'), [
+    this.mcp = await McpClient.start(path.join(this.o.installDir, binName('photocraft-cli')), [
       'mcp', '--bridge', `127.0.0.1:${port}`, '--control-token-file', tokenFile,
     ]);
   }

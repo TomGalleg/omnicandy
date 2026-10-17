@@ -6,6 +6,8 @@ import { execFile } from 'node:child_process';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import type { AppProbeResult } from '@shared/types';
+import { currentOs, exeSuffix, OS_LABEL } from '@shared/platform';
+import { craftInstallRoot } from './platform/craftApps';
 
 export interface ArtCraftAppDef {
   id: string;
@@ -45,7 +47,7 @@ function runVersion(exe: string): Promise<string | null> {
 }
 
 export async function probeArtCraftApp(def: ArtCraftAppDef, programFiles: string): Promise<AppProbeResult> {
-  const exe = path.join(programFiles, def.folder, def.cli);
+  const exe = path.join(programFiles, def.folder, def.cli.replace(/\.exe$/, exeSuffix()));
   const installed = await fs.access(exe).then(() => true, () => false);
   if (!installed) {
     return { appId: def.id, displayName: def.displayName, installed: false, connected: false, version: null, capabilities: [], notes: ['Not installed.'] };
@@ -70,6 +72,10 @@ export async function probeArtCraftApp(def: ArtCraftAppDef, programFiles: string
   };
 }
 
-export async function probeAllArtCraftApps(programFiles = process.env.ProgramFiles ?? 'C:\\Program Files'): Promise<AppProbeResult[]> {
+export async function probeAllArtCraftApps(programFiles: string | null = craftInstallRoot()): Promise<AppProbeResult[]> {
+  // No known install location on this system (Linux): report the apps as unavailable instead of looking in invented places.
+  if (!programFiles) {
+    return ARTCRAFT_APPS.map((d) => ({ appId: d.id, displayName: d.displayName, installed: false, connected: false, version: null, capabilities: [], notes: [`No ${OS_LABEL[currentOs()]} version of ${d.displayName} is known to CreateCraft (unverified, not available).`] }));
+  }
   return Promise.all(ARTCRAFT_APPS.map((d) => probeArtCraftApp(d, programFiles)));
 }

@@ -12,6 +12,7 @@ import { lineage, MANIFEST_FILE, presetById, presetsFor, type DeliverJob, type D
 import type { Asset } from '@shared/types';
 import { kindForExtension } from './media';
 import { sha256File, type ProjectStore } from './projectStore';
+import { binName } from '@shared/platform';
 
 const LONG_EDGE_WEB = 1920;
 
@@ -256,7 +257,7 @@ export class DeliverQueue {
       const cmd = deliverCommand(p, src, out, a, tmp);
       if (cmd.script && cmd.scriptPath) await fs.writeFile(cmd.scriptPath, cmd.script.map((l) => JSON.stringify(l)).join('\n'));
       if (cmd.jsonScript && cmd.scriptPath) await fs.writeFile(cmd.scriptPath, JSON.stringify(cmd.jsonScript));
-      const exe = path.join(this.d.installDir(cmd.app), `${cmd.app}-cli.exe`);
+      const exe = path.join(this.d.installDir(cmd.app), binName(`${cmd.app}-cli`));
       await (this.d.exec ?? defaultExec)(exe, cmd.args, { cwd: tmp, signal: abort.signal });
       let note: string | undefined;
       let st = await fs.stat(out).catch(() => null);

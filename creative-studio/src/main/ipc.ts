@@ -57,6 +57,7 @@ import { bundledPaths, loadBundledPublishers } from './integrations/bundled';
 import { approvalDetail, INSTALL_CANCELLED_MESSAGE, integrationLines, type BrowseResult, type ConnectOutcome, type ConnectOverview, type ForgetResult } from '@shared/connect';
 import { ExternalState } from './integrations/state';
 import { PERMISSION_LABEL, type ApprovalAnswer, type ExternalAppInfo, type PackageApproval, type PackageListing, type Permission } from '@shared/integrations';
+import { craftInstallDir } from './platform/craftApps';
 
 export interface IpcDeps {
   window: () => BrowserWindow | null;
@@ -326,7 +327,7 @@ export function registerIpc(d: IpcDeps): void {
   handle(IPC.cancelWorkflow, none, () => { running?.abort.abort(); });
 
   // ---- Live apps (PhotoCraft: token + roots; VectorCraft: roots; SoundCraft: loopback port) ----
-  const PFdir = (name: string) => path.join(process.env.ProgramFiles ?? 'C:\\Program Files', name);
+  const PFdir = (name: string) => craftInstallDir(name);
   let livePromise: Promise<LiveTaskController> | null = null;
   type Driver = LivePhotoCraft | LiveVectorCraft | LiveSoundCraft | LiveFilmCraft | LiveLightCraft | LiveEffectCraft | LiveDesignCraft | LiveWordCraft | LivePdfCraft | LiveGridCraft | LiveDeckCraft | LiveFigCraft | LiveCadCraft;
   const drivers: Partial<Record<EditorAppId, Driver>> = {};

@@ -11,6 +11,7 @@ import { clipSeconds, LOCAL_FPS, normalizeLocalJob, parseProgress, sdCliArgs, ty
 import type { Asset } from '@shared/types';
 import type { ModelDownloads } from './modelDownloads';
 import type { ProjectStore } from './projectStore';
+import { craftBin, craftInstallDir } from './platform/craftApps';
 
 export interface RunHandle { exitCode: Promise<number>; kill(): void }
 export type Spawner = (exe: string, args: string[], o: { cwd: string; onLine: (l: string) => void }) => RunHandle;
@@ -129,7 +130,7 @@ export class LocalVideoService {
 /** FilmCraft headless: import the file, make a sequence, export H.264. */
 async function convertWithFilmCraft(src: string, out: string): Promise<void> {
   const { execFile } = await import('node:child_process');
-  const film = path.join(process.env.ProgramFiles ?? 'C:\\Program Files', 'FilmCraft', 'filmcraft-cli.exe');
+  const film = craftBin(craftInstallDir('FilmCraft'), 'filmcraft-cli');
   const script = path.join(path.dirname(out), 'convert.jsonl');
   const lines = [
     { id: 'file.newProject', params: { name: 'Convert' } },
