@@ -1,0 +1,192 @@
+{
+  "id": "plan_5ba9b944bc4f",
+  "title": "Fresh",
+  "goal": "A goal",
+  "description": "",
+  "scope": "",
+  "constraints": [],
+  "deliverables": [
+    "Finished document"
+  ],
+  "kinds": [
+    "document"
+  ],
+  "revision": 1,
+  "planRevision": 1,
+  "metaRev": 1,
+  "createdAt": "2026-10-17T21:31:24.563Z",
+  "updatedAt": "2026-10-17T21:31:24.563Z",
+  "items": [
+    {
+      "id": "item_7f13179d41",
+      "type": "requirement",
+      "title": "The document is accurate, organised and written for its reader.",
+      "text": "",
+      "reason": "",
+      "status": "accepted",
+      "rev": 1,
+      "createdAt": "2026-10-17T21:31:24.563Z",
+      "updatedAt": "2026-10-17T21:31:24.563Z",
+      "createdBy": {
+        "kind": "user",
+        "name": "You"
+      }
+    },
+    {
+      "id": "item_903799cad6",
+      "type": "question",
+      "title": "Who is the reader and how long should it be?",
+      "text": "",
+      "reason": "",
+      "status": "open",
+      "rev": 1,
+      "createdAt": "2026-10-17T21:31:24.563Z",
+      "updatedAt": "2026-10-17T21:31:24.563Z",
+      "createdBy": {
+        "kind": "user",
+        "name": "You"
+      }
+    }
+  ],
+  "tasks": [
+    {
+      "id": "task_730b6ac62b",
+      "title": "Outline the document",
+      "description": "",
+      "status": "todo",
+      "priority": "normal",
+      "parentId": null,
+      "dependsOn": [],
+      "completionChecks": [
+        {
+          "id": "chk_6a4b2c2869",
+          "text": "Outline covers every requirement",
+          "kind": "review"
+        }
+      ],
+      "expectedOutputs": [],
+      "assetIds": [],
+      "milestoneId": null,
+      "appRef": null,
+      "packageId": null,
+      "claim": null,
+      "progressNote": "",
+      "rev": 1,
+      "createdAt": "2026-10-17T21:31:24.563Z",
+      "updatedAt": "2026-10-17T21:31:24.563Z",
+      "createdBy": {
+        "kind": "user",
+        "name": "You"
+      }
+    },
+    {
+      "id": "task_b79df58c3f",
+      "title": "Write the first full draft",
+      "description": "",
+      "status": "todo",
+      "priority": "normal",
+      "parentId": null,
+      "dependsOn": [
+        "task_730b6ac62b"
+      ],
+      "completionChecks": [
+        {
+          "id": "chk_6a745a7792",
+          "text": "All sections present; no placeholders left",
+          "kind": "review"
+        },
+        {
+          "id": "chk_1fa5abec67",
+          "text": "Facts and numbers checked against sources",
+          "kind": "citations"
+        }
+      ],
+      "expectedOutputs": [
+        "Draft document"
+      ],
+      "assetIds": [],
+      "milestoneId": null,
+      "appRef": null,
+      "packageId": null,
+      "claim": null,
+      "progressNote": "",
+      "rev": 1,
+      "createdAt": "2026-10-17T21:31:24.563Z",
+      "updatedAt": "2026-10-17T21:31:24.563Z",
+      "createdBy": {
+        "kind": "user",
+        "name": "You"
+      }
+    },
+    {
+      "id": "task_a76bdc6176",
+      "title": "Review and finalise",
+      "description": "",
+      "status": "todo",
+      "priority": "normal",
+      "parentId": null,
+      "dependsOn": [
+        "task_b79df58c3f"
+      ],
+      "completionChecks": [
+        {
+          "id": "chk_3caadaa077",
+          "text": "Exported file opens and pages look right",
+          "kind": "export"
+        }
+      ],
+      "expectedOutputs": [],
+      "assetIds": [],
+      "milestoneId": null,
+      "appRef": null,
+      "packageId": null,
+      "claim": null,
+      "progressNote": "",
+      "rev": 1,
+      "createdAt": "2026-10-17T21:31:24.563Z",
+      "updatedAt": "2026-10-17T21:31:24.563Z",
+      "createdBy": {
+        "kind": "user",
+        "name": "You"
+      }
+    }
+  ],
+  "assets": [],
+  "milestones": [],
+  "proposals": [],
+  "packages": [],
+  "reports": [],
+  "planVersions": [
+    {
+      "planRevision": 1,
+      "at": "2026-10-17T21:31:24.563Z",
+      "by": {
+        "kind": "user",
+        "name": "You"
+      },
+      "reason": "Created project \"Fresh\" from Document",
+      "snapshot": {
+        "goal": "A goal",
+        "description": "",
+        "scope": "",
+        "constraints": [],
+        "deliverables": [
+          "Finished document"
+        ],
+        "requirements": [
+          {
+            "id": "item_7f13179d41",
+            "rev": 1,
+            "title": "The document is accurate, organised and written for its reader.",
+            "text": ""
+          }
+        ],
+        "decisions": []
+      }
+    }
+  ],
+  "counters": {
+    "package": 0,
+    "activity": 1
+  }
+}

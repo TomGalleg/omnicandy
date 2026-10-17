@@ -1,0 +1,324 @@
+{
+  "id": "plan_0b3155368f39",
+  "title": "Outdated",
+  "goal": "",
+  "description": "",
+  "scope": "",
+  "constraints": [],
+  "deliverables": [
+    "Findings summary with sources"
+  ],
+  "kinds": [
+    "research"
+  ],
+  "revision": 5,
+  "planRevision": 2,
+  "metaRev": 1,
+  "createdAt": "2026-10-17T21:31:24.581Z",
+  "updatedAt": "2026-10-17T21:31:24.593Z",
+  "items": [
+    {
+      "id": "item_4c0dd3536c",
+      "type": "requirement",
+      "title": "Every claim in the findings names its source.",
+      "text": "",
+      "reason": "",
+      "status": "accepted",
+      "rev": 1,
+      "createdAt": "2026-10-17T21:31:24.581Z",
+      "updatedAt": "2026-10-17T21:31:24.581Z",
+      "createdBy": {
+        "kind": "user",
+        "name": "You"
+      }
+    },
+    {
+      "id": "item_e9774ca99c",
+      "type": "question",
+      "title": "What decision will this research inform?",
+      "text": "",
+      "reason": "",
+      "status": "open",
+      "rev": 1,
+      "createdAt": "2026-10-17T21:31:24.581Z",
+      "updatedAt": "2026-10-17T21:31:24.581Z",
+      "createdBy": {
+        "kind": "user",
+        "name": "You"
+      }
+    },
+    {
+      "id": "item_ea0838d7d9",
+      "type": "requirement",
+      "title": "New rule after handoff",
+      "text": "",
+      "reason": "",
+      "status": "accepted",
+      "rev": 1,
+      "createdAt": "2026-10-17T21:31:24.591Z",
+      "updatedAt": "2026-10-17T21:31:24.591Z",
+      "createdBy": {
+        "kind": "user",
+        "name": "You"
+      }
+    }
+  ],
+  "tasks": [
+    {
+      "id": "task_0b1a8bcc1e",
+      "title": "Collect sources",
+      "description": "",
+      "status": "reported",
+      "priority": "normal",
+      "parentId": null,
+      "dependsOn": [],
+      "completionChecks": [
+        {
+          "id": "chk_e0c18a8d2c",
+          "text": "Each source is cited with a link or reference",
+          "kind": "citations"
+        }
+      ],
+      "expectedOutputs": [],
+      "assetIds": [],
+      "milestoneId": null,
+      "appRef": null,
+      "packageId": "pkg_3cf0763ad5",
+      "claim": null,
+      "progressNote": "",
+      "rev": 4,
+      "createdAt": "2026-10-17T21:31:24.581Z",
+      "updatedAt": "2026-10-17T21:31:24.593Z",
+      "createdBy": {
+        "kind": "user",
+        "name": "You"
+      }
+    },
+    {
+      "id": "task_40a73bd90c",
+      "title": "Summarise the findings",
+      "description": "",
+      "status": "todo",
+      "priority": "normal",
+      "parentId": null,
+      "dependsOn": [
+        "task_0b1a8bcc1e"
+      ],
+      "completionChecks": [
+        {
+          "id": "chk_86862897b9",
+          "text": "Every statement traces to a listed source",
+          "kind": "citations"
+        },
+        {
+          "id": "chk_302f6ca61a",
+          "text": "Open uncertainties are listed",
+          "kind": "review"
+        }
+      ],
+      "expectedOutputs": [
+        "Findings summary"
+      ],
+      "assetIds": [],
+      "milestoneId": null,
+      "appRef": null,
+      "packageId": null,
+      "claim": null,
+      "progressNote": "",
+      "rev": 1,
+      "createdAt": "2026-10-17T21:31:24.581Z",
+      "updatedAt": "2026-10-17T21:31:24.581Z",
+      "createdBy": {
+        "kind": "user",
+        "name": "You"
+      }
+    }
+  ],
+  "assets": [],
+  "milestones": [],
+  "proposals": [
+    {
+      "id": "prop_f3198988a0",
+      "proposedBy": {
+        "kind": "claude-code",
+        "name": "Claude Code"
+      },
+      "at": "2026-10-17T21:31:24.593Z",
+      "note": "From the report on \"Collect sources\"",
+      "changes": [
+        {
+          "op": "add_item",
+          "itemType": "question",
+          "title": "Which sources?",
+          "text": "Raised while working on \"Collect sources\".",
+          "reason": ""
+        }
+      ],
+      "status": "pending",
+      "source": "report",
+      "reportId": "rep_e4aea34a78"
+    }
+  ],
+  "packages": [
+    {
+      "id": "pkg_3cf0763ad5",
+      "projectId": "plan_0b3155368f39",
+      "number": 1,
+      "planRevision": 1,
+      "createdAt": "2026-10-17T21:31:24.585Z",
+      "createdBy": {
+        "kind": "user",
+        "name": "You"
+      },
+      "objective": "Complete: Collect sources",
+      "context": "",
+      "plan": {
+        "goal": "",
+        "description": "",
+        "scope": "",
+        "constraints": [],
+        "deliverables": [
+          "Findings summary with sources"
+        ],
+        "requirements": [
+          {
+            "id": "item_4c0dd3536c",
+            "rev": 1,
+            "title": "Every claim in the findings names its source.",
+            "text": ""
+          }
+        ],
+        "decisions": []
+      },
+      "tasks": [
+        {
+          "id": "task_0b1a8bcc1e",
+          "title": "Collect sources",
+          "description": "",
+          "priority": "normal",
+          "dependsOn": [],
+          "completionChecks": [
+            {
+              "id": "chk_e0c18a8d2c",
+              "text": "Each source is cited with a link or reference",
+              "kind": "citations"
+            }
+          ],
+          "expectedOutputs": [],
+          "appRef": null,
+          "assetIds": []
+        }
+      ],
+      "assets": [],
+      "reportInstructions": "Report back for each task separately, for project \"Outdated\".\n- Say only what you did and what you actually checked. \"not_run\" is a fine answer; a check you did not run must not be reported as passed.\n- Your report is a claim of completion. The user reviews and accepts it; nothing is accepted automatically.\n- Do not change the plan yourself. Put suggested requirement, decision or task changes in proposedChanges.\n- If a connection tool is available, call submit_report. Otherwise reply with this JSON (or a Markdown report with the headings Outcome, Work performed, Outputs, Verification, Blockers, Limitations, Questions):\n```json\n{\n  \"packageId\": \"pkg_3cf0763ad5\",\n  \"taskId\": \"task_0b1a8bcc1e\",\n  \"executor\": {\n    \"name\": \"your name\",\n    \"kind\": \"claude-code\"\n  },\n  \"outcome\": \"complete | partial | blocked | failed\",\n  \"workPerformed\": \"What you actually did, in plain words.\",\n  \"outputs\": [\n    {\n      \"description\": \"what it is\",\n      \"path\": \"where it is\"\n    }\n  ],\n  \"changedFiles\": [\n    \"path/of/each/changed/file\"\n  ],\n  \"verification\": [\n    {\n      \"checkId\": \"chk_e0c18a8d2c\",\n      \"check\": \"Each source is cited with a link or reference\",\n      \"result\": \"pass | fail | not_run\",\n      \"details\": \"what you ran and saw\"\n    }\n  ],\n  \"blockers\": [],\n  \"limitations\": [],\n  \"unresolvedQuestions\": [],\n  \"proposedChanges\": []\n}\n```",
+      "contentHash": "771ec0180a6b51c87ad25e74eb84ab3f28625002422547e29949e504702e1c79",
+      "state": "open"
+    }
+  ],
+  "reports": [
+    {
+      "outcome": "complete",
+      "workPerformed": "Done.",
+      "outputs": [],
+      "changedFiles": [],
+      "verification": [],
+      "blockers": [],
+      "limitations": [],
+      "unresolvedQuestions": [
+        "Which sources?"
+      ],
+      "proposedChanges": [],
+      "id": "rep_e4aea34a78",
+      "packageId": "pkg_3cf0763ad5",
+      "packageNumber": 1,
+      "taskId": "task_0b1a8bcc1e",
+      "planRevision": 1,
+      "submittedAt": "2026-10-17T21:31:24.593Z",
+      "executor": {
+        "kind": "claude-code",
+        "name": "Claude Code"
+      },
+      "source": "connection",
+      "status": "submitted",
+      "contentHash": "0615192dd4a70fa0dedc6b7e203ac44d523e778913b997177d0cf3a552ee4d71",
+      "uncertain": [],
+      "hasRawText": false,
+      "driftAtSubmit": {
+        "outdated": true,
+        "changes": [
+          {
+            "what": "requirement",
+            "change": "added",
+            "title": "New rule after handoff"
+          }
+        ]
+      }
+    }
+  ],
+  "planVersions": [
+    {
+      "planRevision": 1,
+      "at": "2026-10-17T21:31:24.581Z",
+      "by": {
+        "kind": "user",
+        "name": "You"
+      },
+      "reason": "Created project \"Outdated\" from Research",
+      "snapshot": {
+        "goal": "",
+        "description": "",
+        "scope": "",
+        "constraints": [],
+        "deliverables": [
+          "Findings summary with sources"
+        ],
+        "requirements": [
+          {
+            "id": "item_4c0dd3536c",
+            "rev": 1,
+            "title": "Every claim in the findings names its source.",
+            "text": ""
+          }
+        ],
+        "decisions": []
+      }
+    },
+    {
+      "planRevision": 2,
+      "at": "2026-10-17T21:31:24.591Z",
+      "by": {
+        "kind": "user",
+        "name": "You"
+      },
+      "reason": "Added requirement \"New rule after handoff\"",
+      "snapshot": {
+        "goal": "",
+        "description": "",
+        "scope": "",
+        "constraints": [],
+        "deliverables": [
+          "Findings summary with sources"
+        ],
+        "requirements": [
+          {
+            "id": "item_4c0dd3536c",
+            "rev": 1,
+            "title": "Every claim in the findings names its source.",
+            "text": ""
+          },
+          {
+            "id": "item_ea0838d7d9",
+            "rev": 1,
+            "title": "New rule after handoff",
+            "text": ""
+          }
+        ],
+        "decisions": []
+      }
+    }
+  ],
+  "counters": {
+    "package": 1,
+    "activity": 5
+  }
+}

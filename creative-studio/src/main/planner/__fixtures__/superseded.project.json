@@ -1,0 +1,270 @@
+{
+  "id": "plan_70d99f399e63",
+  "title": "Superseded",
+  "goal": "",
+  "description": "",
+  "scope": "",
+  "constraints": [],
+  "deliverables": [
+    "Final export"
+  ],
+  "kinds": [
+    "media"
+  ],
+  "revision": 3,
+  "planRevision": 1,
+  "metaRev": 1,
+  "createdAt": "2026-10-17T21:31:24.598Z",
+  "updatedAt": "2026-10-17T21:31:24.605Z",
+  "items": [
+    {
+      "id": "item_b79fdc51b2",
+      "type": "requirement",
+      "title": "Length and format match what was asked for.",
+      "text": "",
+      "reason": "",
+      "status": "accepted",
+      "rev": 1,
+      "createdAt": "2026-10-17T21:31:24.598Z",
+      "updatedAt": "2026-10-17T21:31:24.598Z",
+      "createdBy": {
+        "kind": "user",
+        "name": "You"
+      }
+    },
+    {
+      "id": "item_a35d9b6802",
+      "type": "question",
+      "title": "Where will it be shown or played?",
+      "text": "",
+      "reason": "",
+      "status": "open",
+      "rev": 1,
+      "createdAt": "2026-10-17T21:31:24.598Z",
+      "updatedAt": "2026-10-17T21:31:24.598Z",
+      "createdBy": {
+        "kind": "user",
+        "name": "You"
+      }
+    }
+  ],
+  "tasks": [
+    {
+      "id": "task_332dd98054",
+      "title": "Plan scenes or sections",
+      "description": "",
+      "status": "todo",
+      "priority": "normal",
+      "parentId": null,
+      "dependsOn": [],
+      "completionChecks": [
+        {
+          "id": "chk_2a5ec7e88d",
+          "text": "Plan approved by the user",
+          "kind": "review"
+        }
+      ],
+      "expectedOutputs": [],
+      "assetIds": [],
+      "milestoneId": null,
+      "appRef": null,
+      "packageId": "pkg_91aacce5c7",
+      "claim": null,
+      "progressNote": "",
+      "rev": 3,
+      "createdAt": "2026-10-17T21:31:24.598Z",
+      "updatedAt": "2026-10-17T21:31:24.605Z",
+      "createdBy": {
+        "kind": "user",
+        "name": "You"
+      }
+    },
+    {
+      "id": "task_ce5400ddeb",
+      "title": "Produce and assemble",
+      "description": "",
+      "status": "todo",
+      "priority": "normal",
+      "parentId": null,
+      "dependsOn": [
+        "task_332dd98054"
+      ],
+      "completionChecks": [
+        {
+          "id": "chk_38f1f8da54",
+          "text": "Duration and format as required",
+          "kind": "export"
+        },
+        {
+          "id": "chk_18f723e990",
+          "text": "Audio levels are not clipping",
+          "kind": "export"
+        }
+      ],
+      "expectedOutputs": [
+        "Final video or audio"
+      ],
+      "assetIds": [],
+      "milestoneId": null,
+      "appRef": null,
+      "packageId": null,
+      "claim": null,
+      "progressNote": "",
+      "rev": 1,
+      "createdAt": "2026-10-17T21:31:24.598Z",
+      "updatedAt": "2026-10-17T21:31:24.598Z",
+      "createdBy": {
+        "kind": "user",
+        "name": "You"
+      }
+    }
+  ],
+  "assets": [],
+  "milestones": [],
+  "proposals": [],
+  "packages": [
+    {
+      "id": "pkg_35577f85ea",
+      "projectId": "plan_70d99f399e63",
+      "number": 1,
+      "planRevision": 1,
+      "createdAt": "2026-10-17T21:31:24.602Z",
+      "createdBy": {
+        "kind": "user",
+        "name": "You"
+      },
+      "objective": "Complete: Plan scenes or sections",
+      "context": "",
+      "plan": {
+        "goal": "",
+        "description": "",
+        "scope": "",
+        "constraints": [],
+        "deliverables": [
+          "Final export"
+        ],
+        "requirements": [
+          {
+            "id": "item_b79fdc51b2",
+            "rev": 1,
+            "title": "Length and format match what was asked for.",
+            "text": ""
+          }
+        ],
+        "decisions": []
+      },
+      "tasks": [
+        {
+          "id": "task_332dd98054",
+          "title": "Plan scenes or sections",
+          "description": "",
+          "priority": "normal",
+          "dependsOn": [],
+          "completionChecks": [
+            {
+              "id": "chk_2a5ec7e88d",
+              "text": "Plan approved by the user",
+              "kind": "review"
+            }
+          ],
+          "expectedOutputs": [],
+          "appRef": null,
+          "assetIds": []
+        }
+      ],
+      "assets": [],
+      "reportInstructions": "Report back for each task separately, for project \"Superseded\".\n- Say only what you did and what you actually checked. \"not_run\" is a fine answer; a check you did not run must not be reported as passed.\n- Your report is a claim of completion. The user reviews and accepts it; nothing is accepted automatically.\n- Do not change the plan yourself. Put suggested requirement, decision or task changes in proposedChanges.\n- If a connection tool is available, call submit_report. Otherwise reply with this JSON (or a Markdown report with the headings Outcome, Work performed, Outputs, Verification, Blockers, Limitations, Questions):\n```json\n{\n  \"packageId\": \"pkg_35577f85ea\",\n  \"taskId\": \"task_332dd98054\",\n  \"executor\": {\n    \"name\": \"your name\",\n    \"kind\": \"claude-code\"\n  },\n  \"outcome\": \"complete | partial | blocked | failed\",\n  \"workPerformed\": \"What you actually did, in plain words.\",\n  \"outputs\": [\n    {\n      \"description\": \"what it is\",\n      \"path\": \"where it is\"\n    }\n  ],\n  \"changedFiles\": [\n    \"path/of/each/changed/file\"\n  ],\n  \"verification\": [\n    {\n      \"checkId\": \"chk_2a5ec7e88d\",\n      \"check\": \"Plan approved by the user\",\n      \"result\": \"pass | fail | not_run\",\n      \"details\": \"what you ran and saw\"\n    }\n  ],\n  \"blockers\": [],\n  \"limitations\": [],\n  \"unresolvedQuestions\": [],\n  \"proposedChanges\": []\n}\n```",
+      "contentHash": "e1b4693178867d11e59d5cbf71bac889988c197e1174ad724c6919d5fbb6a761",
+      "state": "superseded"
+    },
+    {
+      "id": "pkg_91aacce5c7",
+      "projectId": "plan_70d99f399e63",
+      "number": 2,
+      "planRevision": 1,
+      "createdAt": "2026-10-17T21:31:24.605Z",
+      "createdBy": {
+        "kind": "user",
+        "name": "You"
+      },
+      "objective": "Complete: Plan scenes or sections",
+      "context": "",
+      "plan": {
+        "goal": "",
+        "description": "",
+        "scope": "",
+        "constraints": [],
+        "deliverables": [
+          "Final export"
+        ],
+        "requirements": [
+          {
+            "id": "item_b79fdc51b2",
+            "rev": 1,
+            "title": "Length and format match what was asked for.",
+            "text": ""
+          }
+        ],
+        "decisions": []
+      },
+      "tasks": [
+        {
+          "id": "task_332dd98054",
+          "title": "Plan scenes or sections",
+          "description": "",
+          "priority": "normal",
+          "dependsOn": [],
+          "completionChecks": [
+            {
+              "id": "chk_2a5ec7e88d",
+              "text": "Plan approved by the user",
+              "kind": "review"
+            }
+          ],
+          "expectedOutputs": [],
+          "appRef": null,
+          "assetIds": []
+        }
+      ],
+      "assets": [],
+      "reportInstructions": "Report back for each task separately, for project \"Superseded\".\n- Say only what you did and what you actually checked. \"not_run\" is a fine answer; a check you did not run must not be reported as passed.\n- Your report is a claim of completion. The user reviews and accepts it; nothing is accepted automatically.\n- Do not change the plan yourself. Put suggested requirement, decision or task changes in proposedChanges.\n- If a connection tool is available, call submit_report. Otherwise reply with this JSON (or a Markdown report with the headings Outcome, Work performed, Outputs, Verification, Blockers, Limitations, Questions):\n```json\n{\n  \"packageId\": \"pkg_91aacce5c7\",\n  \"taskId\": \"task_332dd98054\",\n  \"executor\": {\n    \"name\": \"your name\",\n    \"kind\": \"claude-code\"\n  },\n  \"outcome\": \"complete | partial | blocked | failed\",\n  \"workPerformed\": \"What you actually did, in plain words.\",\n  \"outputs\": [\n    {\n      \"description\": \"what it is\",\n      \"path\": \"where it is\"\n    }\n  ],\n  \"changedFiles\": [\n    \"path/of/each/changed/file\"\n  ],\n  \"verification\": [\n    {\n      \"checkId\": \"chk_2a5ec7e88d\",\n      \"check\": \"Plan approved by the user\",\n      \"result\": \"pass | fail | not_run\",\n      \"details\": \"what you ran and saw\"\n    }\n  ],\n  \"blockers\": [],\n  \"limitations\": [],\n  \"unresolvedQuestions\": [],\n  \"proposedChanges\": []\n}\n```",
+      "contentHash": "9bfa8f739a6fde38e8b7b3f7811b3f9f001f7bd65e74950a08af4107e9fc99b0",
+      "state": "open",
+      "supersedes": "pkg_35577f85ea"
+    }
+  ],
+  "reports": [],
+  "planVersions": [
+    {
+      "planRevision": 1,
+      "at": "2026-10-17T21:31:24.598Z",
+      "by": {
+        "kind": "user",
+        "name": "You"
+      },
+      "reason": "Created project \"Superseded\" from Video or audio",
+      "snapshot": {
+        "goal": "",
+        "description": "",
+        "scope": "",
+        "constraints": [],
+        "deliverables": [
+          "Final export"
+        ],
+        "requirements": [
+          {
+            "id": "item_b79fdc51b2",
+            "rev": 1,
+            "title": "Length and format match what was asked for.",
+            "text": ""
+          }
+        ],
+        "decisions": []
+      }
+    }
+  ],
+  "counters": {
+    "package": 2,
+    "activity": 3
+  }
+}

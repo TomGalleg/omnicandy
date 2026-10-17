@@ -1,0 +1,228 @@
+{
+  "id": "plan_8b215af8af3b",
+  "title": "Mid claim",
+  "goal": "",
+  "description": "",
+  "scope": "",
+  "constraints": [],
+  "deliverables": [
+    "Final artwork",
+    "Layered or source file"
+  ],
+  "kinds": [
+    "art"
+  ],
+  "revision": 3,
+  "planRevision": 1,
+  "metaRev": 1,
+  "createdAt": "2026-10-17T21:31:24.569Z",
+  "updatedAt": "2026-10-17T21:31:24.578Z",
+  "items": [
+    {
+      "id": "item_7014128be1",
+      "type": "requirement",
+      "title": "The finished piece matches the mood and subject described in the goal.",
+      "text": "",
+      "reason": "",
+      "status": "accepted",
+      "rev": 1,
+      "createdAt": "2026-10-17T21:31:24.569Z",
+      "updatedAt": "2026-10-17T21:31:24.569Z",
+      "createdBy": {
+        "kind": "user",
+        "name": "You"
+      }
+    },
+    {
+      "id": "item_7391e3dca0",
+      "type": "question",
+      "title": "What sizes or aspect ratios are needed?",
+      "text": "",
+      "reason": "",
+      "status": "open",
+      "rev": 1,
+      "createdAt": "2026-10-17T21:31:24.569Z",
+      "updatedAt": "2026-10-17T21:31:24.569Z",
+      "createdBy": {
+        "kind": "user",
+        "name": "You"
+      }
+    }
+  ],
+  "tasks": [
+    {
+      "id": "task_30882dd562",
+      "title": "Gather references and choose a direction",
+      "description": "",
+      "status": "in_progress",
+      "priority": "normal",
+      "parentId": null,
+      "dependsOn": [],
+      "completionChecks": [
+        {
+          "id": "chk_be8b5dd269",
+          "text": "Direction approved by the user",
+          "kind": "review"
+        }
+      ],
+      "expectedOutputs": [],
+      "assetIds": [],
+      "milestoneId": null,
+      "appRef": null,
+      "packageId": "pkg_1cc9e80475",
+      "claim": {
+        "token": "a20f3cff2e19f3bb5e2c1b59",
+        "packageId": "pkg_1cc9e80475",
+        "executor": {
+          "kind": "claude-code",
+          "name": "Claude Code"
+        },
+        "claimedAt": "2026-10-17T21:31:24.578Z",
+        "leaseUntil": "2026-10-18T05:31:24.578Z",
+        "note": ""
+      },
+      "progressNote": "",
+      "rev": 3,
+      "createdAt": "2026-10-17T21:31:24.569Z",
+      "updatedAt": "2026-10-17T21:31:24.578Z",
+      "createdBy": {
+        "kind": "user",
+        "name": "You"
+      }
+    },
+    {
+      "id": "task_dd7e4daade",
+      "title": "Create the artwork",
+      "description": "",
+      "status": "todo",
+      "priority": "normal",
+      "parentId": null,
+      "dependsOn": [
+        "task_30882dd562"
+      ],
+      "completionChecks": [
+        {
+          "id": "chk_f96612b796",
+          "text": "Image has the required pixel dimensions",
+          "kind": "dimensions"
+        },
+        {
+          "id": "chk_486eb9d16f",
+          "text": "Export opens and looks right",
+          "kind": "export"
+        }
+      ],
+      "expectedOutputs": [
+        "Final artwork"
+      ],
+      "assetIds": [],
+      "milestoneId": null,
+      "appRef": null,
+      "packageId": null,
+      "claim": null,
+      "progressNote": "",
+      "rev": 1,
+      "createdAt": "2026-10-17T21:31:24.569Z",
+      "updatedAt": "2026-10-17T21:31:24.569Z",
+      "createdBy": {
+        "kind": "user",
+        "name": "You"
+      }
+    }
+  ],
+  "assets": [],
+  "milestones": [],
+  "proposals": [],
+  "packages": [
+    {
+      "id": "pkg_1cc9e80475",
+      "projectId": "plan_8b215af8af3b",
+      "number": 1,
+      "planRevision": 1,
+      "createdAt": "2026-10-17T21:31:24.574Z",
+      "createdBy": {
+        "kind": "user",
+        "name": "You"
+      },
+      "objective": "Complete: Gather references and choose a direction",
+      "context": "",
+      "plan": {
+        "goal": "",
+        "description": "",
+        "scope": "",
+        "constraints": [],
+        "deliverables": [
+          "Final artwork",
+          "Layered or source file"
+        ],
+        "requirements": [
+          {
+            "id": "item_7014128be1",
+            "rev": 1,
+            "title": "The finished piece matches the mood and subject described in the goal.",
+            "text": ""
+          }
+        ],
+        "decisions": []
+      },
+      "tasks": [
+        {
+          "id": "task_30882dd562",
+          "title": "Gather references and choose a direction",
+          "description": "",
+          "priority": "normal",
+          "dependsOn": [],
+          "completionChecks": [
+            {
+              "id": "chk_be8b5dd269",
+              "text": "Direction approved by the user",
+              "kind": "review"
+            }
+          ],
+          "expectedOutputs": [],
+          "appRef": null,
+          "assetIds": []
+        }
+      ],
+      "assets": [],
+      "reportInstructions": "Report back for each task separately, for project \"Mid claim\".\n- Say only what you did and what you actually checked. \"not_run\" is a fine answer; a check you did not run must not be reported as passed.\n- Your report is a claim of completion. The user reviews and accepts it; nothing is accepted automatically.\n- Do not change the plan yourself. Put suggested requirement, decision or task changes in proposedChanges.\n- If a connection tool is available, call submit_report. Otherwise reply with this JSON (or a Markdown report with the headings Outcome, Work performed, Outputs, Verification, Blockers, Limitations, Questions):\n```json\n{\n  \"packageId\": \"pkg_1cc9e80475\",\n  \"taskId\": \"task_30882dd562\",\n  \"executor\": {\n    \"name\": \"your name\",\n    \"kind\": \"claude-code\"\n  },\n  \"outcome\": \"complete | partial | blocked | failed\",\n  \"workPerformed\": \"What you actually did, in plain words.\",\n  \"outputs\": [\n    {\n      \"description\": \"what it is\",\n      \"path\": \"where it is\"\n    }\n  ],\n  \"changedFiles\": [\n    \"path/of/each/changed/file\"\n  ],\n  \"verification\": [\n    {\n      \"checkId\": \"chk_be8b5dd269\",\n      \"check\": \"Direction approved by the user\",\n      \"result\": \"pass | fail | not_run\",\n      \"details\": \"what you ran and saw\"\n    }\n  ],\n  \"blockers\": [],\n  \"limitations\": [],\n  \"unresolvedQuestions\": [],\n  \"proposedChanges\": []\n}\n```",
+      "contentHash": "c933b9abdbe34d38aacf3e73136ae0988fa864ba99dbec9b6761e819302c5a74",
+      "state": "open"
+    }
+  ],
+  "reports": [],
+  "planVersions": [
+    {
+      "planRevision": 1,
+      "at": "2026-10-17T21:31:24.569Z",
+      "by": {
+        "kind": "user",
+        "name": "You"
+      },
+      "reason": "Created project \"Mid claim\" from Art or design",
+      "snapshot": {
+        "goal": "",
+        "description": "",
+        "scope": "",
+        "constraints": [],
+        "deliverables": [
+          "Final artwork",
+          "Layered or source file"
+        ],
+        "requirements": [
+          {
+            "id": "item_7014128be1",
+            "rev": 1,
+            "title": "The finished piece matches the mood and subject described in the goal.",
+            "text": ""
+          }
+        ],
+        "decisions": []
+      }
+    }
+  ],
+  "counters": {
+    "package": 1,
+    "activity": 3
+  }
+}
