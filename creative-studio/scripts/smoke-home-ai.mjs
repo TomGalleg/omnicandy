@@ -32,6 +32,8 @@ try {
   await win.screenshot({ path: path.join(shots, '46-home-claude-plan.png') });
   const before = (await win.evaluate(() => window.studio.projects.list())).length;
   check('nothing is created before approval', before === 1);
+  const own = win.getByLabel('No, I will add my own picture');
+  if (await own.count()) await own.check(); // a recommended template starts from a picture; Claude asks first
   await win.getByRole('button', { name: 'Approve and create project' }).click();
   await win.waitForFunction(() => !/Sample Project/.test(document.querySelector('.project-name')?.textContent ?? 'Sample Project'), null, { timeout: 15000 });
   await win.waitForTimeout(1000);

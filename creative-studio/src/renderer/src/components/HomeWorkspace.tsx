@@ -86,15 +86,19 @@ Needs: ${t.needs}` : ''}`, objective: t.description };
     setPlanning(true); setError(null);
     try { setPlan(await window.studio.claude.planProject(text)); } catch (e) { setError(errText(e)); } finally { setPlanning(false); }
   };
+  /** A recommended template starts from a picture. With none supplied, Claude asks whether to make one with AI first. */
+  const needsPicture = !!plan?.template && useRecommended && refs.length === 0;
+  const [pictureChoice, setPictureChoice] = useState<'generate' | 'own' | null>(null);
   const approvePlan = () => run(async () => {
     if (!plan) return;
+    const generateFirst = needsPicture && pictureChoice === 'generate';
     const meta = { kind: plan.kind, brief: briefFromPlan(request, plan), objective: plan.steps[0] };
     const key = await window.studio.projects.create(plan.name.trim() || 'Untitled project', location ?? undefined, meta);
     await window.studio.projects.open(key);
     log('project', `Created "${plan.name}" from your description.`);
     onSwitched(key);
     const kind = plan.kind;
-    const tpl = useRecommended && plan.template ? plan.template : null;
+    const tpl = useRecommended && plan.template && !generateFirst ? plan.template : null;
     if (tpl) await window.studio.useWorkflowTemplate(tpl);
     // Start the new project's chat with the planning exchange (saved inside the project folder).
     void window.studio.claude.seed(request.trim(), `${plan.finishedOutput}\n\n${plan.summary}\n\n${plan.steps.map((s, i) => `${i + 1}. ${s}`).join('\n')}`);
@@ -107,6 +111,14 @@ Needs: ${t.needs}` : ''}`, objective: t.description };
       setRefs([]);
       log('project', `Imported ${imported} reference file${imported === 1 ? '' : 's'}${r.errors.length ? `; ${r.errors.length} failed: ${r.errors.join('; ')}` : ''}.`);
     }
+    if (generateFirst) {
+      // The AI Generate tab opens with the picture described; nothing is paid until the user approves the price there.
+      try { window.sessionStorage.setItem('cs-generate-prompt', `${plan.finishedOutput}. ${plan.summary}`.slice(0, 1000)); } catch { /* storage unavailable */ }
+      setPictureChoice(null);
+      onGoto('generate');
+      return;
+    }
+    setPictureChoice(null);
     onGoto(imported ? 'media' : tpl ? 'workflow' : workspaceFor(kind));
   });
 
@@ -197,6 +209,13 @@ Needs: ${t.needs}` : ''}`, objective: t.description };
               <label className="plan-field"><span><input type="checkbox" checked={useRecommended} onChange={(e) => setUseRecommended(e.target.checked)} />{' '}
                 Start from Claude's recommended template: <strong>{plan.template.replace(/^builtin-/, '').replace(/-/g, ' ')}</strong> (you can edit it; nothing runs or bills on its own)</span></label>
             )}
+            {needsPicture && (
+              <fieldset className="plan-field" aria-label="Starting picture">
+                <legend>This plan starts from a picture, and you haven't added one. Do you want Claude to help you make one with AI?</legend>
+                <label><input type="radio" name="pic" checked={pictureChoice === 'generate'} onChange={() => setPictureChoice('generate')} /> Yes, generate a starting picture with AI (the AI Generate tab opens with it described; you see the price and approve it before anything is paid)</label>
+                <label><input type="radio" name="pic" checked={pictureChoice === 'own'} onChange={() => setPictureChoice('own')} /> No, I will add my own picture</label>
+              </fieldset>
+            )}
             <ol className="plan-steps">{plan.steps.map((st, i) => <li key={i}>{st}</li>)}</ol>
             {plan.questions.length > 0 && (
               <div className="plan-questions">
@@ -208,7 +227,7 @@ Needs: ${t.needs}` : ''}`, objective: t.description };
             )}
             {refs.length > 0 && <p className="asset-meta">On approval, {refs.length} reference file{refs.length === 1 ? '' : 's'} will be copied into the project's Assets/Originals (read-only, with checksum and origin).</p>}
             <div className="btn-row">
-              <button className="btn primary" disabled={busy || planning} onClick={() => void approvePlan()}>Approve and create project</button>
+              <button className="btn primary" disabled={busy || planning || (needsPicture && !pictureChoice)} onClick={() => void approvePlan()}>Approve and create project</button>
               <button className="btn" disabled={busy || planning} onClick={() => setPlan(null)}>Change my request</button>
             </div>
           </div>

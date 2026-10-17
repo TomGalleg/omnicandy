@@ -31,7 +31,11 @@ export function GenerateWorkspace({ manifest, selected, onGoto, log }: Props) {
   const [providers, setProviders] = useState<ProviderStatusDto[] | null>(null);
   const [capability, setCapability] = useState<GenCapability>('text-to-image');
   const [modelId, setModelId] = useState<string>('');
-  const [prompt, setPrompt] = useState('');
+  const [prompt, setPrompt] = useState(() => {
+    // Set by Home when Claude proposed a starting picture; used once.
+    try { const p = window.sessionStorage.getItem('cs-generate-prompt'); if (p) { window.sessionStorage.removeItem('cs-generate-prompt'); return p; } } catch { /* storage unavailable */ }
+    return '';
+  });
   const [settings, setSettings] = useState<Record<string, string>>({});
   const [count, setCount] = useState(1);
   const [refId, setRefId] = useState<string | null>(null);
