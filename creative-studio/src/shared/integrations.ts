@@ -1,3 +1,4 @@
+import type { OsId } from './platform';
 // Universal Application Integration Framework: the contract shared by main, renderer and adapters.
 // This layer is for EXTERNAL third-party software only. The 13 native Craft apps keep their own
 // first-party integrations (liveApps.ts, liveTask.ts) and are never routed through here.
@@ -39,6 +40,8 @@ export interface ParamSpec { type: ParamType; description: string; required?: bo
 /** A typed command an adapter exposes. */
 export interface CommandSpec {
   id: string;
+  /** Operating systems this command may run on. Missing means Windows only (what every existing adapter was built and tested for). */
+  platforms?: OsId[];
   label: string;
   description: string;
   params: Record<string, ParamSpec>;
@@ -64,6 +67,8 @@ export type AdapterMaturity = 'verified' | 'experimental' | 'stub';
 /** Versioned, declarative description of an adapter; what plugin loading validates. */
 export interface AdapterManifest {
   id: string;
+  /** Operating systems the adapter may run on. Missing means Windows only. The manager refuses everything elsewhere. */
+  platforms?: OsId[];
   name: string;
   vendor: string;
   sdkVersion: number;

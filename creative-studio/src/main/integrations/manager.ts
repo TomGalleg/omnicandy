@@ -12,6 +12,9 @@ import {
 } from '@shared/integrations';
 import { discoverApps, REMEMBERED_SOURCES, realDiscoveryEnv, type DiscoveryEnv, type DiscoveryTarget } from './discovery';
 import { AdapterError, validateManifest, type AdapterFactory, type ExternalAdapter } from './sdk';
+import { currentOs, DEFAULT_PLATFORMS, OS_LABEL, supportsOs, type OsId } from '@shared/platform';
+
+const listOs = (p: readonly OsId[] | undefined) => (p?.length ? p : DEFAULT_PLATFORMS).map((o) => OS_LABEL[o]).join(' and ');
 
 export interface PermissionStore { load(): Promise<Record<string, Permission[]>>; save(grants: Record<string, Permission[]>): Promise<void> }
 
@@ -22,6 +25,8 @@ export interface ManagerDeps {
   /** Asks the user (native dialog). Anything but 'once' or 'always' counts as no. */
   approve: (req: ApprovalRequest) => Promise<ApprovalAnswer>;
   discovery?: DiscoveryEnv;
+  /** Test hook: pretend to be another operating system. Default: the real one. */
+  os?: OsId;
   userPaths?: () => Promise<string[]>;
   /** Programs to look for although no adapter for them is active yet (connectors that can be installed). */
   extraTargets?: () => Promise<DiscoveryTarget[]>;
@@ -55,7 +60,8 @@ export class IntegrationManager {
   private shadowed = new Map<string, AdapterFactory[]>();
   private jobMap = new Map<string, JobInfo>();
 
-  constructor(private readonly d: ManagerDeps) {}
+  private readonly os: OsId;
+  constructor(private readonly d: ManagerDeps) { this.os = d.os ?? currentOs(); }
 
   // ---- registration (plugin loading) ----
 
@@ -138,6 +144,8 @@ export class IntegrationManager {
     for (const a of found) {
       const f = this.factoryFor(a);
       if (!f || this.versions.has(a.key)) continue;
+      // Not meant for this operating system: its code is never run, not even to read a version.
+      if (!supportsOs(f.manifest.platforms, this.os)) { this.versions.set(a.key, a.version); continue; }
       if (f.manifest.selfContained) { this.versions.set(a.key, f.manifest.version ?? null); continue; }
       // Unsigned packages do not run until the user presses Connect.
       if (f.deferProbe) { this.versions.set(a.key, a.version); continue; }
@@ -182,6 +190,7 @@ export class IntegrationManager {
     const set = (status: IntegrationStatus, statusDetail: string) => ({ ...base, status, statusDetail });
     if (!m) return set('unsupported', 'No adapter for this program yet.');
     if (m.maturity === 'stub') return set('unsupported', 'Detected. Deep integration is planned but not built yet; no commands are offered.');
+    if (!supportsOs(m.platforms, this.os)) return set('incompatible', `${m.name} is not available on ${OS_LABEL[this.os]}: its integration was only built and tested for ${listOs(m.platforms)}.`);
     const range = m.selfContained ? 'ok' : versionSupported(version, m.versions, m.versionRanges);
     const supported = m.versionRanges?.length ? m.versionRanges.map((r) => `${r.min ?? ''}-${r.max ?? ''}`).join(', ') : `${m.versions.min ?? ''}-${m.versions.max ?? ''}`;
     if (range === 'too-old') return set('incompatible', `Version ${version} is older than the supported ${supported}.`);
@@ -311,10 +320,12 @@ export class IntegrationManager {
     if (!(await fs.stat(app.exePath).then(() => true, () => false))) return fail('missing-app', `${app.name} is no longer at ${app.exePath}. Rescan the applications.`, app.name);
     const f = this.factoryFor(app);
     if (!f) return fail('unsupported', `${app.name} has no integration adapter.`, app.name);
+    if (!supportsOs(f.manifest.platforms, this.os)) return fail('unsupported', `${f.manifest.name} is not available on ${OS_LABEL[this.os]}; nothing was run.`, app.name);
     const cmd = f.manifest.commands.find((c) => c.id === commandId);
     if (!cmd || !f.manifest.capabilities.includes('executeCommand')) {
       return fail('unsupported', `${f.manifest.name} does not support "${commandId}". Supported: ${f.manifest.commands.map((c) => c.id).join(', ') || 'none'}.`, app.name);
     }
+    if (!supportsOs(cmd.platforms ?? f.manifest.platforms, this.os)) return fail('unsupported', `"${commandId}" is not available on ${OS_LABEL[this.os]}; nothing was run.`, app.name);
     const live = f.availableCommands?.();
     if (live && !live.has(cmd.id)) return fail('unsupported', `The add-in inside ${app.name} has not made "${commandId}" available (this version or edition of the program may not support it). Available now: ${[...live].join(', ') || 'none'}.`, app.name);
     const params = validateParams(cmd, raw);

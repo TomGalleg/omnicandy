@@ -34,8 +34,11 @@ const paramSpec = z.object({
   max: z.number().optional(),
 }).strict();
 
+const platformsField = z.array(z.enum(['win32', 'linux', 'darwin'])).min(1).max(3).optional();
+
 const commandSpec = z.object({
   id: z.string().regex(/^[a-z][a-z0-9_.-]{0,60}$/, 'command id: lower-case letters, digits, "_", "." or "-"'),
+  platforms: platformsField,
   label: text(80),
   description: text(400),
   params: z.record(z.string().regex(/^[A-Za-z_][A-Za-z0-9_]{0,40}$/), paramSpec).refine((o) => Object.keys(o).length <= 20, 'at most 20 settings per command'),
@@ -100,6 +103,8 @@ export const integrationSchema = z.object({
 export const packageManifestSchema = z.object({
   manifestVersion: z.number().int().refine((v) => SUPPORTED_MANIFEST_VERSIONS.includes(v), 'unsupported manifestVersion (this CreateCraft reads 1 and 2)'),
   id: z.string().regex(/^[a-z0-9][a-z0-9.-]{1,60}$/, 'id: lower-case letters, digits, "." or "-" (2 to 61 characters)'),
+  /** Where the package may run; missing = Windows only. */
+  platforms: platformsField,
   name: text(80),
   version: versionStr,
   description: z.string().max(500).optional(),
@@ -299,6 +304,7 @@ export function toAdapterManifest(m: PackageManifest, trust: 'trusted-publisher'
   for (const d of m.runtime?.dependencies ?? []) reqs.push({ kind: 'runtime', text: `${d.name}${d.min ? ` ${d.min} or newer` : ''}${d.note ? `: ${d.note}` : ''}` });
   return {
     id: m.id,
+    ...(m.platforms ? { platforms: m.platforms } : {}),
     name: m.name,
     vendor: m.publisher.name,
     sdkVersion: ADAPTER_SDK_VERSION,
