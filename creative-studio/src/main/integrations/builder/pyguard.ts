@@ -6,6 +6,7 @@
 
 import { execFile } from 'node:child_process';
 import { DENIED_ATTRIBUTES, DENIED_BUILTINS, DENIED_MODULES, PLAIN_METHODS, SAFE_STDLIB } from './hosts';
+import { pythonCandidates } from '../../platform/exec';
 
 export interface PySource { name: string; kind: 'run' | 'verify'; text: string }
 
@@ -174,9 +175,7 @@ let pythonCache: Promise<string | null> | null = null;
 /** The absolute path of the first working Python 3 interpreter on this PC, or null. */
 export function findPython(): Promise<string | null> {
   pythonCache ??= (async () => {
-    const candidates: Array<[string, string[]]> = process.env.CREATECRAFT_PYTHON
-      ? [[process.env.CREATECRAFT_PYTHON, []]]
-      : [['python', []], ['py', ['-3']]];
+    const candidates = pythonCandidates();
     for (const [c, pre] of candidates) {
       const out = await new Promise<string | null>((res) => execFile(c, [...pre, '-c', 'import sys;print(sys.version_info[0], sys.executable)'], { timeout: 15_000, windowsHide: true }, (e, o) => res(e ? null : String(o).trim())));
       const m = out ? /^3 (.+)$/.exec(out) : null;

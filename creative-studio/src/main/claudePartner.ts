@@ -10,7 +10,6 @@
 import { execFile, spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
-import path from 'node:path';
 import { z } from 'zod';
 import { CLAUDE_MODELS, type ClaudeChatItem, type ClaudeModelId, type ClaudeState } from '@shared/claude';
 import { estimateCost, formatUsd, IMAGE_MODELS, modelById, providerById, type ImageJob } from '@shared/generation';
@@ -23,6 +22,7 @@ import type { RunSnapshot } from '@shared/workflowControl';
 import type { DeliverQueue } from './deliver';
 import { buildResumeContext } from '@shared/claudeHistory';
 import { builtinTemplates, templateCatalogForClaude } from '@shared/templates';
+import { claudeLoginLaunch, defaultClaudeCliPath } from './platform/exec';
 import { parseProjectPlan, PROJECT_KINDS, type ProjectPlan } from '@shared/projectPlan';
 import type { LiveTaskController } from './liveTask';
 import type { ProjectStore } from './projectStore';
@@ -215,10 +215,10 @@ export class ClaudePartner {
    */
   signIn() {
     if (!fs.existsSync(this.d.cliPath)) throw new Error('Claude Code is not installed on this PC.');
-    if (/["&|<>^%]/.test(this.d.cliPath)) throw new Error('Unexpected characters in the Claude Code path.');
-    spawn('cmd.exe', ['/c', 'start', '"Sign in to Claude"', `"${this.d.cliPath}"`, 'auth', 'login'], {
-      detached: true, stdio: 'ignore', windowsHide: false, windowsVerbatimArguments: true,
-    }).unref();
+    void claudeLoginLaunch(this.d.cliPath).then((plan) => {
+      if (!plan) { this.login = { stage: 'failed', url: null, message: 'No terminal program was found. Open a terminal yourself and run: claude auth login' }; this.publish(); return; }
+      spawn(plan.cmd, plan.args, { detached: true, stdio: 'ignore', windowsHide: false, ...(plan.verbatim ? { windowsVerbatimArguments: true } : {}) }).unref();
+    }).catch((e: unknown) => { this.login = { stage: 'failed', url: null, message: e instanceof Error ? e.message : String(e) }; this.publish(); });
     this.login = { stage: 'waiting-code', url: null, message: null };
     this.publish();
     if (this.loginPoll) clearInterval(this.loginPoll);
@@ -755,4 +755,4 @@ Available AI image models: ${models.length ? models.join('; ') : 'none set up'}.
   }
 }
 
-export const defaultClaudeCli = () => path.join(process.env.USERPROFILE ?? '', '.local', 'bin', 'claude.exe');
+export const defaultClaudeCli = () => defaultClaudeCliPath();
