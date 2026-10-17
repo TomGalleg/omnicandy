@@ -41,7 +41,8 @@ import { ModelDownloads } from './modelDownloads';
 import { LocalVideoService } from './localVideo';
 import { LOCAL_PRESETS, MAX_LOCAL_PROMPT } from '@shared/localVideo';
 import fsp from 'node:fs/promises';
-import { LOCAL_MODELS, modelFit, SDCPP_RUNTIME, tierFor, TIER_LABEL, totalBytes, warningsFor } from '@shared/localAi';
+import { currentOs } from '@shared/platform';
+import { LOCAL_MODELS, modelFit, sdcppRuntime, tierFor, TIER_LABEL, totalBytes, warningsFor } from '@shared/localAi';
 import { MOTION_ASPECTS, MOTION_FPS, MOTION_INTENSITIES, MOTION_PRESETS, MOTION_RESOLUTIONS } from '@shared/motionEffects';
 import { MAX_VIDEO_PROMPT } from '@shared/video';
 import type { SettingsStore } from './settingsStore';
@@ -564,13 +565,14 @@ export function registerIpc(d: IpcDeps): void {
     freeBytes: async (dir) => { await fsp.mkdir(dir, { recursive: true }); const s = await fsp.statfs(dir); return s.bavail * s.bsize; },
     onChange: (s) => { for (const w of BrowserWindow.getAllWindows()) if (!w.isDestroyed()) w.webContents.send(IPC.localAiEvent, s); },
   });
-  const modelById = (id: string) => { const m = [...LOCAL_MODELS, SDCPP_RUNTIME].find((x) => x.id === id); if (!m) throw new Error('Unknown model.'); return m; };
+  const runtimeHere = sdcppRuntime(currentOs());
+  const modelById = (id: string) => { const m = [...LOCAL_MODELS, ...(runtimeHere ? [runtimeHere] : [])].find((x) => x.id === id); if (!m) throw new Error('Unknown model.'); return m; };
   handle(IPC.localAiStatus, none, async () => {
     const report = await detectHardware(await getModelDir());
     const tier = tierFor(report);
     return {
       report, tier, tierLabel: TIER_LABEL[tier], warnings: warningsFor(report),
-      models: [SDCPP_RUNTIME, ...LOCAL_MODELS].map((m) => modelFit(m, report)),
+      models: [...(runtimeHere ? [runtimeHere] : []), ...LOCAL_MODELS].map((m) => modelFit(m, report)),
       generationAvailable: await downloads.isInstalled('sdcpp-vulkan-runtime'),
       note: 'Free and local. Nothing here has been tested on this PC until a clip has been made; downloads can be removed at any time.',
     };

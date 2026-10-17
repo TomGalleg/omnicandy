@@ -11,6 +11,7 @@ import { clipSeconds, LOCAL_FPS, normalizeLocalJob, parseProgress, sdCliArgs, ty
 import type { Asset } from '@shared/types';
 import type { ModelDownloads } from './modelDownloads';
 import type { ProjectStore } from './projectStore';
+import { binName, currentOs } from '@shared/platform';
 import { craftBin, craftInstallDir } from './platform/craftApps';
 
 export interface RunHandle { exitCode: Promise<number>; kill(): void }
@@ -76,8 +77,9 @@ export class LocalVideoService {
     if (!(await this.d.downloads.isInstalled(model.id))) throw new Error(`${model.name} is not downloaded yet. Download it first.`);
     if (!(await this.d.downloads.isInstalled('sdcpp-vulkan-runtime'))) throw new Error('The local video engine (stable-diffusion.cpp) is not installed yet. Download it first.');
     const root = await this.d.modelDir();
-    const exe = await findFile(path.join(root, 'sdcpp-vulkan-runtime'), ['sd-cli.exe', 'sd.exe']);
-    if (!exe) throw new Error('The engine folder has no sd-cli.exe. Remove it and download the engine again.');
+    const exe = await findFile(path.join(root, 'sdcpp-vulkan-runtime'), [binName('sd-cli'), binName('sd')]);
+    if (!exe) throw new Error(`The engine folder has no ${binName('sd-cli')}. Remove it and download the engine again.`);
+    if (currentOs() !== 'win32') await fs.chmod(exe, 0o755).catch(() => undefined); // an unpacked download is not executable by default
 
     const store = await this.d.store();
     const tmp = path.join(await store.workDir('local-video'), randomUUID().slice(0, 8));

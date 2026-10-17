@@ -1,3 +1,4 @@
+import type { OsId } from './platform';
 // Free local AI video: hardware report types, tier rules and the model registry. Pure data and
 // rules (no Electron, no processes). Availability (a model exists and can be downloaded) is kept
 // apart from verified compatibility (a real clip came out on that hardware): `verified` is only
@@ -179,6 +180,23 @@ export const SDCPP_RUNTIME: LocalModel = {
   sourceUrl: 'https://github.com/leejet/stable-diffusion.cpp', license: 'MIT', licenseNote: 'Open-source engine; runs on AMD, NVIDIA and Intel GPUs through Vulkan.',
   downloadGb: 0.03, minVramGb: 0, minRamGb: 0, backends: ['vulkan'], capabilities: [], minTier: 'experimental', note: 'Runs the models below. Not tested on this PC yet.', verified: [],
 };
+
+/**
+ * The same engine for Ubuntu 24.04 x86-64 (the official release asset; size and SHA-256 are the ones GitHub reports for it).
+ * It keeps the same id so everything else treats it as "the engine". It has NOT been downloaded or run on a Linux computer yet.
+ */
+export const SDCPP_RUNTIME_LINUX: LocalModel = {
+  ...SDCPP_RUNTIME,
+  files: [{
+    path: 'sd-master-1d0a58a-bin-Linux-Ubuntu-24.04-x86_64-vulkan.zip', extract: 'zip', bytes: 37028134,
+    url: 'https://github.com/leejet/stable-diffusion.cpp/releases/download/master-964-1d0a58a/sd-master-1d0a58a-bin-Linux-Ubuntu-24.04-x86_64-vulkan.zip',
+    sha256: 'bade142929edfa7aad56aba46376e55142d14390262b904f4a2deb3a03ceb21d',
+  }],
+  downloadGb: 0.04, note: 'Linux build (Ubuntu 24.04 x86-64, Vulkan). Needs libvulkan1 and a Vulkan driver (mesa-vulkan-drivers for AMD). Not tested on Linux yet.', verified: [],
+};
+
+/** The engine download for this system, or null when there is none (macOS). */
+export const sdcppRuntime = (os: OsId): LocalModel | null => (os === 'win32' ? SDCPP_RUNTIME : os === 'linux' ? SDCPP_RUNTIME_LINUX : null);
 
 const TIER_ORDER: LocalTier[] = ['none', 'experimental', 'lightweight', 'standard', 'higher'];
 
