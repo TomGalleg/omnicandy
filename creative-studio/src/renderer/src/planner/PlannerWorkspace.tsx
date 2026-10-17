@@ -1,19 +1,31 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { planDrift, PLANNER_TEMPLATES, progressOf, unmetDependencies, type ActivityEntry, type PlanItem, type PlannerProject, type ProjectSummary } from '@shared/planner';
 import type { ProjectManifest } from '@shared/types';
-import { AssetsTab, HandoffsTab, TasksTab } from './PlannerWork';
-import { ErrorLine, errMsg, lines, Section, StatusChip, useAction, when, type TabId, type TabProps } from './plannerUi';
+import { AssetsTab, HandoffsTab, ProposalCard, TasksTab } from './PlannerWork';
+import { needsYou } from '@shared/plannerView';
+import { ErrorLine, errMsg, lines, PlainWords, Section, StatusChip, useAction, when, type TabId, type TabProps } from './plannerUi';
 
 const api = () => window.studio.planner;
 const store = (() => { try { return window.localStorage; } catch { return undefined; } })();
 const LAST = 'cs-planner-project';
+// Advanced keeps the original six tabs. The plain view shows four areas that reuse the same screens: Plan (overview + plan), Tasks,
+// AI (the handoffs screen, rebuilt in a later phase) and Files (assets). Tab ids are shared so every existing go('handoffs') still works.
 const TABS: Array<[TabId, string]> = [['overview', 'Overview'], ['plan', 'Plan'], ['tasks', 'Tasks'], ['assets', 'Assets'], ['handoffs', 'Handoffs'], ['history', 'History']];
+const SIMPLE_TABS: Array<[TabId, string]> = [['plan', 'Plan'], ['tasks', 'Tasks'], ['handoffs', 'AI'], ['assets', 'Files']];
+const ADV = 'cs-planner-advanced';
+const readAdvanced = () => { try { return store?.getItem(ADV) === '1'; } catch { return false; } };
 
 export function PlannerWorkspace({ manifest, projectKey }: { manifest: ProjectManifest | null; projectKey: string | null }) {
   const [list, setList] = useState<ProjectSummary[] | null>(null);
   const [id, setId] = useState<string | null>(() => { try { return store?.getItem(LAST) ?? null; } catch { return null; } });
   const [project, setProject] = useState<PlannerProject | null>(null);
-  const [tab, setTab] = useState<TabId>('overview');
+  const [advanced, setAdvanced] = useState(readAdvanced);
+  const [sendSel, setSendSel] = useState<string[]>([]);
+  const [rawTab, setRawTab] = useState<TabId>('plan');
+  // The plain view has no Overview or History tab: those open Plan.
+  const tab: TabId = !advanced && (rawTab === 'overview' || rawTab === 'history') ? 'plan' : rawTab;
+  const setTab = setRawTab;
+  const toggleAdvanced = (on: boolean) => { setAdvanced(on); try { store?.setItem(ADV, on ? '1' : '0'); } catch { /* storage unavailable */ } };
   const [error, setError] = useState<string | null>(null);
   const idRef = useRef(id);
   idRef.current = id;
@@ -46,28 +58,41 @@ export function PlannerWorkspace({ manifest, projectKey }: { manifest: ProjectMa
   if (!list) return <div className="planner"><p className="pl-hint" style={{ padding: 16 }}>{error ?? 'Loading plans…'}</p></div>;
   if (!id || !project) return <ProjectPicker list={list} onOpen={pick} onChanged={refresh} error={error} />;
 
-  const props: TabProps = { p: project, reload: async () => { setProject(await api().get(project.id)); setList(await api().list()); }, go: setTab };
+  const props: TabProps = { p: project, reload: async () => { setProject(await api().get(project.id)); setList(await api().list()); }, go: setTab, sendSel, setSendSel, projectKey, projectName: manifest?.name };
+  const tabs = advanced ? TABS : SIMPLE_TABS;
+  const need = needsYou(project);
   return (
+    <PlainWords.Provider value={!advanced}>
     <div className="planner">
       <header className="pl-head">
         <button className="btn small" onClick={() => pick(null)} title="All plans">← All plans</button>
         <h2 title={project.title}>{project.title}</h2>
-        <span className="chip" title="Changes each time anything in the plan changes">revision {project.revision}</span>
-        <span className="chip" title="Changes only when the accepted plan changes">plan v{project.planRevision}</span>
+        {advanced && <><span className="chip" title="Changes each time anything in the plan changes">revision {project.revision}</span>
+        <span className="chip" title="Changes only when the accepted plan changes">plan v{project.planRevision}</span></>}
+        <label className="pl-check" title="Shows packages, claims, revisions and the full history"><input type="checkbox" checked={advanced} onChange={(e) => toggleAdvanced(e.target.checked)} />Advanced</label>
         <ExportImport p={project} onImported={(n) => { pick(n.id); void refresh(); }} />
       </header>
       <nav className="pl-tabs" role="tablist" aria-label="Planner sections">
-        {TABS.map(([t, label]) => <button key={t} role="tab" aria-selected={tab === t} onClick={() => setTab(t)}>{label}{t === 'handoffs' && attention(project) ? <span className="pl-badge">{attention(project)}</span> : null}{t === 'plan' && pendingProposals(project) ? <span className="pl-badge">{pendingProposals(project)}</span> : null}</button>)}
+        {tabs.map(([t, label]) => <button key={t} role="tab" aria-selected={tab === t} onClick={() => setTab(t)}>{label}{advanced && t === 'handoffs' && attention(project) ? <span className="pl-badge">{attention(project)}</span> : null}{advanced && t === 'plan' && pendingProposals(project) ? <span className="pl-badge">{pendingProposals(project)}</span> : null}</button>)}
       </nav>
+      {!advanced && need.total > 0 && (
+        <div className="pl-needs" role="status" aria-label="Waiting for you">
+          <strong>Needs you</strong>
+          {need.reports > 0 && <button className="btn small primary" onClick={() => setTab('handoffs')}>{need.reports} result{need.reports === 1 ? '' : 's'} to review</button>}
+          {need.suggestions > 0 && <button className="btn small" onClick={() => setTab('handoffs')}>{need.suggestions} suggestion{need.suggestions === 1 ? '' : 's'} to look at</button>}
+          {need.stalled > 0 && <button className="btn small" onClick={() => setTab('handoffs')}>{need.stalled} stalled task{need.stalled === 1 ? '' : 's'}</button>}
+        </div>
+      )}
       <div className="pl-body" role="tabpanel">
         {tab === 'overview' && <Overview {...props} />}
-        {tab === 'plan' && <PlanTab {...props} />}
+        {tab === 'plan' && (advanced ? <PlanTab {...props} /> : <><Overview {...props} /><PlanTab {...props} /></>)}
         {tab === 'tasks' && <TasksTab {...props} />}
         {tab === 'assets' && <AssetsTab {...props} manifest={manifest} projectKey={projectKey} />}
         {tab === 'handoffs' && <HandoffsTab {...props} />}
         {tab === 'history' && <HistoryTab {...props} />}
       </div>
     </div>
+    </PlainWords.Provider>
   );
 }
 
@@ -155,7 +180,8 @@ function Milestones({ p, reload }: { p: PlannerProject; reload: () => Promise<vo
   );
 }
 
-function Overview({ p, reload, go }: TabProps) {
+function Overview({ p, reload, go, setSendSel }: TabProps) {
+  const plain = useContext(PlainWords);
   const pr = progressOf(p.tasks);
   const [activity, setActivity] = useState<ActivityEntry[]>([]);
   useEffect(() => { void api().activity(p.id).then((a) => setActivity(a.slice(-8).reverse())).catch(() => {}); }, [p.id, p.revision]);
@@ -167,23 +193,24 @@ function Overview({ p, reload, go }: TabProps) {
       <Section title="Goal">
         <p>{p.goal || <span className="pl-hint">No goal yet. Add one in Plan.</span>}</p>
         <div className="pl-progress" role="progressbar" aria-valuenow={pr.percent} aria-valuemin={0} aria-valuemax={100} aria-label="Accepted tasks"><span style={{ width: `${pr.percent}%` }} /></div>
-        <p className="pl-hint">{pr.total ? `${pr.accepted} of ${pr.total} tasks accepted by you · ${pr.reported} reported done and waiting for your review · ${pr.inProgress} in progress` : 'No tasks yet.'}</p>
+        <p className="pl-hint">{pr.total ? (plain ? `${pr.accepted} of ${pr.total} tasks done · ${pr.reported} waiting for your review · ${pr.inProgress} in progress` : `${pr.accepted} of ${pr.total} tasks accepted by you · ${pr.reported} reported done and waiting for your review · ${pr.inProgress} in progress`) : 'No tasks yet.'}</p>
       </Section>
-      <Section title="Needs you">
+      {!plain && <Section title="Needs you">
         {!review.length && !pendingProposals(p) && !blocked.length && <p className="pl-hint">Nothing is waiting for you.</p>}
         {review.length > 0 && <p><button className="btn small primary" onClick={() => go('handoffs')}>{review.length} report(s) to review</button></p>}
         {pendingProposals(p) > 0 && <p><button className="btn small" onClick={() => go('plan')}>{pendingProposals(p)} suggested change(s)</button></p>}
         {blocked.map((t) => <p key={t.id} className="pl-warn">Blocked: {t.title}{t.progressNote ? ` - ${t.progressNote}` : ''}</p>)}
-      </Section>
+      </Section>}
+      {plain && blocked.length > 0 && <Section title="Blocked">{blocked.map((t) => <p key={t.id} className="pl-warn">{t.title}{t.progressNote ? ` - ${t.progressNote}` : ''}</p>)}</Section>}
       <Section title="Next actions">
         {!ready.length && <p className="pl-hint">No task is ready to hand off.</p>}
         <ul>{ready.slice(0, 6).map((t) => <li key={t.id}>{t.title}</li>)}</ul>
-        {ready.length > 0 && <button className="btn small" onClick={() => go('handoffs')}>Prepare a handoff…</button>}
+        {ready.length > 0 && <button className="btn small" onClick={() => { setSendSel?.(ready.map((t) => t.id)); go('handoffs'); }}>{plain ? 'Send to AI…' : 'Prepare a handoff…'}</button>}
       </Section>
       <Milestones p={p} reload={reload} />
-      <Section title="Recent activity">
+      {!plain && <Section title="Recent activity">
         <ul className="pl-log">{activity.map((a) => <li key={a.seq}><small>{when(a.at)}</small> <strong>{a.actor.name}</strong> {a.summary}</li>)}</ul>
-      </Section>
+      </Section>}
     </div>
   );
 }
@@ -278,35 +305,8 @@ function Brief({ p, reload }: { p: PlannerProject; reload: () => Promise<void> }
   );
 }
 
-function ProposalCard({ p, reload }: { p: PlannerProject; reload: () => Promise<void> }) {
-  const pending = p.proposals.filter((x) => x.status === 'pending');
-  const [off, setOff] = useState<Record<string, number[]>>({});
-  const a = useAction(reload);
-  if (!pending.length) return null;
-  const describe = (c: PlannerProject['proposals'][number]['changes'][number]) =>
-    c.op === 'add_item' ? `Add ${c.itemType}: ${c.title}${c.reason ? ` (why: ${c.reason})` : ''}` : c.op === 'add_task' ? `Add task: ${c.title}` : c.op === 'update_item' ? `Change ${p.items.find((i) => i.id === c.id)?.title ?? c.id}: ${Object.keys(c.patch).join(', ')}` : `Change task ${p.tasks.find((t) => t.id === c.id)?.title ?? c.id}: ${Object.keys(c.patch).join(', ')}`;
-  return (
-    <Section title="Suggested changes" hint="These are proposals. Nothing below is part of the plan until you accept it.">
-      {pending.map((pr) => {
-        const skip = off[pr.id] ?? [];
-        return (
-          <div key={pr.id} className="pl-proposal">
-            <p><strong>{pr.proposedBy.name}</strong> <small className="pl-hint">{when(pr.at)} · {pr.source === 'report' ? 'from a report' : 'from a connection'}</small></p>
-            {pr.note && <p className="pl-hint">{pr.note}</p>}
-            <ul>{pr.changes.map((c, i) => <li key={i}><label className="pl-check"><input type="checkbox" checked={!skip.includes(i)} onChange={(e) => setOff({ ...off, [pr.id]: e.target.checked ? skip.filter((x) => x !== i) : [...skip, i] })} />{describe(c)}</label></li>)}</ul>
-            <div className="pl-actions">
-              <button className="btn small primary" disabled={a.busy} onClick={() => void a.run(() => api().decideProposal(p.id, pr.id, true, pr.changes.map((_, i) => i).filter((i) => !skip.includes(i))))}>Accept selected</button>
-              <button className="btn small" disabled={a.busy} onClick={() => void a.run(() => api().decideProposal(p.id, pr.id, false))}>Reject</button>
-            </div>
-          </div>
-        );
-      })}
-      <ErrorLine error={a.error} />
-    </Section>
-  );
-}
-
 function PlanTab({ p, reload }: TabProps) {
+  const plain = useContext(PlainWords);
   const open = (t: PlanItem['type']) => p.items.filter((i) => i.type === t && (i.status === 'open' || i.status === 'accepted' || i.status === 'answered'));
   const group = (t: PlanItem['type'], title: string, hint: string, label: string) => (
     <Section title={title} hint={hint}>
@@ -317,7 +317,7 @@ function PlanTab({ p, reload }: TabProps) {
   );
   return (
     <div className="pl-stack">
-      <ProposalCard p={p} reload={reload} />
+      {!plain && <ProposalCard p={p} reload={reload} />}
       <Section title="Project brief" hint="Everything except the title is optional."><Brief key={p.id} p={p} reload={reload} /></Section>
       {group('requirement', 'Accepted requirements', 'What must be true of the result. Executors receive these.', 'Add a requirement')}
       {group('decision', 'Decisions', 'Choices already made, with the reason.', 'Add a decision')}
@@ -348,7 +348,7 @@ function HistoryTab({ p }: TabProps) {
       <Section title="Everything that happened" hint="Who or what made each change.">
         <ul className="pl-log">{activity.map((a) => <li key={a.seq}><small>{when(a.at)} · r{a.revision}</small> <strong>{a.actor.name}</strong> {a.summary} {a.planAffecting && <span className="chip">plan</span>}</li>)}</ul>
       </Section>
-      <Section title="Task statuses"><ul>{p.tasks.map((t) => <li key={t.id}>{t.title} <StatusChip status={t.status} /></li>)}</ul></Section>
+      <Section title="Task statuses"><ul>{p.tasks.map((t) => <li key={t.id}>{t.title} <StatusChip status={t.status} task={t} p={p} /></li>)}</ul></Section>
     </div>
   );
 }

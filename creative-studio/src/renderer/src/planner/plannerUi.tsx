@@ -1,27 +1,48 @@
-import { useCallback, useState, type ReactNode } from 'react';
-import { TASK_STATUS_LABEL, type PlannerProject, type TaskStatus } from '@shared/planner';
+import { createContext, useCallback, useContext, useState, type ReactNode } from 'react';
+import { TASK_STATUS_LABEL, type PlannerProject, type PlanTask, type TaskStatus } from '@shared/planner';
+import { displayStatus, plainError, SIMPLE_LABEL } from '@shared/plannerView';
 
 export type TabId = 'overview' | 'plan' | 'tasks' | 'assets' | 'handoffs' | 'history';
-export interface TabProps { p: PlannerProject; reload: () => Promise<void>; go: (t: TabId) => void }
+export interface TabProps {
+  p: PlannerProject; reload: () => Promise<void>; go: (t: TabId) => void;
+  /** Tasks chosen for Send to AI (kept here so a task's Send button can open the AI area with it ticked). */
+  sendSel?: string[]; setSendSel?: (ids: string[]) => void;
+  /** The CreateCraft project that is open now (a task can point at its workflow). */
+  projectKey?: string | null; projectName?: string;
+}
 
 /** Electron prefixes errors that cross the bridge; the user only needs the message. */
 export const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e)).replace(/^Error invoking remote method '[^']+':\s*(?:\w*Error:\s*)?/, '');
 
 /** Runs one user action: busy while it runs, the error shown in place, the project reloaded afterwards. */
 export function useAction(reload: () => Promise<void>) {
+  const plain = useContext(PlainWords);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const run = useCallback(async <T,>(fn: () => Promise<T>): Promise<T | undefined> => {
     setBusy(true); setError(null);
-    try { const r = await fn(); await reload(); return r; } catch (e) { setError(errMsg(e)); await reload().catch(() => {}); return undefined; } finally { setBusy(false); }
-  }, [reload]);
+    try { const r = await fn(); await reload(); return r; } catch (e) { setError(plain ? plainError(errMsg(e)) : errMsg(e)); await reload().catch(() => {}); return undefined; } finally { setBusy(false); }
+  }, [reload, plain]);
   return { busy, error, run, setError };
 }
 
 export function ErrorLine({ error }: { error: string | null }) { return error ? <p className="pl-error" role="alert">{error}</p> : null; }
 
 export const STATUS_TONE: Record<TaskStatus, string> = { todo: 'off', in_progress: 'warn', blocked: 'bad', reported: 'warn', revision: 'warn', accepted: 'ok', cancelled: 'off' };
-export function StatusChip({ status }: { status: TaskStatus }) { return <span className={`chip pl-status ${STATUS_TONE[status]}`}><span className="dot" />{TASK_STATUS_LABEL[status]}</span>; }
+/** True in the plain-words view (Advanced off): five task labels instead of the seven stored statuses. */
+export const PlainWords = createContext(false);
+
+export function StatusChip({ status, task, p, inColumn }: { status: TaskStatus; task?: PlanTask; p?: PlannerProject; inColumn?: boolean }) {
+  const plain = useContext(PlainWords);
+  if (plain && task && p) {
+    const d = displayStatus(task, p);
+    // On the board the column already says the label; only the explanation is left.
+    if (inColumn) return d.chip ? <span className={`pl-status-note ${d.tone}`}>{d.chip}</span> : null;
+    return <span className={`chip pl-status ${d.tone}`} title={d.chip}><span className="dot" />{d.label}{d.chip ? <small className="pl-hint"> {d.chip}</small> : null}</span>;
+  }
+  if (plain) return <span className={`chip pl-status ${STATUS_TONE[status]}`}><span className="dot" />{SIMPLE_LABEL[status]}</span>;
+  return <span className={`chip pl-status ${STATUS_TONE[status]}`}><span className="dot" />{TASK_STATUS_LABEL[status]}</span>;
+}
 
 export function Section({ title, hint, children, actions }: { title: string; hint?: string; children: ReactNode; actions?: ReactNode }) {
   return (

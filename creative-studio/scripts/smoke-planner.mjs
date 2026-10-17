@@ -62,6 +62,12 @@ try {
   await win.getByRole('button', { name: 'Create plan' }).click();
   await win.locator('.pl-head h2', { hasText: 'Garden club newsletter' }).waitFor();
   check('A mixed project is created from three templates', true);
+  const plainTabs = await win.getByRole('tab').allTextContents();
+  check('The plain view has four areas: Plan, Tasks, AI, Files', plainTabs.join('|') === 'Plan|Tasks|AI|Files', plainTabs.join('|'));
+  check('The plain view hides revision numbers', (await win.locator('.pl-head .chip').count()) === 0);
+  await win.screenshot({ path: path.join(shots, '150-planner-plain.png') });
+  // The plain four-area view is the default; this script drives the original six tabs, which the Advanced switch keeps.
+  await win.getByLabel('Advanced', { exact: true }).check();
 
   await tab(win, 'Plan');
   await win.getByLabel('Add a requirement').fill('The poster image is 2480x3508 pixels');
@@ -190,9 +196,77 @@ try {
   await tab(win, 'Tasks');
   check('The plan survives a restart with its statuses', (await win.locator('.pl-task').count()) >= taskCount && (await win.locator('.pl-task', { hasText: firstTitle }).first().textContent()).includes('Accepted'));
   check('The revised task stays revision-requested', (await win.locator('.pl-task', { hasText: secondTitle }).first().textContent()).includes('Revision requested'));
+
+  // ---- the plain view over the same restarted data
+  await win.getByLabel('Advanced', { exact: true }).uncheck();
+  await tab(win, 'Tasks');
+  await win.getByRole('button', { name: 'Board' }).click();
+  const cols = await win.locator('.pl-col h4').allTextContents();
+  check('The plain board has the five columns', cols.join('|') === 'To Do|In Progress|Needs Review|Done|Blocked', cols.join('|'));
+  await win.screenshot({ path: path.join(shots, '153-planner-plain-board.png') });
+  check('A finished task shows as Done in plain words', (await win.locator('.pl-col', { hasText: 'Done' }).locator('.pl-task', { hasText: firstTitle }).count()) === 1);
+  check('A task sent back shows as To Do with the change request', /Changes requested/.test(await win.locator('.pl-col', { hasText: 'To Do' }).locator('.pl-task', { hasText: secondTitle }).first().textContent()));
+  await tab(win, 'AI');
+  await win.locator('.pl-section h3', { hasText: 'Needs you' }).waitFor();
+  check('The AI area opens on one Needs you inbox', (await win.locator('.pl-section h3', { hasText: 'Needs you' }).count()) === 1);
+  await win.screenshot({ path: path.join(shots, '151-planner-plain-ai.png') });
+
+  // ---- plain Send to AI and Paste back
+  await tab(win, 'Tasks');
+  await win.getByRole('button', { name: 'List' }).click();
+  await win.locator('.pl-task', { hasText: secondTitle }).first().getByRole('button', { name: /Send (to AI|again)/ }).click();
+  await win.locator('.pl-section h3', { hasText: 'Send to AI' }).waitFor();
+  await win.getByRole('button', { name: 'Get the text to send' }).click();
+  await win.locator('.pl-sent').waitFor();
+  const sentText = await win.locator('.pl-sent pre.pl-raw').textContent();
+  check('Send to AI prepares the whole brief in one click', sentText.includes(secondTitle) && sentText.includes('Accepted requirements'));
+  const sentPkgId = /pkg_[a-z0-9]+/.exec(sentText)?.[0];
+  const sentTaskId = /task_[a-z0-9]+/.exec(sentText)?.[0];
+  await win.getByRole('button', { name: 'Get the text to send' }).click();
+  await win.locator('.pl-sent', { hasText: 'same brief' }).waitFor({ timeout: 5000 });
+  check('Sending the same tasks again reuses the brief', (await win.locator('.pl-sent pre.pl-raw').textContent()).includes(sentPkgId));
+  check('The send preview says how many rules the AI will see', /The AI will see \d+ of your \d+ agreed rules/.test(await win.locator('.pl-context').first().textContent()));
+  check('A request for ideas can be copied', (await win.locator('.pl-section h3', { hasText: 'Ask an AI for ideas' }).count()) === 1);
+  await win.screenshot({ path: path.join(shots, '152-planner-send.png') });
+
+  await win.getByLabel('Pasted answer', { exact: true }).fill('## Requirements\n- Smoke rule from a pasted answer\n## Tasks\n- Smoke task from a pasted answer\n  - It exists');
+  await win.getByRole('button', { name: 'Check what it says' }).click();
+  await win.locator('.pl-preview .chip', { hasText: 'changes the plan' }).waitFor();
+  check('Pasted suggestions are previewed and the plan-changing one is marked', true);
+  await win.getByRole('button', { name: 'Save for later' }).click();
+  await win.locator('.pl-proposal').waitFor();
+  await tab(win, 'Plan');
+  check('Saved suggestions are not in the plan yet', !(await win.locator('.pl-body').textContent()).includes('Smoke rule from a pasted answer'));
+  await tab(win, 'AI');
+  await win.locator('.pl-proposal').getByRole('button', { name: 'Accept selected' }).click();
+  await tab(win, 'Plan');
+  await win.getByText('Smoke rule from a pasted answer').first().waitFor({ timeout: 5000 });
+  check('After the owner accepts, the rule is in the plan', true);
+
+  await tab(win, 'AI');
+  await win.getByLabel('Pasted answer', { exact: true }).fill(`## Outcome\nComplete\n## Work performed\nDid it for the smoke test. Package ${sentPkgId} task ${sentTaskId}\n## Verification\n- the thing passed`);
+  await win.getByRole('button', { name: 'Check what it says' }).click();
+  await win.getByRole('button', { name: 'Save as the result' }).click();
+  await tab(win, 'Tasks');
+  await win.getByRole('button', { name: 'Board' }).click();
+  check('A pasted result puts the task in Needs Review, not Done', (await win.locator('.pl-col', { hasText: 'Needs Review' }).locator('.pl-task', { hasText: secondTitle }).count()) === 1);
+  await win.locator('.pl-col', { hasText: 'Needs Review' }).locator('.pl-task', { hasText: secondTitle }).getByRole('button', { name: 'Accept as done' }).click();
+  await win.locator('.pl-col', { hasText: 'Done' }).locator('.pl-task', { hasText: secondTitle }).waitFor({ timeout: 5000 });
+  check('Accepting the result inline moves the task to Done', true);
+
+  // ---- a task can point at the workflow of the open CreateCraft project (read-only status, nothing started)
+  await win.getByRole('button', { name: 'List' }).click();
+  await win.getByLabel('Task', { exact: true }).fill('Run the poster workflow');
+  const wfValue = await win.locator('label:has-text("Uses (optional)") option', { hasText: 'The workflow of' }).getAttribute('value');
+  await win.getByLabel('Uses (optional)').selectOption(wfValue);
+  await win.getByRole('button', { name: 'Add task', exact: true }).click();
+  const wfTask = win.locator('.pl-task', { hasText: 'Run the poster workflow' }).first();
+  await wfTask.waitFor();
+  await win.screenshot({ path: path.join(shots, '154-planner-workflow-task.png') });
+  check('A task can point at the open project\'s workflow and shows its state read-only', (await wfTask.locator('.chip', { hasText: 'Workflow' }).count()) === 1 && /Workflow: (Not run yet|Running|Paused|Waiting|The last run)/.test(await wfTask.textContent()), (await wfTask.textContent()).slice(0, 160));
 } catch (e) {
   fails++;
-  console.log('FAIL  smoke crashed -', e instanceof Error ? e.message.split('\n')[0] : String(e));
+  console.log('FAIL  smoke crashed -', e instanceof Error ? e.message.split('\n').slice(0, 3).join(' | ') : String(e));
   await win.screenshot({ path: path.join(shots, 'planner-smoke-failure.png') }).catch(() => {});
 } finally {
   executor?.close();

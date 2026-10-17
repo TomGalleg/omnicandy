@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useContext, useEffect, useMemo, useState } from 'react';
 import { EDITOR_APPS } from '@shared/appEditors';
 import {
   isClaimLive, PRIORITIES, type AppRef, type ExecPackage, type PlanAsset, type PlannerProject, type PlanReport, type PlanTask, type Priority, type ReportDraft, uncoveredChecks, unmetDependencies,
@@ -7,13 +7,16 @@ import type { PackageView, PlannerConnectionInfo } from '@shared/plannerApi';
 import { PLANNER_CLIENTS } from '@shared/plannerClients';
 import { parseReportText, type ReportImportPreview } from '@shared/plannerHandoff';
 import type { ProjectManifest } from '@shared/types';
-import { CopyButton, ErrorLine, errMsg, lines, Section, StatusChip, useAction, when, type TabProps } from './plannerUi';
+import { describeWorkflowRun, displayStatus, SIMPLE_STATUSES } from '@shared/plannerView';
+import { classifyPaste, changesThePlan, describeChange, type SuggestionPreview } from '@shared/plannerPaste';
+import { AskPanel, SendPanel } from './PlannerSend';
+import { CopyButton, ErrorLine, errMsg, lines, PlainWords, Section, StatusChip, useAction, when, type TabProps } from './plannerUi';
 
 const api = () => window.studio.planner;
 const NATIVE = Object.values(EDITOR_APPS).map((a) => ({ id: a.id, name: a.name }));
 
 // ============================================================================================================== tasks
-function TaskForm({ p, reload, task, onDone }: { p: PlannerProject; reload: () => Promise<void>; task?: PlanTask; onDone?: () => void }) {
+function TaskForm({ p, reload, task, onDone, projectKey, projectName }: { p: PlannerProject; reload: () => Promise<void>; task?: PlanTask; onDone?: () => void; projectKey?: string | null; projectName?: string }) {
   const [title, setTitle] = useState(task?.title ?? '');
   const [description, setDescription] = useState(task?.description ?? '');
   const [priority, setPriority] = useState<Priority>(task?.priority ?? 'normal');
@@ -45,7 +48,8 @@ function TaskForm({ p, reload, task, onDone }: { p: PlannerProject; reload: () =
           <select value={app} onChange={(e) => setApp(e.target.value)}>
             <option value="">Nothing specific</option>
             <optgroup label="CreateCraft apps">{NATIVE.map((n) => <option key={n.id} value={`native:${n.id}`}>{n.name}</option>)}</optgroup>
-            {app && !app.startsWith('native:') && <option value={app}>{app}</option>}
+            {projectKey && <optgroup label="Workflow"><option value={`workflow:${projectKey}`}>The workflow of {projectName ?? 'this CreateCraft project'}</option></optgroup>}
+            {app && !app.startsWith('native:') && app !== `workflow:${projectKey}` && <option value={app}>{app.startsWith('workflow:') ? 'A workflow in another CreateCraft project' : app}</option>}
           </select>
         </label>
       </div>
@@ -62,52 +66,92 @@ function TaskForm({ p, reload, task, onDone }: { p: PlannerProject; reload: () =
   );
 }
 
-function TaskRow({ t, p, reload }: { t: PlanTask; p: PlannerProject; reload: () => Promise<void> }) {
+/** Read-only progress of the workflow a task points at. It never starts, approves or accepts anything: that stays in the Workflow tab and with the owner. */
+function WorkflowStatus({ appId, projectKey }: { appId: string; projectKey?: string | null }) {
+  const [line, setLine] = useState<string | null>(null);
+  const here = !!projectKey && appId === projectKey;
+  useEffect(() => {
+    if (!here) return;
+    let live = true;
+    const read = () => { void window.studio.workflowRunState().then((r) => { if (live) setLine(describeWorkflowRun(r)); }).catch(() => {}); };
+    read();
+    const off = window.studio.onWorkflowEvent(read);
+    return () => { live = false; off(); };
+  }, [here]);
+  return <p className="pl-hint">{here ? `Workflow: ${line ?? 'checking…'}` : 'Workflow in another CreateCraft project. Open that project to see its progress.'}</p>;
+}
+
+function TaskRow({ t, p, reload, onSend, projectKey, projectName, inColumn }: { t: PlanTask; p: PlannerProject; reload: () => Promise<void>; onSend?: () => void; projectKey?: string | null; projectName?: string; inColumn?: boolean }) {
+  const plain = useContext(PlainWords);
   const [edit, setEdit] = useState(false);
   const a = useAction(reload);
   const waits = unmetDependencies(p, t);
   const live = isClaimLive(t.claim, new Date());
+  const ds = displayStatus(t, p);
+  const result = plain ? p.reports.find((r) => r.taskId === t.id && r.status === 'submitted') : undefined;
+  const pkg = t.packageId ? p.packages.find((k) => k.id === t.packageId) : undefined;
+  // Cancelling a package would also drop the other tasks' claims, so Unsend is offered only while nothing in it has started.
+  const sentOnly = !!pkg && pkg.state === 'open' && !live && t.status === 'todo' && !p.tasks.some((o) => o.packageId === pkg.id && (isClaimLive(o.claim, new Date()) || o.status === 'reported' || o.status === 'in_progress'));
   const st = (s: 'todo' | 'accepted' | 'cancelled' | 'blocked') => a.run(() => api().setTaskStatus(p.id, t.id, s, '', t.rev));
-  if (edit) return <li className="pl-task"><TaskForm p={p} reload={reload} task={t} onDone={() => setEdit(false)} /></li>;
+  if (edit) return <li className="pl-task"><TaskForm p={p} reload={reload} task={t} onDone={() => setEdit(false)} projectKey={projectKey} projectName={projectName} /></li>;
+  const idle = t.status !== 'accepted' && t.status !== 'cancelled' && t.status !== 'reported';
   return (
     <li className="pl-task">
-      <div><strong>{t.title}</strong> <StatusChip status={t.status} /> <span className="chip">{t.priority}</span>{t.appRef && <span className="chip">{t.appRef.kind === 'native' ? EDITOR_APPS[t.appRef.id as keyof typeof EDITOR_APPS]?.name ?? t.appRef.id : t.appRef.id}</span>}</div>
+      <div><strong>{t.title}</strong> <StatusChip status={t.status} task={t} p={p} inColumn={plain && inColumn} /> {(!plain || t.priority !== 'normal') && <span className="chip">{t.priority}</span>}{t.appRef && <span className="chip">{t.appRef.kind === 'native' ? EDITOR_APPS[t.appRef.id as keyof typeof EDITOR_APPS]?.name ?? t.appRef.id : t.appRef.kind === 'workflow' ? 'Workflow' : t.appRef.id}</span>}</div>
+      {t.appRef?.kind === 'workflow' && <WorkflowStatus appId={t.appRef.id} projectKey={projectKey} />}
       {t.description && <p>{t.description}</p>}
-      {waits.length > 0 && <p className="pl-hint">Waiting for: {waits.map((w) => w.title).join(', ')}</p>}
-      {live && <p className="pl-hint">Claimed by {t.claim?.executor.name} until {when(t.claim?.leaseUntil ?? '')}.{t.progressNote ? ` ${t.progressNote}` : ''}</p>}
-      {!live && t.progressNote && <p className="pl-hint">{t.progressNote}</p>}
-      {t.completionChecks.length > 0 && <ul className="pl-checks">{t.completionChecks.map((c) => <li key={c.id}><span className="chip">{c.kind}</span> {c.text}</li>)}</ul>}
+      {!plain && waits.length > 0 && <p className="pl-hint">Waiting for: {waits.map((w) => w.title).join(', ')}</p>}
+      {!plain && live && <p className="pl-hint">Claimed by {t.claim?.executor.name} until {when(t.claim?.leaseUntil ?? '')}.{t.progressNote ? ` ${t.progressNote}` : ''}</p>}
+      {(plain ? (!live && t.status !== 'revision' && t.status !== 'blocked') || live : !live) && t.progressNote && <p className="pl-hint">{t.progressNote}</p>}
+      {t.completionChecks.length > 0 && <ul className="pl-checks">{t.completionChecks.map((c) => <li key={c.id}>{!plain && <span className="chip">{c.kind}</span>} {c.text}</li>)}</ul>}
       <div className="pl-actions">
         <button className="btn small" onClick={() => setEdit(true)}>Edit</button>
-        {t.status === 'reported' && <span className="pl-hint">Review the report in Handoffs.</span>}
-        {live && <button className="btn small" disabled={a.busy} onClick={() => void a.run(() => api().releaseClaim(p.id, t.id))}>Release claim</button>}
-        {t.status !== 'accepted' && t.status !== 'cancelled' && t.status !== 'reported' && !live && <button className="btn small" disabled={a.busy} title="Mark it done yourself, without a report" onClick={() => void st('accepted')}>Mark done</button>}
-        {(t.status === 'accepted' || t.status === 'cancelled') && <button className="btn small" disabled={a.busy} onClick={() => void st('todo')}>Reopen</button>}
-        {t.status !== 'cancelled' && t.status !== 'accepted' && <button className="btn small ghost" disabled={a.busy} onClick={() => void st('cancelled')}>Cancel task</button>}
+        {t.status === 'reported' && !plain && <span className="pl-hint">Review the report in Handoffs.</span>}
+        {plain && onSend && (t.status === 'todo' || t.status === 'revision') && !live && <button className="btn small primary" onClick={onSend}>{pkg?.state === 'open' ? 'Send again' : 'Send to AI'}</button>}
+        {live && <button className="btn small" disabled={a.busy} title={plain ? 'Stop waiting for the AI and put the task back on your list' : undefined} onClick={() => void a.run(() => api().releaseClaim(p.id, t.id))}>{plain ? 'Take back' : 'Release claim'}</button>}
+        {plain && (ds.stalled || ds.chip === 'Partly done') && <button className="btn small" disabled={a.busy} title="Put it back on your list so it can be sent again" onClick={() => void st('todo')}>Take back</button>}
+        {plain && t.status === 'blocked' && !live && <button className="btn small" disabled={a.busy} title="The problem is solved: put it back on your list" onClick={() => void st('todo')}>Unblock</button>}
+        {plain && sentOnly && <button className="btn small" disabled={a.busy} title="Cancels the brief you sent; tasks in it go back to To Do" onClick={() => void a.run(() => api().cancelPackage(p.id, pkg.id))}>Unsend{pkg.tasks.length > 1 ? ` (${pkg.tasks.length} tasks)` : ''}</button>}
+        {idle && !live && !ds.stalled && <button className="btn small" disabled={a.busy} title="Mark it done yourself, without a report" onClick={() => void st('accepted')}>Mark done</button>}
+        {plain && ds.stalled && <button className="btn small" disabled={a.busy} title="Mark it done yourself" onClick={() => void st('accepted')}>Mark done</button>}
+        {(t.status === 'accepted' || t.status === 'cancelled') && <button className="btn small" disabled={a.busy} onClick={() => void st('todo')}>{plain && t.status === 'cancelled' ? 'Bring back' : 'Reopen'}</button>}
+        {t.status !== 'cancelled' && t.status !== 'accepted' && <button className="btn small ghost" disabled={a.busy} onClick={() => void st('cancelled')}>{plain ? 'Remove' : 'Cancel task'}</button>}
         {!t.packageId && <button className="btn small ghost danger" disabled={a.busy} onClick={() => void a.run(() => api().removeTask(p.id, t.id))}>Delete</button>}
       </div>
+      {result && <ReportCard r={result} p={p} reload={reload} />}
       <ErrorLine error={a.error} />
     </li>
   );
 }
 
-export function TasksTab({ p, reload }: TabProps) {
+export function TasksTab({ p, reload, go, setSendSel, projectKey, projectName }: TabProps) {
+  const plain = useContext(PlainWords);
   const [view, setView] = useState<'list' | 'board'>('list');
+  const [showRemoved, setShowRemoved] = useState(false);
   const cols: Array<[string, PlanTask['status'][]]> = [['To do', ['todo', 'revision']], ['In progress', ['in_progress']], ['Blocked', ['blocked']], ['Reported, awaiting review', ['reported']], ['Accepted', ['accepted']]];
+  const now = new Date();
+  const shown = plain && !showRemoved ? p.tasks.filter((t) => t.status !== 'cancelled') : p.tasks;
   return (
     <div className="pl-stack">
       <Section title="Tasks" actions={<div className="pl-actions"><button className="btn small" aria-pressed={view === 'list'} onClick={() => setView('list')}>List</button><button className="btn small" aria-pressed={view === 'board'} onClick={() => setView('board')}>Board</button></div>}
-        hint="A task is done when you accept it. An executor's report only says the work is finished.">
+        hint={plain ? 'A task is Done when you say so. When an AI finishes, it moves to Needs Review and waits for you.' : "A task is done when you accept it. An executor's report only says the work is finished."}>
         {!p.tasks.length && <p className="pl-hint">No tasks yet.</p>}
-        {view === 'list' ? <ul className="pl-tasks">{p.tasks.map((t) => <TaskRow key={`${t.id}:${t.rev}`} t={t} p={p} reload={reload} />)}</ul> : (
+        {plain && p.tasks.some((t) => t.status === 'cancelled') && <label className="pl-check"><input type="checkbox" checked={showRemoved} onChange={(e) => setShowRemoved(e.target.checked)} />Show removed tasks</label>}
+        {view === 'list' ? <ul className="pl-tasks">{shown.map((t) => <TaskRow key={`${t.id}:${t.rev}`} t={t} p={p} reload={reload} projectKey={projectKey} projectName={projectName} onSend={() => { setSendSel?.([t.id]); go('handoffs'); }} />)}</ul> : plain ? (
+          <div className="pl-board">
+            {SIMPLE_STATUSES.map((label) => (
+              <div key={label} className="pl-col"><h4>{label}</h4><ul className="pl-tasks">{shown.filter((t) => displayStatus(t, p, now).label === label && !displayStatus(t, p, now).removed).map((t) => <TaskRow key={`${t.id}:${t.rev}`} inColumn t={t} p={p} reload={reload} onSend={() => { setSendSel?.([t.id]); go('handoffs'); }} />)}</ul></div>
+            ))}
+          </div>
+        ) : (
           <div className="pl-board">
             {cols.map(([label, sts]) => (
-              <div key={label} className="pl-col"><h4>{label}</h4><ul className="pl-tasks">{p.tasks.filter((t) => sts.includes(t.status)).map((t) => <TaskRow key={`${t.id}:${t.rev}`} t={t} p={p} reload={reload} />)}</ul></div>
+              <div key={label} className="pl-col"><h4>{label}</h4><ul className="pl-tasks">{p.tasks.filter((t) => sts.includes(t.status)).map((t) => <TaskRow key={`${t.id}:${t.rev}`} t={t} p={p} reload={reload} onSend={() => { setSendSel?.([t.id]); go('handoffs'); }} />)}</ul></div>
             ))}
           </div>
         )}
       </Section>
-      <Section title="Add a task"><TaskForm p={p} reload={reload} /></Section>
+      <Section title="Add a task"><TaskForm p={p} reload={reload} projectKey={projectKey} projectName={projectName} /></Section>
     </div>
   );
 }
@@ -157,7 +201,7 @@ export function AssetsTab({ p, reload, manifest, projectKey }: TabProps & { mani
 // ============================================================================================================== handoffs
 const outcomeText: Record<PlanReport['outcome'], string> = { complete: 'Says it is complete', partial: 'Partly done', blocked: 'Blocked', failed: 'Failed' };
 
-function ReportCard({ r, p, reload }: { r: PlanReport; p: PlannerProject; reload: () => Promise<void> }) {
+export function ReportCard({ r, p, reload }: { r: PlanReport; p: PlannerProject; reload: () => Promise<void> }) {
   const task = p.tasks.find((t) => t.id === r.taskId);
   const pkg = p.packages.find((k) => k.id === r.packageId);
   const ptask = pkg?.tasks.find((t) => t.id === r.taskId);
@@ -219,7 +263,7 @@ function PackageCard({ k, p, reload }: { k: ExecPackage; p: PlannerProject; relo
     <article className={`pl-package ${k.state}`}>
       <header><strong>Package {k.number}</strong> <span className="chip">{k.state}</span> <span className="chip">plan v{k.planRevision}</span>{outdated && k.state === 'open' && <span className="chip bad">plan has changed since</span>} <small className="pl-hint">{when(k.createdAt)} · id <code>{k.id}</code></small></header>
       <p>{k.objective}</p>
-      <ul>{k.tasks.map((t) => { const cur = p.tasks.find((x) => x.id === t.id); return <li key={t.id}>{t.title} {cur && <StatusChip status={cur.status} />}{cur && isClaimLive(cur.claim, new Date()) ? <small className="pl-hint"> claimed by {cur.claim?.executor.name}</small> : null}</li>; })}</ul>
+      <ul>{k.tasks.map((t) => { const cur = p.tasks.find((x) => x.id === t.id); return <li key={t.id}>{t.title} {cur && <StatusChip status={cur.status} task={cur} p={p} />}{cur && isClaimLive(cur.claim, new Date()) ? <small className="pl-hint"> claimed by {cur.claim?.executor.name}</small> : null}</li>; })}</ul>
       <div className="pl-actions">
         <button className="btn small" onClick={() => void a.run(load)}>{view ? 'Refresh' : 'Show / copy'}</button>
         {k.state === 'open' && <button className="btn small ghost" disabled={a.busy} onClick={() => void a.run(() => api().cancelPackage(p.id, k.id))}>Cancel package</button>}
@@ -237,48 +281,84 @@ function PackageCard({ k, p, reload }: { k: ExecPackage; p: PlannerProject; relo
 }
 
 function PastePanel({ p, reload }: { p: PlannerProject; reload: () => Promise<void> }) {
+  const plain = useContext(PlainWords);
   const [text, setText] = useState('');
   const [prev, setPrev] = useState<ReportImportPreview | null>(null);
+  const [sugg, setSugg] = useState<SuggestionPreview | null>(null);
+  const [skip, setSkip] = useState<number[]>([]);
+  const [unclear, setUnclear] = useState<string | null>(null);
   const [pkgId, setPkgId] = useState('');
   const [taskId, setTaskId] = useState('');
   const [draft, setDraft] = useState<ReportDraft | null>(null);
   const [done, setDone] = useState<string | null>(null);
   const a = useAction(reload);
   const open = p.packages.filter((k) => k.state === 'open');
-  const preview = () => {
-    const r = parseReportText(text);
-    setPrev(r); setDraft(r.draft ?? null); setDone(null);
+  const readReport = (r: ReportImportPreview) => {
+    setPrev(r); setDraft(r.draft ?? null);
     const k = open.find((x) => x.id === r.packageId) ?? (open.length === 1 ? open[0] : undefined);
     setPkgId(k?.id ?? '');
     setTaskId(k?.tasks.find((t) => t.id === r.taskId)?.id ?? (k?.tasks.length === 1 ? k.tasks[0]?.id ?? '' : ''));
+  };
+  const preview = () => {
+    setDone(null); setSugg(null); setPrev(null); setDraft(null); setUnclear(null); setSkip([]);
+    if (!plain) { readReport(parseReportText(text)); return; }
+    const c = classifyPaste(text);
+    if (c.kind === 'report' && c.report) readReport(c.report);
+    else if (c.kind === 'suggestions' && c.suggestions) setSugg(c.suggestions);
+    else setUnclear(`${c.why} A task result needs "Work performed" (or the JSON). Plan suggestions need headings such as Requirements, Decisions, Tasks, Questions or Ideas.`);
   };
   const pkg = open.find((k) => k.id === pkgId);
   const apply = () => a.run(async () => {
     if (!prev || !draft) return;
     const r = await api().importReport(p.id, { packageId: pkgId, taskId, executor: prev.executor ?? { kind: 'other', name: 'Pasted report' }, report: draft, uncertain: prev.uncertain, rawText: text });
-    setDone(r.duplicate ? 'This exact report was already recorded; nothing changed.' : 'Report recorded. Review it above.');
+    setDone(r.duplicate ? 'This exact result was already recorded; nothing changed.' : plain ? 'Saved. The task now says Needs Review: you decide whether it is done.' : 'Report recorded. Review it above.');
     setPrev(null); setDraft(null); setText('');
   });
+  const addSuggestions = (accept: boolean) => a.run(async () => {
+    if (!sugg) return;
+    const pr = await api().importSuggestions(p.id, { proposer: sugg.proposer, note: sugg.note, changes: sugg.changes, rawText: text });
+    if (accept) await api().decideProposal(p.id, pr.id, true, sugg.changes.map((_, i) => i).filter((i) => !skip.includes(i)));
+    setDone(accept ? 'Added to your plan.' : 'Saved under Needs you. Nothing is in your plan until you accept it.');
+    setSugg(null); setText('');
+  });
+  const picked = sugg ? sugg.changes.filter((_, i) => !skip.includes(i)) : [];
   return (
     <div className="pl-form">
-      <textarea aria-label="Pasted report" rows={6} value={text} onChange={(e) => { setText(e.target.value); setPrev(null); }} placeholder="Paste a report from Claude Code, Cowork, ChatGPT or Gemini: the JSON, or a Markdown report." />
-      <div><button className="btn" disabled={!text.trim()} onClick={preview}>Preview what it says</button></div>
+      <textarea aria-label={plain ? 'Pasted answer' : 'Pasted report'} rows={6} value={text} onChange={(e) => { setText(e.target.value); setPrev(null); setSugg(null); setUnclear(null); }}
+        placeholder={plain ? 'Paste what the AI said: a task result, or ideas for your plan.' : 'Paste a report from Claude Code, Cowork, ChatGPT or Gemini: the JSON, or a Markdown report.'} />
+      <div><button className="btn" disabled={!text.trim()} onClick={preview}>{plain ? 'Check what it says' : 'Preview what it says'}</button></div>
       {done && <p role="status" className="pl-hint">{done}</p>}
+      {unclear && <p className="pl-warn" role="status">{unclear}</p>}
+      {sugg && (
+        <div className="pl-preview">
+          <p className="pl-hint">Read as suggestions for your plan{sugg.proposer ? ` from ${sugg.proposer.name}` : ''}. Nothing is added until you press a button.</p>
+          {sugg.errors.map((e) => <p key={e} className="pl-error">{e}</p>)}
+          {sugg.uncertain.length > 0 && <div className="pl-warn"><strong>Uncertain:</strong><ul>{sugg.uncertain.map((u) => <li key={u}>{u}</li>)}</ul></div>}
+          <ul>{sugg.changes.map((c, i) => (
+            <li key={i}><label className="pl-check"><input type="checkbox" checked={!skip.includes(i)} onChange={(e) => setSkip(e.target.checked ? skip.filter((x) => x !== i) : [...skip, i])} />{describeChange(c)} {changesThePlan(c) ? <span className="chip warn">changes the plan</span> : <span className="chip off">adds to your list</span>}</label></li>
+          ))}</ul>
+          <div className="pl-actions">
+            <button className="btn primary" disabled={a.busy || !picked.length} onClick={() => void addSuggestions(true)}>Add selected to my plan</button>
+            <button className="btn" disabled={a.busy} onClick={() => void addSuggestions(false)}>Save for later</button>
+          </div>
+        </div>
+      )}
       {prev && (
         <div className="pl-preview">
-          <p className="pl-hint">Read as {prev.format}. Nothing is applied until you press Apply.</p>
+          <p className="pl-hint">{plain ? `Read as the result of a task (${prev.format}). Nothing is saved until you press the button.` : `Read as ${prev.format}. Nothing is applied until you press Apply.`}</p>
           {prev.errors.map((e) => <p key={e} className="pl-error">{e}</p>)}
           {prev.uncertain.length > 0 && <div className="pl-warn"><strong>Uncertain:</strong><ul>{prev.uncertain.map((u) => <li key={u}>{u}</li>)}</ul></div>}
           {draft && (
             <>
+              {!open.length && <p className="pl-warn">No task is waiting for a result. Send a task to an AI first.</p>}
               <div className="pl-two">
-                <label>Package<select value={pkgId} onChange={(e) => { setPkgId(e.target.value); setTaskId(''); }}><option value="">Choose…</option>{open.map((k) => <option key={k.id} value={k.id}>Package {k.number}: {k.objective.slice(0, 50)}</option>)}</select></label>
+                <label>{plain ? 'Which brief' : 'Package'}<select value={pkgId} onChange={(e) => { setPkgId(e.target.value); setTaskId(''); }}><option value="">Choose…</option>{open.map((k) => <option key={k.id} value={k.id}>{plain ? k.tasks.map((t) => t.title).join(', ').slice(0, 60) : `Package ${k.number}: ${k.objective.slice(0, 50)}`}</option>)}</select></label>
                 <label>Task<select value={taskId} onChange={(e) => setTaskId(e.target.value)}><option value="">Choose…</option>{pkg?.tasks.map((t) => <option key={t.id} value={t.id}>{t.title}</option>)}</select></label>
               </div>
               <label>Outcome<select value={draft.outcome} onChange={(e) => setDraft({ ...draft, outcome: e.target.value as ReportDraft['outcome'] })}>{(['complete', 'partial', 'blocked', 'failed'] as const).map((o) => <option key={o} value={o}>{o}</option>)}</select></label>
               <p><strong>Work performed:</strong> {draft.workPerformed}</p>
-              <p className="pl-hint">{draft.verification.length} verification line(s) ({draft.verification.filter((v) => v.result === 'pass').length} pass, {draft.verification.filter((v) => v.result === 'fail').length} fail, {draft.verification.filter((v) => v.result === 'not_run').length} not run) · {draft.outputs.length} output(s) · {draft.proposedChanges.length} suggested change(s)</p>
-              <button className="btn primary" disabled={a.busy || !pkgId || !taskId} onClick={() => void apply()}>Apply as a report</button>
+              <p className="pl-hint">{draft.verification.length} check line(s) ({draft.verification.filter((v) => v.result === 'pass').length} pass, {draft.verification.filter((v) => v.result === 'fail').length} fail, {draft.verification.filter((v) => v.result === 'not_run').length} not run) · {draft.outputs.length} output(s) · {draft.proposedChanges.length} suggested change(s)</p>
+              <button className="btn primary" disabled={a.busy || !pkgId || !taskId} onClick={() => void apply()}>{plain ? 'Save as the result' : 'Apply as a report'}</button>
             </>
           )}
         </div>
@@ -318,13 +398,74 @@ function ConnectPanel() {
   );
 }
 
-export function HandoffsTab({ p, reload }: TabProps) {
+export function ProposalCard({ p, reload }: { p: PlannerProject; reload: () => Promise<void> }) {
+  const pending = p.proposals.filter((x) => x.status === 'pending');
+  const [off, setOff] = useState<Record<string, number[]>>({});
+  const a = useAction(reload);
+  if (!pending.length) return null;
+  const describe = (c: PlannerProject['proposals'][number]['changes'][number]) =>
+    c.op === 'add_item' ? `Add ${c.itemType}: ${c.title}${c.reason ? ` (why: ${c.reason})` : ''}` : c.op === 'add_task' ? `Add task: ${c.title}` : c.op === 'update_item' ? `Change ${p.items.find((i) => i.id === c.id)?.title ?? c.id}: ${Object.keys(c.patch).join(', ')}` : `Change task ${p.tasks.find((t) => t.id === c.id)?.title ?? c.id}: ${Object.keys(c.patch).join(', ')}`;
+  return (
+    <Section title="Suggested changes" hint="These are proposals. Nothing below is part of the plan until you accept it.">
+      {pending.map((pr) => {
+        const skip = off[pr.id] ?? [];
+        return (
+          <div key={pr.id} className="pl-proposal">
+            <p><strong>{pr.proposedBy.name}</strong> <small className="pl-hint">{when(pr.at)} · {pr.source === 'report' ? 'from a report' : pr.source === 'pasted' ? 'pasted by you' : pr.source === 'home' ? 'from the plan you approved on Home' : 'from a connection'}</small></p>
+            {pr.note && <p className="pl-hint">{pr.note}</p>}
+            <ul>{pr.changes.map((c, i) => <li key={i}><label className="pl-check"><input type="checkbox" checked={!skip.includes(i)} onChange={(e) => setOff({ ...off, [pr.id]: e.target.checked ? skip.filter((x) => x !== i) : [...skip, i] })} />{describe(c)}</label></li>)}</ul>
+            <div className="pl-actions">
+              <button className="btn small primary" disabled={a.busy} onClick={() => void a.run(() => api().decideProposal(p.id, pr.id, true, pr.changes.map((_, i) => i).filter((i) => !skip.includes(i))))}>Accept selected</button>
+              <button className="btn small" disabled={a.busy} onClick={() => void a.run(() => api().decideProposal(p.id, pr.id, false))}>Reject</button>
+            </div>
+          </div>
+        );
+      })}
+      <ErrorLine error={a.error} />
+    </Section>
+  );
+}
+
+/** One queue for everything that waits for the owner: results to review, suggestions to look at, stalled tasks to take back. */
+function ReviewInbox({ p, reload }: { p: PlannerProject; reload: () => Promise<void> }) {
+  const results = p.reports.filter((r) => r.status === 'submitted');
+  const pending = p.proposals.filter((x) => x.status === 'pending');
+  const now = new Date();
+  const stalled = p.tasks.filter((t) => displayStatus(t, p, now).stalled);
+  const a = useAction(reload);
+  const empty = !results.length && !pending.length && !stalled.length;
+  return (
+    <Section title="Needs you" hint="An AI saying it is finished is not the same as you saying it is done. Nothing changes until you decide.">
+      {empty && <p className="pl-hint">Nothing is waiting for you.</p>}
+      {stalled.map((t) => (
+        <p key={t.id} className="pl-warn">{t.title}: no result arrived and the AI stopped working on it. <button className="btn small" disabled={a.busy} onClick={() => void a.run(() => api().setTaskStatus(p.id, t.id, 'todo', '', t.rev))}>Take back</button></p>
+      ))}
+      {results.map((r) => <ReportCard key={r.id} r={r} p={p} reload={reload} />)}
+      <ProposalCard p={p} reload={reload} />
+      <ErrorLine error={a.error} />
+    </Section>
+  );
+}
+
+export function HandoffsTab({ p, reload, sendSel, setSendSel }: TabProps) {
   const ready = p.tasks.filter((t) => ['todo', 'revision'].includes(t.status) && !isClaimLive(t.claim, new Date()));
   const [sel, setSel] = useState<string[]>([]);
   const [objective, setObjective] = useState('');
   const a = useAction(reload);
+  const plain = useContext(PlainWords);
   const waiting = p.reports.filter((r) => r.status === 'submitted');
   const done = p.reports.filter((r) => r.status !== 'submitted');
+  if (plain) {
+    return (
+      <div className="pl-stack">
+        <ReviewInbox p={p} reload={reload} />
+        <SendPanel p={p} reload={reload} sel={sendSel ?? []} setSel={setSendSel ?? (() => {})} />
+        <AskPanel p={p} />
+        <Section title="Paste back" hint="Paste what the AI answered. You see what it says first. A task result waits for your review; ideas for the plan wait for your OK."><PastePanel p={p} reload={reload} /></Section>
+        <details className="pl-section"><summary>Connect an AI directly (optional)</summary><ConnectPanel /></details>
+      </div>
+    );
+  }
   return (
     <div className="pl-stack">
       <Section title="Reports to review" hint="An executor saying the work is finished is not the same as you accepting it.">

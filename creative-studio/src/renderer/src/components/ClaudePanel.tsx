@@ -33,6 +33,12 @@ export function ClaudePanel({ liveApi }: Props) {
     return window.studio.claude.onChange(setSt);
   }, []);
   useEffect(() => { chatRef.current?.scrollTo({ top: chatRef.current.scrollHeight }); }, [st?.items.length]);
+  // The Planner's "Send to AI" can fill the box for the user; it never sends anything (the user presses Send).
+  useEffect(() => {
+    const fill = (e: Event) => { const t = (e as CustomEvent<{ text?: unknown }>).detail?.text; if (typeof t === 'string' && t) setDraft(t); };
+    window.addEventListener('createcraft:claude-prefill', fill);
+    return () => window.removeEventListener('createcraft:claude-prefill', fill);
+  }, []);
 
   const working = st?.status === 'working';
   const signedOut = st?.signedIn === false || st?.status === 'signed-out';

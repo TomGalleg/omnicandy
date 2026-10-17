@@ -40,6 +40,7 @@ export function HomeWorkspace({ manifest, projectKey, onSwitched, onGoto, log }:
   const [showTemplates, setShowTemplates] = useState(false);
   const [templates, setTemplates] = useState<WorkflowTemplate[]>([]);
   const [useRecommended, setUseRecommended] = useState(true);
+  const [alsoPlanner, setAlsoPlanner] = useState(true);
 
   const reload = useCallback(() => { void window.studio.projects.list().then(setProjects); }, []);
   useEffect(reload, [reload, projectKey, manifest?.updatedAt]);
@@ -97,6 +98,10 @@ Needs: ${t.needs}` : ''}`, objective: t.description };
     await window.studio.projects.open(key);
     log('project', `Created "${plan.name}" from your description.`);
     onSwitched(key);
+    if (alsoPlanner) {
+      // The steps and questions go to the Planner as SUGGESTIONS only: they join its plan when you accept them there.
+      try { await window.studio.planner.createFromHomePlan({ title: plan.name.trim(), goal: plan.finishedOutput, kind: plan.kind, steps: plan.steps, questions: plan.questions }); log('project', 'Added the steps to the Planner as suggestions for you to accept.'); } catch (e) { log('project', `Could not add the steps to the Planner: ${errText(e)}`); }
+    }
     const kind = plan.kind;
     const tpl = useRecommended && plan.template && !generateFirst ? plan.template : null;
     if (tpl) await window.studio.useWorkflowTemplate(tpl);
@@ -209,6 +214,8 @@ Needs: ${t.needs}` : ''}`, objective: t.description };
               <label className="plan-field"><span><input type="checkbox" checked={useRecommended} onChange={(e) => setUseRecommended(e.target.checked)} />{' '}
                 Start from Claude's recommended template: <strong>{plan.template.replace(/^builtin-/, '').replace(/-/g, ' ')}</strong> (you can edit it; nothing runs or bills on its own)</span></label>
             )}
+            <label className="plan-field"><span><input type="checkbox" checked={alsoPlanner} onChange={(e) => setAlsoPlanner(e.target.checked)} />{' '}
+              Also keep these steps in the Planner as suggestions (nothing is added to a plan until you accept it there)</span></label>
             {needsPicture && (
               <fieldset className="plan-field" aria-label="Starting picture">
                 <legend>This plan starts from a picture, and you haven't added one. Do you want Claude to help you make one with AI?</legend>
