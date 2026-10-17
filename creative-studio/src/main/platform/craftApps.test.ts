@@ -10,7 +10,7 @@ describe('Craft app locations', () => {
     expect(craftBin('D:\\Apps\\PhotoCraft', 'photocraft-cli', 'win32').endsWith('photocraft-cli.exe')).toBe(true);
   });
   it('Linux: no location is invented, the app is reported unavailable', () => {
-    expect(craftInstallRoot('linux', { ProgramFiles: 'C:\x' })).toBeNull();
+    expect(craftInstallRoot('linux', { ProgramFiles: 'C:\\x' })).toBeNull();
     expect(() => craftInstallDir('PhotoCraft', 'linux')).toThrow(CraftAppUnavailableError);
     expect(() => craftInstallDir('PhotoCraft', 'linux')).toThrow(/no Linux version/);
   });
