@@ -2,10 +2,32 @@
 
 One current plan per project, kept while you brainstorm in ChatGPT or Gemini and run the work in Claude Code, Cowork or
 CreateCraft. It works on its own (copy and paste, no AI, no API key) and can optionally connect to a local AI through an MCP
-server. Open it from **More > Planner** (Simplified) or **Planner** (Advanced).
+server. Open it from **More > Planner** (Simplified) or **Planner** (Advanced). It opens in a plain four-area view; the original
+screens are one checkbox away (see below). How and why it was simplified, with the checks made, is in `docs/planner-simplification-plan.md`;
+a plain-language description is in `docs/planner-explained.md`.
 
 Private and local: plans live in `<user data>/planner` (on Windows `%APPDATA%\creative-studio\planner`). There is no sharing,
 marketplace or publishing feature, and nothing is uploaded.
+
+## Plain view and Advanced
+
+The Planner opens in the **plain view**: four areas, **Plan, Tasks, AI, Files**, and one **Needs you** list. The **Advanced** checkbox in the
+header (remembered per user, off by default) shows the original six tabs (Overview, Plan, Tasks, Assets, Handoffs, History), revision
+chips, packages, claims, plan versions and connection profiles. Both views read and write the same data through the same rules; only
+wording and layout differ.
+
+| Stored (and in Advanced, history, MCP) | Plain view |
+|---|---|
+| todo / revision / in_progress / reported / accepted / blocked / cancelled | To Do (with "Changes requested") / In Progress / Needs Review / Done / Blocked / hidden under "Show removed" |
+| in_progress with an expired claim | In Progress, **Stalled**, with **Take back** |
+| todo with an open package and no claim | In Progress, "Sent to AI, waiting for a result" |
+| proposal / report / package / claim | suggestion / result / brief / "is working on it" |
+| plan drift | "The plan changed after this was sent" |
+
+Plain areas: **Plan** (goal and progress, phases, rules for the AI, notes and questions), **Tasks** (list or five-column board, add, per-task
+Send to AI, Take back, Unblock, Unsend, Mark done, Remove, the result card inline when a task needs review), **AI** (the **Needs you**
+inbox, **Send to AI**, **Ask an AI for ideas**, **Paste back**, and a collapsed "Connect an AI directly (optional)"), **Files** (assets).
+Plain wording of errors comes from `plainError()`; unknown errors are shown unchanged.
 
 ## What a plan contains
 
@@ -41,6 +63,30 @@ separate project system per template.
 6. You review it. **Reported complete is not accepted.** Only you accept (task becomes Accepted), ask for changes (task goes back to
    Revision requested) or reject. A report that is not "complete" cannot be accepted as done. Questions and plan changes in a report
    arrive as a pending proposal, not as plan content.
+
+### In the plain view
+
+1. **Ask an AI for ideas** (AI area) copies a short summary of the plan and asks for Requirements, Decisions, Tasks, Questions, Ideas.
+2. **Paste back**: one box. `classifyPaste()` decides locally whether it is a task result or plan suggestions (or unclear, and asks).
+   Suggestions are read from JSON (`changes`, or `tasks`, `requirements`, `decisions`, `questions`, `ideas`) or Markdown lists under those
+   headings, at most 30 changes and 200,000 characters. The preview marks each item **changes the plan** (rule, decision, edit) or **adds to
+   your list**. *Add selected to my plan* stores a pending proposal (source `pasted`) and then accepts the ticked items as you; *Save for
+   later* stops after storing. Both history entries are yours, with the named AI as proposer.
+3. **Send to AI**: tick tasks (or press Send to AI on a task), choose CreateCraft Claude, Claude Code or Gemini CLI, or any chat, press one
+   button, copy. `prepareSend()` creates the package like `createPackage` but returns an identical open one instead of superseding it
+   (`contentKey`: plan, tasks, assets, objective, note and what the AI receives, not the package number). CreateCraft Claude gets its box
+   filled (you press Send); nothing is started or paid for by the Planner.
+4. The result comes back by paste (or MCP), the task shows **Needs Review**, and you accept, ask for changes or reject.
+
+### What the AI receives (context builder)
+
+`buildContext()` (`src/shared/plannerContext.ts`) is pure and local. A Send to AI brief carries goal, scope, constraints, deliverables, the
+chosen tasks with checks, **every accepted rule and decision**, the references, and the accepted results of tasks it depends on. It never
+carries ideas, open questions, rejected items, other tasks' details or history. Only for chat destinations and only above 6,000 characters
+of rules are the least related rules left out (ranked by word overlap with the tasks); the send preview lists what was left out and lets
+you put any back, the brief names them ("Not included here"), and `delivery` on the package records included and omitted ids. The package
+still stores the full plan snapshot, so changing a left-out rule still marks the work outdated. "Remove file locations" replaces your file
+paths with file names. A package made with `createPackage` (Advanced, MCP) has no `delivery` and lists every rule, as before.
 
 ## Consistency rules (all tested)
 
@@ -81,7 +127,7 @@ Permissions are separate scopes given when the connection is started (`--scopes`
 | `execute` | `claim_task`, `report_progress`, `submit_report`, `release_claim` |
 
 Editing the plan, accepting proposals and accepting reports are not scopes a connection can hold: asking for them refuses to
-start. Every change is attributed to the connection's name. Planner > Handoffs > Connect an AI shows ready-to-paste settings for a
+start. Every change is attributed to the connection's name. Planner > AI > Connect an AI directly (Advanced: Handoffs > Connect an AI) shows ready-to-paste settings for a
 "brainstorming" connection (`read,propose`) and an "executor" connection (`read,execute`).
 
 ```
@@ -97,8 +143,17 @@ headers, and answers only `/mcp`. Making it reachable from the internet is your 
 
 ### CreateCraft's own Claude
 
-The Claude panel has `planner_packages`, `planner_get_package`, `planner_claim` and `planner_report`, backed by the same MCP
-session with `read,execute` only (named "CreateCraft Claude" in history). It only works from a package when you ask it to.
+The Claude panel has `planner_packages`, `planner_get_package`, `planner_claim`, `planner_report` and `planner_propose`, backed by the same
+MCP session with `read,propose,execute` only (named "CreateCraft Claude" in history). It only works from a package, or suggests changes,
+when you ask it to. `planner_propose` creates a pending suggestion; the panel cannot create packages, edit the plan, accept or review.
+Send to AI > CreateCraft Claude fills the panel's box with a message you send yourself.
+
+### Workflow and Home
+
+* A task can use **the workflow of the open CreateCraft project** (the existing `appRef {kind:'workflow'}`). The task shows a Workflow chip
+  and a read-only line from the run state; a finished run never accepts or changes a task. Only the open project's workflow has a live state.
+* Home's **Create with Claude** makes a CreateCraft project. With "Also keep these steps in the Planner as suggestions" ticked (default),
+  the steps and questions become one pending suggestion list in a new Planner plan (source `home`); nothing joins the plan until you accept it.
 
 ## What each client can do (checked 2026-10-16)
 
@@ -116,14 +171,22 @@ CreateCraft's own MCP client for full round trips; the Claude Code check covers 
 
 ## Tests
 
+Planner folder: 65 tests in 8 files (counts are re-checked in docs/planner-simplification-plan.md, Part 19).
+
+* Added with the simplification: `baseline.test.ts` (9: golden fixtures from the earlier build, findings pinned, owner-only invariant),
+  `plannerView.test.ts` (6: status view, plain errors), `send.test.ts` (17: reuse, two writers at once, restart, pasted suggestions,
+  hostile text, file locations, no network code), `context.test.ts` (8: context builder, delivery, upstream results, brainstorm text),
+  `links.test.ts` (5: Home plan to suggestions, panel can suggest but not decide, workflow wording).
 * `src/main/planner/service.test.ts` (15): persistence after restart, templates, full round trip, outdated plan, proposals
   separate, proposal conflicts, concurrent writers, supersede/claims, dependencies, partial/revision, lease takeover, paste flow,
   export/import, permissions.
 * `mcp.session.test.ts` (2) and `mcp.roundtrip.test.ts` (3): real processes over stdio and HTTP; scope separation; brainstorm,
   accept, package, claim, report, review across processes.
-* `scripts/smoke-planner.mjs` (`npm run smoke:planner`): the real window with a real MCP executor process: mixed project
-  (research, document, image), plan changed mid-work, outdated-report guard, suggestions, paste path with preview, restart.
-  Screenshots `docs/screenshots/140-*.png` to `149-*.png`.
+* `scripts/smoke-planner.mjs` (`npm run smoke:planner`): the real window with a real MCP executor process: the plain view's four areas, then
+  (Advanced ticked) mixed project (research, document, image), plan changed mid-work, outdated-report guard, suggestions, paste path with
+  preview, restart; then the plain view again: five-column board, Send to AI and repeat send, pasted suggestions saved, then accepted, a
+  pasted result accepted inline, a task pointing at the workflow. Screenshots `docs/screenshots/140-*.png` to `154-*.png`.
+* `docs/planner-first-run-checklist.md`: the hands-on walkthrough with a first-time user (not automated).
 
 ## Export and import
 
@@ -138,3 +201,8 @@ referenced files.
 * No live Claude/Cowork/ChatGPT/Gemini session was run (spend is $0).
 * Tasks have no due dates; milestones have an optional due date.
 * Linking CreateCraft assets stores the project key and asset id; resolving a link into a file open is not wired.
+* Not run (they need paid calls or a sign-in): Home's Create with Claude into the Planner from the real screen, `planner_propose` from a live
+  Claude session, "Put it in the Claude panel", any live ChatGPT/Gemini/Cowork session.
+* No stored per-rule "always include" pin (the owner can put left-out rules back for one send). The context builder's relevance is plain
+  word overlap.
+* No MCP `get_context` tool (it would change the tested tool list); connected tools get the built brief from `get_package`.

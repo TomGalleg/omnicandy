@@ -146,7 +146,7 @@ The list below describes the core app; later areas (integrations, AI Adapter Bui
 ## Project Planner
 
 A plain planning workspace (**More > Planner**) that keeps one current plan per project while you brainstorm elsewhere and execute in Claude Code,
-Cowork or CreateCraft. Works with no AI and no API key (copy and paste); an optional local MCP server lets Claude Code read the plan, claim
+Cowork or CreateCraft. It opens in a four-area view (Plan, Tasks, AI, Files) with one Send to AI and one Paste back; an Advanced checkbox shows packages, claims and the full history. Works with no AI and no API key (copy and paste); an optional local MCP server lets Claude Code read the plan, claim
 tasks and report back. An executor's report is never acceptance: only you accept. Status of each client (verified / untested / unavailable) and
 how it works: [docs/project-planner.md](docs/project-planner.md).
 
