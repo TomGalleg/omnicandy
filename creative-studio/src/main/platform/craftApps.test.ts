@@ -4,10 +4,10 @@ import { CraftAppUnavailableError, craftBin, craftInstallDir, craftInstallRoot }
 
 describe('Craft app locations', () => {
   it('Windows: Program Files, honouring the environment', () => {
-    expect(craftInstallRoot('win32', { ProgramFiles: 'D:\Apps' })).toBe('D:\Apps');
-    expect(craftInstallRoot('win32', {})).toBe('C:\Program Files');
-    expect(craftInstallDir('PhotoCraft', 'win32', { ProgramFiles: 'D:\Apps' })).toBe('D:\Apps\PhotoCraft');
-    expect(craftBin('D:\Apps\PhotoCraft', 'photocraft-cli', 'win32').endsWith('photocraft-cli.exe')).toBe(true);
+    expect(craftInstallRoot('win32', { ProgramFiles: 'D:\\Apps' })).toBe('D:\\Apps');
+    expect(craftInstallRoot('win32', {})).toBe('C:\\Program Files');
+    expect(craftInstallDir('PhotoCraft', 'win32', { ProgramFiles: 'D:\\Apps' })).toBe('D:\\Apps\\PhotoCraft');
+    expect(craftBin('D:\\Apps\\PhotoCraft', 'photocraft-cli', 'win32').endsWith('photocraft-cli.exe')).toBe(true);
   });
   it('Linux: no location is invented, the app is reported unavailable', () => {
     expect(craftInstallRoot('linux', { ProgramFiles: 'C:\x' })).toBeNull();

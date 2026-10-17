@@ -14,7 +14,7 @@ export class CraftAppUnavailableError extends Error {
 
 /** The folder that holds the Craft app installs, or null when this system has no known place. */
 export function craftInstallRoot(os: OsId = currentOs(), env: NodeJS.ProcessEnv = process.env): string | null {
-  return os === 'win32' ? (env.ProgramFiles ?? 'C:\Program Files') : null;
+  return os === 'win32' ? (env.ProgramFiles ?? 'C:\\Program Files') : null;
 }
 
 /** Install folder of one Craft app (`PhotoCraft`). Throws CraftAppUnavailableError where there is none. */
