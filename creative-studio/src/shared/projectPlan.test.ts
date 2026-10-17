@@ -13,4 +13,11 @@ describe('parseProjectPlan', () => {
     expect(() => parseProjectPlan(JSON.stringify({ ...plan, kind: 'hologram' }))).toThrow(/incomplete/);
     expect(() => parseProjectPlan(JSON.stringify({ ...plan, steps: [] }))).toThrow(/incomplete/);
   });
+  it('cuts over-long lists to fit instead of rejecting the plan (all 13 apps, an extra step)', () => {
+    const many = { ...plan, apps: Array.from({ length: 13 }, (_, i) => `App${i}`), steps: Array.from({ length: 11 }, (_, i) => `Step ${i}`), aiTools: ['a', 'b', 'c', 'd', 'e', 'f'] };
+    const p = parseProjectPlan(JSON.stringify(many));
+    expect(p.apps).toHaveLength(13);
+    expect(p.steps).toHaveLength(8);
+    expect(p.aiTools).toHaveLength(5);
+  });
 });

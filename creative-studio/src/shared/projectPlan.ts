@@ -19,7 +19,7 @@ export const projectPlanSchema = z.object({
   kind: z.enum(kindIds),
   finishedOutput: short(300),
   summary: short(600),
-  apps: z.array(short(40)).max(7).default([]),
+  apps: z.array(short(40)).max(13).default([]),
   aiTools: z.array(short(200)).max(5).default([]),
   steps: z.array(short(240)).min(1).max(8),
   questions: z.array(short(240)).max(3).default([]),
@@ -28,6 +28,23 @@ export const projectPlanSchema = z.object({
 });
 export type ProjectPlan = z.infer<typeof projectPlanSchema>;
 
+/**
+ * Claude sometimes lists a little more than the limits (every app, one more step). Over-long lists and sentences are cut to fit
+ * rather than throwing the whole plan away; missing or wrongly typed fields still fail.
+ */
+function trimToLimits(raw: unknown): unknown {
+  if (!raw || typeof raw !== 'object') return raw;
+  const o = { ...(raw as Record<string, unknown>) };
+  const cut = (v: unknown, n: number) => (typeof v === 'string' ? v.trim().slice(0, n) : v);
+  const list = (v: unknown, max: number, n: number) => (Array.isArray(v) ? v.map((x) => cut(x, n)).filter((x) => x !== '').slice(0, max) : v);
+  o.name = cut(o.name, 80); o.finishedOutput = cut(o.finishedOutput, 300); o.summary = cut(o.summary, 600);
+  if ('apps' in o) o.apps = list(o.apps, 13, 40);
+  if ('aiTools' in o) o.aiTools = list(o.aiTools, 5, 200);
+  o.steps = list(o.steps, 8, 240);
+  if ('questions' in o) o.questions = list(o.questions, 3, 240);
+  return o;
+}
+
 /** Pulls the JSON plan out of Claude's reply (tolerates a code fence or a sentence around it). */
 export function parseProjectPlan(reply: string): ProjectPlan {
   const start = reply.indexOf('{');
@@ -35,7 +52,7 @@ export function parseProjectPlan(reply: string): ProjectPlan {
   if (start < 0 || end <= start) throw new Error('Claude did not return a plan. Try describing the project again.');
   let raw: unknown;
   try { raw = JSON.parse(reply.slice(start, end + 1)); } catch { throw new Error('Claude\'s plan could not be read. Try again.'); }
-  const r = projectPlanSchema.safeParse(raw);
+  const r = projectPlanSchema.safeParse(trimToLimits(raw));
   if (!r.success) throw new Error('Claude\'s plan was incomplete. Try again with a little more detail.');
   return r.data;
 }
