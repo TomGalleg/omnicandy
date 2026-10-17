@@ -9,6 +9,8 @@ import { registerIpc } from './ipc';
 import type { ProjectStore } from './projectStore';
 import { ProjectManager } from './projects';
 import { SettingsStore } from './settingsStore';
+import { currentOs } from '@shared/platform';
+import { passwordStoreSwitch } from './platform/secureStorage';
 
 protocol.registerSchemesAsPrivileged([
   { scheme: ASSET_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true, corsEnabled: true } },
@@ -17,6 +19,8 @@ protocol.registerSchemesAsPrivileged([
 app.setName('CreateCraft');
 // Data stays where it has always been (%APPDATA%\creative-studio) despite the rename.
 // CS_USER_DATA_DIR gives automated smoke tests an isolated profile; never set in normal use.
+// Linux: ask for the Secret Service keyring when Chromium would not recognise the desktop (see platform/secureStorage.ts).
+{ const store = passwordStoreSwitch(currentOs(), process.env, process.argv); if (store) app.commandLine.appendSwitch('password-store', store); }
 app.setPath('userData', process.env.CS_USER_DATA_DIR ? path.resolve(process.env.CS_USER_DATA_DIR) : path.join(app.getPath('appData'), 'creative-studio'));
 
 // One instance per profile: two processes seeding/writing the same project would race.

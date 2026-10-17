@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { secureEncryptor, secureStorageStatus, type StorageSource } from './secureStorage';
+import { passwordStoreSwitch, secureEncryptor, secureStorageStatus, type StorageSource } from './secureStorage';
 
 const src = (available: boolean, backend?: string): StorageSource => ({
   isEncryptionAvailable: () => available,
@@ -33,5 +33,14 @@ describe('secure credential storage', () => {
     expect(e.isEncryptionAvailable()).toBe(false);
     expect(e.unavailableReason()).toMatch(/keyring/);
     expect(secureEncryptor(src(true, 'gnome_libsecret'), 'linux').isEncryptionAvailable()).toBe(true);
+  });
+  it('asks for libsecret only on Linux desktops Chromium would not recognise', () => {
+    expect(passwordStoreSwitch('linux', {})).toBe('gnome-libsecret');
+    expect(passwordStoreSwitch('linux', { XDG_CURRENT_DESKTOP: 'sway' })).toBe('gnome-libsecret');
+    expect(passwordStoreSwitch('linux', { XDG_CURRENT_DESKTOP: 'ubuntu:GNOME' })).toBeNull();
+    expect(passwordStoreSwitch('linux', { XDG_CURRENT_DESKTOP: 'KDE' })).toBeNull();
+    expect(passwordStoreSwitch('linux', {}, ['--password-store=kwallet5'])).toBeNull();
+    expect(passwordStoreSwitch('linux', { CREATECRAFT_PASSWORD_STORE: 'chromium' })).toBeNull();
+    expect(passwordStoreSwitch('win32', {})).toBeNull();
   });
 });

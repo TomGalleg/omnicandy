@@ -42,6 +42,20 @@ export function secureStorageStatus(src: StorageSource, os: OsId = currentOs()):
   return { available: true, label: LABEL[backend] ?? backend, problem: null, help: null };
 }
 
+/**
+ * Linux: Chromium only looks for a keyring when it recognises the desktop (GNOME, KDE and the like through XDG_CURRENT_DESKTOP).
+ * On anything else (a tiling window manager, WSL, a bare session) it silently picks `basic_text` even when a Secret Service
+ * (GNOME Keyring, KeePassXC...) is running; verified on Ubuntu 24.04 under WSL2. libsecret talks to any Secret Service, so
+ * for unrecognised desktops we ask for it explicitly. If there is no service the backend is then unavailable, not plain text.
+ * Returns the value for Chromium's `password-store` switch, or null to leave the choice to Chromium (also when the user set one).
+ */
+export function passwordStoreSwitch(os: OsId, env: NodeJS.ProcessEnv, argv: readonly string[] = []): 'gnome-libsecret' | null {
+  if (os !== 'linux' || env.CREATECRAFT_PASSWORD_STORE === 'chromium' || argv.some((a) => a.startsWith('--password-store'))) return null;
+  const desktop = (env.XDG_CURRENT_DESKTOP ?? '').toLowerCase();
+  const known = /gnome|unity|cinnamon|mate|budgie|pantheon|deepin|xfce|lxqt|kde|plasma|cosmic/.test(desktop);
+  return known ? null : 'gnome-libsecret';
+}
+
 /** An Encryptor for the vault that says "unavailable" whenever the platform check does, and explains why. */
 export function secureEncryptor(src: StorageSource, os: OsId = currentOs()) {
   return {
