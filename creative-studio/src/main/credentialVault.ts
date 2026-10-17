@@ -59,7 +59,7 @@ export class SafeStorageVault implements CredentialVault {
   }
 
   async save(providerId: string, rawKey: string): Promise<void> {
-    if (!this.available) throw new Error(this.crypto.unavailableReason?.() || 'Protected storage is not available, so the key cannot be saved safely.');
+    if (!this.available) throw new Error(this.crypto.unavailableReason?.() || 'There is no protected storage available on this computer, so the key cannot be saved safely.');
     const key = checkKeyShape(providerId, rawKey);
     await fs.mkdir(this.dir, { recursive: true });
     const tmp = `${this.file(providerId, 'key')}.tmp`;
