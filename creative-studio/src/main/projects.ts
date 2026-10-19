@@ -9,7 +9,7 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import type { ProjectManifest, ProjectSummary } from '@shared/types';
 import { emptyGraph } from '@shared/workflow';
-import { ProjectStore, sha256File } from './projectStore';
+import { ProjectStore, sha256File, writeJsonAtomic } from './projectStore';
 import { ensureSampleProject } from './sampleProject';
 
 const KEY = /^[A-Za-z0-9_-]{1,64}$/;
@@ -118,9 +118,7 @@ export class ProjectManager {
 
   private async writeState(s: State) {
     await fs.mkdir(path.dirname(this.stateFile), { recursive: true });
-    const tmp = `${this.stateFile}.tmp`;
-    await fs.writeFile(tmp, JSON.stringify(s, null, 2), 'utf8');
-    await fs.rename(tmp, this.stateFile);
+    await writeJsonAtomic(this.stateFile, s);
     this.cached = structuredClone(s);
   }
 

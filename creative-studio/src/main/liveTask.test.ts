@@ -89,7 +89,7 @@ describe('LiveTaskController', () => {
   });
 
   it('refuses disallowed steps before touching the app', async () => {
-    await expect(ctl.run([{ command: 'file.saveAs', params: {} }])).rejects.toThrow(/allowed list/);
+    await expect(ctl.run([{ command: 'file.saveAs', params: {} }])).rejects.toThrow(/approval/);
     expect(doc.ran).toEqual([]);
   });
 
@@ -183,7 +183,7 @@ describe('LiveTaskController', () => {
     const s = await ctl.quickEdit('blackWhite', {});
     expect(doc.ran).toEqual(['image.adjustments.blackWhite']);
     expect(s.message).toMatch(/applied in PhotoCraft/);
-    await expect(ctl.quickEdit('sharpen', {})).rejects.toThrow(/allowed list/);
+    await expect(ctl.quickEdit('sharpen', {})).rejects.toThrow(/approval/);
     await expect(ctl.quickEdit('blur', { radius: 9999 })).rejects.toThrow(/between/);
     await expect(ctl.quickEdit('nope', {})).rejects.toThrow(/no quick edit/);
     await ctl.undo();
@@ -199,7 +199,7 @@ describe('LiveTaskController', () => {
   it('Claude edits through the lock: allowed when free, refused when the user paused or took control', async () => {
     expect(await ctl.claudeQuickEdit('blackWhite', {})).toMatch(/applied/);
     expect(ctl.snapshot().collab).toMatchObject({ phase: 'running', lockOwner: 'claude' });
-    await expect(ctl.claudePhotoCraftCommand('file.saveAs', {})).rejects.toThrow(/allowed list/);
+    await expect(ctl.claudePhotoCraftCommand('file.saveAs', {})).rejects.toThrow(/approval/);
     ctl.pause();
     await expect(ctl.claudeQuickEdit('blackWhite', {})).rejects.toThrow(/paused you/);
     ctl.takeControl();
@@ -211,6 +211,16 @@ describe('LiveTaskController', () => {
     ctl.claudeDone();
     expect(ctl.snapshot().collab.lockOwner).not.toBe('claude');
     expect(doc.ran.filter((c) => c === 'image.adjustments.blackWhite')).toHaveLength(1);
+  });
+
+  it('a failing Claude undo ends its operation, so Claude can continue and the user can save', async () => {
+    await ctl.claudeQuickEdit('blackWhite', {});
+    doc.undo = async () => { throw new Error('app busy'); };
+    await expect(ctl.claudeUndo()).rejects.toThrow(/app busy/);
+    expect(ctl.snapshot().collab.activeOperation).toBeNull();
+    expect(ctl.snapshot().collab.phase).toBe('failed');
+    await expect(ctl.saveVersion()).resolves.toBeDefined();
+    expect(await ctl.claudeQuickEdit('blackWhite', {})).toMatch(/applied/);
   });
 
   it('Claude pauses instead of editing on top of a hand edit made without taking control', async () => {
@@ -291,5 +301,23 @@ describe('apps chosen by tab (Color = LightCraft) and async quick edits', () => 
   it('only video apps have a timeline', async () => {
     expect(await ctl.timeline()).toBeNull();
     await expect(ctl.setPlayhead(1)).rejects.toThrow(/no timeline/);
+  });
+});
+
+describe('an app that never finishes opening', () => {
+  it('ends in an error (not "starting" for ever) and a retry can succeed', async () => {
+    const stuck = new FakeDoc();
+    stuck.open = () => new Promise(() => {});
+    let first = true;
+    const c = new LiveTaskController({
+      connect: async () => { if (first) { first = false; return stuck; } return doc; },
+      store, emit: () => {}, openTimeoutMs: 60,
+      writeDir: async () => { const d = path.join(store.root, 'work', 'live'); await fs.mkdir(d, { recursive: true }); return d; },
+    });
+    await expect(c.open(assetId)).rejects.toThrow(/did not finish opening/);
+    expect(c.snapshot().status).toBe('error');
+    expect(c.snapshot().error).toMatch(/try again/);
+    await c.open(assetId);
+    expect(c.snapshot().status).toBe('ready');
   });
 });

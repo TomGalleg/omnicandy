@@ -28,6 +28,31 @@ async function newStore() {
   return s;
 }
 
+describe('ProjectStore concurrent writes', () => {
+  it('stores 12 parallel imports with no failure, no lost asset and no leftover temp file', async () => {
+    const s = await newStore();
+    const src = path.join(tmp, 'src');
+    await fs.mkdir(src);
+    const files: string[] = [];
+    for (let i = 0; i < 12; i++) { const f = path.join(src, `f${i}.png`); await fs.writeFile(f, `not really a png ${i} ${'x'.repeat(i * 10)}`); files.push(f); }
+    const res = await Promise.allSettled(files.map((f) => s.importFile(f)));
+    expect(res.filter((r) => r.status === 'rejected')).toEqual([]);
+    expect((await s.loadManifest()).assets).toHaveLength(12);
+    const onDisk = JSON.parse(await fs.readFile(path.join(s.root, 'project.json'), 'utf8')) as { assets: unknown[] };
+    expect(onDisk.assets).toHaveLength(12);
+    expect((await fs.readdir(s.root)).filter((n) => n.endsWith('.tmp'))).toEqual([]);
+  });
+
+  it('imports the same content twice in parallel as one asset', async () => {
+    const s = await newStore();
+    const f = path.join(tmp, 'dup.png');
+    await fs.writeFile(f, 'dup content');
+    const [a, b] = await Promise.all([s.importFile(f), s.importFile(f)]);
+    expect((await s.loadManifest()).assets).toHaveLength(1);
+    expect([a.duplicateOf, b.duplicateOf].filter(Boolean)).toHaveLength(1);
+  });
+});
+
 describe('ProjectStore', () => {
   it('imports without modifying the source and stores a read-only copy with correct metadata', async () => {
     const src = path.join(FIXTURES, 'photocraft-smoke.png');

@@ -93,6 +93,12 @@ async function createWindow() {
     mainWindow.on(ev as 'move', () => embedded.apply());
   }
 
+  // A crashed renderer would leave a blank window: load the app again (projects are on disk, nothing is lost).
+  mainWindow.webContents.on('render-process-gone', (_e, details) => {
+    console.error('CreateCraft window process ended:', details.reason);
+    if (details.reason !== 'clean-exit' && mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.reload();
+  });
+
   // App-only navigation; external links go to the default browser after scheme check.
   mainWindow.webContents.on('will-navigate', (e, url) => { if (!isAppUrl(url)) e.preventDefault(); });
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {

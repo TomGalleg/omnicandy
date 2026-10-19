@@ -5,6 +5,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import type { AppearanceSettings } from '@shared/types';
 import { DEFAULT_APPEARANCE, sanitizeAppearance } from '@shared/theme';
+import { writeJsonAtomic } from './projectStore';
 
 export class SettingsStore {
   constructor(private readonly dir: string) {}
@@ -21,9 +22,7 @@ export class SettingsStore {
   async save(raw: unknown): Promise<AppearanceSettings> {
     const s = sanitizeAppearance(raw);
     await fs.mkdir(this.dir, { recursive: true });
-    const tmp = `${this.file}.tmp`;
-    await fs.writeFile(tmp, JSON.stringify(s, null, 2), 'utf8');
-    await fs.rename(tmp, this.file);
+    await writeJsonAtomic(this.file, s);
     return s;
   }
 }

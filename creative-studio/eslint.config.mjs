@@ -4,10 +4,11 @@ import reactHooks from 'eslint-plugin-react-hooks';
 import globals from 'globals';
 
 export default tseslint.config(
-  { ignores: ['out/**', 'dist/**', 'node_modules/**'] },
+  { ignores: ['out/**', 'dist/**', 'release/**', 'node_modules/**'] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
-  { rules: { '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }] } },
+  // ignoreRestSiblings: `const { a: _a, ...rest } = obj` is the way to drop a key.
+  { rules: { '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_', ignoreRestSiblings: true }] } },
   {
     // Integration packages are plain CommonJS that runs in its own restricted Node process, not CreateCraft code.
     files: ['fixtures/*-adapter/**/*.js', 'fixtures/*-sample/**/*.js', 'fixtures/simcad/**/*.js', 'src/plugin-sdk/**/*.js'],

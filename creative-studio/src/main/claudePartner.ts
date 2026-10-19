@@ -61,7 +61,7 @@ const PLAN_PROMPT = `You are Claude, the Creative Partner inside CreateCraft. Th
 "template": the id of ONE template from the list you are given if it clearly fits the project, otherwise null. Never invent an id.
 Do not start any work and do not mention software internals, node graphs or file formats unless the user did. Write in the user's language.`;
 
-const TOOL_NAMES = ['get_status', 'look_at_document', 'apply_edit', 'photocraft_command', 'undo', 'save_version', 'list_files', 'open_file', 'list_image_models', 'generate_image', 'list_video_models', 'generate_video', 'local_video_status', 'make_local_video', 'make_motion_video', 'request_model_download', 'list_export_formats', 'export_file', 'timeline_add', 'timeline_move_clip', 'timeline_remove_clip', 'workflow_catalog', 'plan_workflow', 'workflow_status', 'run_workflow', 'rerun_workflow', 'pause_workflow', 'resume_workflow', 'cancel_workflow', 'change_workflow_step', 'list_workflow_versions', 'restore_workflow_version', 'save_workflow_template', 'external_apps', 'external_run', 'external_job', 'integration_builder_start', 'integration_builder_status', 'planner_packages', 'planner_get_package', 'planner_claim', 'planner_report', 'planner_propose'];
+const TOOL_NAMES = ['get_status', 'look_at_document', 'apply_edit', 'photocraft_command', 'app_commands', 'app_command', 'undo', 'save_version', 'list_files', 'open_file', 'new_document', 'list_image_models', 'generate_image', 'list_video_models', 'generate_video', 'local_video_status', 'make_local_video', 'make_motion_video', 'request_model_download', 'list_export_formats', 'export_file', 'timeline_add', 'timeline_move_clip', 'timeline_remove_clip', 'workflow_catalog', 'plan_workflow', 'workflow_status', 'run_workflow', 'rerun_workflow', 'pause_workflow', 'resume_workflow', 'cancel_workflow', 'change_workflow_step', 'list_workflow_versions', 'restore_workflow_version', 'save_workflow_template', 'external_apps', 'external_run', 'external_job', 'integration_builder_start', 'integration_builder_status', 'planner_packages', 'planner_get_package', 'planner_claim', 'planner_report', 'planner_propose'];
 
 export interface WorkflowControlApi {
   /** Snapshot of the run (waits up to `waitSeconds` for it to finish, pause or need the user). */
@@ -82,6 +82,8 @@ export interface ClaudePartnerDeps {
   store: () => Promise<ProjectStore>;
   /** Opens a library file in its app inside the Edit tab (same path as the UI). */
   openAsset: (assetId: string, app?: EditorAppId) => Promise<void>;
+  /** Adds the app's blank starter file to the library (these apps only edit library files). */
+  newBlankFile: (app: EditorAppId, name?: string) => Promise<{ id: string; name: string }>;
   emit: (s: ClaudeState) => void;
   /** Claude Code CLI on this PC, used only for `auth status` / `auth login`. */
   cliPath: string;
@@ -130,7 +132,9 @@ export interface ClaudePartnerDeps {
 export interface PlanReference { name: string; kind: string; bytes: number; image?: { mediaType: 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp'; data: string } }
 
 export class ClaudePartner {
-  private model: ClaudeModelId = 'claude-opus-5-5';
+  /** The first chat loaded after CreateCraft starts is cleared: every new instance begins with an empty Creative Partner. */
+  private static startedFresh = false;
+  private model: ClaudeModelId = 'claude-sonnet-5-5';
   private items: ClaudeChatItem[] = [];
   private status: ClaudeState['status'] = 'idle';
   private signedIn: boolean | null = null;
@@ -152,6 +156,11 @@ export class ClaudePartner {
   /** Loads this project's saved chat once (before the first state or message). */
   ready(): Promise<void> {
     return (this.loaded ??= this.d.history.load().then((saved) => {
+      if (!ClaudePartner.startedFresh) {
+        ClaudePartner.startedFresh = true;
+        if (saved.length) this.persist(true); // this.items is empty: the saved chat is dropped
+        return;
+      }
       if (!this.items.length) this.items = saved;
     }).catch(() => { /* an unreadable history is simply empty */ }));
   }
@@ -278,11 +287,22 @@ export class ClaudePartner {
         }, async ({ edit_id, settings }) => {
           try { const r = await ctl.claudeQuickEdit(edit_id, settings ?? {}); activity(r); return text(r); } catch (e) { activity(`Edit refused: ${e instanceof Error ? e.message : e}`); return fail(e); }
         }),
-        tool('photocraft_command', 'PhotoCraft only: runs one engine command for finer control, e.g. image.adjustments.levels {"inBlack":10,"gamma":1.1,"inWhite":240}, image.adjustments.curves, image.adjustments.selectiveColor, filter.blur.gaussianBlur {"radius":2}. Only adjustments, filters, rotations and fill are allowed; nothing that opens, saves or references files.', {
+        tool('photocraft_command', 'PhotoCraft only: runs one engine command for finer control, e.g. image.adjustments.levels {"inBlack":10,"gamma":1.1,"inWhite":240}, image.adjustments.curves, image.adjustments.selectiveColor, filter.blur.gaussianBlur {"radius":2}. Everything that edits the open picture works: adjustments, filters, text (type.create {"text":"…","x":px,"y":px,"size":pt,"color":"#rrggbb","font":"…"}, type.setStyle, type.edit), layers (layer.translate, layer.arrange.*, layer.layerStyle.*), selections, painting, paths, transforms. Commands that open, save or import files or run actions, scripts or plugins ask the user to approve first; if declined, accept that and say so.', {
           command: z.string().max(128),
           params: z.record(z.string().max(64), z.unknown()).optional(),
         }, async ({ command, params }) => {
           try { const r = await ctl.claudePhotoCraftCommand(command, params ?? {}); activity(r); return text(r); } catch (e) { activity(`Command refused: ${e instanceof Error ? e.message : e}`); return fail(e); }
+        }),
+        tool('app_commands', 'Lists the engine commands (ids and parameters) of the open ArtCraft app so you can find the exact one to run with app_command, e.g. EffectCraft: filter "layer", "effect", "keyframe", "text", "comp". Always look here before saying an app cannot do something; the apps have hundreds of commands beyond the quick edits.', {
+          filter: z.string().max(64).optional().describe('A word to narrow the list, e.g. layer.'),
+        }, async ({ filter }) => {
+          try { return text(await ctl.appCommandList(filter)); } catch (e) { return fail(e); }
+        }),
+        tool('app_command', 'Runs one engine command in whichever ArtCraft app is open (VectorCraft, EffectCraft, DesignCraft, WordCraft, GridCraft, DeckCraft, FigCraft, CADCraft, PdfCraft, SoundCraft, FilmCraft, LightCraft; PhotoCraft too). Use the command ids of that app (find them with app_commands first; never guess); PdfCraft and EffectCraft tools are written tool:<name>, and PdfCraft fills in the document for you; params is the command JSON object. Anything that edits the open document runs at once. Commands that open, save, import, export or place files, or run scripts, actions, plugins or batches ask the user to approve first; if declined, accept that and say so.', {
+          command: z.string().max(128),
+          params: z.record(z.string().max(64), z.unknown()).optional(),
+        }, async ({ command, params }) => {
+          try { const r = await ctl.claudeAppCommand(command, params ?? {}); activity(r); return text(r); } catch (e) { activity(`Command refused: ${e instanceof Error ? e.message : e}`); return fail(e); }
         }),
         tool('undo', 'Undoes the last change in the open app.', {}, async () => {
           try { const r = await ctl.claudeUndo(); activity('Undid the last change'); return text(r); } catch (e) { return fail(e); }
@@ -607,6 +627,17 @@ New files: ${names.join(', ') || '(none)'}`);
             return fail(/cancelled/i.test(msg) ? new Error('The user cancelled this generation. Nothing was charged. Do not retry unless they ask.') : e);
           }
         }),
+        tool('new_document', 'Starts a NEW document from nothing: adds a blank file made by the app itself to the library and opens it, ready for app_commands / app_command. For apps that edit one library file: designcraft (layout), wordcraft (.docx), pdfcraft (one blank page), gridcraft (.xlsx), deckcraft (presentation), figcraft (UI design), cadcraft (.dxf drawing), vectorcraft (.svg), photocraft (white 1920x1080 picture), soundcraft (10 s of silence to build on: add tracks, clips and generated sound with its commands), lightcraft and effectcraft (white 1920x1080 still; EffectCraft makes a 5 s composition from it). Not for filmcraft: it needs a real video clip from the library. Use this when the user wants something new and the library has no suitable file. Never stop to ask the user for a starting file.', {
+          app: z.enum(['photocraft', 'vectorcraft', 'designcraft', 'wordcraft', 'pdfcraft', 'gridcraft', 'deckcraft', 'figcraft', 'cadcraft', 'soundcraft', 'lightcraft', 'effectcraft']),
+          name: z.string().max(60).optional().describe('File name without extension, e.g. "Dragon Field Guide".'),
+        }, async ({ app, name }) => {
+          try {
+            const a = await this.d.newBlankFile(app, name);
+            await this.d.openAsset(a.id, app);
+            activity(`Started a new ${EDITOR_APPS[app].name} document, ${a.name}`);
+            return text(`${a.name} is open in ${EDITOR_APPS[app].name} and is empty (a PDF has one blank page; a picture is white). Look up the commands with app_commands, then build it; resize or add pages with the app's own commands.`);
+          } catch (e) { return fail(e); }
+        }),
         tool('open_file', 'Opens a library file (exact name from list_files) in an ArtCraft app and shows it in that app\'s CreateCraft tab. Without app it uses the file type\'s Edit-tab app (photos: PhotoCraft, vector: VectorCraft, audio: SoundCraft, video: FilmCraft, .designcraft: DesignCraft, .docx: WordCraft, .xlsx: GridCraft, .deckcraft/.pptx: DeckCraft, .figcraft: FigCraft, .dxf/.dwg: CADCraft, .pdf: PdfCraft). Pass app to use another one, e.g. lightcraft for colour work on a photo or effectcraft for effects and titles. Ask the user first if the current document has unsaved changes.', {
           name: z.string().max(512),
           app: z.enum(['photocraft', 'vectorcraft', 'soundcraft', 'filmcraft', 'lightcraft', 'effectcraft', 'designcraft', 'wordcraft', 'pdfcraft', 'gridcraft', 'deckcraft', 'figcraft', 'cadcraft']).optional(),
@@ -694,6 +725,51 @@ Available AI image models: ${models.length ? models.join('; ') : 'none set up'}.
     }
   }
 
+  /** One no-tools Claude request for the Planner's chat: returns text only, touches no files and no plan. Needs the Claude Code sign-in. */
+  async planChat(system: string, prompt: string, model?: string): Promise<string> {
+    if (this.status === 'working') throw new Error('Claude is busy with another request. Wait for it to finish or stop it.');
+    this.status = 'working';
+    this.publish();
+    const abort = new AbortController();
+    this.abort = abort;
+    const signedOut = () => {
+      this.status = 'signed-out';
+      this.signedIn = false;
+      return new Error('Claude Code on this PC is not signed in. Open the Claude panel, click "Sign in to Claude", then try again.');
+    };
+    try {
+      const { query } = await import('@anthropic-ai/claude-agent-sdk');
+      const q = query({
+        prompt,
+        options: {
+          model: (model as ClaudeModelId | undefined) ?? this.model, systemPrompt: system, tools: [], allowedTools: [], permissionMode: 'dontAsk',
+          settingSources: [], maxTurns: 1, cwd: await this.d.workDir(), abortController: abort,
+          env: { ...process.env, CLAUDE_AGENT_SDK_CLIENT_APP: 'CreateCraft/0.1' } as Record<string, string>,
+        },
+      });
+      let said = '';
+      for await (const m of q) {
+        if (m.type === 'assistant') said += m.message.content.filter((b) => b.type === 'text').map((b) => (b as { text: string }).text).join('\n');
+        else if (m.type === 'result') {
+          this.costUsd += m.total_cost_usd ?? 0;
+          const resultText = 'result' in m ? String(m.result ?? '') : '';
+          if (/not logged in|\/login/i.test(resultText)) throw signedOut();
+          if (m.is_error) throw new Error('Claude could not answer right now. Try again in a moment.');
+        }
+      }
+      if (!said.trim()) throw new Error('Claude sent no text back. Try again.');
+      return said;
+    } catch (e) {
+      if (abort.signal.aborted) throw new Error('The request was cancelled.');
+      if (e instanceof Error && /not logged in|\/login/i.test(e.message)) throw signedOut();
+      throw e;
+    } finally {
+      this.abort = null;
+      if (this.status === 'working') this.status = 'idle';
+      this.publish();
+    }
+  }
+
   /** Sends one message; Claude works until it answers. Streams activity and replies to the panel. */
   async send(message: string): Promise<void> {
     if (this.status === 'working') throw new Error('Claude is still working. Stop it or wait.');
@@ -718,7 +794,7 @@ Available AI image models: ${models.length ? models.join('; ') : 'none set up'}.
           allowedTools: TOOL_NAMES.map((n) => `mcp__createcraft__${n}`),
           permissionMode: 'dontAsk',
           settingSources: [],
-          maxTurns: 40,
+          maxTurns: 300,
           cwd: await this.d.workDir(),
           abortController: abort,
           ...(this.sessionId ? { resume: this.sessionId } : {}),

@@ -21,7 +21,8 @@ import { checkEditValues, EDITOR_APPS, editorFor, type EditorAppId } from '@shar
 import { appThemeValue } from '@shared/appTheme';
 import type { AppOperation } from '@shared/contracts';
 import type { ThemePalette } from '@shared/types';
-import { checkPhotoCraftOp, presetLabel } from '@shared/photocraftOps';
+import { appCommandTier, checkAppCommand } from '@shared/appCommands';
+import { checkPhotoCraftOp, commandTier, presetLabel } from '@shared/photocraftOps';
 import { versionOf, type LiveDoc } from './photocraftLive';
 import type { ProjectStore } from './projectStore';
 import { documentDigest } from './zipDigest';
@@ -39,7 +40,14 @@ export interface LiveTaskDeps {
   emit: (s: LiveSnapshot) => void;
   /** Pause between steps so you can see each change and intervene. */
   stepDelayMs?: number;
+  /** Longest an open (start the app, import the file) may take before it is reported as failed. Default 120 s. */
+  openTimeoutMs?: number;
   writeDir: (app: EditorAppId) => Promise<string>;
+  /**
+   * Asks the user (native dialog in main, so neither the renderer nor Claude can answer) whether Claude may run a command that reaches
+   * outside the open document: opening/saving files, actions, scripts, plugins. Resolves true only on an explicit Approve.
+   */
+  approveCommand?: (r: { app: EditorAppId; appName: string; command: string; params: Record<string, unknown> }) => Promise<boolean>;
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -64,6 +72,7 @@ export class LiveTaskController {
   private appTheme: { app: EditorAppId; value: string } | null = null;
   private openedBy: 'user' | 'claude' = 'user';
   private saveCount = 0;
+  private openAttempt = 0;
 
   constructor(private readonly d: LiveTaskDeps) {}
 
@@ -132,18 +141,39 @@ export class LiveTaskController {
     this.appId = appId;
     this.message = `Starting ${appName}…`;
     this.publish();
+    const attempt = ++this.openAttempt;
+    const stale = () => attempt !== this.openAttempt;
+    const limit = this.d.openTimeoutMs ?? 120_000;
+    let timer: NodeJS.Timeout | undefined;
     try {
-      this.doc = await this.d.connect(appId);
-      await this.doc.open(abs);
-      await this.captureBaseline();
-      if (appId === 'photocraft' && VECTOR.has(a.sourceFormat)) await this.doc.run({ command: 'layer.flattenImage', params: {} });
+      // An app that never answers (a dialog waiting in its window, a stuck import) must not leave
+      // the Edit tabs on "Opening…" for ever: give up after `limit` and report it so you can retry.
+      await Promise.race([
+        (async () => {
+          const doc = await this.d.connect(appId);
+          if (stale()) return;
+          this.doc = doc;
+          await doc.open(abs);
+          if (stale()) return;
+          await this.captureBaseline();
+          if (appId === 'photocraft' && VECTOR.has(a.sourceFormat)) await doc.run({ command: 'layer.flattenImage', params: {} });
+        })(),
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(() => reject(new Error(`${appName} did not finish opening ${a.name} within ${Math.round(limit / 1000)} seconds. Check ${appName}'s window for a message, then press Open to try again.`)), limit);
+        }),
+      ]);
+      if (stale()) throw new Error('Another file was opened instead.');
       this.status = 'ready';
     } catch (err) {
+      if (stale()) throw err; // superseded: the newer open owns the state
+      this.openAttempt++; // ignore whatever the stuck attempt does later
       this.status = 'error';
       this.error = err instanceof Error ? err.message : String(err);
       this.doc = null;
       this.publish();
       throw err;
+    } finally {
+      clearTimeout(timer);
     }
     this.asset = { id: a.id, name: a.name };
     this.openedBy = openedBy;
@@ -407,6 +437,7 @@ export class LiveTaskController {
     const opId = `claude-${randomUUID().slice(0, 6)}`;
     if (!this.dispatch({ type: 'beginOperation', opId })) throw new Error(this.message ?? 'Could not start the edit.');
     try {
+      (doc as { lastResult?: unknown }).lastResult = undefined;
       for (const s of steps) await doc.run(s);
     } catch (err) {
       this.dispatch({ type: 'endOperation', opId, ok: false });
@@ -417,7 +448,10 @@ export class LiveTaskController {
     this.message = `Claude: ${label}`;
     this.publish();
     const p = this.collab.phase;
-    return p === 'running' ? `${label} applied.` : `${label} applied. The user has now ${p === 'manual' ? 'taken control' : 'paused you'}; stop and wait.`;
+    const res = (doc as { lastResult?: unknown }).lastResult;
+    const shown = res === undefined || res === null || res === '' ? '' : `
+Result: ${(typeof res === 'string' ? res : JSON.stringify(res)).slice(0, 6000)}`;
+    return p === 'running' ? `${label} applied.${shown}` : `${label} applied.${shown} The user has now ${p === 'manual' ? 'taken control' : 'paused you'}; stop and wait.`;
   }
 
   /** Claude applies one of the app's quick edits (src/shared/appEditors.ts). */
@@ -437,17 +471,50 @@ export class LiveTaskController {
   /** Claude runs one allowlisted PhotoCraft engine command (adjustments, filters, rotations, fill). */
   async claudePhotoCraftCommand(command: string, params: Record<string, unknown>): Promise<string> {
     if (this.appId !== 'photocraft') throw new Error('Engine commands are only available while PhotoCraft is open.');
-    const c = checkPhotoCraftOp(command, params);
+    let approved = false;
+    if (commandTier(command) === 'approval') {
+      if (!this.d.approveCommand) throw new Error(`"${command}" needs the user's approval, which is not available here.`);
+      approved = await this.d.approveCommand({ app: 'photocraft', appName: 'PhotoCraft', command, params });
+      if (!approved) throw new Error(`The user declined "${command}". Nothing was run.`);
+    }
+    const c = checkPhotoCraftOp(command, params, { approved });
     if (!c.ok) throw new Error(c.reason);
     return this.claudeRun(`${presetLabel(command)} (PhotoCraft)`, [{ command, params: c.params }]);
+  }
+
+  /** The open app's engine commands (ids and parameters), optionally filtered by a word. */
+  async appCommandList(filter?: string): Promise<string> {
+    const doc = this.requireDoc();
+    if (!doc.listCommands) throw new Error(`${EDITOR_APPS[this.appId].name} can't list its commands.`);
+    return doc.listCommands(filter);
+  }
+
+  /** Claude runs one engine command in the open non-PhotoCraft app. Commands that reach outside the document ask the user first. */
+  async claudeAppCommand(command: string, params: Record<string, unknown>): Promise<string> {
+    if (this.appId === 'photocraft') return this.claudePhotoCraftCommand(command, params);
+    let approved = false;
+    if (appCommandTier(command) === 'approval') {
+      if (!this.d.approveCommand) throw new Error(`"${command}" needs the user's approval, which is not available here.`);
+      approved = await this.d.approveCommand({ app: this.appId, appName: EDITOR_APPS[this.appId].name, command, params });
+      if (!approved) throw new Error(`The user declined "${command}". Nothing was run.`);
+    }
+    const c = checkAppCommand(command, params, { approved });
+    if (!c.ok) throw new Error(c.reason);
+    return this.claudeRun(`${command} (${EDITOR_APPS[this.appId].name})`, [{ command, params: c.params }]);
   }
 
   async claudeUndo(): Promise<string> {
     const doc = await this.claudeGate();
     if (!doc.undo) throw new Error('Undo is not available.');
     const opId = `claude-undo-${randomUUID().slice(0, 6)}`;
-    this.dispatch({ type: 'beginOperation', opId });
-    await doc.undo();
+    if (!this.dispatch({ type: 'beginOperation', opId })) throw new Error(this.message ?? 'Could not start the undo.');
+    try {
+      await doc.undo();
+    } catch (err) {
+      this.dispatch({ type: 'endOperation', opId, ok: false });
+      this.claudeActive = false;
+      throw err;
+    }
     this.dispatch({ type: 'endOperation', opId, ok: true, version: await this.currentVersion() });
     return 'Undone.';
   }

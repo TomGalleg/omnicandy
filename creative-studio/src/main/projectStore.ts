@@ -25,10 +25,26 @@ export async function sha256File(p: string): Promise<string> {
   return createHash('sha256').update(await fs.readFile(p)).digest('hex');
 }
 
-async function writeJsonAtomic(file: string, data: unknown): Promise<void> {
-  const tmp = `${file}.${process.pid}.tmp`;
-  await fs.writeFile(tmp, JSON.stringify(data, null, 2), 'utf8');
-  await fs.rename(tmp, file);
+const writeQueues = new Map<string, Promise<void>>();
+
+/**
+ * Writes JSON through a temp file and a rename. Writes to the same file run one at a time (each serialises the data when its
+ * turn comes, so the newest state wins) and every write has its own temp file, so overlapping saves cannot collide.
+ */
+export async function writeJsonAtomic(file: string, data: unknown): Promise<void> {
+  const prev = writeQueues.get(file) ?? Promise.resolve();
+  const run = prev.catch(() => undefined).then(async () => {
+    const tmp = `${file}.${process.pid}.${randomUUID().slice(0, 8)}.tmp`;
+    try {
+      await fs.writeFile(tmp, JSON.stringify(data, null, 2), 'utf8');
+      await fs.rename(tmp, file);
+    } catch (err) {
+      await fs.rm(tmp, { force: true }).catch(() => undefined);
+      throw err;
+    }
+  });
+  writeQueues.set(file, run);
+  try { await run; } finally { if (writeQueues.get(file) === run) writeQueues.delete(file); }
 }
 
 /** Folders of a layout-2 project, created up front so the structure is visible in Explorer. */
@@ -141,7 +157,19 @@ export class ProjectStore implements AssetRepository {
     return this.storeFile(producedPath, { folder: 'generated', name: meta.name, move: true, provenance: { ...meta.provenance, origin: 'generated' } });
   }
 
-  private async storeFile(
+  /** Adds run one at a time, so two parallel adds of the same content cannot both pass the duplicate check. */
+  private storing: Promise<unknown> = Promise.resolve();
+
+  private storeFile(
+    sourcePath: string,
+    o: { folder: StoreFolder; name: string; move: boolean; parentId?: string; provenance: Partial<AssetProvenance> & Pick<AssetProvenance, 'origin' | 'source'> },
+  ): Promise<{ asset: Asset; duplicateOf?: string }> {
+    const run = this.storing.catch(() => undefined).then(() => this.storeFileNow(sourcePath, o));
+    this.storing = run;
+    return run;
+  }
+
+  private async storeFileNow(
     sourcePath: string,
     o: { folder: StoreFolder; name: string; move: boolean; parentId?: string; provenance: Partial<AssetProvenance> & Pick<AssetProvenance, 'origin' | 'source'> },
   ): Promise<{ asset: Asset; duplicateOf?: string }> {
