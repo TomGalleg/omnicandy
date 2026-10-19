@@ -80,6 +80,7 @@ export async function fetchDocLinks(urls: string[], o: { fetcher?: LinkFetcher; 
       let text = sanitizeDocText(r.body, /html/i.test(r.contentType) || /^\s*<(!doctype|html)/i.test(r.body)).replace(/[ \t]+/g, ' ').replace(/\n\s*\n+/g, '\n').trim();
       if (text.length < 200) throw new Error('has almost no readable text (the page may need a browser to show its content). Save the page as HTML and add it as a file instead.');
       if (text.length > MAX_TEXT) { text = text.slice(0, MAX_TEXT); notes.push(`${raw} was cut after ${MAX_TEXT / 1000} thousand characters.`); }
+      if (text.length < 4000 && r.body.length > text.length * 8) notes.push(`${raw} gave only ${text.length} characters of text; it may be an overview whose details are loaded by a script. Paste links to the detailed pages as well.`);
       total += text.length;
       docs.push({ name: u.href, text });
     } catch (e) { notes.push(`${raw} ${e instanceof Error ? e.message : String(e)}`); }

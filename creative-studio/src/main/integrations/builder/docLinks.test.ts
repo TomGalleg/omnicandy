@@ -96,3 +96,16 @@ describe('fetchDocLinks', () => {
     expect(r.notes.join(' ')).toMatch(/was cut/);
   });
 });
+
+describe('suggested links', () => {
+  it('offers verified https pages for Unreal under any spelling, and nothing for unknown programs', async () => {
+    const { suggestedLinksFor } = await import('@shared/builder');
+    for (const n of ['Unreal Engine', 'Unreal Editor', 'UnrealEditor']) {
+      const s = suggestedLinksFor(n)!;
+      expect(s.links.length).toBeGreaterThan(3);
+      expect(s.links.length).toBeLessThanOrEqual(10);
+      expect(s.links.every((l) => l.startsWith('https://dev.epicgames.com/documentation/'))).toBe(true);
+    }
+    expect(suggestedLinksFor('Inkscape')).toBeNull();
+  });
+});

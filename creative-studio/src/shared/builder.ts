@@ -254,3 +254,26 @@ export function parseLinks(text: string): string[] {
   }
   return out;
 }
+
+/** Documentation pages known to describe how a program can be controlled. Offered as one click in Create Custom Integration; the user can still edit the list. */
+const SUGGESTED_DOC_LINKS: Array<{ match: RegExp; label: string; links: string[] }> = [
+  {
+    match: /unreal/i, label: 'Unreal Engine',
+    links: [
+      'https://dev.epicgames.com/documentation/en-us/unreal-engine/scripting-the-unreal-editor-using-python',
+      'https://dev.epicgames.com/documentation/en-us/unreal-engine/unreal-engine-command-line-arguments-reference',
+      'https://dev.epicgames.com/documentation/en-us/unreal-engine/remote-control-for-unreal-engine',
+      'https://dev.epicgames.com/documentation/en-us/unreal-engine/remote-control-quick-start-for-unreal-engine',
+      'https://dev.epicgames.com/documentation/en-us/unreal-engine/remote-control-api-http-reference-for-unreal-engine',
+      'https://dev.epicgames.com/documentation/en-us/unreal-engine/remote-control-api-websocket-reference-for-unreal-engine',
+      'https://dev.epicgames.com/documentation/en-us/unreal-engine/plugins-in-unreal-engine',
+      'https://dev.epicgames.com/documentation/en-us/unreal-engine/python-api/index',
+    ],
+  },
+];
+
+/** Suggested documentation links for a program name, or null when none are known. */
+export function suggestedLinksFor(programName: string): { label: string; links: string[] } | null {
+  const hit = SUGGESTED_DOC_LINKS.find((s) => s.match.test(programName));
+  return hit ? { label: hit.label, links: hit.links } : null;
+}

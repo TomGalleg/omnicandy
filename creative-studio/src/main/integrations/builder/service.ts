@@ -199,7 +199,7 @@ export class BuilderService {
     if (r.value.insufficient || !r.value.sourcesConsulted || !r.value.sources.length) {
       rec.nextSteps = [
         r.value.insufficient ? `Not enough trustworthy information was found: ${r.value.insufficient}` : 'No documentation could be read.',
-        `Add ${rec.request.appName}'s documentation or SDK folder (text, HTML or source files) with "Add documentation" and start again. CreateCraft will not guess what the program can do.`,
+        `Add more documentation and start again: paste links to the specific pages that describe scripting, the command line or the API (not just overview pages), or add the program's documentation or SDK folder (text, HTML or source files). CreateCraft will not guess what the program can do.`,
       ];
       await this.note(rec, 'researching', 'Stopped: not enough documentation.', 'needs-documentation');
       return;

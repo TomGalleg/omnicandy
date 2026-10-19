@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { BUILDER_CONSENT, parseLinks, type BuilderOverview, type BuilderProjectDetail, type InstalledProgram } from '@shared/builder';
+import { BUILDER_CONSENT, parseLinks, suggestedLinksFor, type BuilderOverview, type BuilderProjectDetail, type InstalledProgram } from '@shared/builder';
 import { errorText } from '../connect/events';
 import { ProjectView } from './ProjectView';
 
@@ -53,6 +53,8 @@ export function BuilderWizard({ onClose, openProjectId }: Props) {
 
   const targetName = source === 'installed' ? picked?.name ?? '' : name.trim();
   const claudeReady = overview?.claude.ready ?? true;
+  const suggested = suggestedLinksFor(targetName);
+  const addSuggested = () => { if (suggested) setLinkText((t) => [...new Set([...parseLinks(t), ...suggested.links])].join(String.fromCharCode(10))); };
 
   const browseProgram = async () => {
     setError(null);
@@ -145,6 +147,7 @@ export function BuilderWizard({ onClose, openProjectId }: Props) {
                   <button className="btn small" onClick={() => void addDocs('folder')}>Add a documentation or SDK folder…</button>
                 </div>
                 <label className="menu-label" htmlFor="builder-links">Or paste links to documentation pages</label>
+                {suggested && <div className="ext-actions"><button className="btn small primary" onClick={addSuggested}>Add the {suggested.links.length} suggested {suggested.label} pages</button></div>}
                 <textarea id="builder-links" className="text-input" rows={4} placeholder={'One link per line, for example: https://dev.epicgames.com/documentation/en-us/unreal-engine/python-api/index'} value={linkText} onChange={(e) => setLinkText(e.target.value)} />
                 <small>{(() => { const n = parseLinks(linkText).length; return n === 0 ? 'Links must start with https://. CreateCraft reads each page once, as plain text, and sends it only to Claude. Pages that need a browser to show their content cannot be read; save those as HTML and add them as files.' : `${n} link${n === 1 ? '' : 's'} will be read${n > 10 ? ' (only the first 10 are used)' : ''}.`; })()}</small>
                 {docs.length > 0 && <ul className="status-list">{docs.map((p) => <li key={p}><small>{p}</small> <button className="btn small ghost" aria-label={`Remove ${p}`} onClick={() => setDocs((x) => x.filter((y) => y !== p))}>Remove</button></li>)}</ul>}
