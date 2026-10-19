@@ -4,12 +4,13 @@ import { useEffect, useMemo, useState } from 'react';
 import { isClaimLive, type ExecPackage, type PlannerProject } from '@shared/planner';
 import { brainstormText, buildContext } from '@shared/plannerContext';
 import { DESTINATIONS, lastActive, listPaths, sendText, type DestinationId } from '@shared/plannerSend';
-import { CopyButton, ErrorLine, Section, useAction, when } from './plannerUi';
+import { copyText, CopyButton, ErrorLine, Section, useAction, when } from './plannerUi';
 
 const api = () => window.studio.planner;
 const TOOL_KINDS = ['claude-code', 'gemini', 'cowork'];
 
-export function SendPanel({ p, reload, sel, setSel }: { p: PlannerProject; reload: () => Promise<void>; sel: string[]; setSel: (ids: string[]) => void }) {
+/** `only`: the one chunk being worked on (no list to tick). */
+export function SendPanel({ p, reload, sel, setSel, only }: { p: PlannerProject; reload: () => Promise<void>; sel: string[]; setSel: (ids: string[]) => void; only?: string }) {
   const [dest, setDest] = useState<DestinationId>('chat');
   const [objective, setObjective] = useState('');
   const [sent, setSent] = useState<{ pkg: ExecPackage; reused: boolean; replaced: number[]; dest: DestinationId } | null>(null);
@@ -17,13 +18,14 @@ export function SendPanel({ p, reload, sel, setSel }: { p: PlannerProject; reloa
   const [seen, setSeen] = useState<{ name: string; at: string } | null>(null);
   const [filled, setFilled] = useState(false);
   const [force, setForce] = useState<string[]>([]);
+  const [copied, setCopied] = useState(false);
   const a = useAction(reload);
   const now = new Date();
-  const ready = p.tasks.filter((t) => ['todo', 'revision'].includes(t.status) && !isClaimLive(t.claim, now));
-  const chosen = useMemo(() => sel.filter((id) => ready.some((t) => t.id === id)), [sel, ready]);
+  const ready = p.tasks.filter((t) => ['todo', 'revision'].includes(t.status) && !isClaimLive(t.claim, now) && (!only || t.id === only));
+  const chosen = useMemo(() => (only ? ready.map((t) => t.id) : sel.filter((id) => ready.some((t) => t.id === id))), [sel, ready, only]);
   useEffect(() => { void api().activity(p.id).then((act) => setSeen(lastActive(act, TOOL_KINDS))).catch(() => {}); }, [p.id, p.revision]);
   const chosenKey = chosen.join(',');
-  useEffect(() => { setSent(null); setFilled(false); }, [chosenKey, dest, force]);
+  useEffect(() => { setSent(null); setFilled(false); setCopied(false); }, [chosenKey, dest, force]);
   useEffect(() => { setForce([]); }, [chosenKey, dest]);
   const ctx = useMemo(() => (chosen.length ? buildContext(p, { purpose: 'execute', taskIds: chosen, destination: dest, forceInclude: force }) : null), [p, chosen, dest, force]);
   useEffect(() => { setRedact(dest === 'chat'); }, [dest]);
@@ -31,15 +33,17 @@ export function SendPanel({ p, reload, sel, setSel }: { p: PlannerProject; reloa
   const prepare = () => a.run(async () => {
     const r = await api().prepareSend(p.id, { taskIds: chosen, objective: objective.trim() || undefined, destination: dest, forceInclude: force });
     setSent({ pkg: r.package, reused: r.reused, replaced: r.replaced, dest });
+    // One click: the instructions are on the clipboard as soon as they are ready (the text is also shown below).
+    if (dest !== 'createcraft') setCopied(await copyText(sendText(r.package, p.title, dest, { redact: dest === 'chat' })));
   });
   const text = sent ? sendText(sent.pkg, p.title, sent.dest, { redact: redact && sent.dest !== 'createcraft' }) : '';
   const paths = sent ? listPaths(sent.pkg) : [];
   const waits = (id: string) => (p.tasks.find((t) => t.id === id)?.dependsOn ?? []).map((d) => p.tasks.find((x) => x.id === d)).filter((x) => x && !['accepted', 'cancelled'].includes(x.status) && !chosen.includes(x.id));
 
   return (
-    <Section title="Send to AI" hint="Pick what the AI should do and who gets it. This only prepares text for you to send. Nothing starts by itself.">
-      {!ready.length && <p className="pl-hint">No task is ready to send. A task is ready when it is To Do and nobody is working on it.</p>}
-      {ready.map((t) => (
+    <Section title={only ? 'Do this chunk' : 'Send to AI'} hint={only ? 'Pick who does it. This only prepares instructions for you to copy; nothing starts by itself.' : 'Pick what the AI should do and who gets it. This only prepares text for you to send. Nothing starts by itself.'}>
+      {!ready.length && <p className="pl-hint">{only ? 'This chunk is already with an AI, waiting for a result, or finished. Bring the result back below.' : 'No task is ready to send. A task is ready when it is To Do and nobody is working on it.'}</p>}
+      {!only && ready.map((t) => (
         <label key={t.id} className="pl-check">
           <input type="checkbox" checked={chosen.includes(t.id)} onChange={(e) => setSel(e.target.checked ? [...chosen, t.id] : chosen.filter((x) => x !== t.id))} />
           {t.title}
@@ -48,7 +52,7 @@ export function SendPanel({ p, reload, sel, setSel }: { p: PlannerProject; reloa
         </label>
       ))}
       {ready.length > 0 && (
-        <fieldset className="pl-dests"><legend>Who is it for?</legend>
+        <fieldset className="pl-dests"><legend>Who does it?</legend>
           {DESTINATIONS.map((d) => (
             <label key={d.id} className="pl-check pl-dest">
               <input type="radio" name={`dest-${p.id}`} checked={dest === d.id} onChange={() => setDest(d.id)} />
@@ -69,7 +73,7 @@ export function SendPanel({ p, reload, sel, setSel }: { p: PlannerProject; reloa
       )}
       {ctx && ctx.rules.length === 0 && ctx.upstream.length > 0 && <p className="pl-hint">It also gets the finished results of: {ctx.upstream.map((u) => u.title).join(', ')}.</p>}
       {ready.length > 0 && <details><summary>More options</summary><label>What should it aim for? (optional)<input value={objective} onChange={(e) => setObjective(e.target.value)} placeholder="Leave empty to use the task names" /></label></details>}
-      {ready.length > 0 && <div><button className="btn primary" disabled={a.busy || !chosen.length} onClick={() => void prepare()}>Get the text to send</button></div>}
+      {ready.length > 0 && <div><button className="btn primary" disabled={a.busy || !chosen.length} onClick={() => void prepare()}>{dest === 'createcraft' ? 'Get the message' : 'Copy the instructions'}</button></div>}
       <ErrorLine error={a.error} />
       {sent && (
         <div className="pl-sent" role="status">
@@ -86,6 +90,7 @@ export function SendPanel({ p, reload, sel, setSel }: { p: PlannerProject; reloa
             {sent.dest === 'createcraft' && <button className="btn small" onClick={() => { window.dispatchEvent(new CustomEvent('createcraft:claude-prefill', { detail: { text } })); setFilled(true); }}>Put it in the Claude panel</button>}
             <button className="btn small ghost" disabled={a.busy} title="Cancel this brief; its tasks go back to To Do" onClick={() => void a.run(async () => { await api().cancelPackage(p.id, sent.pkg.id); setSent(null); })}>Unsend</button>
           </div>
+          {copied && sent.dest !== 'createcraft' && <p className="pl-hint" role="status">Copied. Paste it into {sent.dest === 'chat' ? 'ChatGPT, Gemini or Claude' : 'your tool'}.</p>}
           {filled && <p className="pl-hint">It is in the Claude panel's box. Read it, then press Send there. If the panel is closed, use Copy and paste it in.</p>}
           <p className="pl-hint">When the AI answers, paste the answer under <strong>Paste back</strong> below. It will wait for your review.</p>
           <pre className="pl-raw">{text}</pre>

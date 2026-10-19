@@ -3,13 +3,13 @@ import { EDITOR_APPS } from '@shared/appEditors';
 import {
   isClaimLive, PRIORITIES, type AppRef, type ExecPackage, type PlanAsset, type PlannerProject, type PlanReport, type PlanTask, type Priority, type ReportDraft, uncoveredChecks, unmetDependencies,
 } from '@shared/planner';
-import type { PackageView, PlannerConnectionInfo } from '@shared/plannerApi';
+import type { PlannerConnectionInfo } from '@shared/plannerApi';
 import { PLANNER_CLIENTS } from '@shared/plannerClients';
 import { parseReportText, type ReportImportPreview } from '@shared/plannerHandoff';
 import type { ProjectManifest } from '@shared/types';
-import { describeWorkflowRun, displayStatus, SIMPLE_STATUSES } from '@shared/plannerView';
+import { describeWorkflowRun, displayStatus } from '@shared/plannerView';
 import { classifyPaste, changesThePlan, describeChange, type SuggestionPreview } from '@shared/plannerPaste';
-import { AskPanel, SendPanel } from './PlannerSend';
+import { SendPanel } from './PlannerSend';
 import { CopyButton, ErrorLine, errMsg, lines, PlainWords, Section, StatusChip, useAction, when, type TabProps } from './plannerUi';
 
 const api = () => window.studio.planner;
@@ -37,11 +37,10 @@ function TaskForm({ p, reload, task, onDone, projectKey, projectName }: { p: Pla
     }
     onDone?.();
   });
-  return (
-    <div className="pl-form">
-      <label>Task<input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="What needs doing?" /></label>
+  const more = (
+    <>
       <label>Details<textarea rows={2} value={description} onChange={(e) => setDescription(e.target.value)} /></label>
-      <label>How will we know it is done? (one check per line: tests, review, dimensions, export, citations...)<textarea rows={2} value={checks} onChange={(e) => setChecks(e.target.value)} /></label>
+      <label>How will we know it is done? (one line each)<textarea rows={2} value={checks} onChange={(e) => setChecks(e.target.value)} /></label>
       <div className="pl-two">
         <label>Priority<select value={priority} onChange={(e) => setPriority(e.target.value as Priority)}>{PRIORITIES.map((x) => <option key={x}>{x}</option>)}</select></label>
         <label>Uses (optional)
@@ -60,7 +59,17 @@ function TaskForm({ p, reload, task, onDone, projectKey, projectName }: { p: Pla
           {p.tasks.filter((t) => t.id !== task?.id).map((t) => <label key={t.id} className="pl-check"><input type="checkbox" checked={deps.includes(t.id)} onChange={(e) => setDeps(e.target.checked ? [...deps, t.id] : deps.filter((x) => x !== t.id))} />{t.title}</label>)}
         </fieldset>
       )}
-      <div><button className="btn primary" disabled={a.busy || !title.trim()} onClick={() => void save()}>{task ? 'Save task' : 'Add task'}</button>{onDone && <button className="btn" onClick={onDone}>Cancel</button>}</div>
+    </>
+  );
+  // Adding is one line and a button; the rest sits under "More options". Editing shows everything.
+  return (
+    <div className="pl-form">
+      <div className="pl-add">
+        <input aria-label="Chunk" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="What needs doing?" onKeyDown={(e) => { if (e.key === 'Enter' && title.trim() && !a.busy) void save(); }} />
+        <button className="btn primary" disabled={a.busy || !title.trim()} onClick={() => void save()}>{task ? 'Save chunk' : 'Add chunk'}</button>
+        {onDone && <button className="btn" onClick={onDone}>Cancel</button>}
+      </div>
+      <details open={!!task}><summary>More options</summary><div className="pl-fold-body">{more}</div></details>
       <ErrorLine error={a.error} />
     </div>
   );
@@ -81,7 +90,7 @@ function WorkflowStatus({ appId, projectKey }: { appId: string; projectKey?: str
   return <p className="pl-hint">{here ? `Workflow: ${line ?? 'checking…'}` : 'Workflow in another CreateCraft project. Open that project to see its progress.'}</p>;
 }
 
-export function TaskRow({ t, p, reload, onSend, onWork, projectKey, projectName, inColumn, current }: { t: PlanTask; p: PlannerProject; reload: () => Promise<void>; onSend?: () => void; onWork?: () => void; projectKey?: string | null; projectName?: string; inColumn?: boolean; current?: boolean }) {
+export function TaskRow({ t, p, reload, onWork, projectKey, projectName, inColumn, current }: { t: PlanTask; p: PlannerProject; reload: () => Promise<void>; onWork?: () => void; projectKey?: string | null; projectName?: string; inColumn?: boolean; current?: boolean }) {
   const plain = useContext(PlainWords);
   const [edit, setEdit] = useState(false);
   const a = useAction(reload);
@@ -108,7 +117,6 @@ export function TaskRow({ t, p, reload, onSend, onWork, projectKey, projectName,
         <button className="btn small" onClick={() => setEdit(true)}>Edit</button>
         {plain && onWork && t.status !== 'accepted' && t.status !== 'cancelled' && <button className="btn small primary" title="Open this chunk in Work" onClick={onWork}>Work on this</button>}
         {t.status === 'reported' && !plain && <span className="pl-hint">Review the report in Handoffs.</span>}
-        {plain && onSend && (t.status === 'todo' || t.status === 'revision') && !live && <button className="btn small primary" onClick={onSend}>{pkg?.state === 'open' ? 'Send again' : 'Send to AI'}</button>}
         {live && <button className="btn small" disabled={a.busy} title={plain ? 'Stop waiting for the AI and put the task back on your list' : undefined} onClick={() => void a.run(() => api().releaseClaim(p.id, t.id))}>{plain ? 'Take back' : 'Release claim'}</button>}
         {plain && (ds.stalled || ds.chip === 'Partly done') && <button className="btn small" disabled={a.busy} title="Put it back on your list so it can be sent again" onClick={() => void st('todo')}>Take back</button>}
         {plain && t.status === 'blocked' && !live && <button className="btn small" disabled={a.busy} title="The problem is solved: put it back on your list" onClick={() => void st('todo')}>Unblock</button>}
@@ -116,8 +124,8 @@ export function TaskRow({ t, p, reload, onSend, onWork, projectKey, projectName,
         {idle && !live && !ds.stalled && <button className="btn small" disabled={a.busy} title="Mark it done yourself, without a report" onClick={() => void st('accepted')}>Mark done</button>}
         {plain && ds.stalled && <button className="btn small" disabled={a.busy} title="Mark it done yourself" onClick={() => void st('accepted')}>Mark done</button>}
         {(t.status === 'accepted' || t.status === 'cancelled') && <button className="btn small" disabled={a.busy} onClick={() => void st('todo')}>{plain && t.status === 'cancelled' ? 'Bring back' : 'Reopen'}</button>}
-        {t.status !== 'cancelled' && t.status !== 'accepted' && <button className="btn small ghost" disabled={a.busy} onClick={() => void st('cancelled')}>{plain ? 'Remove' : 'Cancel task'}</button>}
-        {!t.packageId && <button className="btn small ghost danger" disabled={a.busy} onClick={() => void a.run(() => api().removeTask(p.id, t.id))}>Delete</button>}
+        {/* One Remove: a chunk never sent anywhere is deleted; one that was sent is cancelled (its history stays). */}
+        {t.status !== 'cancelled' && t.status !== 'accepted' && <button className="btn small ghost" disabled={a.busy} onClick={() => void (t.packageId ? st('cancelled') : a.run(() => api().removeTask(p.id, t.id)))}>Remove</button>}
       </div>
       {result && <ReportCard r={result} p={p} reload={reload} />}
       <ErrorLine error={a.error} />
@@ -126,33 +134,17 @@ export function TaskRow({ t, p, reload, onSend, onWork, projectKey, projectName,
 }
 
 export function TasksTab({ p, reload, go, setSendSel, projectKey, projectName, setFocusTaskId }: TabProps) {
-  const plain = useContext(PlainWords);
-  const [view, setView] = useState<'list' | 'board'>('list');
   const [showRemoved, setShowRemoved] = useState(false);
-  const cols: Array<[string, PlanTask['status'][]]> = [['To do', ['todo', 'revision']], ['In progress', ['in_progress']], ['Blocked', ['blocked']], ['Reported, awaiting review', ['reported']], ['Accepted', ['accepted']]];
-  const now = new Date();
-  const shown = plain && !showRemoved ? p.tasks.filter((t) => t.status !== 'cancelled') : p.tasks;
+  const shown = showRemoved ? p.tasks : p.tasks.filter((t) => t.status !== 'cancelled');
+  const work = (id: string) => { setSendSel?.([id]); setFocusTaskId?.(id); go('handoffs'); };
   return (
     <div className="pl-stack">
-      <Section title={plain ? 'Chunks' : 'Tasks'} actions={<div className="pl-actions"><button className="btn small" aria-pressed={view === 'list'} onClick={() => setView('list')}>List</button><button className="btn small" aria-pressed={view === 'board'} onClick={() => setView('board')}>Board</button></div>}
-        hint={plain ? 'Break the idea into chunks small enough to finish one at a time, and edit them whenever you like. A chunk is Done when you say so. When an AI finishes, it moves to Needs Review and waits for you.' : "A task is done when you accept it. An executor's report only says the work is finished."}>
-        {!p.tasks.length && <p className="pl-hint">{plain ? 'No chunks yet. Add one below, or ask the AI to suggest them on the Idea tab.' : 'No tasks yet.'}</p>}
-        {plain && p.tasks.some((t) => t.status === 'cancelled') && <label className="pl-check"><input type="checkbox" checked={showRemoved} onChange={(e) => setShowRemoved(e.target.checked)} />Show removed chunks</label>}
-        {view === 'list' ? <ul className="pl-tasks">{shown.map((t) => <TaskRow key={`${t.id}:${t.rev}`} t={t} p={p} reload={reload} projectKey={projectKey} projectName={projectName} onSend={() => { setSendSel?.([t.id]); setFocusTaskId?.(t.id); go('handoffs'); }} onWork={() => { setSendSel?.([t.id]); setFocusTaskId?.(t.id); go('handoffs'); }} />)}</ul> : plain ? (
-          <div className="pl-board">
-            {SIMPLE_STATUSES.map((label) => (
-              <div key={label} className="pl-col"><h4>{label}</h4><ul className="pl-tasks">{shown.filter((t) => displayStatus(t, p, now).label === label && !displayStatus(t, p, now).removed).map((t) => <TaskRow key={`${t.id}:${t.rev}`} inColumn t={t} p={p} reload={reload} onSend={() => { setSendSel?.([t.id]); go('handoffs'); }} />)}</ul></div>
-            ))}
-          </div>
-        ) : (
-          <div className="pl-board">
-            {cols.map(([label, sts]) => (
-              <div key={label} className="pl-col"><h4>{label}</h4><ul className="pl-tasks">{p.tasks.filter((t) => sts.includes(t.status)).map((t) => <TaskRow key={`${t.id}:${t.rev}`} t={t} p={p} reload={reload} onSend={() => { setSendSel?.([t.id]); go('handoffs'); }} />)}</ul></div>
-            ))}
-          </div>
-        )}
+      <Section title="Chunks" hint="Break the idea into chunks small enough to finish one at a time. Edit them whenever you like. A chunk is done when you say so.">
+        {!p.tasks.length && <p className="pl-hint">No chunks yet. Add one below, or ask the AI to suggest them on the Idea tab.</p>}
+        <ul className="pl-tasks">{shown.map((t) => <TaskRow key={`${t.id}:${t.rev}`} t={t} p={p} reload={reload} projectKey={projectKey} projectName={projectName} onWork={() => work(t.id)} />)}</ul>
+        {p.tasks.some((t) => t.status === 'cancelled') && <label className="pl-check"><input type="checkbox" checked={showRemoved} onChange={(e) => setShowRemoved(e.target.checked)} />Show removed chunks</label>}
       </Section>
-      <Section title={plain ? 'Add a chunk' : 'Add a task'}><TaskForm p={p} reload={reload} projectKey={projectKey} projectName={projectName} /></Section>
+      <Section title="Add a chunk"><TaskForm p={p} reload={reload} projectKey={projectKey} projectName={projectName} /></Section>
     </div>
   );
 }
@@ -254,34 +246,7 @@ function OutdatedGate({ pkg, p, ack, setAck }: { pkg: ExecPackage; p: PlannerPro
   return <label className="pl-check pl-warn"><input type="checkbox" checked={ack} onChange={(e) => setAck(e.target.checked)} />The accepted plan changed (v{pkg.planRevision} to v{p.planRevision}) after this work was handed off. I have looked at what changed and want to accept anyway.</label>;
 }
 
-function PackageCard({ k, p, reload }: { k: ExecPackage; p: PlannerProject; reload: () => Promise<void> }) {
-  const [view, setView] = useState<PackageView | null>(null);
-  const [saved, setSaved] = useState<string | null>(null);
-  const a = useAction(reload);
-  const load = async () => { setView(await api().packageView(p.id, k.id)); };
-  const outdated = k.planRevision !== p.planRevision;
-  return (
-    <article className={`pl-package ${k.state}`}>
-      <header><strong>Package {k.number}</strong> <span className="chip">{k.state}</span> <span className="chip">plan v{k.planRevision}</span>{outdated && k.state === 'open' && <span className="chip bad">plan has changed since</span>} <small className="pl-hint">{when(k.createdAt)} · id <code>{k.id}</code></small></header>
-      <p>{k.objective}</p>
-      <ul>{k.tasks.map((t) => { const cur = p.tasks.find((x) => x.id === t.id); return <li key={t.id}>{t.title} {cur && <StatusChip status={cur.status} task={cur} p={p} />}{cur && isClaimLive(cur.claim, new Date()) ? <small className="pl-hint"> claimed by {cur.claim?.executor.name}</small> : null}</li>; })}</ul>
-      <div className="pl-actions">
-        <button className="btn small" onClick={() => void a.run(load)}>{view ? 'Refresh' : 'Show / copy'}</button>
-        {k.state === 'open' && <button className="btn small ghost" disabled={a.busy} onClick={() => void a.run(() => api().cancelPackage(p.id, k.id))}>Cancel package</button>}
-      </div>
-      {view && (
-        <div>
-          <div className="pl-actions"><CopyButton text={view.markdown} label="Copy as Markdown" /><CopyButton text={view.json} label="Copy as JSON" /><button className="btn small" onClick={async () => setSaved(await api().savePackage(p.id, k.id))}>Save files…</button>{saved && <small className="pl-hint">Saved {saved}</small>}</div>
-          {view.drift.outdated && <div className="pl-warn">The plan changed after this package was made: {view.drift.changes.map((c) => `${c.change} ${c.what} "${c.title}"`).join('; ')}. Prepare a new package so the executor sees the current plan.</div>}
-          <pre className="pl-raw">{view.markdown}</pre>
-        </div>
-      )}
-      <ErrorLine error={a.error} />
-    </article>
-  );
-}
-
-function PastePanel({ p, reload }: { p: PlannerProject; reload: () => Promise<void> }) {
+export function PastePanel({ p, reload }: { p: PlannerProject; reload: () => Promise<void> }) {
   const plain = useContext(PlainWords);
   const [text, setText] = useState('');
   const [prev, setPrev] = useState<ReportImportPreview | null>(null);
@@ -370,7 +335,7 @@ function PastePanel({ p, reload }: { p: PlannerProject; reload: () => Promise<vo
   );
 }
 
-function ConnectPanel() {
+export function ConnectPanel() {
   const [info, setInfo] = useState<PlannerConnectionInfo | null>(null);
   const [err, setErr] = useState<string | null>(null);
   useEffect(() => { void api().connectionInfo().then(setInfo).catch((e) => setErr(errMsg(e))); }, []);
@@ -429,13 +394,14 @@ export function ProposalCard({ p, reload }: { p: PlannerProject; reload: () => P
 }
 
 /** One queue for everything that waits for the owner: results to review, suggestions to look at, stalled tasks to take back. */
-function ReviewInbox({ p, reload }: { p: PlannerProject; reload: () => Promise<void> }) {
+export function ReviewInbox({ p, reload, hideEmpty }: { p: PlannerProject; reload: () => Promise<void>; hideEmpty?: boolean }) {
   const results = p.reports.filter((r) => r.status === 'submitted');
   const pending = p.proposals.filter((x) => x.status === 'pending');
   const now = new Date();
   const stalled = p.tasks.filter((t) => displayStatus(t, p, now).stalled);
   const a = useAction(reload);
   const empty = !results.length && !pending.length && !stalled.length;
+  if (empty && hideEmpty) return null;
   return (
     <Section title="Needs you" hint="An AI saying it is finished is not the same as you saying it is done. Nothing changes until you decide.">
       {empty && <p className="pl-hint">Nothing is waiting for you.</p>}
@@ -449,27 +415,31 @@ function ReviewInbox({ p, reload }: { p: PlannerProject; reload: () => Promise<v
   );
 }
 
-/**
- * Work, one chunk at a time: the chunk being worked on (the one picked up, or the next one ready), with everything to do with it.
- * Nothing here changes a file in the project: results come back as text and wait for the owner's review.
- */
-export function CurrentChunk({ p, reload, go, sendSel, setSendSel, focusTaskId, setFocusTaskId, projectKey, projectName }: TabProps) {
+/** The chunk being worked on: the one named, the one picked up from where the owner left off, the next one ready, or the first open one. */
+export function pickCurrent(p: PlannerProject, focusTaskId?: string | null): PlanTask | undefined {
   const open = p.tasks.filter((t) => t.status !== 'accepted' && t.status !== 'cancelled');
   const ready = open.find((t) => ['todo', 'revision'].includes(t.status) && !unmetDependencies(p, t).length);
-  const t = open.find((x) => x.id === focusTaskId) ?? open.find((x) => x.id === p.lastActive?.taskId) ?? ready ?? open[0];
+  return open.find((x) => x.id === focusTaskId) ?? open.find((x) => x.id === p.lastActive?.taskId) ?? ready ?? open[0];
+}
+
+/**
+ * Work, one chunk at a time. Nothing here changes a file in the project: results come back as text and wait for the owner's review.
+ */
+function CurrentChunk({ p, reload, go, setSendSel, focusTaskId, setFocusTaskId, projectKey, projectName }: TabProps) {
+  const open = p.tasks.filter((t) => t.status !== 'accepted' && t.status !== 'cancelled');
+  const t = pickCurrent(p, focusTaskId);
   if (!t) {
     return (
-      <Section title="Current chunk" hint="Work on one chunk at a time.">
-        <p className="pl-hint">{p.tasks.length ? 'Every chunk is done. Add another one in Plan, or you are finished.' : 'There are no chunks yet. Break your idea into chunks in Plan first.'}</p>
+      <Section title="Work" hint="One chunk at a time.">
+        <p className="pl-hint">{p.tasks.length ? 'Every chunk is done. Add another in Plan if there is more to do.' : 'There are no chunks yet. Break your idea into chunks in Plan first.'}</p>
         <button className="btn small" onClick={() => go('tasks')}>Go to Plan</button>
       </Section>
     );
   }
   const others = open.filter((x) => x.id !== t.id);
   return (
-    <Section title="Current chunk" hint="Do one chunk at a time: send it to an AI (or to CreateCraft), bring the result back, review it, then approve it or ask for changes.">
-      <ul className="pl-tasks"><TaskRow key={`${t.id}:${t.rev}`} current t={t} p={p} reload={reload} projectKey={projectKey} projectName={projectName} onSend={() => { setSendSel?.([t.id]); setFocusTaskId?.(t.id); }} /></ul>
-      {sendSel && sendSel.length === 0 && ['todo', 'revision'].includes(t.status) && <p className="pl-hint">Press <strong>Send to AI</strong> on this chunk to get the instructions to copy.</p>}
+    <Section title="Current chunk" hint="Send it out, bring the result back, review it, then approve it or ask for changes.">
+      <ul className="pl-tasks"><TaskRow key={`${t.id}:${t.rev}`} current t={t} p={p} reload={reload} projectKey={projectKey} projectName={projectName} /></ul>
       {others.length > 0 && (
         <details><summary>Switch to another chunk ({others.length})</summary>
           <ul>{others.map((o) => <li key={o.id}>{o.title} <button className="btn small" onClick={() => { setSendSel?.([o.id]); setFocusTaskId?.(o.id); }}>Work on this</button></li>)}</ul>
@@ -479,49 +449,16 @@ export function CurrentChunk({ p, reload, go, sendSel, setSendSel, focusTaskId, 
   );
 }
 
-export function HandoffsTab({ p, reload, sendSel, setSendSel, go, focusTaskId, setFocusTaskId, projectKey, projectName }: TabProps) {
-  const ready = p.tasks.filter((t) => ['todo', 'revision'].includes(t.status) && !isClaimLive(t.claim, new Date()));
-  const [sel, setSel] = useState<string[]>([]);
-  const [objective, setObjective] = useState('');
-  const a = useAction(reload);
-  const plain = useContext(PlainWords);
-  const waiting = p.reports.filter((r) => r.status === 'submitted');
-  const done = p.reports.filter((r) => r.status !== 'submitted');
-  if (plain) {
-    return (
-      <div className="pl-stack">
-        <CurrentChunk p={p} reload={reload} go={go} sendSel={sendSel} setSendSel={setSendSel} focusTaskId={focusTaskId} setFocusTaskId={setFocusTaskId} projectKey={projectKey} projectName={projectName} />
-        <ReviewInbox p={p} reload={reload} />
-        <SendPanel p={p} reload={reload} sel={sendSel ?? []} setSel={setSendSel ?? (() => {})} />
-        <AskPanel p={p} />
-        <Section title="Paste back" hint="Paste what the AI answered. You see what it says first. A task result waits for your review; ideas for the plan wait for your OK."><PastePanel p={p} reload={reload} /></Section>
-        <details className="pl-section"><summary>Connect an AI directly (optional)</summary><ConnectPanel /></details>
-      </div>
-    );
-  }
+/** Work: the current chunk, what waits for the owner, sending it out and bringing the result back. */
+export function WorkTab(props: TabProps) {
+  const { p, reload, sendSel, setSendSel, focusTaskId } = props;
+  const cur = pickCurrent(p, focusTaskId);
   return (
     <div className="pl-stack">
-      <Section title="Reports to review" hint="An executor saying the work is finished is not the same as you accepting it.">
-        {!waiting.length && <p className="pl-hint">No reports are waiting.</p>}
-        {waiting.map((r) => <ReportCard key={r.id} r={r} p={p} reload={reload} />)}
-      </Section>
-      <Section title="Prepare a handoff" hint="Freezes the accepted plan with the tasks you pick. It only prepares text; no AI is started.">
-        {!ready.length && <p className="pl-hint">No task is ready (tasks must be to do, unclaimed, and not waiting on unfinished work).</p>}
-        {ready.map((t) => {
-          const waits = unmetDependencies(p, t).filter((d) => !sel.includes(d.id));
-          return <label key={t.id} className="pl-check"><input type="checkbox" checked={sel.includes(t.id)} onChange={(e) => setSel(e.target.checked ? [...sel, t.id] : sel.filter((x) => x !== t.id))} />{t.title}{waits.length ? <small className="pl-hint"> (also needs: {waits.map((w) => w.title).join(', ')})</small> : null}{t.packageId ? <small className="pl-hint"> (replaces its current package)</small> : null}</label>;
-        })}
-        <label>Objective (optional)<input value={objective} onChange={(e) => setObjective(e.target.value)} /></label>
-        <button className="btn primary" disabled={a.busy || !sel.length} onClick={() => void a.run(async () => { await api().createPackage(p.id, { taskIds: sel, objective }); setSel([]); setObjective(''); })}>Create execution package</button>
-        <ErrorLine error={a.error} />
-      </Section>
-      <Section title="Packages">
-        {!p.packages.length && <p className="pl-hint">None yet.</p>}
-        {[...p.packages].reverse().map((k) => <PackageCard key={k.id} k={k} p={p} reload={reload} />)}
-      </Section>
-      <Section title="Paste a report" hint="Bring back work done in Claude Code, Cowork, ChatGPT or Gemini. You see a preview first and the original response is kept."><PastePanel p={p} reload={reload} /></Section>
-      {done.length > 0 && <Section title="Reviewed reports">{[...done].reverse().map((r) => <ReportCard key={r.id} r={r} p={p} reload={reload} />)}</Section>}
-      <Section title="Connect an AI (optional)"><ConnectPanel /></Section>
+      <ReviewInbox p={p} reload={reload} hideEmpty />
+      <CurrentChunk {...props} />
+      {cur && <SendPanel p={p} reload={reload} sel={sendSel ?? []} setSel={setSendSel ?? (() => {})} only={cur.id} />}
+      <Section title="Bring the result back" hint="Paste what the AI answered. You see what it says first, and nothing changes until you press a button."><PastePanel p={p} reload={reload} /></Section>
     </div>
   );
 }

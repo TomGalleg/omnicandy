@@ -28,17 +28,27 @@ try {
   await win.screenshot({ path: path.join(out, 'pp-findings.png') });
   await win.getByRole('button', { name: 'Start my plan with these' }).click();
   await win.getByRole('tab', { name: 'Idea' }).waitFor();
+  await win.locator('.pl-fold > summary', { hasText: 'References and files' }).click();
   const refText = await win.locator('.planner').innerText();
   check('The plan starts with the ticked findings as references (not as done work)', /References/.test(refText) && /Already in this project/.test(refText));
-  check('Plain tabs follow Idea, Plan, Work, Files', JSON.stringify(await win.getByRole('tab').allTextContents()) === JSON.stringify(['Idea', 'Plan', 'Work', 'Files']), (await win.getByRole('tab').allTextContents()).join(','));
+  check('Three steps only: Idea, Plan, Work', JSON.stringify(await win.getByRole('tab').allTextContents()) === JSON.stringify(['Idea', 'Plan', 'Work']), (await win.getByRole('tab').allTextContents()).join(','));
+  check('No Advanced switch', (await win.getByText('Advanced', { exact: true }).count()) === 0);
+  const folds = await win.locator('.pl-fold > summary').allTextContents();
+  check('Idea keeps everything in short folded sections', ['Project brief', 'Rules and decisions', 'Open questions', 'Ideas', 'References and files'].every((f) => folds.some((x) => x.startsWith(f))), folds.join(' | '));
+  await win.locator('.pl-menu > summary').click();
+  const menu = await win.locator('.pl-menu [role=menuitem]').allTextContents();
+  check('One small menu holds history, connect, export/import and the folder', ['What changed…', 'Connect an AI tool…', 'Export this plan…', 'Import a plan…', "Open the plan's folder"].every((m) => menu.includes(m)), menu.join(' | '));
+  await win.locator('.pl-menu [role=menuitem]', { hasText: 'What changed' }).click();
+  check('What changed shows the history', (await win.getByText('Every change to this plan, newest first.').count()) === 1);
+  await win.getByRole('button', { name: 'Close' }).first().click();
 
   // ---- 2. chunks and Work
   await tab(win, 'Plan');
-  await win.getByLabel('Title').first().fill('Sketch the layout');
-  await win.getByRole('button', { name: /^Add (task|chunk)?$/ }).first().click().catch(() => {});
-  await win.waitForTimeout(500);
+  await win.getByPlaceholder('What needs doing?').fill('Sketch the layout');
+  await win.getByRole('button', { name: 'Add chunk' }).click();
+  await win.locator('.pl-task', { hasText: 'Sketch the layout' }).waitFor();
   const chunkSection = await win.locator('.planner').innerText();
-  check('Plan talks about chunks', /Chunks/.test(chunkSection) && /Add a chunk/.test(chunkSection));
+  check('Plan talks about chunks and adding one is a single line', /Chunks/.test(chunkSection) && /Add a chunk/.test(chunkSection) && (await win.locator('.pl-task', { hasText: 'Sketch the layout' }).count()) === 1);
   await win.screenshot({ path: path.join(out, 'pp-plan.png') });
   // add chunks through the API (the form is covered elsewhere) so the rest of the flow is deterministic
   const ids = await win.evaluate(async () => {

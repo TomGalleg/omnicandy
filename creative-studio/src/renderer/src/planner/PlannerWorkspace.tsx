@@ -1,22 +1,18 @@
-import { useCallback, useContext, useEffect, useRef, useState } from 'react';
-import { planDrift, progressOf, unmetDependencies, type ActivityEntry, type PlanItem, type PlannerProject, type ProjectSummary } from '@shared/planner';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { progressOf, type ActivityEntry, type PlanItem, type PlannerProject, type ProjectSummary } from '@shared/planner';
 import type { ProjectFindingsDto, ProjectPlannerState } from '@shared/plannerApi';
 import type { ProjectManifest } from '@shared/types';
 import { describeChange } from '@shared/plannerPaste';
 import { PlannerChat } from './PlannerChat';
-import { AssetsTab, HandoffsTab, ProposalCard, TasksTab } from './PlannerWork';
+import { AssetsTab, ConnectPanel, PastePanel, TasksTab, WorkTab } from './PlannerWork';
+import { AskPanel } from './PlannerSend';
 import { needsYou } from '@shared/plannerView';
-import { ErrorLine, errMsg, lines, PlainWords, Section, StatusChip, useAction, when, type TabId, type TabProps } from './plannerUi';
+import { ErrorLine, errMsg, lines, PlainWords, Section, useAction, when, type TabId, type TabProps } from './plannerUi';
 
 const api = () => window.studio.planner;
-const store = (() => { try { return window.localStorage; } catch { return undefined; } })();
-// Advanced keeps the original six tabs. The plain view follows one flow: Idea (what is this, with an AI to think it through), Plan (break it
-// into chunks you can edit) and Work (do one chunk at a time, review it, approve it), plus Files. Tab ids are shared with Advanced so every
-// existing go('handoffs') still works: Idea = plan, Plan = tasks, Work = handoffs.
-const TABS: Array<[TabId, string]> = [['overview', 'Overview'], ['plan', 'Plan'], ['tasks', 'Tasks'], ['assets', 'Assets'], ['handoffs', 'Handoffs'], ['history', 'History']];
-const SIMPLE_TABS: Array<[TabId, string]> = [['plan', 'Idea'], ['tasks', 'Plan'], ['handoffs', 'Work'], ['assets', 'Files']];
-const ADV = 'cs-planner-advanced';
-const readAdvanced = () => { try { return store?.getItem(ADV) === '1'; } catch { return false; } };
+// One simple flow: Idea (think it through with an AI), Plan (break it into chunks you can edit), Work (do one chunk at a time, review it, approve it).
+// Tab ids are the original ones (plan, tasks, handoffs) so every existing go('handoffs') still lands in the right place.
+const TABS: Array<[TabId, string]> = [['plan', 'Idea'], ['tasks', 'Plan'], ['handoffs', 'Work']];
 
 const ago = (iso: string) => {
   const ms = Date.now() - Date.parse(iso);
@@ -37,16 +33,15 @@ export function PlannerWorkspace({ manifest, projectKey }: { manifest: ProjectMa
   /** An older plan (from the shared planner folder) being looked at instead of this project's plan. */
   const [olderId, setOlderId] = useState<string | null>(null);
   const [project, setProject] = useState<PlannerProject | null>(null);
-  const [advanced, setAdvanced] = useState(readAdvanced);
   const [sendSel, setSendSel] = useState<string[]>([]);
   const [focusTaskId, setFocusTaskId] = useState<string | null>(null);
   const [pickUpDismissed, setPickUpDismissed] = useState<string | null>(null);
-  const [rawTab, setRawTab] = useState<TabId>('plan');
-  // The plain view has no Overview or History tab: those open Idea.
-  const tab: TabId = !advanced && (rawTab === 'overview' || rawTab === 'history') ? 'plan' : rawTab;
-  const setTab = setRawTab;
-  const toggleAdvanced = (on: boolean) => { setAdvanced(on); try { store?.setItem(ADV, on ? '1' : '0'); } catch { /* storage unavailable */ } };
+  const [tab, setTab] = useState<TabId>('plan');
+  /** Something opened from the ⋯ menu: the change history, or how to connect an AI tool. */
+  const [panel, setPanel] = useState<'history' | 'connect' | null>(null);
   const [error, setError] = useState<string | null>(null);
+  /** "Pick up where I left off" is for coming back: it is not shown for work done in this very session. */
+  const sessionStart = useRef(Date.now());
   const olderRef = useRef(olderId);
   olderRef.current = olderId;
   const keyRef = useRef(projectKey);
@@ -64,7 +59,7 @@ export function PlannerWorkspace({ manifest, projectKey }: { manifest: ProjectMa
     } catch (e) { setError(errMsg(e)); }
   }, []);
   // A different project: nothing of the previous one stays on screen.
-  useEffect(() => { setState(null); setProject(null); setOlderId(null); setFocusTaskId(null); setPickUpDismissed(null); setRawTab('plan'); void refresh(); }, [projectKey, refresh]);
+  useEffect(() => { setState(null); setProject(null); setOlderId(null); setFocusTaskId(null); setPickUpDismissed(null); setPanel(null); setTab('plan'); sessionStart.current = Date.now(); void refresh(); }, [projectKey, refresh]);
   useEffect(() => { void refresh(); }, [olderId, refresh]);
   // Connections and the app write to the same folder: look again every few seconds (cheap: only a changed plan reloads).
   useEffect(() => {
@@ -86,29 +81,20 @@ export function PlannerWorkspace({ manifest, projectKey }: { manifest: ProjectMa
     p: project, reload: async () => { setProject(await api().get(project.id)); void api().forProject().then(setState).catch(() => {}); }, go: setTab, sendSel, setSendSel, projectKey, projectName: manifest?.name,
     focusTaskId, setFocusTaskId: (id) => { setFocusTaskId(id); if (id) void api().touchTask(project.id, id, 'opened').then(() => api().get(project.id).then(setProject)).catch(() => {}); },
   };
-  const tabs = advanced ? TABS : SIMPLE_TABS;
   const need = needsYou(project);
-  const older = state.older;
+  const pr = progressOf(project.tasks.filter((t) => t.status !== 'cancelled'));
   const la = project.lastActive;
   const lastTask = la ? project.tasks.find((t) => t.id === la.taskId && t.status !== 'accepted' && t.status !== 'cancelled') : undefined;
-  const showPickUp = !advanced && !olderId && !!la && !!lastTask && pickUpDismissed !== `${project.id}:${la.at}`;
+  const showPickUp = !olderId && !!la && !!lastTask && Date.parse(la.at) < sessionStart.current && pickUpDismissed !== `${project.id}:${la.at}`;
   return (
-    <PlainWords.Provider value={!advanced}>
+    <PlainWords.Provider value>
     <div className="planner">
       <header className="pl-head">
         {olderId ? <button className="btn small" onClick={() => setOlderId(null)} title="Back to this project's plan">← This project's plan</button> : null}
         <h2 title={project.title}>{project.title}</h2>
         {olderId && <span className="chip warn" title="Made before projects kept their own plan; it lives in the shared planner folder">older plan</span>}
-        {advanced && <><span className="chip" title="Changes each time anything in the plan changes">revision {project.revision}</span>
-        <span className="chip" title="Changes only when the accepted plan changes">plan v{project.planRevision}</span></>}
-        {older.length > 0 && !olderId && (
-          <details className="pl-older"><summary>Older plans ({older.length})</summary>
-            <ul>{older.map((o) => <li key={o.id}><strong>{o.title}</strong> <small className="pl-hint">{o.tasks} chunk(s)</small> <button className="btn small" onClick={() => setOlderId(o.id)}>Open</button></li>)}</ul>
-            <p className="pl-hint">Made before each project kept its own plan. They stay as they were; opening one does not change it.</p>
-          </details>
-        )}
-        <label className="pl-check" title="Shows packages, claims, revisions and the full history"><input type="checkbox" checked={advanced} onChange={(e) => toggleAdvanced(e.target.checked)} />Advanced</label>
-        <ExportImport p={project} onImported={(n) => { setOlderId(n.id); void refresh(); }} />
+        {pr.total > 0 && <span className="pl-hint" title="Chunks you have approved">{pr.accepted} of {pr.total} chunks done</span>}
+        <HeaderMenu p={project} older={olderId ? [] : state.older} onOpenOlder={setOlderId} onImported={(n) => { setOlderId(n.id); void refresh(); }} onPanel={setPanel} />
       </header>
       {showPickUp && la && (
         <div className="pl-pickup" role="status" aria-label="Pick up where you left off">
@@ -117,48 +103,54 @@ export function PlannerWorkspace({ manifest, projectKey }: { manifest: ProjectMa
           <button className="btn small ghost" onClick={() => setPickUpDismissed(`${project.id}:${la.at}`)}>Not now</button>
         </div>
       )}
-      <nav className="pl-tabs" role="tablist" aria-label="Planner sections">
-        {tabs.map(([t, label]) => <button key={t} role="tab" aria-selected={tab === t} onClick={() => setTab(t)}>{label}{advanced && t === 'handoffs' && attention(project) ? <span className="pl-badge">{attention(project)}</span> : null}{advanced && t === 'plan' && pendingProposals(project) ? <span className="pl-badge">{pendingProposals(project)}</span> : null}</button>)}
+      {panel === 'history' && <HistoryPanel p={project} onClose={() => setPanel(null)} />}
+      {panel === 'connect' && <div className="pl-panel"><Section title="Connect an AI tool" hint="Optional. Lets a tool such as Claude Code read this plan and report back, without copy and paste." actions={<button className="btn small" onClick={() => setPanel(null)}>Close</button>}><ConnectPanel /></Section></div>}
+      <nav className="pl-tabs" role="tablist" aria-label="Planner steps">
+        {TABS.map(([t, label]) => <button key={t} role="tab" aria-selected={tab === t} onClick={() => setTab(t)}>{label}{t === 'handoffs' && need.total ? <span className="pl-badge" title="Waiting for you">{need.total}</span> : null}</button>)}
       </nav>
-      {!advanced && need.total > 0 && (
-        <div className="pl-needs" role="status" aria-label="Waiting for you">
-          <strong>Needs you</strong>
-          {need.reports > 0 && <button className="btn small primary" onClick={() => setTab('handoffs')}>{need.reports} result{need.reports === 1 ? '' : 's'} to review</button>}
-          {need.suggestions > 0 && <button className="btn small" onClick={() => setTab('handoffs')}>{need.suggestions} suggestion{need.suggestions === 1 ? '' : 's'} to look at</button>}
-          {need.stalled > 0 && <button className="btn small" onClick={() => setTab('handoffs')}>{need.stalled} stalled chunk{need.stalled === 1 ? '' : 's'}</button>}
-        </div>
-      )}
       <div className="pl-body" role="tabpanel">
-        {tab === 'overview' && <Overview {...props} />}
-        {tab === 'plan' && <PlanArea {...props} withOverview={!advanced} />}
-        {tab === 'tasks' && <><TasksTab {...props} />{!advanced && <div className="pl-stack"><Milestones p={project} reload={props.reload} /></div>}</>}
-        {tab === 'assets' && <AssetsTab {...props} manifest={manifest} projectKey={projectKey} />}
-        {tab === 'handoffs' && <HandoffsTab {...props} />}
-        {tab === 'history' && <HistoryTab {...props} />}
+        {tab === 'plan' && <IdeaTab {...props} manifest={manifest} />}
+        {tab === 'tasks' && <PlanTab {...props} />}
+        {tab === 'handoffs' && <WorkTab {...props} />}
       </div>
     </div>
     </PlainWords.Provider>
   );
 }
 
-const attention = (p: PlannerProject) => p.reports.filter((r) => r.status === 'submitted').length;
-const pendingProposals = (p: PlannerProject) => p.proposals.filter((x) => x.status === 'pending').length;
-
-function ExportImport({ p, onImported }: { p: PlannerProject; onImported: (p: PlannerProject) => void }) {
+/** The one small menu in the header: everything that is not part of the three steps but should never be missing. */
+function HeaderMenu({ p, older, onOpenOlder, onImported, onPanel }: { p: PlannerProject; older: ProjectSummary[]; onOpenOlder: (id: string) => void; onImported: (p: PlannerProject) => void; onPanel: (v: 'history' | 'connect') => void }) {
   const [msg, setMsg] = useState<string | null>(null);
-  const [open, setOpen] = useState(false);
-  const go = async (fn: () => Promise<string | null>) => { setOpen(false); try { const r = await fn(); if (r) setMsg(`Saved ${r}`); } catch (e) { setMsg(errMsg(e)); } };
+  const ref = useRef<HTMLDetailsElement>(null);
+  const run = async (fn: () => Promise<unknown>) => { if (ref.current) ref.current.open = false; try { const r = await fn(); if (typeof r === 'string' && r) setMsg(`Saved ${r}`); } catch (e) { setMsg(errMsg(e)); } };
   return (
     <div className="pl-export">
-      <button className="btn small" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(!open)}>Export / import ▾</button>
-      {open && (
+      <details ref={ref} className="pl-menu">
+        <summary className="btn small" aria-label="More">⋯</summary>
         <div className="more-list" role="menu">
-          <button role="menuitem" onClick={() => go(() => api().exportProject(p.id, 'reference'))}>Export plan (files stay where they are)</button>
-          <button role="menuitem" onClick={() => go(() => api().exportProject(p.id, 'bundle'))}>Export plan with linked files bundled</button>
-          <button role="menuitem" onClick={() => { setOpen(false); void api().importProject().then((n) => { if (n) onImported(n); }).catch((e) => setMsg(errMsg(e))); }}>Import a plan…</button>
+          <button role="menuitem" onClick={() => { if (ref.current) ref.current.open = false; onPanel('history'); }}>What changed…</button>
+          <button role="menuitem" onClick={() => { if (ref.current) ref.current.open = false; onPanel('connect'); }}>Connect an AI tool…</button>
+          <button role="menuitem" onClick={() => void run(() => api().exportProject(p.id, 'reference'))}>Export this plan…</button>
+          <button role="menuitem" onClick={() => void run(() => api().exportProject(p.id, 'bundle'))}>Export with linked files…</button>
+          <button role="menuitem" onClick={() => void run(async () => { const n = await api().importProject(); if (n) onImported(n); })}>Import a plan…</button>
+          <button role="menuitem" onClick={() => void run(() => api().openFolder())}>Open the plan's folder</button>
+          {older.length > 0 && <div className="pl-older-list"><small className="pl-hint">Older plans (made before projects kept their own)</small>{older.map((o) => <button key={o.id} role="menuitem" onClick={() => { if (ref.current) ref.current.open = false; onOpenOlder(o.id); }}>{o.title}</button>)}</div>}
         </div>
-      )}
+      </details>
       {msg && <span className="pl-hint" role="status"> {msg}</span>}
+    </div>
+  );
+}
+
+/** What changed, newest first: who did what. Read-only. */
+function HistoryPanel({ p, onClose }: { p: PlannerProject; onClose: () => void }) {
+  const [activity, setActivity] = useState<ActivityEntry[]>([]);
+  useEffect(() => { void api().activity(p.id).then((a) => setActivity([...a].reverse())).catch(() => {}); }, [p.id, p.revision]);
+  return (
+    <div className="pl-panel">
+      <Section title="What changed" hint="Every change to this plan, newest first." actions={<button className="btn small" onClick={onClose}>Close</button>}>
+        <ul className="pl-log">{activity.map((a) => <li key={a.seq}><small>{when(a.at)}</small> <strong>{a.actor.name}</strong> {a.summary}</li>)}</ul>
+      </Section>
     </div>
   );
 }
@@ -241,41 +233,6 @@ function Milestones({ p, reload }: { p: PlannerProject; reload: () => Promise<vo
         <button className="btn small" disabled={a.busy || !title.trim()} onClick={() => void a.run(async () => { await api().addMilestone(p.id, { title, due }); setTitle(''); setDue(''); })}>Add</button></div>
       <ErrorLine error={a.error} />
     </Section>
-  );
-}
-
-function Overview({ p, reload, go, setSendSel }: TabProps) {
-  const plain = useContext(PlainWords);
-  const pr = progressOf(p.tasks);
-  const [activity, setActivity] = useState<ActivityEntry[]>([]);
-  useEffect(() => { void api().activity(p.id).then((a) => setActivity(a.slice(-8).reverse())).catch(() => {}); }, [p.id, p.revision]);
-  const ready = p.tasks.filter((t) => t.status === 'todo' && !t.packageId && !unmetDependencies(p, t).length);
-  const blocked = p.tasks.filter((t) => t.status === 'blocked');
-  const review = p.reports.filter((r) => r.status === 'submitted');
-  return (
-    <div className="pl-grid">
-      <Section title="Goal">
-        <p>{p.goal || <span className="pl-hint">No goal yet. Add one in the brief below.</span>}</p>
-        <div className="pl-progress" role="progressbar" aria-valuenow={pr.percent} aria-valuemin={0} aria-valuemax={100} aria-label="Accepted tasks"><span style={{ width: `${pr.percent}%` }} /></div>
-        <p className="pl-hint">{pr.total ? (plain ? `${pr.accepted} of ${pr.total} chunks done · ${pr.reported} waiting for your review · ${pr.inProgress} in progress` : `${pr.accepted} of ${pr.total} tasks accepted by you · ${pr.reported} reported done and waiting for your review · ${pr.inProgress} in progress`) : 'No tasks yet.'}</p>
-      </Section>
-      {!plain && <Section title="Needs you">
-        {!review.length && !pendingProposals(p) && !blocked.length && <p className="pl-hint">Nothing is waiting for you.</p>}
-        {review.length > 0 && <p><button className="btn small primary" onClick={() => go('handoffs')}>{review.length} report(s) to review</button></p>}
-        {pendingProposals(p) > 0 && <p><button className="btn small" onClick={() => go('plan')}>{pendingProposals(p)} suggested change(s)</button></p>}
-        {blocked.map((t) => <p key={t.id} className="pl-warn">Blocked: {t.title}{t.progressNote ? ` - ${t.progressNote}` : ''}</p>)}
-      </Section>}
-      {plain && blocked.length > 0 && <Section title="Blocked">{blocked.map((t) => <p key={t.id} className="pl-warn">{t.title}{t.progressNote ? ` - ${t.progressNote}` : ''}</p>)}</Section>}
-      <Section title="Next actions">
-        {!ready.length && <p className="pl-hint">No task is ready to hand off.</p>}
-        <ul>{ready.slice(0, 6).map((t) => <li key={t.id}>{t.title}</li>)}</ul>
-        {ready.length > 0 && <button className="btn small" onClick={() => { setSendSel?.(ready.map((t) => t.id)); go('handoffs'); }}>{plain ? 'Send to AI…' : 'Prepare a handoff…'}</button>}
-      </Section>
-      {!plain && <Milestones p={p} reload={reload} />}
-      {!plain && <Section title="Recent activity">
-        <ul className="pl-log">{activity.map((a) => <li key={a.seq}><small>{when(a.at)}</small> <strong>{a.actor.name}</strong> {a.summary}</li>)}</ul>
-      </Section>}
-    </div>
   );
 }
 
@@ -369,64 +326,55 @@ function Brief({ p, reload, onSaved }: { p: PlannerProject; reload: () => Promis
   );
 }
 
-/** The Plan screen: the whole plan on the left, the planning chat on the right. The chat stays in view while the left side scrolls. */
-function PlanArea(props: TabProps & { withOverview: boolean }) {
+/**
+ * Idea: the conversation with the AI is the centre. Everything it fills in (and anything you type) sits in short folded sections beside it, each with
+ * a count, so nothing is missing and nothing shouts. Files and references for the project are in the last section.
+ */
+function IdeaTab(props: TabProps & { manifest: ProjectManifest | null }) {
+  const { p, reload, manifest, projectKey } = props;
   const [savedTick, setSavedTick] = useState(0);
+  const items = (t: PlanItem['type']) => p.items.filter((i) => i.type === t && (i.status === 'open' || i.status === 'accepted' || i.status === 'answered'));
+  const group = (t: PlanItem['type'], hint: string, label: string) => (
+    <>
+      <p className="pl-hint">{hint}</p>
+      <ul className="pl-items">{items(t).map((i) => <ItemEditor key={`${i.id}:${i.rev}`} item={i} p={p} reload={reload} />)}</ul>
+      {!items(t).length && <p className="pl-hint">None yet.</p>}
+      <AddItem type={t} p={p} reload={reload} label={label} />
+    </>
+  );
+  const fold = (title: string, count: number | null, body: React.ReactNode, open = false) => (
+    <details className="pl-fold" open={open}><summary>{title}{count !== null ? <span className="pl-count">{count}</span> : null}</summary><div className="pl-fold-body">{body}</div></details>
+  );
   return (
     <div className="pl-split">
       <div className="pl-left">
-        {props.withOverview && <Overview {...props} />}
-        <PlanTab {...props} onSaved={() => setSavedTick((n) => n + 1)} />
+        {p.goal && <p className="pl-goal"><strong>Goal:</strong> {p.goal}</p>}
+        {fold('Project brief', null, <Brief key={p.id} p={p} reload={reload} onSaved={() => setSavedTick((n) => n + 1)} />, !p.goal)}
+        {fold('Rules and decisions', items('requirement').length + items('decision').length, <>{group('requirement', 'What must be true of the result. The AI gets these every time.', 'Add a rule')}{group('decision', 'Choices already made, with the reason.', 'Add a decision')}</>)}
+        {fold('Open questions', items('question').length, group('question', 'Not part of the plan until answered.', 'Add a question'))}
+        {fold('Ideas', items('idea').length, group('idea', 'Brainstorming. Not rules until you promote them.', 'Add an idea'))}
+        {fold('References and files', items('reference').length + p.assets.length, <>{group('reference', 'Things to look at or stay consistent with.', 'Add a reference')}<AssetsTab {...props} manifest={manifest} projectKey={projectKey ?? null} /></>)}
       </div>
-      <PlannerChat key={props.p.id} p={props.p} reload={props.reload} savedTick={savedTick} />
+      <div className="pl-right">
+        <PlannerChat key={p.id} p={p} reload={reload} savedTick={savedTick} />
+        <details className="pl-fold"><summary>Use ChatGPT, Gemini or another AI instead</summary>
+          <div className="pl-fold-body">
+            <AskPanel p={p} />
+            <Section title="Paste the answer" hint="Paste what the AI said. You see what it says first; nothing joins your plan until you press a button."><PastePanel p={p} reload={reload} /></Section>
+          </div>
+        </details>
+      </div>
     </div>
   );
 }
 
-function PlanTab({ p, reload, onSaved }: TabProps & { onSaved?: () => void }) {
-  const plain = useContext(PlainWords);
-  const open = (t: PlanItem['type']) => p.items.filter((i) => i.type === t && (i.status === 'open' || i.status === 'accepted' || i.status === 'answered'));
-  const group = (t: PlanItem['type'], title: string, hint: string, label: string) => (
-    <Section title={title} hint={hint}>
-      <ul className="pl-items">{open(t).map((i) => <ItemEditor key={`${i.id}:${i.rev}`} item={i} p={p} reload={reload} />)}</ul>
-      {!open(t).length && <p className="pl-hint">None yet.</p>}
-      <AddItem type={t} p={p} reload={reload} label={label} />
-    </Section>
-  );
+/** Plan: the work broken into chunks (editable), and the milestones that group them. */
+function PlanTab(props: TabProps) {
+  const { p, reload } = props;
   return (
-    <div className="pl-stack pl-wide">
-      {!plain && <ProposalCard p={p} reload={reload} />}
-      <Section title="Project brief" hint="Everything except the title is optional."><Brief key={p.id} p={p} reload={reload} onSaved={onSaved} /></Section>
-      {group('requirement', 'Accepted requirements', 'What must be true of the result. Executors receive these.', 'Add a requirement')}
-      {group('decision', 'Decisions', 'Choices already made, with the reason.', 'Add a decision')}
-      {group('question', 'Open questions', 'Not part of the plan until answered.', 'Add a question')}
-      {group('idea', 'Ideas', 'Brainstorming. Not requirements until you promote them.', 'Add an idea')}
-      {group('reference', 'References', 'Things to look at or stay consistent with.', 'Add a reference')}
-    </div>
-  );
-}
-
-function HistoryTab({ p }: TabProps) {
-  const [activity, setActivity] = useState<ActivityEntry[]>([]);
-  useEffect(() => { void api().activity(p.id).then((a) => setActivity([...a].reverse())).catch(() => {}); }, [p.id, p.revision]);
-  return (
-    <div className="pl-grid">
-      <Section title="Plan versions" hint="A new version is kept each time the accepted plan changes.">
-        <ol className="pl-log" reversed>
-          {[...p.planVersions].reverse().map((v, i, all) => {
-            const before = all[i + 1];
-            const d = before ? planDrift(before.snapshot, v.snapshot) : null;
-            return (
-              <li key={v.planRevision}><strong>v{v.planRevision}</strong> <small>{when(v.at)} · {v.by.name}</small><br />{v.reason}
-                {d && d.changes.length > 0 && <ul>{d.changes.map((c, k) => <li key={k} className="pl-hint">{c.change} {c.what}: {c.title}</li>)}</ul>}</li>
-            );
-          })}
-        </ol>
-      </Section>
-      <Section title="Everything that happened" hint="Who or what made each change.">
-        <ul className="pl-log">{activity.map((a) => <li key={a.seq}><small>{when(a.at)} · r{a.revision}</small> <strong>{a.actor.name}</strong> {a.summary} {a.planAffecting && <span className="chip">plan</span>}</li>)}</ul>
-      </Section>
-      <Section title="Task statuses"><ul>{p.tasks.map((t) => <li key={t.id}>{t.title} <StatusChip status={t.status} task={t} p={p} /></li>)}</ul></Section>
+    <div className="pl-stack">
+      <TasksTab {...props} />
+      <details className="pl-fold"><summary>Milestones<span className="pl-count">{p.milestones.length}</span></summary><div className="pl-fold-body"><Milestones p={p} reload={reload} /></div></details>
     </div>
   );
 }

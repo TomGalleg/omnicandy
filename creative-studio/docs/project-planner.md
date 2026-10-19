@@ -28,9 +28,9 @@ The Planner is part of each CreateCraft project (the **Planner** tab beside Proj
   **References**, and questions. Each suggestion has a tick box; nothing is added until the owner presses **Start my plan with these**. A file existing never
   marks a chunk as done, no history is assumed, and the project's own files (including `project.json`) are not written. The planning AI is also told the
   project's file names and counts (never paths), so it understands what exists.
-* **Flow.** Plain view: **Idea** (the brief, rules, decisions, questions, ideas, references, and the planning chat), **Plan** (the work in editable **chunks**
+* **Flow.** **Idea** (the planning chat, with the brief, rules, decisions, questions, ideas, references and files folded beside it), **Plan** (the work in editable **chunks**
   (tasks) and milestones), **Work** (one **current chunk**: send it to ChatGPT, Gemini, Claude or CreateCraft, bring the result back, review it, approve
-  it or ask for changes), **Files**. Everything copies out as text and comes back through Paste back or the review inbox.
+  it or ask for changes). Everything copies out as text and comes back through Paste back or the review inbox.
 * **Pick up where I left off.** The chunk worked on last is recorded in the plan (`lastActive`: opened in Work, sent to an AI, a result brought back,
   approved or sent back for changes) without changing the accepted plan. When the project is opened later the Planner shows **Pick up where I left off** with
   that chunk and how long ago; **Pick up** goes straight to it in Work.
@@ -39,14 +39,25 @@ The Planner is part of each CreateCraft project (the **Planner** tab beside Proj
 * **Older plans.** Plans made before this (in the shared planner folder) keep working. **Older plans (n)** in the header lists them: **Just open it** (as they were) or,
   on the entry screen, **Bring into this project** (a copy; the original is never changed, and the copy records `importedFrom`).
 
-## Plain view and Advanced
+## The screens: three steps and one menu
 
-The Planner opens in the **plain view**: four areas, **Idea, Plan, Work, Files** (ids `plan`, `tasks`, `handoffs`, `assets`), and one **Needs you** list. The **Advanced** checkbox in the
-header (remembered per user, off by default) shows the original six tabs (Overview, Plan, Tasks, Assets, Handoffs, History), revision
-chips, packages, claims, plan versions and connection profiles. Both views read and write the same data through the same rules; only
-wording and layout differ.
+There is no Advanced switch any more. The Planner shows **Idea, Plan, Work** (tab ids `plan`, `tasks`, `handoffs`) and a small **⋯** menu. The planner engine
+(packages, claims, revisions, plan versions, the connection server) is unchanged and still does the work underneath; the screens only show what a person needs.
 
-| Stored (and in Advanced, history, MCP) | Plain view |
+| Where it went | What it holds |
+|---|---|
+| **Idea** | The AI chat in the centre ("Fill in my plan with ..."). Beside it, folded sections with counts: **Project brief**, **Rules and decisions**, **Open questions**, **Ideas**, **References and files** (including linking files and links to the plan). "Use ChatGPT, Gemini or another AI instead" copies a request out and pastes the answer back. |
+| **Plan** | The **chunks** (tasks): add one with a single line (extra detail under More options), edit, Mark done, Remove, and **Work on this**. **Milestones** are a folded section. |
+| **Work** | What **needs you** (results to review, suggestions, stalled chunks) appears only when something waits; the **current chunk**; **Do this chunk** (pick CreateCraft, Claude Code / Gemini CLI, or ChatGPT / Gemini / any chat; one button copies the instructions); **Bring the result back** (paste, preview, review, approve or ask for changes). |
+| **⋯ menu** | **What changed** (the full history), **Connect an AI tool** (the connection snippets), **Export this plan**, **Export with linked files**, **Import a plan**, **Open the plan's folder**, and **Older plans**. |
+| Header | The plan's title, "n of m chunks done", and **Pick up where I left off** when you come back. |
+
+Removed from view (their jobs live elsewhere): Overview (progress is in the header, next steps are Work), Handoffs (Work), History (⋯ > What changed), Files (inside Idea), the list/board toggle and the per-chunk
+"Send to AI" button (Work on this opens it in Work), and the packages screen (a package is created for you when you copy instructions).
+
+The mapping between what is stored and what is shown is unchanged:
+
+| Stored (and in history, MCP) | Shown |
 |---|---|
 | todo / revision / in_progress / reported / accepted / blocked / cancelled | To Do (with "Changes requested") / In Progress / Needs Review / Done / Blocked / hidden under "Show removed" |
 | in_progress with an expired claim | In Progress, **Stalled**, with **Take back** |
@@ -54,9 +65,6 @@ wording and layout differ.
 | proposal / report / package / claim | suggestion / result / brief / "is working on it" |
 | plan drift | "The plan changed after this was sent" |
 
-Plain areas: **Plan** (goal and progress, phases, rules for the AI, notes and questions), **Tasks** (list or five-column board, add, per-task
-Send to AI, Take back, Unblock, Unsend, Mark done, Remove, the result card inline when a task needs review), **AI** (the **Needs you**
-inbox, **Send to AI**, **Ask an AI for ideas**, **Paste back**, and a collapsed "Connect an AI directly (optional)"), **Files** (assets).
 Plain wording of errors comes from `plainError()`; unknown errors are shown unchanged.
 
 ## What a plan contains

@@ -747,3 +747,20 @@ h1, h2, h3 { margin: 0; font-weight: 600; }
 .pl-older > summary { cursor: pointer; font-size: 0.9em; }
 .pl-older[open] > ul { position: absolute; z-index: 5; min-width: 320px; margin: 6px 0 0; padding: 10px 12px; list-style: none; border: 1px solid var(--border, #444); border-radius: 8px; background: var(--surface, #222); }
 .pl-older[open] > p { position: absolute; z-index: 5; top: 100%; margin-top: 0; }
+
+/* Planner: three steps, folded sections, one menu */
+.pl-fold { border: 1px solid var(--border, #444); border-radius: 8px; margin: 0 0 8px; }
+.pl-fold > summary { cursor: pointer; padding: 10px 14px; font-weight: 600; list-style: none; }
+.pl-fold > summary::-webkit-details-marker { display: none; }
+.pl-fold > summary::before { content: '\25B8'; display: inline-block; width: 1.1em; }
+.pl-fold[open] > summary::before { content: '\25BE'; }
+.pl-fold-body { padding: 0 14px 12px; }
+.pl-count { margin-left: 8px; padding: 0 8px; border-radius: 10px; font-size: 0.8em; font-weight: 500; background: color-mix(in srgb, currentColor 14%, transparent); }
+.pl-goal { margin: 0 0 10px; }
+.pl-right { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.pl-menu { position: relative; }
+.pl-menu > summary { list-style: none; cursor: pointer; }
+.pl-menu > summary::-webkit-details-marker { display: none; }
+.pl-menu .more-list { position: absolute; right: 0; z-index: 20; min-width: 240px; }
+.pl-older-list { display: flex; flex-direction: column; gap: 2px; padding-top: 6px; border-top: 1px solid var(--border, #444); }
+.pl-panel { margin: 8px 16px 0; }
