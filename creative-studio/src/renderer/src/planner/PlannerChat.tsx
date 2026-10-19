@@ -22,13 +22,15 @@ function Suggestions({ p, reload, text }: { p: PlannerProject; reload: () => Pro
   if (!sugg.changes.length) return null;
   const picked = sugg.changes.filter((_, i) => !skip.includes(i)).length;
   const add = (accept: boolean) => a.run(async () => {
-    const pr = await api().importSuggestions(p.id, { proposer: { kind: 'other', name: 'Planning chat' }, note: 'From the planning chat', changes: sugg.changes, rawText: text });
+    // A brief suggestion is tied to the brief as it is now: if you edit the brief before accepting, it is not applied over your edit.
+    const changes = sugg.changes.map((c) => (c.op === 'set_brief' ? { ...c, baseMetaRev: p.metaRev } : c));
+    const pr = await api().importSuggestions(p.id, { proposer: { kind: 'other', name: 'Planning chat' }, note: 'From the planning chat', changes, rawText: text });
     if (accept) await api().decideProposal(p.id, pr.id, true, sugg.changes.map((_, i) => i).filter((i) => !skip.includes(i)));
     setDone(accept ? 'Added to your plan.' : 'Saved under Needs you (AI area). Nothing is in your plan until you accept it.');
   });
   return (
     <div className="pl-preview">
-      <p className="pl-hint">Suggestions in this answer. Nothing is added until you press a button.</p>
+      <p className="pl-hint">Suggestions in this answer: brief, milestones, rules, decisions, tasks, questions, ideas and references. Untick what you do not want. Nothing is added until you press a button.</p>
       {sugg.errors.map((e) => <p key={e} className="pl-error">{e}</p>)}
       <ul>{sugg.changes.map((c, i) => (
         <li key={i}><label className="pl-check"><input type="checkbox" disabled={!!done} checked={!skip.includes(i)} onChange={(e) => setSkip(e.target.checked ? skip.filter((x) => x !== i) : [...skip, i])} />{describeChange(c)} {changesThePlan(c) ? <span className="chip warn">changes the plan</span> : <span className="chip off">adds to your list</span>}</label></li>
@@ -90,7 +92,7 @@ export function PlannerChat({ p, reload, savedTick }: { p: PlannerProject; reloa
 
   return (
     <div className="pl-chatwrap">
-    <Section title="Plan with an AI" hint="Chat to get suggestions for rules, tasks and questions. You choose what joins your plan.">
+    <Section title="Plan with an AI" hint="Chat to fill in your plan: project brief, milestones, rules, decisions, tasks, questions, ideas and references. You choose what joins your plan.">
       <div className="pl-two">
         <label>AI
           <select value={provider} onChange={(e) => { setProvider(e.target.value as ChatProviderId); put(PROVIDER_KEY, e.target.value); setError(null); }}>
@@ -112,7 +114,12 @@ export function PlannerChat({ p, reload, savedTick }: { p: PlannerProject; reloa
         <p className="pl-offer" role="status">Brief saved. <button className="btn small primary" disabled={busy} onClick={() => void ask(starterMessage(p))}>Ask {info.label} to help plan this</button> <button className="btn small ghost" onClick={() => setOffer(false)}>Not now</button></p>
       )}
       <div className="pl-chat" ref={listRef} aria-live="polite">
-        {!messages.length && <p className="pl-hint">Nothing sent yet. Save your brief, then press the button that appears, or type a message below.</p>}
+        {!messages.length && (
+          <p className="pl-hint">
+            Nothing sent yet. Press the button to have {info?.label ?? 'the AI'} fill in your plan, or type a message below.{' '}
+            <button className="btn small primary" disabled={busy || !info?.ready || !model} onClick={() => void ask(starterMessage(p))}>Fill in my plan with {info?.label ?? 'AI'}</button>
+          </p>
+        )}
         {messages.map((m, i) => (
           <div key={i} className={`pl-msg ${m.role}`}>
             <strong>{m.role === 'user' ? 'You' : info?.label ?? 'AI'}</strong>

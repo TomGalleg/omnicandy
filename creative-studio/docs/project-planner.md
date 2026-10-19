@@ -92,9 +92,17 @@ ideas, no task details) and **can write nothing**.
 * **Saving the brief** shows "Brief saved. Ask <AI> to help plan this". Nothing is sent until you press that button (or type and press
   Send). One request per message; the history sent is the newest 24 messages (each cut at 6,000 characters) and replies are limited to
   3,000 tokens, which bounds what a message can cost.
-* **What comes back** is read with the same reader as Paste back. Any rules, decisions, tasks, questions or ideas in an answer appear under it with
-  tick boxes, marked "changes the plan" or "adds to your list"; **Add selected to my plan** or **Save for later** work exactly as for a pasted
-  answer, so the owner still decides and the history names "Planning chat" as the proposer.
+* **What it fills in.** The AI is asked (and Paste back reads) these sections: **Project brief** (goal, description, scope, constraints,
+  deliverables), **Milestones** (optional due date), **Requirements**, **Decisions** (with "why"), **Tasks** (each can name its milestone and,
+  indented, how to check it is done), **Questions**, **Ideas** and **References** (title and link). The summary it sees also lists milestone names so it does not repeat them.
+  The button **Fill in my plan with <AI>** (and the offer after saving the brief) asks for all of them at once.
+* **What comes back** is read with the same reader as Paste back, one tick box per suggestion, marked "changes the plan" (the brief, rules and
+  decisions) or "adds to your list" (milestones, tasks, questions, ideas, references). **Add selected to my plan** or **Save for later** work
+  exactly as for a pasted answer, so the owner still decides and the history names "Planning chat" as the proposer. When added: rules and decisions
+  become accepted; questions, ideas and references stay open items; tasks join the milestone of the same name (milestones are added first, and a
+  milestone with the same name is never duplicated); brief text parts replace the old text, while constraints and deliverables only gain new
+  lines (nothing you wrote is removed). A brief suggestion is tied to the brief as it was when the answer arrived: if you edit the brief before
+  accepting, it is refused instead of overwriting your edit. At most 40 suggestions are read from one answer.
 * The chat itself is kept on that screen only; it is not saved with the plan. Keys are lent from the encrypted store for one call, are never sent
   to the page, and are removed from any error text.
 

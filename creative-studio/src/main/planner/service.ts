@@ -336,13 +336,27 @@ export class PlannerService {
       for (const ch of picked) {
         if (ch.op === 'update_item') { const it = p.items.find((x) => x.id === ch.id); if (!it || it.rev !== ch.baseRev) conflicts.push(`"${it?.title ?? ch.id}" changed after this was proposed`); }
         if (ch.op === 'update_task') { const t = p.tasks.find((x) => x.id === ch.id); if (!t || t.rev !== ch.baseRev) conflicts.push(`task "${t?.title ?? ch.id}" changed after this was proposed`); }
+        if (ch.op === 'set_brief' && ch.baseMetaRev !== undefined && ch.baseMetaRev !== p.metaRev) conflicts.push('the project brief was edited after this was proposed');
       }
+      let briefChanged = false;
       if (conflicts.length) throw new PlannerError('conflict', `Not applied: ${conflicts.join('; ')}. Reject the proposal or deselect those changes.`, { conflicts });
-      for (const ch of picked) {
+      // Milestones first, so tasks proposed in the same step can be placed under them.
+      for (const ch of [...picked.filter((x) => x.op === 'add_milestone'), ...picked.filter((x) => x.op !== 'add_milestone')]) {
         if (ch.op === 'add_item') p.items.push(this.blankItem(pr.proposedBy, nowIso, ch.itemType, ch.title, ch.text, ch.reason));
+        else if (ch.op === 'set_brief') {
+          // Text parts are replaced; lists only gain entries, so nothing the owner wrote is lost.
+          for (const k of ['goal', 'description', 'scope'] as const) if (ch.patch[k] !== undefined && ch.patch[k] !== p[k]) { p[k] = ch.patch[k]!; briefChanged = true; }
+          for (const k of ['constraints', 'deliverables'] as const) {
+            const add = (ch.patch[k] ?? []).filter((x) => !p[k].some((y) => y.trim().toLowerCase() === x.trim().toLowerCase()));
+            if (add.length) { p[k] = [...p[k], ...add]; briefChanged = true; }
+          }
+        } else if (ch.op === 'add_milestone') {
+          if (!p.milestones.some((m) => m.title.trim().toLowerCase() === ch.title.trim().toLowerCase())) p.milestones.push({ id: newId('ms'), title: ch.title.trim(), due: ch.due, rev: 1 });
+        }
         else if (ch.op === 'update_item') { const it = find(p.items, ch.id, 'item'); Object.assign(it, ch.patch); it.rev++; it.updatedAt = nowIso; }
         else if (ch.op === 'add_task') {
-          const t = this.blankTask(pr.proposedBy, nowIso, { title: ch.title, description: ch.description, priority: ch.priority, dependsOn: ch.dependsOn.filter((d) => p.tasks.some((x) => x.id === d)), parentId: ch.parentId && p.tasks.some((x) => x.id === ch.parentId) ? ch.parentId : null, checks: ch.completionChecks.map((text) => ({ text })) });
+          const ms = ch.milestone ? p.milestones.find((m) => m.title.trim().toLowerCase() === ch.milestone!.trim().toLowerCase()) : undefined;
+          const t = this.blankTask(pr.proposedBy, nowIso, { title: ch.title, description: ch.description, priority: ch.priority, milestoneId: ms?.id ?? null, dependsOn: ch.dependsOn.filter((d) => p.tasks.some((x) => x.id === d)), parentId: ch.parentId && p.tasks.some((x) => x.id === ch.parentId) ? ch.parentId : null, checks: ch.completionChecks.map((text) => ({ text })) });
           p.tasks.push(t);
         } else {
           const t = find(p.tasks, ch.id, 'task');
@@ -353,7 +367,8 @@ export class PlannerService {
           t.rev++; t.updatedAt = nowIso;
         }
       }
-      log('proposal.accepted', `Accepted ${picked.length} change(s) proposed by ${pr.proposedBy.name}`, { targetId: pr.id });
+      if (briefChanged) p.metaRev++;
+      log('proposal.accepted', `Accepted ${picked.length} change(s) proposed by ${pr.proposedBy.name}`, { targetId: pr.id, ...(briefChanged ? { planAffecting: true } : {}) });
       return pr;
     });
   }
@@ -596,7 +611,7 @@ export class PlannerService {
     need(c, 'review');
     if (!req.changes.length) throw new PlannerError('invalid', 'There is nothing to add.');
     // The renderer is trusted, but the changes are checked here like every other path (the MCP boundary does the same).
-    const checked = changeSchema.array().max(30).safeParse(req.changes);
+    const checked = changeSchema.array().max(40).safeParse(req.changes);
     if (!checked.success) throw new PlannerError('invalid', `Those suggestions are not valid: ${checked.error.issues[0]?.message ?? 'unreadable'}.`);
     const proposer: Actor = req.proposer ?? { kind: 'other', name: 'Pasted suggestion' };
     const pr = await this.store.mutate(id, c.actor, (p, log, now) => {

@@ -316,7 +316,8 @@ function PastePanel({ p, reload }: { p: PlannerProject; reload: () => Promise<vo
   });
   const addSuggestions = (accept: boolean) => a.run(async () => {
     if (!sugg) return;
-    const pr = await api().importSuggestions(p.id, { proposer: sugg.proposer, note: sugg.note, changes: sugg.changes, rawText: text });
+    const changes = sugg.changes.map((c) => (c.op === 'set_brief' ? { ...c, baseMetaRev: p.metaRev } : c));
+    const pr = await api().importSuggestions(p.id, { proposer: sugg.proposer, note: sugg.note, changes, rawText: text });
     if (accept) await api().decideProposal(p.id, pr.id, true, sugg.changes.map((_, i) => i).filter((i) => !skip.includes(i)));
     setDone(accept ? 'Added to your plan.' : 'Saved under Needs you. Nothing is in your plan until you accept it.');
     setSugg(null); setText('');
@@ -404,7 +405,7 @@ export function ProposalCard({ p, reload }: { p: PlannerProject; reload: () => P
   const a = useAction(reload);
   if (!pending.length) return null;
   const describe = (c: PlannerProject['proposals'][number]['changes'][number]) =>
-    c.op === 'add_item' ? `Add ${c.itemType}: ${c.title}${c.reason ? ` (why: ${c.reason})` : ''}` : c.op === 'add_task' ? `Add task: ${c.title}` : c.op === 'update_item' ? `Change ${p.items.find((i) => i.id === c.id)?.title ?? c.id}: ${Object.keys(c.patch).join(', ')}` : `Change task ${p.tasks.find((t) => t.id === c.id)?.title ?? c.id}: ${Object.keys(c.patch).join(', ')}`;
+    c.op === 'set_brief' || c.op === 'add_milestone' ? describeChange(c) : c.op === 'add_item' ? `Add ${c.itemType}: ${c.title}${c.reason ? ` (why: ${c.reason})` : ''}` : c.op === 'add_task' ? `Add task: ${c.title}` : c.op === 'update_item' ? `Change ${p.items.find((i) => i.id === c.id)?.title ?? c.id}: ${Object.keys(c.patch).join(', ')}` : `Change task ${p.tasks.find((t) => t.id === c.id)?.title ?? c.id}: ${Object.keys(c.patch).join(', ')}`;
   return (
     <Section title="Suggested changes" hint="These are proposals. Nothing below is part of the plan until you accept it.">
       {pending.map((pr) => {

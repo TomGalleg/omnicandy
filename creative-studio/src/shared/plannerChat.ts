@@ -1,7 +1,7 @@
 // The planning chat beside the project brief (docs/planner-simplification-plan.md, Part 20). Pure text: the prompt an AI is given,
 // limits that bound cost, and nothing that calls a provider (main/planner/chat.ts does that, only when the owner presses a button).
 import type { PlannerProject } from './planner';
-import { planSummary } from './plannerContext';
+import { PLAN_FORMAT, planSummary } from './plannerContext';
 
 export const CHAT_PROVIDER_IDS = ['claude', 'openai', 'gemini'] as const;
 export type ChatProviderId = (typeof CHAT_PROVIDER_IDS)[number];
@@ -30,7 +30,8 @@ export function chatSystemPrompt(p: PlannerProject): string {
   return [
     'You are a friendly planning helper inside CreateCraft. You help the user plan a project of any kind (art, video, software, documents, research, engineering). Write in plain, short sentences for someone with no project-management experience.',
     'If the goal is unclear, ask at most three short questions first. Otherwise suggest a plan.',
-    'Put concrete suggestions under these headings, each with a bullet list, and leave out headings you have nothing for: ## Requirements, ## Decisions, ## Tasks, ## Questions, ## Ideas. Under a task you may add indented bullets saying how to check it is done. Keep everything outside those lists to a few sentences.',
+    PLAN_FORMAT,
+    'Keep everything outside those sections to a few sentences. Fill in as many sections as you honestly can; leave out a heading when you have nothing useful for it. Do not repeat things the project already has.',
     'Everything you write is only a suggestion. Never say the plan has changed or that work is done: the user decides what joins the plan and what is finished.',
     '', 'The project so far:', ...planSummary(p),
   ].join('\n');
@@ -39,7 +40,7 @@ export function chatSystemPrompt(p: PlannerProject): string {
 /** The first message after the owner presses "Ask AI to help plan this". */
 export function starterMessage(p: PlannerProject): string {
   return p.goal.trim()
-    ? 'Please help me plan this project. Suggest the rules the result must follow, the main tasks in a sensible order with how to check each one is done, and anything you need to ask me.'
+    ? 'Please help me plan this project and fill in the plan: a clear project brief, milestones, the rules the result must follow, decisions with their reasons, the main tasks in a sensible order (each under a milestone, with how to check it is done), open questions for me, ideas worth considering and useful references.'
     : 'I have only a title so far. Ask me up to three short questions that would help you plan this project.';
 }
 

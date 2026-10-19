@@ -109,7 +109,17 @@ export const changeSchema = z.discriminatedUnion('op', [
   z.object({
     op: z.literal('add_task'), title: s(200).min(1), description: s(4000).default(''), priority: z.enum(PRIORITIES).default('normal'),
     dependsOn: z.array(s(80)).max(30).default([]), parentId: s(80).nullish(), completionChecks: z.array(s(400)).max(20).default([]),
+    /** The title of a milestone (an existing one, or one added by the same proposal) this task belongs to. */
+    milestone: s(200).nullish(),
   }),
+  /** One part of the project brief. Text fields are replaced; constraints and deliverables are added to (nothing the owner wrote is removed). */
+  z.object({
+    op: z.literal('set_brief'),
+    patch: z.object({ goal: s(1000).optional(), description: s(4000).optional(), scope: s(2000).optional(), constraints: z.array(s(400)).max(30).optional(), deliverables: z.array(s(400)).max(30).optional() }),
+    /** The project description revision this was written against; the owner's later edits are never overwritten. */
+    baseMetaRev: z.number().int().min(1).optional(),
+  }),
+  z.object({ op: z.literal('add_milestone'), title: s(200).min(1), due: s(40).default('') }),
   z.object({
     op: z.literal('update_task'), id: s(80).min(1), baseRev: z.number().int().min(1),
     patch: z.object({ title: s(200).min(1).optional(), description: s(4000).optional(), priority: z.enum(PRIORITIES).optional(), completionChecks: z.array(s(400)).max(20).optional() }),

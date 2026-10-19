@@ -110,18 +110,46 @@ export function planSummary(p: PlannerProject): string[] {
     ...(p.deliverables.length ? ['Expected deliverables:', ...p.deliverables.map((c) => `- ${c}`)] : []),
     ...(rules.length ? ['', 'Rules and decisions already agreed:', ...rules.map((r) => `- ${r.title}${r.text ? `: ${r.text.slice(0, 300)}` : ''}${r.reason ? ` (why: ${r.reason.slice(0, 200)})` : ''}`)] : []),
     ...(qs.length ? ['', 'Questions still open:', ...qs.map((q) => `- ${q.title}`)] : []),
+    ...(p.milestones.length ? ['', 'Milestones so far:', ...p.milestones.map((m) => `- ${m.title}${m.due ? ` (due ${m.due})` : ''}`)] : []),
     ...(live.length ? ['', 'Tasks so far (titles only):', ...live.map((t) => `- ${t.title}`)] : []),
   ];
 }
+
+/** The sections an answer can fill in, with the exact shapes the reader understands (see parseSuggestionText). */
+export const PLAN_FORMAT = [
+  'Put concrete suggestions under these headings. Use exactly these headings and shapes:',
+  '## Project brief',
+  'Goal: one or two sentences.',
+  'Description: a short paragraph.',
+  'Scope: what is in and out.',
+  'Constraints:',
+  '- one limit per line',
+  'Deliverables:',
+  '- one thing to hand over per line',
+  '## Milestones',
+  '- Milestone name — due 2026-12-01 (the date is optional; use a real date only if the user gave one)',
+  '## Requirements',
+  '- A rule the result must follow',
+  '## Decisions',
+  '- What was decided — why: the reason',
+  '## Tasks',
+  '- Task name (milestone: Milestone name)',
+  '  - how to check it is done (indented)',
+  '## Questions',
+  '- A question the user still needs to answer',
+  '## Ideas',
+  '- An idea worth considering',
+  '## References',
+  '- Title — https://link (only links you are sure exist; otherwise describe what to look for)',
+].join('\n');
 
 /** A plain-words request for ideas: goal and accepted plan in short form, open questions and task titles. No file locations. */
 export function brainstormText(p: PlannerProject): string {
   const lines = [
     `I am planning a project called "${p.title}". Please suggest improvements to the plan. Do not do the work itself.`,
     '', ...planSummary(p).slice(1),
-    '', 'Answer with these headings and a short list under each (leave out any you have nothing for):',
-    '## Requirements', '## Decisions', '## Tasks', '## Questions', '## Ideas',
-    'Under a task you may add indented lines saying how to check that it is done. Everything you write is only a suggestion; I decide what joins the plan.',
+    '', 'Answer with these sections (leave out any you have nothing for):', PLAN_FORMAT,
+    'Everything you write is only a suggestion; I decide what joins the plan.',
   ];
   return lines.join('\n');
 }
