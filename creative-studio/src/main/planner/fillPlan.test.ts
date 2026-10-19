@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { ProposalChange } from '@shared/planner';
-import { chatSystemPrompt, starterMessage } from '@shared/plannerChat';
+import { chatSystemPrompt, chunkPlan, isReady, READY_MARK, READY_QUESTION, withoutMarker } from '@shared/plannerChat';
 import { brainstormText } from '@shared/plannerContext';
 import { changesThePlan, describeChange, parseSuggestionText } from '@shared/plannerPaste';
 import { PlannerService, userCtx } from './service';
@@ -223,16 +223,83 @@ describe('adding what the AI suggested', () => {
 });
 
 describe('what the AI is asked for', () => {
-  it('the chat and the brainstorm request name every section in the shape the reader understands', async () => {
+  it('the conversation talks first, asks "Ready to start building?" with a marker, and only then answers in the chunk shape the reader understands', async () => {
     const { svc, p } = await rig({ title: 'Poster', goal: 'A dragon poster' });
-    await svc.addMilestone(user, p.id, { title: 'Sketches approved', due: '2026-11-10' });
     const project = await svc.getProject(user, p.id);
-    for (const text of [chatSystemPrompt(project), brainstormText(project)]) {
-      for (const h of ['## Project brief', '## Milestones', '## Requirements', '## Decisions', '## Tasks', '## Questions', '## Ideas', '## References']) expect(text, h).toContain(h);
-      expect(text).toContain('Goal:');
-      expect(text).toContain('(milestone: Milestone name)');
-    }
-    expect(chatSystemPrompt(project)).toContain('Sketches approved (due 2026-11-10)'); // so it does not suggest the same milestone again
-    expect(starterMessage(project)).toMatch(/project brief, milestones.*decisions.*references/);
+    const talk = chatSystemPrompt(project);
+    expect(talk).toContain('at most two short questions');
+    expect(talk).toContain('Ready to start building?');
+    expect(talk).toContain(READY_MARK);
+    expect(talk).toMatch(/No headings, no lists/);
+    const chunks = chatSystemPrompt(project, [], 'chunks');
+    expect(chunks).toContain('## Project brief');
+    expect(chunks).toContain('## Tasks');
+    expect(chunks).toContain('4 to 12');
+    expect(chunks).not.toContain(READY_MARK);
+    // the request for another AI (ChatGPT, Gemini, ...) asks for the same two steps
+    const other = brainstormText(project);
+    expect(other).toContain('Ready to start building?');
+    expect(other).toContain('## Tasks');
+    expect(other).not.toContain('## Decisions');
+  });
+
+  it('tells the AI what the project already contains, so it does not plan work that exists', async () => {
+    const { svc, p } = await rig();
+    const prompt = chatSystemPrompt(await svc.getProject(user, p.id), ['CreateCraft project: "Poster".', 'It already contains 3 file(s): 2 pictures.'], 'chunks');
+    expect(prompt).toContain('It already contains 3 file(s)');
+    expect(prompt).toMatch(/do not plan work that already exists/);
+  });
+});
+
+describe('reading the conversation', () => {
+  it('finds the ready marker, hides it, and does not treat an ordinary question as a plan', () => {
+    const q = `I think I understand: a poster of a dragon for the school fair.\n\n${READY_QUESTION}\n${READY_MARK}`;
+    expect(isReady(q)).toBe(true);
+    expect(withoutMarker(q)).toBe(`I think I understand: a poster of a dragon for the school fair.\n\n${READY_QUESTION}`);
+    expect(withoutMarker(q)).not.toContain('[[');
+    expect(isReady('What is it for?')).toBe(false);
+    expect(chunkPlan(q)).toBeNull();
+    expect(chunkPlan('What size should it be? And who will see it?')).toBeNull();
+  });
+
+  it('reads the answer to "Yes" as an intro, a quiet project summary and clear ordered chunks with how to check each', () => {
+    const answer = `Here is how I would build the dragon poster.
+
+## Project brief
+Goal: A print-ready dragon poster for the school fair.
+Description: A friendly dragon in teal and gold, readable from three metres.
+Scope: One A2 poster. No animation.
+
+## Tasks
+1. Sketch three dragon poses
+   - Three different poses exist
+   - One is chosen
+2. Paint the final artwork
+   - Uses only teal, gold and cream
+3. Add the title and fair details
+   - Text is at least 48 pt
+4. Export the print file
+   - A print-ready PDF exists`;
+    const plan = chunkPlan(answer)!;
+    expect(plan.intro).toBe('Here is how I would build the dragon poster.');
+    expect(plan.chunks.map((c) => c.title)).toEqual(['Sketch three dragon poses', 'Paint the final artwork', 'Add the title and fair details', 'Export the print file']);
+    expect(plan.chunks[0]!.completionChecks).toEqual(['Three different poses exist', 'One is chosen']);
+    expect(plan.brief.map((c) => (c.op === 'set_brief' ? Object.keys(c.patch)[0] : ''))).toEqual(['goal', 'description', 'scope']);
+    expect(plan.chunks.every((c) => !c.milestone)).toBe(true);
+  });
+
+  it('adding the chunks sets the summary and the chunks in the written order, and nothing else', async () => {
+    const { svc, p } = await rig({ title: 'Poster', goal: '' });
+    const plan = chunkPlan(`## Project brief\nGoal: G\nDescription: D\n\n## Tasks\n1. First\n2. Second\n3. Third`)!;
+    const proj = await svc.getProject(user, p.id);
+    const changes = [...plan.brief.map((c) => (c.op === 'set_brief' ? { ...c, baseMetaRev: proj.metaRev } : c)), ...plan.chunks];
+    const pr = await svc.importSuggestions(user, p.id, { proposer: { kind: 'other', name: 'Planning chat' }, note: 'x', changes, rawText: 'x' });
+    await svc.decideProposal(user, p.id, pr.id, true);
+    const after = await svc.getProject(user, p.id);
+    expect(after.goal).toBe('G');
+    expect(after.description).toBe('D');
+    expect(after.tasks.map((t) => t.title)).toEqual(['First', 'Second', 'Third']);
+    expect(after.items).toEqual([]);
+    expect(after.milestones).toEqual([]);
   });
 });

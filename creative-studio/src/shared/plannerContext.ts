@@ -115,41 +115,34 @@ export function planSummary(p: PlannerProject): string[] {
   ];
 }
 
-/** The sections an answer can fill in, with the exact shapes the reader understands (see parseSuggestionText). */
-export const PLAN_FORMAT = [
-  'Put concrete suggestions under these headings. Use exactly these headings and shapes:',
+/**
+ * The shape of an answer that plans the work: a short summary of the project and the work in clear, ordered chunks. The reader
+ * (parseSuggestionText) understands exactly this, and an answer in this shape is shown as a plain list of chunks.
+ */
+export const CHUNK_FORMAT = [
+  'Answer in exactly this shape and write nothing else:',
+  'One or two sentences saying what the project is.',
   '## Project brief',
   'Goal: one or two sentences.',
   'Description: a short paragraph.',
-  'Scope: what is in and out.',
-  'Constraints:',
-  '- one limit per line',
-  'Deliverables:',
-  '- one thing to hand over per line',
-  '## Milestones',
-  '- Milestone name — due 2026-12-01 (the date is optional; use a real date only if the user gave one)',
-  '## Requirements',
-  '- A rule the result must follow',
-  '## Decisions',
-  '- What was decided — why: the reason',
+  'Scope: what is in and what is out.',
   '## Tasks',
-  '- Task name (milestone: Milestone name)',
-  '  - how to check it is done (indented)',
-  '## Questions',
-  '- A question the user still needs to answer',
-  '## Ideas',
-  '- An idea worth considering',
-  '## References',
-  '- Title — https://link (only links you are sure exist; otherwise describe what to look for)',
+  '1. Short action title (what gets made or done)',
+  '   - how we will know it is done',
+  '   - another check, only if needed',
+  '2. Next chunk',
+  '   - how we will know it is done',
+  'Rules for the chunks: 4 to 12 of them, in the order they should be done, each small enough to finish in one sitting, specific and clearly different from the others, written in plain words. Start each with a verb. Leave out work that already exists.',
 ].join('\n');
 
-/** A plain-words request for ideas: goal and accepted plan in short form, open questions and task titles. No file locations. */
+/** A request to paste into ChatGPT, Gemini or any other chat: it talks the idea through, then answers in the shape the Planner can read back. */
 export function brainstormText(p: PlannerProject): string {
   const lines = [
-    `I am planning a project called "${p.title}". Please suggest improvements to the plan. Do not do the work itself.`,
-    '', ...planSummary(p).slice(1),
-    '', 'Answer with these sections (leave out any you have nothing for):', PLAN_FORMAT,
-    'Everything you write is only a suggestion; I decide what joins the plan.',
+    `I want to plan a project called "${p.title}" with your help. Please do not do the work itself.`,
+    'First talk it through with me: ask at most two short questions at a time until you understand what I want to make, what it is for, what finished looks like and the limits that matter. Then ask "Ready to start building?"',
+    'When I say yes, answer once in this shape:',
+    CHUNK_FORMAT,
+    '', 'What I have so far:', ...planSummary(p).slice(1),
   ];
   return lines.join('\n');
 }

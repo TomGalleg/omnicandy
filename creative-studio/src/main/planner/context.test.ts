@@ -136,7 +136,7 @@ describe('brainstormText', () => {
     expect(t).not.toContain('Secret idea');
     expect(t).not.toContain('private details');
     expect(t).not.toMatch(/C:\\Users/);
-    expect(t).toContain('## Requirements');
+    expect(t).toContain('## Tasks');
   });
 
   it('the context builder makes no network or AI calls', async () => {

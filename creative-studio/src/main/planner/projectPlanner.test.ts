@@ -182,7 +182,7 @@ describe('where you left off, and the conversation', () => {
 });
 
 describe('looking at what a project already holds', () => {
-  it('summarises the files, versions and saved brief, suggests references and a question, and marks nothing as done', async () => {
+  it('summarises the files, versions and saved brief, offers the saved goal and description, and marks nothing as done', async () => {
     const p = await makeProject('Island art', true);
     await p.setMeta({ brief: 'A tropical island illustration for a travel poster', objective: 'Finish the island poster' });
     await fs.writeFile(path.join(await p.exportsDir(), 'poster.pdf'), 'x');
@@ -194,10 +194,6 @@ describe('looking at what a project already holds', () => {
     expect(f.lines.join(' ')).toMatch(/none of this is marked as done/);
     expect(f.changes.some((c) => c.op === 'set_brief' && c.patch.goal === 'Finish the island poster')).toBe(true);
     expect(f.changes.some((c) => c.op === 'set_brief' && c.patch.description?.startsWith('A tropical island'))).toBe(true);
-    const refs = f.changes.filter((c) => c.op === 'add_item' && c.itemType === 'reference');
-    expect(refs.length).toBe(2);
-    expect(refs[0]).toMatchObject({ title: 'photocraft-smoke.png' }); // the one with versions comes first
-    expect(f.changes.some((c) => c.op === 'add_item' && c.itemType === 'question')).toBe(true);
     expect(f.changes.filter((c) => c.op === 'add_task')).toEqual([]); // a file existing never means a chunk is done
     expect(f.aiContext.join('\n')).toContain('Island art');
     expect(f.aiContext.join('\n')).not.toContain(p.root); // names and counts, never locations
@@ -221,12 +217,10 @@ describe('looking at what a project already holds', () => {
     const sha = async () => (await fs.readFile(path.join(p.root, 'project.json'))).toString();
     const filesBefore = await snapshot(); const manifestBefore = await sha();
     const goal = findings.changes.findIndex((c) => c.op === 'set_brief');
-    const ref = findings.changes.findIndex((c) => c.op === 'add_item' && c.itemType === 'reference');
-    await r.pp.applyFindings(plan.id, [goal, ref]);
+    await r.pp.applyFindings(plan.id, [goal]);
     const after = await r.svc.getProject(user, plan.id);
     expect(after.goal).toBe('Finish the island poster');
-    expect(after.items.filter((i) => i.type === 'reference')).toHaveLength(1);
-    expect(after.items.some((i) => i.type === 'question')).toBe(false); // not ticked, not added
+    expect(after.description).toBe(''); // the description was not ticked, so it was not added
     expect(after.tasks).toEqual([]);
     expect(await snapshot()).toEqual(filesBefore);
     expect(await sha()).toBe(manifestBefore); // the project's own data is exactly as it was

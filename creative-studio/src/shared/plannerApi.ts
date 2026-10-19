@@ -79,7 +79,8 @@ export interface PlannerApi {
   /** The planning chat beside the brief. Each call is one message the owner chose to send; nothing is written to the plan. */
   chatProviders(): Promise<ChatProviderInfo[]>;
   chatModels(provider: 'claude' | 'openai' | 'gemini'): Promise<string[]>;
-  chat(req: { projectId: string; provider: 'claude' | 'openai' | 'gemini'; model: string; messages: Array<{ role: 'user' | 'assistant'; text: string }> }): Promise<{ text: string }>;
+  /** `mode`: "talk" (default) understands the idea; "chunks" breaks the project into chunks once the owner said yes. */
+  chat(req: { projectId: string; provider: 'claude' | 'openai' | 'gemini'; model: string; messages: Array<{ role: 'user' | 'assistant'; text: string }>; mode?: 'talk' | 'chunks' }): Promise<{ text: string }>;
   /** The conversation kept with the plan (restored when the project is opened again). */
   chatLoad(id: string): Promise<{ messages: Array<{ role: 'user' | 'assistant'; text: string }>; provider?: string; model?: string; savedAt?: string }>;
   chatSave(id: string, chat: { messages: Array<{ role: 'user' | 'assistant'; text: string }>; provider?: string; model?: string }): Promise<void>;

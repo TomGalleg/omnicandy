@@ -1,12 +1,11 @@
 import { useContext, useEffect, useMemo, useState } from 'react';
 import { EDITOR_APPS } from '@shared/appEditors';
 import {
-  isClaimLive, PRIORITIES, type AppRef, type ExecPackage, type PlanAsset, type PlannerProject, type PlanReport, type PlanTask, type Priority, type ReportDraft, uncoveredChecks, unmetDependencies,
+  isClaimLive, PRIORITIES, type AppRef, type ExecPackage, type PlannerProject, type PlanReport, type PlanTask, type Priority, type ReportDraft, uncoveredChecks, unmetDependencies,
 } from '@shared/planner';
 import type { PlannerConnectionInfo } from '@shared/plannerApi';
 import { PLANNER_CLIENTS } from '@shared/plannerClients';
 import { parseReportText, type ReportImportPreview } from '@shared/plannerHandoff';
-import type { ProjectManifest } from '@shared/types';
 import { describeWorkflowRun, displayStatus } from '@shared/plannerView';
 import { classifyPaste, changesThePlan, describeChange, type SuggestionPreview } from '@shared/plannerPaste';
 import { SendPanel } from './PlannerSend';
@@ -145,48 +144,6 @@ export function TasksTab({ p, reload, go, setSendSel, projectKey, projectName, s
         {p.tasks.some((t) => t.status === 'cancelled') && <label className="pl-check"><input type="checkbox" checked={showRemoved} onChange={(e) => setShowRemoved(e.target.checked)} />Show removed chunks</label>}
       </Section>
       <Section title="Add a chunk"><TaskForm p={p} reload={reload} projectKey={projectKey} projectName={projectName} /></Section>
-    </div>
-  );
-}
-
-// ============================================================================================================== assets
-export function AssetsTab({ p, reload, manifest, projectKey }: TabProps & { manifest: ProjectManifest | null; projectKey: string | null }) {
-  const [health, setHealth] = useState<Record<string, string>>({});
-  const [link, setLink] = useState({ title: '', url: '' });
-  const [role, setRole] = useState<PlanAsset['role']>('reference');
-  const [pickId, setPickId] = useState('');
-  const a = useAction(reload);
-  useEffect(() => { void api().assetHealth(p.id).then(setHealth).catch(() => {}); }, [p.id, p.revision]);
-  const roles: Array<[PlanAsset['role'], string]> = [['reference', 'References'], ['working', 'Working files'], ['deliverable', 'Deliverables (output versions)']];
-  const assetRow = (x: PlanAsset) => (
-    <li key={x.id} className="pl-asset">
-      <strong>{x.title}</strong> {x.group && <span className="chip">{x.group} v{x.version}</span>}
-      <span className="pl-hint"> {x.source === 'file' ? x.path : x.source === 'link' ? x.url : `CreateCraft asset ${x.createcraft?.assetId}`}</span>
-      {health[x.id] === 'missing' && <span className="pl-warn"> File not found at this path</span>}
-      <button className="btn small ghost danger" disabled={a.busy} onClick={() => void a.run(() => api().removeAsset(p.id, x.id))}>Remove</button>
-    </li>
-  );
-  return (
-    <div className="pl-stack">
-      {roles.map(([r, label]) => (
-        <Section key={r} title={label} hint={r === 'deliverable' ? 'Give versions of the same output the same group name to keep them together.' : undefined}>
-          {!p.assets.some((x) => x.role === r) && <p className="pl-hint">None yet.</p>}
-          <ul>{p.assets.filter((x) => x.role === r).map(assetRow)}</ul>
-        </Section>
-      ))}
-      <Section title="Add an asset" hint="Files are linked where they are, not copied. Nothing is uploaded.">
-        <div className="pl-form">
-          <label>As<select value={role} onChange={(e) => setRole(e.target.value as PlanAsset['role'])}><option value="reference">Reference</option><option value="working">Working file</option><option value="deliverable">Deliverable</option></select></label>
-          <div className="pl-actions"><button className="btn" disabled={a.busy} onClick={() => void a.run(() => api().pickAssets(p.id, role))}>Link files…</button></div>
-          <div className="pl-add"><input aria-label="Link title" placeholder="Link title" value={link.title} onChange={(e) => setLink({ ...link, title: e.target.value })} /><input aria-label="Link address" placeholder="https://…" value={link.url} onChange={(e) => setLink({ ...link, url: e.target.value })} />
-            <button className="btn small" disabled={a.busy || !link.title.trim() || !link.url.trim()} onClick={() => void a.run(async () => { await api().addAsset(p.id, { role, title: link.title, source: 'link', url: link.url }); setLink({ title: '', url: '' }); })}>Add link</button></div>
-          {manifest && projectKey && (
-            <div className="pl-add"><select aria-label="CreateCraft asset" value={pickId} onChange={(e) => setPickId(e.target.value)}><option value="">From the open CreateCraft art project…</option>{manifest.assets.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}</select>
-              <button className="btn small" disabled={a.busy || !pickId} onClick={() => void a.run(async () => { const m = manifest.assets.find((x) => x.id === pickId); if (m) await api().addAsset(p.id, { role, title: m.name, source: 'createcraft', createcraft: { projectKey, assetId: m.id } }); setPickId(''); })}>Link it</button></div>
-          )}
-        </div>
-        <ErrorLine error={a.error} />
-      </Section>
     </div>
   );
 }

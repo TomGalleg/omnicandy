@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { progressOf, type ActivityEntry, type PlanItem, type PlannerProject, type ProjectSummary } from '@shared/planner';
+import { progressOf, type ActivityEntry, type PlannerProject, type ProjectSummary } from '@shared/planner';
 import type { ProjectFindingsDto, ProjectPlannerState } from '@shared/plannerApi';
 import type { ProjectManifest } from '@shared/types';
 import { describeChange } from '@shared/plannerPaste';
 import { PlannerChat } from './PlannerChat';
-import { AssetsTab, ConnectPanel, PastePanel, TasksTab, WorkTab } from './PlannerWork';
+import { ConnectPanel, PastePanel, TasksTab, WorkTab } from './PlannerWork';
 import { AskPanel } from './PlannerSend';
 import { needsYou } from '@shared/plannerView';
-import { ErrorLine, errMsg, lines, PlainWords, Section, useAction, when, type TabId, type TabProps } from './plannerUi';
+import { ErrorLine, errMsg, PlainWords, Section, useAction, when, type TabId, type TabProps } from './plannerUi';
 
 const api = () => window.studio.planner;
 // One simple flow: Idea (think it through with an AI), Plan (break it into chunks you can edit), Work (do one chunk at a time, review it, approve it).
@@ -109,7 +109,7 @@ export function PlannerWorkspace({ manifest, projectKey }: { manifest: ProjectMa
         {TABS.map(([t, label]) => <button key={t} role="tab" aria-selected={tab === t} onClick={() => setTab(t)}>{label}{t === 'handoffs' && need.total ? <span className="pl-badge" title="Waiting for you">{need.total}</span> : null}</button>)}
       </nav>
       <div className="pl-body" role="tabpanel">
-        {tab === 'plan' && <IdeaTab {...props} manifest={manifest} />}
+        {tab === 'plan' && <IdeaTab {...props} />}
         {tab === 'tasks' && <PlanTab {...props} />}
         {tab === 'handoffs' && <WorkTab {...props} />}
       </div>
@@ -169,6 +169,10 @@ function PlannerStart({ state, manifest, onChanged, onOpenOlder, error }: { stat
     const plan = await api().startPlan({});
     const picked = findings.changes.map((_, i) => i).filter((i) => !skip.includes(i));
     if (picked.length) await api().applyFindings(plan.id, picked);
+    // The conversation starts from what was found, so the AI and the owner both begin from the same facts.
+    const facts = findings.lines.filter((l) => !/^Nothing has been made/.test(l));
+    const nl = String.fromCharCode(10);
+    if (facts.length) await api().chatSave(plan.id, { messages: [{ role: 'assistant', text: ['I looked through this project. Here is what I found:', '', ...facts.map((l) => `- ${l}`), '', 'What would you like to do with it next?'].join(nl) }] });
   });
   return (
     <div className="planner">
@@ -186,18 +190,18 @@ function PlannerStart({ state, manifest, onChanged, onOpenOlder, error }: { stat
           </Section>
         )}
         {findings && (
-          <Section title="What is already in this project" hint="Read from the project's own files. Nothing was changed. Tick what to add to your plan; nothing is marked as done.">
+          <Section title="What is already in this project" hint="Read from the project's own files. Nothing was changed, and nothing is marked as done. The conversation starts from this.">
             <ul>{findings.lines.map((l) => <li key={l}>{l}</li>)}</ul>
             {findings.changes.length > 0 && (
               <>
-                <h4>Suggested for your plan</h4>
+                <h4>Start the plan with</h4>
                 <ul>{findings.changes.map((c, i) => (
                   <li key={i}><label className="pl-check"><input type="checkbox" checked={!skip.includes(i)} onChange={(e) => setSkip(e.target.checked ? skip.filter((x) => x !== i) : [...skip, i])} />{describeChange(c)}</label></li>
                 ))}</ul>
               </>
             )}
             <div className="pl-actions">
-              <button className="btn primary" disabled={a.busy} onClick={() => void startFromFindings()}>Start my plan with these</button>
+              <button className="btn primary" disabled={a.busy} onClick={() => void startFromFindings()}>Start planning from this</button>
               <button className="btn" disabled={a.busy} onClick={() => void startBlank()}>Start with an empty plan</button>
               <button className="btn ghost" disabled={a.busy} onClick={() => setFindings(null)}>Back</button>
             </div>
@@ -236,134 +240,18 @@ function Milestones({ p, reload }: { p: PlannerProject; reload: () => Promise<vo
   );
 }
 
-function ItemEditor({ item, p, reload }: { item: PlanItem; p: PlannerProject; reload: () => Promise<void> }) {
-  const [edit, setEdit] = useState(false);
-  const [title, setTitle] = useState(item.title);
-  const [text, setText] = useState(item.text);
-  const [reason, setReason] = useState(item.reason);
-  const [answer, setAnswer] = useState(item.answer ?? '');
-  const a = useAction(reload);
-  const st = (status: PlanItem['status'], opts?: { type?: PlanItem['type']; answer?: string }) => a.run(() => api().setItemStatus(p.id, item.id, status, { ...opts, expectedRev: item.rev }));
+/** Idea: just the conversation. The AI asks, you answer; when it understands, it offers to break the project into chunks. */
+function IdeaTab(props: TabProps) {
+  const { p, reload, go } = props;
   return (
-    <li className={`pl-item ${item.status}`}>
-      {!edit ? (
-        <>
-          <div><strong>{item.title}</strong> <span className="chip">{item.type}{item.status !== 'open' && item.status !== 'accepted' ? ` · ${item.status}` : ''}</span> <small className="pl-hint">by {item.createdBy.name}</small></div>
-          {item.text && <p>{item.text}</p>}
-          {item.reason && <p className="pl-hint">Why: {item.reason}</p>}
-          {item.answer && <p>Answer: {item.answer}</p>}
-          <div className="pl-actions">
-            <button className="btn small" onClick={() => setEdit(true)}>Edit</button>
-            {item.type === 'idea' && item.status === 'open' && <>
-              <button className="btn small" disabled={a.busy} onClick={() => void st('accepted', { type: 'requirement' })}>Make a requirement</button>
-              <button className="btn small" disabled={a.busy} onClick={() => void st('accepted', { type: 'decision' })}>Make a decision</button>
-              <button className="btn small ghost" disabled={a.busy} onClick={() => void st('rejected')}>Drop</button>
-            </>}
-            {item.type === 'question' && item.status === 'open' && (
-              <><input aria-label="Answer" value={answer} onChange={(e) => setAnswer(e.target.value)} placeholder="Answer" /><button className="btn small" disabled={a.busy || !answer.trim()} onClick={() => void st('answered', { answer })}>Answer</button></>
-            )}
-            {(item.type === 'requirement' || item.type === 'decision') && item.status === 'accepted' && <button className="btn small ghost" disabled={a.busy} title="Keeps it in the history; it leaves the plan" onClick={() => void st('superseded')}>Replace / retire</button>}
-            {item.status !== 'accepted' && <button className="btn small ghost danger" disabled={a.busy} onClick={() => void a.run(() => api().removeItem(p.id, item.id))}>Delete</button>}
-          </div>
-        </>
-      ) : (
-        <div className="pl-form">
-          <input aria-label="Title" value={title} onChange={(e) => setTitle(e.target.value)} />
-          <textarea aria-label="Details" rows={2} value={text} onChange={(e) => setText(e.target.value)} />
-          {item.type === 'decision' && <input aria-label="Why" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Why was this decided?" />}
-          <div className="pl-actions">
-            <button className="btn small primary" disabled={a.busy || !title.trim()} onClick={() => void a.run(async () => { await api().updateItem(p.id, item.id, { title, text, reason }, item.rev); setEdit(false); })}>Save</button>
-            <button className="btn small" onClick={() => setEdit(false)}>Cancel</button>
-          </div>
+    <div className="pl-idea">
+      <PlannerChat key={p.id} p={p} reload={reload} go={go} />
+      <details className="pl-fold"><summary>Use ChatGPT, Gemini or another AI instead</summary>
+        <div className="pl-fold-body">
+          <AskPanel p={p} />
+          <Section title="Paste the answer" hint="Paste what the AI said. You see what it says first; nothing joins your plan until you press a button."><PastePanel p={p} reload={reload} /></Section>
         </div>
-      )}
-      <ErrorLine error={a.error} />
-    </li>
-  );
-}
-
-function AddItem({ type, p, reload, label }: { type: PlanItem['type']; p: PlannerProject; reload: () => Promise<void>; label: string }) {
-  const [title, setTitle] = useState('');
-  const [reason, setReason] = useState('');
-  const a = useAction(reload);
-  const add = () => a.run(async () => { await api().addItem(p.id, { type, title, reason }); setTitle(''); setReason(''); });
-  return (
-    <div className="pl-add">
-      <input aria-label={label} value={title} onChange={(e) => setTitle(e.target.value)} placeholder={label} onKeyDown={(e) => { if (e.key === 'Enter' && title.trim() && type !== 'decision') void add(); }} />
-      {type === 'decision' && <input aria-label="Why" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Why?" />}
-      <button className="btn small" disabled={a.busy || !title.trim()} onClick={() => void add()}>Add</button>
-      <ErrorLine error={a.error} />
-    </div>
-  );
-}
-
-function Brief({ p, reload, onSaved }: { p: PlannerProject; reload: () => Promise<void>; onSaved?: () => void }) {
-  const [f, setF] = useState({ title: p.title, goal: p.goal, description: p.description, scope: p.scope, constraints: p.constraints.join('\n'), deliverables: p.deliverables.join('\n') });
-  const base = useRef(p.metaRev);
-  const dirty = f.title !== p.title || f.goal !== p.goal || f.description !== p.description || f.scope !== p.scope || f.constraints !== p.constraints.join('\n') || f.deliverables !== p.deliverables.join('\n');
-  const a = useAction(reload);
-  // Reload the form when someone else changed the brief, unless the user is mid-edit.
-  useEffect(() => {
-    if (!dirty && base.current !== p.metaRev) { setF({ title: p.title, goal: p.goal, description: p.description, scope: p.scope, constraints: p.constraints.join('\n'), deliverables: p.deliverables.join('\n') }); base.current = p.metaRev; }
-  }, [p, dirty]);
-  const set = (k: keyof typeof f) => (e: { target: { value: string } }) => setF({ ...f, [k]: e.target.value });
-  return (
-    <div className="pl-form">
-      <label>Title<input value={f.title} onChange={set('title')} /></label>
-      <label>Goal<textarea rows={2} value={f.goal} onChange={set('goal')} /></label>
-      <label>Description<textarea rows={3} value={f.description} onChange={set('description')} /></label>
-      <label>Scope (what is in and out)<textarea rows={2} value={f.scope} onChange={set('scope')} /></label>
-      <div className="pl-two">
-        <label>Constraints (one per line)<textarea rows={3} value={f.constraints} onChange={set('constraints')} /></label>
-        <label>Expected deliverables (one per line)<textarea rows={3} value={f.deliverables} onChange={set('deliverables')} /></label>
-      </div>
-      <div>
-        <button className="btn primary" disabled={a.busy || !dirty || !f.title.trim()} onClick={() => void a.run(async () => { await api().update(p.id, { title: f.title, goal: f.goal, description: f.description, scope: f.scope, constraints: lines(f.constraints), deliverables: lines(f.deliverables) }, base.current); base.current = p.metaRev + 1; onSaved?.(); })}>Save changes</button>
-        {dirty && <button className="btn" onClick={() => setF({ title: p.title, goal: p.goal, description: p.description, scope: p.scope, constraints: p.constraints.join('\n'), deliverables: p.deliverables.join('\n') })}>Discard</button>}
-      </div>
-      <ErrorLine error={a.error} />
-    </div>
-  );
-}
-
-/**
- * Idea: the conversation with the AI is the centre. Everything it fills in (and anything you type) sits in short folded sections beside it, each with
- * a count, so nothing is missing and nothing shouts. Files and references for the project are in the last section.
- */
-function IdeaTab(props: TabProps & { manifest: ProjectManifest | null }) {
-  const { p, reload, manifest, projectKey } = props;
-  const [savedTick, setSavedTick] = useState(0);
-  const items = (t: PlanItem['type']) => p.items.filter((i) => i.type === t && (i.status === 'open' || i.status === 'accepted' || i.status === 'answered'));
-  const group = (t: PlanItem['type'], hint: string, label: string) => (
-    <>
-      <p className="pl-hint">{hint}</p>
-      <ul className="pl-items">{items(t).map((i) => <ItemEditor key={`${i.id}:${i.rev}`} item={i} p={p} reload={reload} />)}</ul>
-      {!items(t).length && <p className="pl-hint">None yet.</p>}
-      <AddItem type={t} p={p} reload={reload} label={label} />
-    </>
-  );
-  const fold = (title: string, count: number | null, body: React.ReactNode, open = false) => (
-    <details className="pl-fold" open={open}><summary>{title}{count !== null ? <span className="pl-count">{count}</span> : null}</summary><div className="pl-fold-body">{body}</div></details>
-  );
-  return (
-    <div className="pl-split">
-      <div className="pl-left">
-        {p.goal && <p className="pl-goal"><strong>Goal:</strong> {p.goal}</p>}
-        {fold('Project brief', null, <Brief key={p.id} p={p} reload={reload} onSaved={() => setSavedTick((n) => n + 1)} />, !p.goal)}
-        {fold('Rules and decisions', items('requirement').length + items('decision').length, <>{group('requirement', 'What must be true of the result. The AI gets these every time.', 'Add a rule')}{group('decision', 'Choices already made, with the reason.', 'Add a decision')}</>)}
-        {fold('Open questions', items('question').length, group('question', 'Not part of the plan until answered.', 'Add a question'))}
-        {fold('Ideas', items('idea').length, group('idea', 'Brainstorming. Not rules until you promote them.', 'Add an idea'))}
-        {fold('References and files', items('reference').length + p.assets.length, <>{group('reference', 'Things to look at or stay consistent with.', 'Add a reference')}<AssetsTab {...props} manifest={manifest} projectKey={projectKey ?? null} /></>)}
-      </div>
-      <div className="pl-right">
-        <PlannerChat key={p.id} p={p} reload={reload} savedTick={savedTick} />
-        <details className="pl-fold"><summary>Use ChatGPT, Gemini or another AI instead</summary>
-          <div className="pl-fold-body">
-            <AskPanel p={p} />
-            <Section title="Paste the answer" hint="Paste what the AI said. You see what it says first; nothing joins your plan until you press a button."><PastePanel p={p} reload={reload} /></Section>
-          </div>
-        </details>
-      </div>
+      </details>
     </div>
   );
 }

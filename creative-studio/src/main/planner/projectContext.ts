@@ -13,7 +13,7 @@ export interface ProjectFindings {
   projectName: string;
   /** Short plain-language facts, in the order they are shown. */
   lines: string[];
-  /** Suggestions for the plan. Each one needs the owner's tick; none marks anything as done. */
+  /** What the plan could start from: the saved goal and description of the project, when it has them. The owner ticks them; nothing is marked as done. */
   changes: ProposalChange[];
   /** A few lines about the project for the planning AI (names and counts only). */
   aiContext: string[];
@@ -28,7 +28,6 @@ const KIND_WORD: Partial<Record<AssetKind, [string, string]>> = {
 const word = (k: string, n: number) => { const w = KIND_WORD[k as AssetKind]; return w ? (n === 1 ? w[0] : w[1]) : n === 1 ? 'file' : 'files'; };
 const day = (iso: string) => (iso || '').slice(0, 10);
 const clip = (t: string, n: number) => t.replace(/\s+/g, ' ').trim().slice(0, n);
-const MAX_REFERENCES = 12;
 
 /** The files worth mentioning: work that has saved versions first, newest first, then the newest others. */
 function notable(m: ProjectManifest): Array<{ asset: Asset; versions: number; latest: string }> {
@@ -75,17 +74,6 @@ export async function analyzeProject(store: ProjectStore): Promise<ProjectFindin
   const brief = clip(m.brief ?? '', 4000);
   if (goal) changes.push({ op: 'set_brief', patch: { goal } });
   if (brief) changes.push({ op: 'set_brief', patch: { description: brief } });
-  for (const r of rows.slice(0, MAX_REFERENCES)) {
-    const where = r.asset.provenance.origin === 'generated' ? 'made with AI' : r.asset.provenance.origin === 'imported' ? 'imported' : r.asset.provenance.origin;
-    changes.push({
-      op: 'add_item', itemType: 'reference', title: clip(r.asset.name, 200),
-      text: clip(`Already in this project: ${word(r.asset.kind, 1)}, ${where}${r.versions ? `, ${r.versions} saved version${r.versions === 1 ? '' : 's'}` : ''}, last changed ${day(r.latest)}.`, 4000), reason: '',
-    });
-  }
-  if (rows.length > MAX_REFERENCES) changes.push({ op: 'add_item', itemType: 'reference', title: `${rows.length - MAX_REFERENCES} more files in the project library`, text: 'Not listed one by one. Open Media to see them all.', reason: '' });
-  changes.push({ op: 'add_item', itemType: 'question', title: 'What is still left to do on this project?', text: 'Asked because this project already had work in it when the plan was started.', reason: '' });
-  if (!brief && !goal && m.assets.length) changes.push({ op: 'add_item', itemType: 'question', title: 'What is this project for?', text: 'The project has files but no saved brief.', reason: '' });
-
   const aiContext = [
     `CreateCraft project: "${m.name}"${m.kind ? ` (${m.kind})` : ''}.`,
     ...(m.assets.length ? [`It already contains ${m.assets.length} file(s): ${[...byKind.entries()].map(([k, n]) => `${n} ${word(k, n)}`).join(', ')}${versions ? `; ${versions} saved version(s)` : ''}.`] : ['It does not contain any files yet.']),

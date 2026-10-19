@@ -69,6 +69,7 @@ export function registerPlannerIpc(d: Deps): void {
   const chatReq = z.object({
     projectId: z.string().max(60), provider, model: z.string().min(1).max(80),
     messages: z.array(z.object({ role: z.enum(['user', 'assistant']), text: z.string().min(1).max(MAX_CHAT_MESSAGE_CHARS) })).min(1).max(MAX_CHAT_MESSAGES),
+    mode: z.enum(['talk', 'chunks']).optional(),
   });
   // Which project is open decides where plans are read from and written to (see projectPlanner.ts).
   const pp = new ProjectPlanner(s, d.store, d.project);
@@ -146,7 +147,7 @@ export function registerPlannerIpc(d: Deps): void {
       const plan = await s.getProject(u, r.projectId);
       // What the project already contains (names and counts only) is part of what the AI is told, when this is the open project's plan.
       const context = await pp.chatContext(plan);
-      return needChat().reply({ system: chatSystemPrompt(plan, context), provider: r.provider, model: r.model, messages: r.messages });
+      return needChat().reply({ system: chatSystemPrompt(plan, context, r.mode ?? 'talk'), provider: r.provider, model: r.model, messages: r.messages });
     },
     connectionInfo: async () => { await sync(); return connectionInfo(d.store.projectRoot ?? d.dir); },
     openFolder: async () => { await sync(); const dir = d.store.projectRoot ?? d.dir; await fs.mkdir(dir, { recursive: true }); await shell.openPath(dir); },

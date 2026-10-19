@@ -24,11 +24,10 @@ The Planner is part of each CreateCraft project (the **Planner** tab beside Proj
 * **Starting.** New project: **Start with an idea** (opens the Planner on the Idea step) or **Start creating** (a blank workspace). An existing project, or
   one made before this existed, shows an entry screen on first open: **Start with an idea**, or **Look at what is already here**.
 * **Looking at what is already here** (`projectContext.ts`, local and read-only): counts of files, saved versions, exports, the workflow, the saved
-  brief and objective, and the saved Claude conversation. It proposes the goal and description from a saved brief (if there is one), the notable files as
-  **References**, and questions. Each suggestion has a tick box; nothing is added until the owner presses **Start my plan with these**. A file existing never
+  brief and objective, and the saved Claude conversation. It offers the goal and description from a saved brief (if there is one) with a tick box, and starts the conversation from what it found; nothing is added until the owner presses **Start planning from this**. A file existing never
   marks a chunk as done, no history is assumed, and the project's own files (including `project.json`) are not written. The planning AI is also told the
   project's file names and counts (never paths), so it understands what exists.
-* **Flow.** **Idea** (the planning chat, with the brief, rules, decisions, questions, ideas, references and files folded beside it), **Plan** (the work in editable **chunks**
+* **Flow.** **Idea** (a conversation that ends with a list of clear chunks), **Plan** (the work in editable **chunks**
   (tasks) and milestones), **Work** (one **current chunk**: send it to ChatGPT, Gemini, Claude or CreateCraft, bring the result back, review it, approve
   it or ask for changes). Everything copies out as text and comes back through Paste back or the review inbox.
 * **Pick up where I left off.** The chunk worked on last is recorded in the plan (`lastActive`: opened in Work, sent to an AI, a result brought back,
@@ -46,13 +45,13 @@ There is no Advanced switch any more. The Planner shows **Idea, Plan, Work** (ta
 
 | Where it went | What it holds |
 |---|---|
-| **Idea** | The AI chat in the centre ("Fill in my plan with ..."). Beside it, folded sections with counts: **Project brief**, **Rules and decisions**, **Open questions**, **Ideas**, **References and files** (including linking files and links to the plan). "Use ChatGPT, Gemini or another AI instead" copies a request out and pastes the answer back. |
+| **Idea** | Only the conversation with the AI (see below). "Use ChatGPT, Gemini or another AI instead" is folded under it. |
 | **Plan** | The **chunks** (tasks): add one with a single line (extra detail under More options), edit, Mark done, Remove, and **Work on this**. **Milestones** are a folded section. |
 | **Work** | What **needs you** (results to review, suggestions, stalled chunks) appears only when something waits; the **current chunk**; **Do this chunk** (pick CreateCraft, Claude Code / Gemini CLI, or ChatGPT / Gemini / any chat; one button copies the instructions); **Bring the result back** (paste, preview, review, approve or ask for changes). |
 | **⋯ menu** | **What changed** (the full history), **Connect an AI tool** (the connection snippets), **Export this plan**, **Export with linked files**, **Import a plan**, **Open the plan's folder**, and **Older plans**. |
 | Header | The plan's title, "n of m chunks done", and **Pick up where I left off** when you come back. |
 
-Removed from view (their jobs live elsewhere): Overview (progress is in the header, next steps are Work), Handoffs (Work), History (⋯ > What changed), Files (inside Idea), the list/board toggle and the per-chunk
+Removed from view (their jobs live elsewhere): Overview (progress is in the header, next steps are Work), Handoffs (Work), History (⋯ > What changed), Files, the brief form and the rules/decisions/questions/ideas/references lists (the conversation fills in the summary quietly), the list/board toggle and the per-chunk
 "Send to AI" button (Work on this opens it in Work), and the packages screen (a package is created for you when you copy instructions).
 
 The mapping between what is stored and what is shown is unchanged:
@@ -116,32 +115,27 @@ separate project system per template.
    filled (you press Send); nothing is started or paid for by the Planner.
 4. The result comes back by paste (or MCP), the task shows **Needs Review**, and you accept, ask for changes or reject.
 
-### Plan with an AI (the chat beside the brief)
+### Plan with an AI (the Idea step: a conversation)
 
-On the Plan area, next to **Project brief**, a chat sends your messages to an AI and shows its answers. It is only for planning: it can read
-a short summary of the plan (title, goal, description, scope, constraints, agreed rules, open questions, task titles; no file locations, no
-ideas, no task details) and **can write nothing**.
+**Idea** is only a conversation. There is no brief form and no lists of rules, decisions, questions, ideas or references to fill in.
 
-* **Which AI:** a picker offers **Claude** (your Claude sign-in; Opus 5.5 or Sonnet 5.5), **OpenAI** and **Google Gemini** (your own API keys
-  from Settings > Integrations, the same keys used for images; each message is billed to that account). The model list for OpenAI and Gemini
-  is read live from the provider with your key, so no model name is built in. A provider without a key shows "needs a key". The choice is
-  remembered.
-* **Saving the brief** shows "Brief saved. Ask <AI> to help plan this". Nothing is sent until you press that button (or type and press
-  Send). One request per message; the history sent is the newest 24 messages (each cut at 6,000 characters) and replies are limited to
-  3,000 tokens, which bounds what a message can cost.
-* **What it fills in.** The AI is asked (and Paste back reads) these sections: **Project brief** (goal, description, scope, constraints,
-  deliverables), **Milestones** (optional due date), **Requirements**, **Decisions** (with "why"), **Tasks** (each can name its milestone and,
-  indented, how to check it is done), **Questions**, **Ideas** and **References** (title and link). The summary it sees also lists milestone names so it does not repeat them.
-  The button **Fill in my plan with <AI>** (and the offer after saving the brief) asks for all of them at once.
-* **What comes back** is read with the same reader as Paste back, one tick box per suggestion, marked "changes the plan" (the brief, rules and
-  decisions) or "adds to your list" (milestones, tasks, questions, ideas, references). **Add selected to my plan** or **Save for later** work
-  exactly as for a pasted answer, so the owner still decides and the history names "Planning chat" as the proposer. When added: rules and decisions
-  become accepted; questions, ideas and references stay open items; tasks join the milestone of the same name (milestones are added first, and a
-  milestone with the same name is never duplicated); brief text parts replace the old text, while constraints and deliverables only gain new
-  lines (nothing you wrote is removed). A brief suggestion is tied to the brief as it was when the answer arrived: if you edit the brief before
-  accepting, it is refused instead of overwriting your edit. At most 80 suggestions are read from one answer.
-* The conversation is saved with the project's plan (`chat.json`, the newest 48 messages) and comes back when the project is opened. Keys are lent from the encrypted store for one call, are never sent
-  to the page, and are removed from any error text.
+1. The AI talks the idea through (plain sentences, at most two short questions at a time): what is being made, what it is for, what finished looks like, the limits
+   that matter, and what already exists. It is told what the project already holds (file names and counts, never paths).
+2. When it understands enough it says what it understood and asks **"Ready to start building? I'll break it into clear steps."**, ending the message with the marker
+   `[[READY]]` (`READY_MARK`). The page hides the marker and shows **Yes, make the plan** and **Not yet, I want to add something**.
+3. **Yes** sends one more request in `chunks` mode. The AI answers once in `CHUNK_FORMAT`: a sentence, a short project summary (goal, description, scope) and 4 to 12 chunks in the
+   order they should be done, each small enough for one sitting and starting with a verb, with how to check it is done. The page shows this as a plain numbered list (tick boxes,
+   **Add these to my plan**, **I want to change something**), never as raw text.
+4. **Add these to my plan** adds the chunks in order and quietly fills in the project summary (it never overwrites a summary you edited since). Nothing else is created.
+   Coming back to the conversation later does not offer the same chunks twice, and asking for more chunks or changes in the chat gives a new list of only the new ones.
+
+* **Which AI:** a small "Talking with Claude · model" line opens the picker: **Claude** (your Claude sign-in), **OpenAI** and **Google Gemini** (your own API keys from Settings >
+  Integrations; each message is billed to that account). OpenAI and Gemini model lists are read live from the provider. The choice is remembered.
+* **Cost bounds:** one request per message you send; the newest 24 messages (each cut at 6,000 characters) go with it; replies are limited to 3,000 tokens.
+* **ChatGPT, Gemini or any other AI:** "Use ChatGPT, Gemini or another AI instead" copies a request that asks for the same two steps, and **Paste the answer** reads it back with the same reader, with a preview first.
+* **Existing projects:** the entry screen's **Look at what is already here** starts the conversation from what was found ("I looked through this project. Here is what I found ... What would you like to do with it next?"); the AI is told the same facts on every message.
+* The conversation is saved with the project's plan (`chat.json`, the newest 48 messages) and comes back when the project is opened. Keys are lent from the encrypted store for one call, are never sent to the page, and are removed from any error text.
+* The older sections (rules, decisions, questions, ideas, references, milestones) still exist in the plan data and are still understood when pasted or proposed by a connected tool; they are just not forms the owner has to fill in.
 
 ### What the AI receives (context builder)
 

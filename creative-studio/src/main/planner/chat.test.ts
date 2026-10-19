@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { chatSystemPrompt, MAX_CHAT_MESSAGE_CHARS, MAX_CHAT_MESSAGES, starterMessage, trimChat } from '@shared/plannerChat';
+import { chatSystemPrompt, MAX_CHAT_MESSAGE_CHARS, MAX_CHAT_MESSAGES, trimChat } from '@shared/plannerChat';
 import { parseSuggestionText } from '@shared/plannerPaste';
 import { geminiChatBody, openaiChatBody, parseGeminiChat, parseOpenAIChat, PlannerChat, textModels, type ChatDeps } from './chat';
 import { PlannerService, userCtx } from './service';
@@ -41,11 +41,10 @@ describe('what the AI is told', () => {
     expect(sys).toContain('A dragon poster');
     expect(sys).toContain('Teal and gold palette');
     expect(sys).toContain('Sketch the dragon');
-    expect(sys).toContain('only a suggestion');
+    expect(sys).toContain('the user decides what joins the plan');
     expect(sys).not.toContain('Secret idea');
     expect(sys).not.toContain('private');
     expect(sys).not.toMatch(/C:\\Users/);
-    expect(starterMessage({ goal: '' } as never)).toMatch(/only a title/);
   });
 
   it('what comes back reads as suggestions the owner can tick (same reader as Paste back)', () => {

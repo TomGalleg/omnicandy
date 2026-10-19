@@ -1,12 +1,11 @@
-// The planning chat beside the project brief. One message goes to the chosen AI only when the owner presses a button (the offer after
-// saving the brief, or Send). The answer is text; anything it suggests is shown with tick boxes and joins the plan only when the owner
-// adds it, exactly like Paste back. The conversation is saved with the plan (inside the project), so it is here when the project is opened again.
+// The planning conversation (the Idea step). The AI talks the idea through with the owner; when it has enough it asks "Ready to start building?" and the
+// page shows "Yes, make the plan". The answer to that is a list of clear chunks, shown as a plain list the owner can tick; they join the plan only when
+// the owner presses a button. The conversation is saved with the plan (inside the project), so it is here when the project is opened again.
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { describeChange, changesThePlan, parseSuggestionText } from '@shared/plannerPaste';
 import type { PlannerProject } from '@shared/planner';
 import type { ChatProviderInfo } from '@shared/plannerApi';
-import { starterMessage, type ChatMessage, type ChatProviderId } from '@shared/plannerChat';
-import { errMsg, ErrorLine, Section, useAction } from './plannerUi';
+import { chunkPlan, isReady, MAKE_PLAN_REQUEST, withoutMarker, type ChatMessage, type ChatMode, type ChatProviderId } from '@shared/plannerChat';
+import { errMsg, ErrorLine, useAction, type TabId } from './plannerUi';
 
 const api = () => window.studio.planner;
 const store = (() => { try { return window.localStorage; } catch { return undefined; } })();
@@ -14,31 +13,41 @@ const get = (k: string) => { try { return store?.getItem(k) ?? null; } catch { r
 const put = (k: string, v: string) => { try { store?.setItem(k, v); } catch { /* storage unavailable */ } };
 const PROVIDER_KEY = 'cs-planner-chat-provider';
 
-function Suggestions({ p, reload, text }: { p: PlannerProject; reload: () => Promise<void>; text: string }) {
-  const sugg = useMemo(() => parseSuggestionText(text), [text]);
+/** An answer that breaks the project into chunks: shown as a plain numbered list instead of raw text. */
+function ChunkList({ p, reload, text, go, onChange }: { p: PlannerProject; reload: () => Promise<void>; text: string; go: (t: TabId) => void; onChange: () => void }) {
+  const plan = useMemo(() => chunkPlan(text), [text]);
   const [skip, setSkip] = useState<number[]>([]);
-  const [done, setDone] = useState<string | null>(null);
+  const [done, setDone] = useState<number | null>(null);
   const a = useAction(reload);
-  if (!sugg.changes.length) return null;
-  const picked = sugg.changes.filter((_, i) => !skip.includes(i)).length;
-  const add = (accept: boolean) => a.run(async () => {
-    // A brief suggestion is tied to the brief as it is now: if you edit the brief before accepting, it is not applied over your edit.
-    const changes = sugg.changes.map((c) => (c.op === 'set_brief' ? { ...c, baseMetaRev: p.metaRev } : c));
-    const pr = await api().importSuggestions(p.id, { proposer: { kind: 'other', name: 'Planning chat' }, note: 'From the planning chat', changes, rawText: text });
-    if (accept) await api().decideProposal(p.id, pr.id, true, sugg.changes.map((_, i) => i).filter((i) => !skip.includes(i)));
-    setDone(accept ? 'Added to your plan.' : 'Saved under Needs you (AI area). Nothing is in your plan until you accept it.');
+  if (!plan) return null;
+  const have = new Set(p.tasks.filter((t) => t.status !== 'cancelled').map((t) => t.title.trim().toLowerCase()));
+  const already = plan.chunks.every((c) => have.has(c.title.trim().toLowerCase()));
+  const picked = plan.chunks.map((_, i) => i).filter((i) => !skip.includes(i));
+  const add = () => a.run(async () => {
+    const chosen = picked.map((i) => plan.chunks[i]!);
+    // The project summary is set quietly with the chunks; it is tied to the summary as it is now, so it never overwrites something edited since.
+    const changes = [...plan.brief.map((c) => (c.op === 'set_brief' ? { ...c, baseMetaRev: p.metaRev } : c)), ...chosen];
+    const pr = await api().importSuggestions(p.id, { proposer: { kind: 'other', name: 'Planning chat' }, note: 'Chunks from the planning chat', changes, rawText: text });
+    await api().decideProposal(p.id, pr.id, true, changes.map((_, i) => i));
+    setDone(chosen.length);
   });
   return (
-    <div className="pl-preview">
-      <p className="pl-hint">Suggestions in this answer: brief, milestones, rules, decisions, tasks, questions, ideas and references. Untick what you do not want. Nothing is added until you press a button.</p>
-      {sugg.errors.map((e) => <p key={e} className="pl-error">{e}</p>)}
-      <ul>{sugg.changes.map((c, i) => (
-        <li key={i}><label className="pl-check"><input type="checkbox" disabled={!!done} checked={!skip.includes(i)} onChange={(e) => setSkip(e.target.checked ? skip.filter((x) => x !== i) : [...skip, i])} />{describeChange(c)} {changesThePlan(c) ? <span className="chip warn">changes the plan</span> : <span className="chip off">adds to your list</span>}</label></li>
-      ))}</ul>
-      {done ? <p role="status" className="pl-hint">{done}</p> : (
+    <div className="pl-chunks">
+      {plan.intro && <p>{plan.intro}</p>}
+      <ol>
+        {plan.chunks.map((c, i) => (
+          <li key={i}>
+            <label className="pl-check"><input type="checkbox" disabled={already || done !== null} checked={!skip.includes(i)} onChange={(e) => setSkip(e.target.checked ? skip.filter((x) => x !== i) : [...skip, i])} /><strong>{c.title}</strong></label>
+            {c.completionChecks.length > 0 && <ul className="pl-checks">{c.completionChecks.map((k, j) => <li key={j}>{k}</li>)}</ul>}
+          </li>
+        ))}
+      </ol>
+      {already || done !== null ? (
+        <p role="status" className="pl-hint">{done !== null ? `Added ${done} chunk${done === 1 ? '' : 's'} to your plan.` : 'These chunks are in your plan.'} <button className="btn small primary" onClick={() => go('tasks')}>See the plan</button></p>
+      ) : (
         <div className="pl-actions">
-          <button className="btn small primary" disabled={a.busy || !picked} onClick={() => void add(true)}>Add selected to my plan</button>
-          <button className="btn small" disabled={a.busy} onClick={() => void add(false)}>Save for later</button>
+          <button className="btn primary" disabled={a.busy || !picked.length} onClick={() => void add()}>Add these to my plan</button>
+          <button className="btn" disabled={a.busy} onClick={onChange}>I want to change something</button>
         </div>
       )}
       <ErrorLine error={a.error} />
@@ -46,7 +55,7 @@ function Suggestions({ p, reload, text }: { p: PlannerProject; reload: () => Pro
   );
 }
 
-export function PlannerChat({ p, reload, savedTick }: { p: PlannerProject; reload: () => Promise<void>; savedTick: number }) {
+export function PlannerChat({ p, reload, go }: { p: PlannerProject; reload: () => Promise<void>; go: (t: TabId) => void }) {
   const [providers, setProviders] = useState<ChatProviderInfo[] | null>(null);
   const [provider, setProvider] = useState<ChatProviderId>(() => (['claude', 'openai', 'gemini'].includes(get(PROVIDER_KEY) ?? '') ? (get(PROVIDER_KEY) as ChatProviderId) : 'claude'));
   const [models, setModels] = useState<string[] | null>(null);
@@ -56,20 +65,19 @@ export function PlannerChat({ p, reload, savedTick }: { p: PlannerProject; reloa
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [offer, setOffer] = useState(false);
+  /** The index of the "Ready to start building?" message the owner said "not yet" to. */
+  const [notYet, setNotYet] = useState<number | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
-  const seen = useRef(savedTick);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => { void api().chatProviders().then(setProviders).catch((e) => setModelErr(errMsg(e))); }, []);
   // The conversation kept with this plan comes back when the plan is opened.
-  const [restored, setRestored] = useState<string | null>(null);
   useEffect(() => {
     let live = true;
     void api().chatLoad(p.id).then((c) => {
       if (!live) return;
       setMessages(c.messages);
       if (c.provider && ['claude', 'openai', 'gemini'].includes(c.provider)) setProvider(c.provider as ChatProviderId);
-      setRestored(c.messages.length && c.savedAt ? c.savedAt : null);
     }).catch(() => {});
     return () => { live = false; };
   }, [p.id]);
@@ -88,71 +96,77 @@ export function PlannerChat({ p, reload, savedTick }: { p: PlannerProject; reloa
     return () => { live = false; };
   }, [provider, info?.ready]);
   useEffect(() => { listRef.current?.scrollTo({ top: listRef.current.scrollHeight }); }, [messages.length, busy]);
-  // Saving the brief offers help; it never starts a request by itself.
-  useEffect(() => {
-    if (savedTick !== seen.current) { seen.current = savedTick; if (!messages.length) setOffer(true); }
-  }, [savedTick, messages.length]);
 
-  const ask = async (text: string) => {
+  const ask = async (text: string, mode: ChatMode = 'talk') => {
     if (!text.trim() || busy || !model) return;
     const next: ChatMessage[] = [...messages, { role: 'user', text: text.trim() }];
-    setMessages(next); setInput(''); setOffer(false); setBusy(true); setError(null);
+    setMessages(next); setInput(''); setNotYet(null); setBusy(true); setError(null);
     try {
-      const r = await api().chat({ projectId: p.id, provider, model, messages: next });
+      const r = await api().chat({ projectId: p.id, provider, model, messages: next, mode });
       const all: ChatMessage[] = [...next, { role: 'assistant', text: r.text }];
       setMessages(all);
       save(all);
     } catch (e) { setError(errMsg(e)); } finally { setBusy(false); }
   };
 
+  const lastIdx = messages.length - 1;
+  const last = messages[lastIdx];
+  const readyNow = !!last && last.role === 'assistant' && isReady(last.text) && !chunkPlan(last.text) && notYet !== lastIdx && !busy;
+  const hasChunks = p.tasks.some((t) => t.status !== 'cancelled');
+
   return (
-    <div className="pl-chatwrap">
-    <Section title="Plan with an AI" hint="Chat to fill in your plan: project brief, milestones, rules, decisions, tasks, questions, ideas and references. You choose what joins your plan.">
-      <div className="pl-two">
-        <label>AI
-          <select value={provider} onChange={(e) => { setProvider(e.target.value as ChatProviderId); put(PROVIDER_KEY, e.target.value); setError(null); }}>
-            {(providers ?? []).map((x) => <option key={x.id} value={x.id}>{x.label}{x.ready ? '' : ' (needs a key)'}</option>)}
-            {!providers && <option value={provider}>{provider}</option>}
-          </select>
-        </label>
-        <label>Model
-          <select value={model} disabled={!models?.length} onChange={(e) => { setModel(e.target.value); put(`cs-planner-chat-model-${provider}`, e.target.value); }}>
-            {(models ?? []).map((m) => <option key={m} value={m}>{m}</option>)}
-            {!models?.length && <option value="">{info && !info.ready ? '—' : modelErr ? 'unavailable' : 'loading…'}</option>}
-          </select>
-        </label>
-      </div>
-      {info && !info.ready && <p className="pl-warn">{info.note}</p>}
-      {info?.ready && <details className="pl-about"><summary>Cost and privacy</summary><p className="pl-hint">{info.cost} A short summary of your plan (no file locations) is sent with your messages.</p></details>}
-      <ErrorLine error={modelErr} />
-      {offer && info?.ready && model && (
-        <p className="pl-offer" role="status">Brief saved. <button className="btn small primary" disabled={busy} onClick={() => void ask(starterMessage(p))}>Ask {info.label} to help plan this</button> <button className="btn small ghost" onClick={() => setOffer(false)}>Not now</button></p>
-      )}
+    <div className="pl-chat-main">
       <div className="pl-chat" ref={listRef} aria-live="polite">
-        {restored && messages.length > 0 && <p className="pl-hint">Your earlier conversation is back (saved {new Date(restored).toLocaleString()}).</p>}
         {!messages.length && (
-          <p className="pl-hint">
-            Nothing sent yet. Press the button to have {info?.label ?? 'the AI'} fill in your plan, or type a message below.{' '}
-            <button className="btn small primary" disabled={busy || !info?.ready || !model} onClick={() => void ask(starterMessage(p))}>Fill in my plan with {info?.label ?? 'AI'}</button>
-          </p>
-        )}
-        {messages.map((m, i) => (
-          <div key={i} className={`pl-msg ${m.role}`}>
-            <strong>{m.role === 'user' ? 'You' : info?.label ?? 'AI'}</strong>
-            <p className="pl-msg-text">{m.text}</p>
-            {m.role === 'assistant' && <Suggestions p={p} reload={reload} text={m.text} />}
+          <div className="pl-hello">
+            <h3>What do you want to make?</h3>
+            <p className="pl-hint">Tell me in your own words. I will ask a few questions, and when I understand it, I will break the project into clear steps for you.</p>
           </div>
-        ))}
+        )}
+        {messages.map((m, i) => {
+          const plan = m.role === 'assistant' ? chunkPlan(m.text) : null;
+          return (
+            <div key={i} className={`pl-msg ${m.role}`}>
+              <strong>{m.role === 'user' ? 'You' : info?.label ?? 'AI'}</strong>
+              {plan ? <ChunkList p={p} reload={reload} text={m.text} go={go} onChange={() => inputRef.current?.focus()} /> : <p className="pl-msg-text">{withoutMarker(m.text)}</p>}
+            </div>
+          );
+        })}
+        {readyNow && (
+          <div className="pl-ready" role="status">
+            <button className="btn primary" disabled={busy} onClick={() => void ask(MAKE_PLAN_REQUEST, 'chunks')}>Yes, make the plan</button>
+            <button className="btn" onClick={() => { setNotYet(lastIdx); inputRef.current?.focus(); }}>Not yet, I want to add something</button>
+          </div>
+        )}
         {busy && <p className="pl-hint">{info?.label ?? 'The AI'} is thinking…</p>}
       </div>
-      <ErrorLine error={error} />
+      <ErrorLine error={error ?? modelErr} />
       <div className="pl-composer">
-        <textarea aria-label="Message to the planning AI" rows={3} value={input} placeholder={info?.ready ? 'Ask a question or describe what you need…' : 'Add a key for this AI first, or pick Claude'} disabled={!info?.ready || busy}
+        <textarea ref={inputRef} aria-label="Message to the planning AI" rows={3} value={input}
+          placeholder={!info?.ready ? 'Add a key for this AI first, or pick Claude' : messages.length ? (hasChunks ? 'Ask for more chunks or changes…' : 'Your answer…') : 'For example: a short film about…, a poster for…, an app that…'} disabled={!info?.ready || busy}
           onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void ask(input); } }} />
         <button className="btn primary pl-send" disabled={busy || !input.trim() || !model || !info?.ready} onClick={() => void ask(input)}>Send</button>
       </div>
-      {messages.length > 0 && <p className="pl-hint"><button className="btn small ghost" onClick={() => { setMessages([]); setError(null); setRestored(null); save([]); }}>Clear this chat</button> The conversation is saved with this project's plan.</p>}
-    </Section>
+      <details className="pl-about">
+        <summary>{info ? `Talking with ${info.label}${model ? ` · ${model}` : ''}` : 'AI settings'}</summary>
+        <div className="pl-two">
+          <label>AI
+            <select value={provider} onChange={(e) => { setProvider(e.target.value as ChatProviderId); put(PROVIDER_KEY, e.target.value); setError(null); }}>
+              {(providers ?? []).map((x) => <option key={x.id} value={x.id}>{x.label}{x.ready ? '' : ' (needs a key)'}</option>)}
+              {!providers && <option value={provider}>{provider}</option>}
+            </select>
+          </label>
+          <label>Model
+            <select value={model} disabled={!models?.length} onChange={(e) => { setModel(e.target.value); put(`cs-planner-chat-model-${provider}`, e.target.value); }}>
+              {(models ?? []).map((m) => <option key={m} value={m}>{m}</option>)}
+              {!models?.length && <option value="">{info && !info.ready ? '—' : modelErr ? 'unavailable' : 'loading…'}</option>}
+            </select>
+          </label>
+        </div>
+        {info && !info.ready && <p className="pl-warn">{info.note}</p>}
+        {info?.ready && <p className="pl-hint">{info.cost} A short summary of your plan (no file locations) is sent with your messages. The conversation is saved with this project's plan.</p>}
+        {messages.length > 0 && <p><button className="btn small ghost" onClick={() => { setMessages([]); setError(null); save([]); }}>Start the conversation over</button></p>}
+      </details>
     </div>
   );
 }
