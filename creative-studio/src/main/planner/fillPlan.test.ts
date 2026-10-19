@@ -245,7 +245,7 @@ describe('what the AI is asked for', () => {
 
   it('tells the AI what the project already contains, so it does not plan work that exists', async () => {
     const { svc, p } = await rig();
-    const prompt = chatSystemPrompt(await svc.getProject(user, p.id), ['OmniCandi project: "Poster".', 'It already contains 3 file(s): 2 pictures.'], 'chunks');
+    const prompt = chatSystemPrompt(await svc.getProject(user, p.id), ['OmniCandy project: "Poster".', 'It already contains 3 file(s): 2 pictures.'], 'chunks');
     expect(prompt).toContain('It already contains 3 file(s)');
     expect(prompt).toMatch(/do not plan work that already exists/);
   });

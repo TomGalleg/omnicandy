@@ -45,7 +45,7 @@ export interface LiveSnapshot {
   message: string | null;
   /** Controls are shown in the pop-out panel docked to the app window instead of the main window. */
   poppedOut: boolean;
-  /** The open app's interface theme as last set by OmniCandi (read back from the app). */
+  /** The open app's interface theme as last set by OmniCandy (read back from the app). */
   appTheme: { app: EditorAppId; value: string } | null;
   /** Who opened the current file: Claude's opens make the main window follow (tab + selection). */
   openedBy: 'user' | 'claude';

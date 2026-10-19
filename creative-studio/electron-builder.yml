@@ -1,12 +1,12 @@
-# Installer for OmniCandi (Windows). Build:  npm run dist   (unpacked app for testing:  npm run dist:dir)
+# Installer for OmniCandy (Windows). Build:  npm run dist   (unpacked app for testing:  npm run dist:dir)
 #
-# Connectors that ship with OmniCandi are plain .ccadapter files in <install>/resources/adapters, outside app.asar, so they
+# Connectors that ship with OmniCandy are plain .ccadapter files in <install>/resources/adapters, outside app.asar, so they
 # stay independently updateable (a newer package in the inbox or a later installer replaces them) and verifiable by hash and
 # signature. Release builds are signed with the OFFICIAL release key only: see docs/release-signing.md and
 # scripts/release-check.mjs. Nothing from Autodesk, Adobe or any other vendor is bundled.
 appId: com.createcraft.app
-productName: OmniCandi
-artifactName: OmniCandi-Setup-${version}.${ext}
+productName: OmniCandy
+artifactName: OmniCandy-Setup-${version}.${ext}
 directories:
   output: release
   buildResources: resources
@@ -24,7 +24,7 @@ extraResources:
     filter: ['*.ccadapter', 'catalog.json']
   - from: resources/trust
     to: trust
-  # The planner's MCP server: one file that runs with OmniCandi's own runtime (ELECTRON_RUN_AS_NODE=1), so AI clients can launch it.
+  # The planner's MCP server: one file that runs with OmniCandy's own runtime (ELECTRON_RUN_AS_NODE=1), so AI clients can launch it.
   - from: out/planner-mcp.cjs
     to: planner-mcp.cjs
   - from: resources/icon.png
@@ -52,8 +52,8 @@ linux:
       arch: [x64]
   icon: resources/icon.png
   category: Graphics
-  artifactName: OmniCandi-${version}-linux-${arch}.${ext}
-  maintainer: OmniCandi
+  artifactName: OmniCandy-${version}-linux-${arch}.${ext}
+  maintainer: OmniCandy
   synopsis: AI-assisted creative production
   executableName: createcraft
 deb:

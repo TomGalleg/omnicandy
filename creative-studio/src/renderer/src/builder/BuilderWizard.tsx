@@ -96,7 +96,7 @@ export function BuilderWizard({ onClose, openProjectId }: Props) {
           {phase === 'loading' && <div className="connect-empty" aria-busy="true"><strong>Looking at the programs on this computer…</strong><small>This list stays on your computer.</small></div>}
           {phase === 'choose' && (
             <>
-              <p className="connect-lead">Tell OmniCandi which program you want to connect. It researches how the program can be controlled, builds a connector, tests it safely and asks for your approval before anything is installed.</p>
+              <p className="connect-lead">Tell OmniCandy which program you want to connect. It researches how the program can be controlled, builds a connector, tests it safely and asks for your approval before anything is installed.</p>
               {seed && <small className="connect-notice">Trying again for {seed.name}. Add the program's documentation if the last attempt said it was missing.</small>}
               <div className="builder-tabs" role="tablist" aria-label="How to choose the program">
                 <button role="tab" aria-selected={source === 'installed'} className={`btn small ${source === 'installed' ? 'primary' : 'ghost'}`} onClick={() => setSource('installed')}>Installed on this computer</button>
@@ -132,7 +132,7 @@ export function BuilderWizard({ onClose, openProjectId }: Props) {
                 <div className="field">
                   <label className="menu-label" htmlFor="builder-name">Program name</label>
                   <input id="builder-name" className="text-input" placeholder="For example: Adobe Photoshop, AutoCAD, Inkscape" value={name} maxLength={80} onChange={(e) => setName(e.target.value)} />
-                  <small>It does not have to be installed. If it is not, OmniCandi builds a candidate and tests it with simulations only; it stays “Awaiting live verification” until you install the program and test it for real.</small>
+                  <small>It does not have to be installed. If it is not, OmniCandy builds a candidate and tests it with simulations only; it stays “Awaiting live verification” until you install the program and test it for real.</small>
                 </div>
               )}
               <div className="field">
@@ -141,7 +141,7 @@ export function BuilderWizard({ onClose, openProjectId }: Props) {
               </div>
               <div className="field">
                 <span className="menu-label">Documentation (optional)</span>
-                <small>If OmniCandi cannot find trustworthy documentation online, it stops instead of guessing. You can give it the program's manual or SDK now: text, HTML or source files.</small>
+                <small>If OmniCandy cannot find trustworthy documentation online, it stops instead of guessing. You can give it the program's manual or SDK now: text, HTML or source files.</small>
                 <div className="ext-actions">
                   <button className="btn small" onClick={() => void addDocs('files')}>Add documentation files…</button>
                   <button className="btn small" onClick={() => void addDocs('folder')}>Add a documentation or SDK folder…</button>
@@ -149,7 +149,7 @@ export function BuilderWizard({ onClose, openProjectId }: Props) {
                 <label className="menu-label" htmlFor="builder-links">Or paste links to documentation pages</label>
                 {suggested && <div className="ext-actions"><button className="btn small primary" onClick={addSuggested}>Add the {suggested.links.length} suggested {suggested.label} pages</button></div>}
                 <textarea id="builder-links" className="text-input" rows={4} placeholder={'One link per line, for example: https://dev.epicgames.com/documentation/en-us/unreal-engine/python-api/index'} value={linkText} onChange={(e) => setLinkText(e.target.value)} />
-                <small>{(() => { const n = parseLinks(linkText).length; return n === 0 ? 'Links must start with https://. OmniCandi reads each page once, as plain text, and sends it only to Claude. Pages that need a browser to show their content cannot be read; save those as HTML and add them as files.' : `${n} link${n === 1 ? '' : 's'} will be read${n > 10 ? ' (only the first 10 are used)' : ''}.`; })()}</small>
+                <small>{(() => { const n = parseLinks(linkText).length; return n === 0 ? 'Links must start with https://. OmniCandy reads each page once, as plain text, and sends it only to Claude. Pages that need a browser to show their content cannot be read; save those as HTML and add them as files.' : `${n} link${n === 1 ? '' : 's'} will be read${n > 10 ? ' (only the first 10 are used)' : ''}.`; })()}</small>
                 {docs.length > 0 && <ul className="status-list">{docs.map((p) => <li key={p}><small>{p}</small> <button className="btn small ghost" aria-label={`Remove ${p}`} onClick={() => setDocs((x) => x.filter((y) => y !== p))}>Remove</button></li>)}</ul>}
               </div>
               <small className="ext-note" role="note">{BUILDER_CONSENT}</small>

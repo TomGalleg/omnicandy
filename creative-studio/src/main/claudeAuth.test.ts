@@ -31,7 +31,7 @@ describe('signInEnv', () => {
     expect(e.ANTHROPIC_API_KEY).toBeUndefined();
     expect(e.ANTHROPIC_AUTH_TOKEN).toBeUndefined();
     expect(e.PATH).toBe('p');
-    expect(e.CLAUDE_AGENT_SDK_CLIENT_APP).toBe('OmniCandi/0.1');
+    expect(e.CLAUDE_AGENT_SDK_CLIENT_APP).toBe('OmniCandy/0.1');
   });
 });
 

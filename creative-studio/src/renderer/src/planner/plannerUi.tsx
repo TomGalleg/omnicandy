@@ -7,7 +7,7 @@ export interface TabProps {
   p: PlannerProject; reload: () => Promise<void>; go: (t: TabId) => void;
   /** Tasks chosen for Send to AI (kept here so a task's Send button can open the AI area with it ticked). */
   sendSel?: string[]; setSendSel?: (ids: string[]) => void;
-  /** The OmniCandi project that is open now (a task can point at its workflow). */
+  /** The OmniCandy project that is open now (a task can point at its workflow). */
   projectKey?: string | null; projectName?: string;
   /** The chunk being worked on (opened from Plan, or picked up from where the owner left off). */
   focusTaskId?: string | null; setFocusTaskId?: (id: string | null) => void;

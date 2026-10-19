@@ -29,7 +29,7 @@ export interface EditorApp {
   /** How "Open in app" works for this app. */
   open: 'live' | 'working-copy' | 'none';
   /**
-   * Which OmniCandi tab is the app's home. The Edit tab picks 'edit' and 'audio' apps by file
+   * Which OmniCandy tab is the app's home. The Edit tab picks 'edit' and 'audio' apps by file
    * type (so sounds open in SoundCraft there too); Color (LightCraft), Effects (EffectCraft) and
    * Audio (SoundCraft) open files in their own tabs.
    */
@@ -497,7 +497,7 @@ export function filmcraftSteps(opId: string, v: EditValues, seq: FilmSequence): 
 export interface DesignPage { bounds: [number, number, number, number]; margins: { top: number; bottom: number; inside: number; outside: number } }
 
 /**
- * DesignCraft commands for a quick edit. `createcraft.addText` is OmniCandi's own two-step
+ * DesignCraft commands for a quick edit. `createcraft.addText` is OmniCandy's own two-step
  * operation (frame.create, then find.change with attrs on the new story), run by LiveDesignCraft.
  */
 export function designcraftSteps(opId: string, v: EditValues, page: DesignPage): Op[] {
@@ -585,7 +585,7 @@ export function pdfcraftSteps(opId: string, v: EditValues): Op[] {
 }
 
 /**
- * DeckCraft operations for a quick edit. The `createcraft.*` ones are OmniCandi's own multi-call
+ * DeckCraft operations for a quick edit. The `createcraft.*` ones are OmniCandy's own multi-call
  * operations run by LiveDeckCraft (DeckCraft has no find-and-replace command, so text is replaced
  * shape by shape with its set_text tool).
  */
@@ -598,7 +598,7 @@ export function deckcraftSteps(opId: string, v: EditValues): Op[] {
 }
 
 /**
- * FigCraft operations for a quick edit. Both are OmniCandi multi-call operations run by LiveFigCraft:
+ * FigCraft operations for a quick edit. Both are OmniCandy multi-call operations run by LiveFigCraft:
  * text layers are found with inspect_document and changed with set_properties; new text goes into the
  * first frame of the current page.
  */

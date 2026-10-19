@@ -2,7 +2,7 @@
 // it away again, without ever running anything the package supplies.
 //
 //   * The only operation is "write a verified file into an approved folder". No scripts, no commands, no registry.
-//   * Folders, scopes, file types and size limits come from hostProfiles.ts (OmniCandi's own table). The manifest can
+//   * Folders, scopes, file types and size limits come from hostProfiles.ts (OmniCandy's own table). The manifest can
 //     name a destination id; it cannot add one, point at a path, or widen the limits. Re-checked at install time.
 //   * Every change is journalled before it happens (ledger.json). A failure, a cancel or a crash rolls back to exactly
 //     the earlier state; uninstall removes only files whose hash still matches what was installed.
@@ -105,7 +105,7 @@ export class PluginInstaller {
     view.communication = { transport: i.communication.transport, protocol: i.communication.protocol, capabilities: i.communication.capabilities.map((c) => c.id) };
     view.dependencies = (pl.dependencies ?? []).map((d) => ({ kind: d.kind, name: d.name, min: d.min ?? null }));
     view.vendorWorkflow = pl.vendorWorkflow ? { title: pl.vendorWorkflow.title, steps: pl.vendorWorkflow.steps, officialUrl: pl.vendorWorkflow.officialUrl ?? null } : null;
-    if (!profile) { problems.push(`OmniCandi has no installation profile for "${i.host.profile}", so it will not install anything for it.`); return empty(); }
+    if (!profile) { problems.push(`OmniCandy has no installation profile for "${i.host.profile}", so it will not install anything for it.`); return empty(); }
     view.hostName = profile.name;
     const dest = profile.destinations.find((d) => d.id === pl.destination) ?? null;
     if (!dest && pl.mechanism === 'file-copy') { problems.push(`"${pl.destination}" is not an approved plugin folder for ${profile.name}.`); return { ...empty(), profile }; }
@@ -117,7 +117,7 @@ export class PluginInstaller {
     view.closeHost = pl.closeHost === 'required';
     view.restartHost = pl.restart !== 'not-required';
     const destRoot = dest ? resolveDestination(dest, this.o.env, ctx.hostVersion ?? null) : null;
-    if (dest && !destRoot) problems.push(`OmniCandi cannot work out ${dest.label} for ${profile.name}${ctx.hostVersion ? ` ${ctx.hostVersion}` : ' (its version is unknown)'}.`);
+    if (dest && !destRoot) problems.push(`OmniCandy cannot work out ${dest.label} for ${profile.name}${ctx.hostVersion ? ` ${ctx.hostVersion}` : ' (its version is unknown)'}.`);
     else if (dest && destRoot) view.destinations.push({ label: dest.label, path: destRoot, scope: dest.scope });
 
     const planned: PlannedFile[] = [];
@@ -135,8 +135,8 @@ export class PluginInstaller {
       }
       // The pairing file is written by the installer, not taken from the package.
       const cfg = path.resolve(destRoot, BRIDGE_CONFIG_FILE);
-      if (!dest.extensions.includes('.json')) problems.push(`${dest.label} does not allow the small pairing file OmniCandi needs.`);
-      if (planned.some((p) => lower(p.abs) === lower(cfg))) problems.push(`"${BRIDGE_CONFIG_FILE}" is reserved for OmniCandi.`);
+      if (!dest.extensions.includes('.json')) problems.push(`${dest.label} does not allow the small pairing file OmniCandy needs.`);
+      if (planned.some((p) => lower(p.abs) === lower(cfg))) problems.push(`"${BRIDGE_CONFIG_FILE}" is reserved for OmniCandy.`);
       planned.push({ from: null, to: BRIDGE_CONFIG_FILE, abs: cfg, bytes: 0, generated: true });
     }
 
@@ -146,19 +146,19 @@ export class PluginInstaller {
     // The steps the person sees, in the order they happen.
     const steps: InstallStepView[] = [];
     if (view.closeHost) {
-      steps.push({ kind: 'close-host', title: `Close ${host}`, detail: view.hostRunning ? `${host} is open right now. Save your work and close it, then continue. OmniCandi never closes it for you.` : `${host} is not open, which is what the install needs. Keep it closed until the install finishes.` });
-      if (view.hostRunning) blockers.push(`Close ${host} first, then try again. OmniCandi will not close it for you.`);
+      steps.push({ kind: 'close-host', title: `Close ${host}`, detail: view.hostRunning ? `${host} is open right now. Save your work and close it, then continue. OmniCandy never closes it for you.` : `${host} is not open, which is what the install needs. Keep it closed until the install finishes.` });
+      if (view.hostRunning) blockers.push(`Close ${host} first, then try again. OmniCandy will not close it for you.`);
     }
-    if (type === 'hybrid') steps.push({ kind: 'adapter', title: 'Install the connector', detail: 'The connector runs inside OmniCandi in a restricted process and talks to the add-in.' });
+    if (type === 'hybrid') steps.push({ kind: 'adapter', title: 'Install the connector', detail: 'The connector runs inside OmniCandy in a restricted process and talks to the add-in.' });
     if (pl.mechanism === 'file-copy') {
       steps.push({ kind: 'plugin-files', title: `Install ${view.pluginName} in ${host}`, detail: destRoot ? `Copies ${planned.length - 1} verified file${planned.length === 2 ? '' : 's'} into ${destRoot}.` : 'Copies the add-in files into the program\'s plugin folder.' });
     } else if (pl.vendorWorkflow) {
-      steps.push({ kind: 'vendor-workflow', title: pl.vendorWorkflow.title, detail: `${host}'s vendor requires its own installation workflow. OmniCandi does not copy files for this; it guides you:\n${pl.vendorWorkflow.steps.map((s, n) => `${n + 1}. ${s}`).join('\n')}` });
+      steps.push({ kind: 'vendor-workflow', title: pl.vendorWorkflow.title, detail: `${host}'s vendor requires its own installation workflow. OmniCandy does not copy files for this; it guides you:\n${pl.vendorWorkflow.steps.map((s, n) => `${n + 1}. ${s}`).join('\n')}` });
     }
     if (dest?.admin) steps.push({ kind: 'elevation', title: 'Allow administrator access', detail: `"${dest.label}" is a protected folder. Windows will ask you to approve this once.` });
     if (view.restartHost) steps.push({ kind: 'restart-host', title: `Open or restart ${host}`, detail: profile.restartNote });
     if (profile.readiness !== 'simulated-test' && pl.technology === 'dotnet-addin') steps.push({ kind: 'authorize-in-host', title: `Allow the add-in inside ${host}`, detail: `${host} may ask you to approve a new add-in the first time it loads. Choose the option that loads it.` });
-    steps.push({ kind: 'verify', title: 'Test the connection', detail: 'OmniCandi asks the add-in to run a real check inside the program. Only a reply from the add-in counts as connected.' });
+    steps.push({ kind: 'verify', title: 'Test the connection', detail: 'OmniCandy asks the add-in to run a real check inside the program. Only a reply from the add-in counts as connected.' });
     view.steps = steps;
     return { problems, profile, destination: dest, destRoot, files: planned, blockers, view };
   }
@@ -168,7 +168,7 @@ export class PluginInstaller {
   async install(m: PackageManifest, pkgFiles: Map<string, Buffer>, approval: PackageApproval, opts: { hostVersion?: string | null; signal?: AbortSignal; onProgress?: (p: InstallProgress) => void } = {}): Promise<PluginLedger> {
     const pl = m.integration?.plugin;
     if (!pl) throw new InstallError('This package has no plugin to install.', 'blocked');
-    if (pl.mechanism === 'vendor-workflow') throw new InstallError('This add-in is installed through the vendor workflow. OmniCandi does not copy files for it.', 'blocked');
+    if (pl.mechanism === 'vendor-workflow') throw new InstallError('This add-in is installed through the vendor workflow. OmniCandy does not copy files for it.', 'blocked');
     if (!approval.installPlugin) throw new InstallError('You have not approved putting the add-in into the program\'s plugin folder.', 'blocked');
     const plan = await this.plan(m, pkgFiles, { hostVersion: opts.hostVersion });
     if (plan.problems.length || plan.blockers.length || !plan.destination || !plan.destRoot || !plan.profile) throw new InstallError([...plan.problems, ...plan.blockers].join(' ') || 'The install cannot continue.', 'blocked');
@@ -176,7 +176,7 @@ export class PluginInstaller {
     const elevated = dest.admin;
     if (elevated) {
       if (!approval.elevate) throw new InstallError(`"${dest.label}" needs administrator rights and you have not approved that.`, 'needs-elevation');
-      if (!this.o.elevator) throw new InstallError(`"${dest.label}" needs administrator rights. This OmniCandi build cannot request them safely; run the vendor's own installer or put the add-in in the per-user folder instead.`, 'needs-elevation');
+      if (!this.o.elevator) throw new InstallError(`"${dest.label}" needs administrator rights. This OmniCandy build cannot request them safely; run the vendor's own installer or put the add-in in the per-user folder instead.`, 'needs-elevation');
     }
     const id = m.id;
     const prev = await this.ledger(id);
@@ -194,13 +194,13 @@ export class PluginInstaller {
       return { f, data: pkgFiles.get(f.from!)! };
     });
 
-    // Existing files that OmniCandi did not put there are never overwritten.
+    // Existing files that OmniCandy did not put there are never overwritten.
     for (const { f, data } of out) {
       const st = await fs.stat(f.abs).catch(() => null);
       if (!st) continue;
       if (!st.isFile()) throw new InstallError(`"${f.to}" exists in the plugin folder and is not a file.`, 'blocked');
       const ours = old?.files.some((x) => lower(x.abs) === lower(f.abs));
-      if (!ours && sha256(await fs.readFile(f.abs)) !== sha256(data)) throw new InstallError(`A different file named "${f.to}" is already in ${dest.label}. OmniCandi will not overwrite files it did not install.`, 'blocked');
+      if (!ours && sha256(await fs.readFile(f.abs)) !== sha256(data)) throw new InstallError(`A different file named "${f.to}" is already in ${dest.label}. OmniCandy will not overwrite files it did not install.`, 'blocked');
     }
 
     await fs.mkdir(this.backupDir(id), { recursive: true });

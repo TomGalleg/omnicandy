@@ -1,7 +1,7 @@
 // Runs an installed adapter package in a CHILD PROCESS and exposes it as an ExternalAdapter.
 //
 // Isolation, stated precisely:
-//  * Process isolation: package code never runs in OmniCandi's main process. A crash, a hang or a runaway
+//  * Process isolation: package code never runs in OmniCandy's main process. A crash, a hang or a runaway
 //    loop only ends the child; the manager reports it and the next call starts a fresh child.
 //  * Node permission model (`--permission`): the child may READ only its own package folder and may not
 //    write files, spawn processes, load native addons or start worker threads (the OS refuses, with

@@ -88,7 +88,7 @@ const strip = (e: { id: string; app: string; assetId: string; assetName: string;
 
 export function registerIpc(d: IpcDeps): void {
   const planner = createPlanner(path.dirname(d.secretsDir));
-  const plannerSession = new McpSession(planner.service, ['read', 'propose', 'execute'], { kind: 'createcraft', name: 'OmniCandi Claude' });
+  const plannerSession = new McpSession(planner.service, ['read', 'propose', 'execute'], { kind: 'createcraft', name: 'OmniCandy Claude' });
   registerPlannerIpc({
     service: planner.service, store: planner.store, dir: planner.dir, isTrustedSender: d.isTrustedSender, window: d.window,
     project: async () => { const store = await d.project(); const m = await store.loadManifest().catch(() => null); return m ? { id: m.id, name: m.name, root: store.root, store } : null; },
@@ -139,7 +139,7 @@ export function registerIpc(d: IpcDeps): void {
     void syncAppTheme();
     return s;
   });
-  /** Matches the open ArtCraft app to OmniCandi's current look (if the user allows it). */
+  /** Matches the open ArtCraft app to OmniCandy's current look (if the user allows it). */
   const syncAppTheme = async () => {
     if (!livePromise) return;
     const s = await d.settings.load();
@@ -432,7 +432,7 @@ export function registerIpc(d: IpcDeps): void {
     ctl.setPoppedOut(true);
     return ctl.snapshot();
   };
-  /** Puts the app back inside OmniCandi's Edit area. */
+  /** Puts the app back inside OmniCandy's Edit area. */
   const popIn = async () => {
     const ctl = await live();
     if (!d.embedded.supported) return ctl.snapshot(); // nothing to put back: the app keeps its own window
@@ -651,7 +651,7 @@ export function registerIpc(d: IpcDeps): void {
     if (!dir) return null;
     // Real write test, as for the project folder.
     const probe = path.join(dir, `.createcraft-write-test-${process.pid}`);
-    try { await fsp.writeFile(probe, 'x'); await fsp.rm(probe, { force: true }); } catch { throw new Error('OmniCandi cannot write to that folder. Pick another one.'); }
+    try { await fsp.writeFile(probe, 'x'); await fsp.rm(probe, { force: true }); } catch { throw new Error('OmniCandy cannot write to that folder. Pick another one.'); }
     await fsp.writeFile(aiSettingsFile, JSON.stringify({ modelDir: dir }, null, 2), 'utf8');
     return dir;
   });
@@ -681,7 +681,7 @@ export function registerIpc(d: IpcDeps): void {
   // External third-party applications: one engine for discovery, adapters, permissions and execution.
   // The 13 native Craft apps are NOT routed through it.
   const extStore = new ExternalState(path.join(d.secretsDir, 'external-apps.json'));
-  // Connectors that ship with OmniCandi are only LISTED as available; installing one goes through the same review and native confirmation as any package.
+  // Connectors that ship with OmniCandy are only LISTED as available; installing one goes through the same review and native confirmation as any package.
   const bundled = bundledPaths({ packaged: app.isPackaged, resourcesPath: process.resourcesPath, appPath: app.getAppPath() });
   const catalogDirs = [bundled.adaptersDir];
   let connect: ConnectService | null = null;
@@ -710,7 +710,7 @@ export function registerIpc(d: IpcDeps): void {
   app.on('will-quit', () => setBlenderLiveHooks(null));
   /**
    * Pictures, video and audio that an external program wrote (a Blender render, an exported clip) are added to the
-   * library (Media tab) and the first picture or video opens in PhotoCraft / FilmCraft inside OmniCandi, ready to edit.
+   * library (Media tab) and the first picture or video opens in PhotoCraft / FilmCraft inside OmniCandy, ready to edit.
    * Each file is added once, however often the result is read. Returns the names added.
    */
   const broughtIn = new Set<string>();
@@ -793,7 +793,7 @@ export function registerIpc(d: IpcDeps): void {
   handle(IPC.extPkgPick, z.tuple([z.enum(['file', 'folder'])]), async (kind) => {
     const win = d.window();
     const o: Electron.OpenDialogOptions = kind === 'file'
-      ? { title: 'Choose an integration package', properties: ['openFile'], filters: [{ name: 'OmniCandi integration package', extensions: ['ccadapter'] }] }
+      ? { title: 'Choose an integration package', properties: ['openFile'], filters: [{ name: 'OmniCandy integration package', extensions: ['ccadapter'] }] }
       : { title: 'Choose an integration package folder', properties: ['openDirectory'] };
     const r = await (win ? dialog.showOpenDialog(win, o) : dialog.showOpenDialog(o));
     const p = r.canceled ? null : r.filePaths[0];
@@ -856,7 +856,7 @@ export function registerIpc(d: IpcDeps): void {
     commands: a.commands.map((c) => ({ id: c.id, label: c.label, description: c.description, settings: c.params, needs: c.permissions, destructive: !!c.destructive, long_running: !!c.longRunning })),
   });
 
-  // AI Adapter Builder: private, local integrations. The AI writes data (a blueprint); OmniCandi's templates and validators decide
+  // AI Adapter Builder: private, local integrations. The AI writes data (a blueprint); OmniCandy's templates and validators decide
   // whether a package exists; installing still goes through the review + native confirmation above. Nothing is shared or uploaded.
   const builderRoot = path.join(path.dirname(d.secretsDir), 'integrations', 'builder');
   const pickedDocs = new Set<string>();
@@ -892,7 +892,7 @@ export function registerIpc(d: IpcDeps): void {
   };
   const requestSchema = z.object({ appName: z.string().min(1).max(80), exePath: z.string().max(600).nullable().optional(), documentation: z.array(z.string().max(600)).max(40).optional(), documentationUrls: z.array(z.string().max(600)).max(10).optional(), goal: z.string().max(500).optional() });
   const startBuild = async (req: BuilderRequest) => {
-    if (req.exePath && !offeredPrograms.has(req.exePath.toLowerCase())) throw new Error('Choose the program from the list so OmniCandi knows it is the right one.');
+    if (req.exePath && !offeredPrograms.has(req.exePath.toLowerCase())) throw new Error('Choose the program from the list so OmniCandy knows it is the right one.');
     for (const u of req.documentationUrls ?? []) { let ok = false; try { ok = new URL(u).protocol === 'https:'; } catch { /* not an address */ } if (!ok) throw new Error(`${u} is not a secure web address. Links must start with https://`); }
     for (const p of req.documentation ?? []) if (!pickedDocs.has(p)) throw new Error('Documentation must be chosen with "Add documentation".');
     return builder.create(req);
@@ -1039,7 +1039,7 @@ export function registerIpc(d: IpcDeps): void {
     },
     builder: {
       start: async (appName, goal) => {
-        const r = await ask({ type: 'question', title: 'Create a custom integration', message: `Claude wants OmniCandi to build an integration for ${appName}.`, detail: `${BUILDER_CONSENT}\n\nNothing is installed from this: you review and approve the result in Settings > Integrations.`, buttons: ['Cancel', 'Start building'], defaultId: 0, cancelId: 0, noLink: true });
+        const r = await ask({ type: 'question', title: 'Create a custom integration', message: `Claude wants OmniCandy to build an integration for ${appName}.`, detail: `${BUILDER_CONSENT}\n\nNothing is installed from this: you review and approve the result in Settings > Integrations.`, buttons: ['Cancel', 'Start building'], defaultId: 0, cancelId: 0, noLink: true });
         if (r !== 1) return JSON.stringify({ started: false, reason: 'The user declined. Do not ask again unless they bring it up.' });
         const s = await builder.create({ appName, goal });
         return JSON.stringify({ started: true, project_id: s.id, note: 'Research and building run in the background. The user reviews and approves the result in Settings > Integrations > Create Custom Integration. You cannot install it.' });
@@ -1316,7 +1316,7 @@ export function registerIpc(d: IpcDeps): void {
   };
   handle(IPC.projectsPickFolder, none, () => pickFolder('Choose a folder for projects'));
   handle(IPC.projectsAddExisting, none, async () => {
-    const dir = await pickFolder('Choose an OmniCandi project folder (it contains project.json)');
+    const dir = await pickFolder('Choose an OmniCandy project folder (it contains project.json)');
     return dir ? d.projects.addExisting(dir) : null;
   });
   handle(IPC.projectsLocate, z.tuple([projectKeyRe]), async (key) => {

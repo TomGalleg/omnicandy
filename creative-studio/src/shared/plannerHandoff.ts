@@ -42,7 +42,7 @@ export function packageToMarkdown(pkg: ExecPackage, projectTitle: string): strin
     ...(d?.upstream.length ? ['', '## Results of earlier tasks you can build on (accepted by the owner)', ...d.upstream.flatMap((u) => [`- **${u.title}**: ${u.summary}`, ...u.outputs.map((o) => `  - ${o.description}${o.path ? ` (${o.path})` : ''}`)])] : []),
     '', '## Scope', p.scope || '(not stated)', '', '## Constraints', bullets(p.constraints), '',
     '## Project deliverables', bullets(p.deliverables), '', '## Relevant assets',
-    bullets(pkg.assets.map((a) => `${a.title} [${a.role}] ${a.path || a.url || (a.source === 'createcraft' ? '(OmniCandi asset)' : '')}${a.note ? ` - ${a.note}` : ''}`)),
+    bullets(pkg.assets.map((a) => `${a.title} [${a.role}] ${a.path || a.url || (a.source === 'createcraft' ? '(OmniCandy asset)' : '')}${a.note ? ` - ${a.note}` : ''}`)),
     '', '## Tasks',
   ];
   for (const t of pkg.tasks) {

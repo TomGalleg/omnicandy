@@ -1,5 +1,5 @@
 // OPT-IN, USES YOUR CLAUDE SIGN-IN (counts against your Claude usage): the real in-app author. Claude researches FreeCAD with its
-// web tools, writes a blueprint of its own, OmniCandi validates and mock-tests it, and (with CS_LIVE_TESTS=1 and FreeCAD
+// web tools, writes a blueprint of its own, OmniCandy validates and mock-tests it, and (with CS_LIVE_TESTS=1 and FreeCAD
 // installed) it is installed and verified on the real program.
 //   CS_CLAUDE_TESTS=1 [CS_LIVE_TESTS=1] npx vitest run src/main/integrations/builder/claude.live.test.ts
 import { execFile } from 'node:child_process';
@@ -39,7 +39,7 @@ async function outsideMeasure(file: string): Promise<{ solids: number; valid: bo
 }
 
 describe.skipIf(!on)('the real in-app Claude author', () => {
-  it('researches, designs and builds an integration; every claim is validated by OmniCandi', async () => {
+  it('researches, designs and builds an integration; every claim is validated by OmniCandy', async () => {
     const root = path.join(tmp, 'rig');
     const discovery: DiscoveryEnv = { env: { PATH: '' }, run: async () => '', exists: (p) => fsp.stat(p).then(() => true, () => false), listDir: async () => [] };
     const haveFreecad = live && fs.existsSync(EXE);
@@ -74,7 +74,7 @@ describe.skipIf(!on)('the real in-app Claude author', () => {
       usage: d.usage, research: d.research && { sources: d.research.sources.map((x) => x.url), insufficient: d.research.insufficient },
       documentation: d.documentation.map((x) => ({ origin: x.origin, title: x.title, url: x.url, version: x.versionNote, outdated: x.outdated })),
       generatedBlueprint: generated, decision: d.decision, commands: d.commands.map((x) => ({ id: x.id, permissions: x.permissions, readOnly: x.readOnly })), stageReports, versions: d.versions.map((v) => v.version),
-      provenance: { research: 'real Claude (web tools + structured output)', blueprint: 'real Claude, unmodified except logged formatting normalization', simulated: 'MOCK program', live: 'real FreeCAD via OmniCandi manager', outsideCheck: 'separate FreeCADCmd process' }, ...(extra as object),
+      provenance: { research: 'real Claude (web tools + structured output)', blueprint: 'real Claude, unmodified except logged formatting normalization', simulated: 'MOCK program', live: 'real FreeCAD via OmniCandy manager', outsideCheck: 'separate FreeCADCmd process' }, ...(extra as object),
     }, null, 2));
     fs.writeFileSync(LOG, dump()); // kept outside the scratch profile, secrets removed
     console.log(dump());

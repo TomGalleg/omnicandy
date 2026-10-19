@@ -1,4 +1,4 @@
-// What an OmniCandi project already contains, read from its own files: the manifest (files, versions, where they came from, the saved brief), the
+// What an OmniCandy project already contains, read from its own files: the manifest (files, versions, where they came from, the saved brief), the
 // exports, the workflow and the saved Claude conversation. Used for two things, both local and read-only:
 //   1. "Look at what's already here": a summary and a few suggestions for the plan, shown to the owner who ticks what to keep. Nothing is assumed:
 //      a project with no saved brief or history simply has fewer findings, and no chunk is ever marked as done because a file exists.
@@ -66,7 +66,7 @@ export async function analyzeProject(store: ProjectStore): Promise<ProjectFindin
     if (m.objective) lines.push(`What Claude was working toward: "${clip(m.objective, 160)}"`);
     if (userMessages.length) lines.push(`${userMessages.length} message${userMessages.length === 1 ? '' : 's'} you sent to Claude here. The last one: "${clip(userMessages.at(-1)!.text, 140)}"`);
     if (lastActivity) lines.push(`Last change: ${day(lastActivity)}.`);
-    lines.push('OmniCandi cannot tell from files alone what was meant to be finished, so none of this is marked as done.');
+    lines.push('OmniCandy cannot tell from files alone what was meant to be finished, so none of this is marked as done.');
   }
 
   const changes: ProposalChange[] = [];
@@ -75,7 +75,7 @@ export async function analyzeProject(store: ProjectStore): Promise<ProjectFindin
   if (goal) changes.push({ op: 'set_brief', patch: { goal } });
   if (brief) changes.push({ op: 'set_brief', patch: { description: brief } });
   const aiContext = [
-    `OmniCandi project: "${m.name}"${m.kind ? ` (${m.kind})` : ''}.`,
+    `OmniCandy project: "${m.name}"${m.kind ? ` (${m.kind})` : ''}.`,
     ...(m.assets.length ? [`It already contains ${m.assets.length} file(s): ${[...byKind.entries()].map(([k, n]) => `${n} ${word(k, n)}`).join(', ')}${versions ? `; ${versions} saved version(s)` : ''}.`] : ['It does not contain any files yet.']),
     ...(rows.length ? ['Work so far (names only):', ...rows.slice(0, 8).map((r) => `- ${clip(r.asset.name, 80)}${r.versions ? ` (${r.versions} version${r.versions === 1 ? '' : 's'})` : ''}`)] : []),
     ...(exports.length ? [`Exports made: ${exports.length}.`] : []),

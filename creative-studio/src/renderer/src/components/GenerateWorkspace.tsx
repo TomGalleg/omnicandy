@@ -156,7 +156,7 @@ export function GenerateWorkspace({ manifest, selected, onGoto, log }: Props) {
             <label className="field">Project spending limit (USD, empty = none)
               <input inputMode="decimal" value={limitText} onChange={(e) => setLimitText(e.target.value)} onBlur={saveLimit} onKeyDown={(e) => { if (e.key === 'Enter') saveLimit(); }} placeholder="e.g. 5.00" />
             </label>
-            <span className="asset-meta">{spend ? `About ${formatUsd(spend.spentUsd)} estimated so far in this project (${spend.count} paid request${spend.count === 1 ? '' : 's'}). These are estimates from OmniCandi's price tables, not confirmed charges; check your provider's billing for the actual amount.` : ''}</span>
+            <span className="asset-meta">{spend ? `About ${formatUsd(spend.spentUsd)} estimated so far in this project (${spend.count} paid request${spend.count === 1 ? '' : 's'}). These are estimates from OmniCandy's price tables, not confirmed charges; check your provider's billing for the actual amount.` : ''}</span>
           </div>
           {!isMock && <div className="asset-meta">You'll see the price and must approve before anything is sent. Charges go to your own provider account.</div>}
           {msg && <div className={`wf-msg${msg.error ? ' error' : ''}`} role="status">{msg.text}</div>}

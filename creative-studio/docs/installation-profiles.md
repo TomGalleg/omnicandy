@@ -1,11 +1,11 @@
 # Installation profiles: Autodesk and Adobe (groundwork only)
 
-These profiles live in `src/main/integrations/install/hostProfiles.ts` and are OmniCandi's own record of **where and how each
+These profiles live in `src/main/integrations/install/hostProfiles.ts` and are OmniCandy's own record of **where and how each
 program accepts plugins**. A package can only name a profile and one of its destination ids; the folders, file types, size
 limits and administrator flags below are enforced by the installer independently of any manifest.
 
 > **Status: Revit 2027 is `supported` (real add-in, live-tested; see `docs/revit-integration.md`). Everything else here is groundwork:**
-> there is no working OmniCandi add-in for any other program, so none is marked supported, none is selectable in Connect
+> there is no working OmniCandy add-in for any other program, so none is marked supported, none is selectable in Connect
 > Applications, and those entries were not run against the real software.
 > The entries come from vendor documentation and developer-community answers read on 2026-10-16 (links at the end). Entries marked
 > *confirm* are the ones that must be re-checked against the current vendor documentation and a real installation before the first
@@ -20,8 +20,8 @@ project is unrelated to this installer.
 Plugin technology · installation requirements · supported desktop versions · user versus administrator installation · restart
 behaviour · communication options · API-context rule · vendor installation mechanism · restrictions and dependencies.
 
-Common to all: the add-in connects **out** to OmniCandi's local plugin bridge (named pipe), authenticates with the secret created at
-install time, registers its capabilities and executes each command **inside the program's supported API context**. OmniCandi never
+Common to all: the add-in connects **out** to OmniCandy's local plugin bridge (named pipe), authenticates with the secret created at
+install time, registers its capabilities and executes each command **inside the program's supported API context**. OmniCandy never
 calls a program's API from its own threads.
 
 ## Autodesk
@@ -40,7 +40,7 @@ calls a program's API from its own threads.
   `Transaction`. AutoCAD: application/document context with the document locked. Fusion: API is not thread-safe; use a custom event.
   Inventor: COM, apartment threaded, marshal to the main thread. 3ds Max: scene changes on the main thread.
 - **Vendor mechanism:** Autodesk App Store `.bundle` packages (`PackageContents.xml`) are the vendor-recommended distribution; a manual
-  copy into the folders above is the documented alternative. When a vendor flow is required OmniCandi guides it (manifest
+  copy into the folders above is the documented alternative. When a vendor flow is required OmniCandy guides it (manifest
   `mechanism: "vendor-workflow"`) instead of copying files.
 - **Restrictions:** Revit may prompt to allow an unsigned add-in; AutoCAD's `SECURELOAD` may block untrusted folders; build per
   release year/series.
@@ -60,8 +60,8 @@ calls a program's API from its own threads.
 - **API context:** host scripting runs on the program's main thread through its scripting entry point; UXP calls go through the
   plug-in's host APIs. Photoshop's `batchPlay` is Photoshop-specific.
 - **Vendor mechanism:** signed `.ccx`/`.zxp` packages are installed by Adobe's Unified Plugin Installer Agent or Creative Cloud.
-  OmniCandi guides this workflow; it does not copy UXP plug-ins into place.
-- **Restrictions:** unsigned CEP panels need Adobe's `PlayerDebugMode`, which OmniCandi will **not** switch on silently (it is a
+  OmniCandy guides this workflow; it does not copy UXP plug-ins into place.
+- **Restrictions:** unsigned CEP panels need Adobe's `PlayerDebugMode`, which OmniCandy will **not** switch on silently (it is a
   security setting). Adobe is moving panels from CEP to UXP and support differs per program and release: check the release notes
   of the target version first. A Creative Cloud licence is needed for the program itself.
 
@@ -71,7 +71,7 @@ calls a program's API from its own threads.
 2. A manifest that claims no administrator rights for an admin destination is rejected.
 3. A technology that the destination does not load (for example CEP into Revit's `Addins`) is rejected.
 4. Only allowed file extensions are written; `.exe` and scripts are never written into these folders by default tables.
-5. Existing files that OmniCandi did not install are never overwritten.
+5. Existing files that OmniCandy did not install are never overwritten.
 6. The program is never closed or started by the installer; elevation needs the user's approval **and** an elevator (see
    `docs/universal-installer.md`, "Administrator rights").
 

@@ -45,7 +45,7 @@ export async function checkLink(raw: string, resolve: (host: string) => Promise<
 }
 
 export const realLinkFetcher: LinkFetcher = async (url) => {
-  const res = await fetch(url, { redirect: 'manual', signal: AbortSignal.timeout(25_000), headers: { 'user-agent': 'OmniCandi-docs/0.1', accept: 'text/html,text/plain,text/markdown,application/json;q=0.8' } });
+  const res = await fetch(url, { redirect: 'manual', signal: AbortSignal.timeout(25_000), headers: { 'user-agent': 'OmniCandy-docs/0.1', accept: 'text/html,text/plain,text/markdown,application/json;q=0.8' } });
   const chunks: Buffer[] = [];
   let size = 0;
   const reader = res.body?.getReader();

@@ -22,7 +22,7 @@ export interface ConnectDeps {
   manager: IntegrationManager;
   packages: AdapterPackages;
   state: ExternalState;
-  /** Folders with connectors shipped with OmniCandi. Reading them lists packages; nothing is installed. */
+  /** Folders with connectors shipped with OmniCandy. Reading them lists packages; nothing is installed. */
   catalogDirs: string[];
 }
 
@@ -184,7 +184,7 @@ export class ConnectService {
 
   // ---- browse ----
 
-  /** Handles a program file or folder the user picked. Only programs OmniCandi has a connector (or a planned one) for are saved. */
+  /** Handles a program file or folder the user picked. Only programs OmniCandy has a connector (or a planned one) for are saved. */
   async browse(picked: string): Promise<BrowseResult> {
     const st = await fs.stat(picked).catch(() => null);
     const label = path.basename(picked, path.extname(picked)) || picked;
@@ -200,7 +200,7 @@ export class ConnectService {
       }
     }
     if (!found.length) {
-      return { kind: 'no-match', name: label, message: `OmniCandi has no connector for “${label}”, so it cannot control it. Nothing was saved. It can only connect programs it knows; Settings > Integrations lists them.` };
+      return { kind: 'no-match', name: label, message: `OmniCandy has no connector for “${label}”, so it cannot control it. Nothing was saved. It can only connect programs it knows; Settings > Integrations lists them.` };
     }
     const isFound = (key: string) => found.some((f) => lower(path.normalize(f)) === key);
     const known = (await this.d.manager.list()).find((a) => isFound(a.key));
@@ -211,7 +211,7 @@ export class ConnectService {
     const app = scan.apps.find((a) => isFound(a.key));
     if (!app) {
       await this.d.state.removePath(found[0]!);
-      return { kind: 'no-match', name: label, message: `OmniCandi looked in “${label}” but could not use it. Nothing was saved.` };
+      return { kind: 'no-match', name: label, message: `OmniCandy looked in “${label}” but could not use it. Nothing was saved.` };
     }
     return { kind: 'added', key: app.key, name: app.adapterName ?? app.name, message: `Added ${app.adapterName ?? app.name}${app.version ? ` ${app.version}` : ''} from the location you chose.` };
   }
@@ -232,7 +232,7 @@ export class ConnectService {
     return {
       stillDetected: still,
       message: still
-        ? `OmniCandi no longer remembers where ${name} is and forgot the permissions you gave it. Windows still lists it as installed, so it appears in the list again.`
+        ? `OmniCandy no longer remembers where ${name} is and forgot the permissions you gave it. Windows still lists it as installed, so it appears in the list again.`
         : `Forgot ${name}${had ? ' and its saved location' : ''}. The program itself was not touched. Use Browse to add it back.`,
     };
   }

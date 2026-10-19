@@ -12,7 +12,7 @@ export const INSTALL_CANCELLED_MESSAGE = 'Installation was cancelled.';
 /** Where an installable adapter package was found. */
 export type OfferSource = 'bundled' | 'inbox' | 'installed-off';
 
-/** An adapter that is not active yet but could be: shipped with OmniCandi, waiting in the inbox, or installed but turned off. */
+/** An adapter that is not active yet but could be: shipped with OmniCandy, waiting in the inbox, or installed but turned off. */
 export interface AdapterOffer {
   source: OfferSource;
   /** Package file or folder (not set for an installed adapter that is only turned off). */
@@ -38,7 +38,7 @@ export interface AdapterOffer {
 /**
  * - installed: an adapter is active for this program.
  * - available: an adapter exists and can be installed (bundled, in the inbox, or installed but turned off).
- * - planned: OmniCandi knows the program but only has a placeholder.
+ * - planned: OmniCandy knows the program but only has a placeholder.
  * - none: no adapter of any kind.
  */
 export type AdapterState = 'installed' | 'available' | 'planned' | 'none';
@@ -92,7 +92,7 @@ export type BrowseResult =
   | { kind: 'cancelled' }
   | { kind: 'added'; key: string; name: string; message: string }
   | { kind: 'already-known'; key: string; name: string; message: string }
-  /** The chosen file or folder is not a program OmniCandi has an adapter (or a planned one) for. Nothing was saved. */
+  /** The chosen file or folder is not a program OmniCandy has an adapter (or a planned one) for. Nothing was saved. */
   | { kind: 'no-match'; name: string; message: string };
 
 export interface ForgetResult {
@@ -108,13 +108,13 @@ export interface PermissionPlain { title: string; detail: string; level: 'low' |
 /** What each permission means to someone who has never heard of adapters. `PERMISSION_LABEL` stays the technical name. */
 export const PERMISSION_PLAIN: Record<Permission, PermissionPlain> = {
   'read-info': { title: 'Check which version is installed', detail: 'Reads the program’s name and version. Changes nothing.', level: 'low' },
-  launch: { title: 'Start the program for you', detail: 'Opens the program when OmniCandi needs it.', level: 'low' },
+  launch: { title: 'Start the program for you', detail: 'Opens the program when OmniCandy needs it.', level: 'low' },
   'open-files': { title: 'Open files in the program', detail: 'Asks the program to open a file you point it to.', level: 'medium' },
   'read-project': { title: 'Look at what is open in the program', detail: 'Reads your project’s contents, for example which objects or clips it has. Changes nothing.', level: 'low' },
-  'modify-project': { title: 'Change your work inside the program', detail: 'Edits the project that is open. OmniCandi asks you every time before anything is deleted or overwritten.', level: 'high' },
+  'modify-project': { title: 'Change your work inside the program', detail: 'Edits the project that is open. OmniCandy asks you every time before anything is deleted or overwritten.', level: 'high' },
   'write-files': { title: 'Save new files for this project', detail: 'Writes results (renders, exports, copies) into this project’s own work folder. Your original files are not overwritten.', level: 'medium' },
   'execute-scripts': { title: 'Run automation steps inside the program', detail: 'Tells the program to run built-in automation, the way a macro or plugin would. This is how most things get done, so it is as powerful as that program’s own scripting.', level: 'high' },
-  'ui-automation': { title: 'Click and type in the program’s window', detail: 'Controls the program as if OmniCandi were using the mouse and keyboard. Keep the window visible while it works.', level: 'high' },
+  'ui-automation': { title: 'Click and type in the program’s window', detail: 'Controls the program as if OmniCandy were using the mouse and keyboard. Keep the window visible while it works.', level: 'high' },
   network: { title: 'Use the internet', detail: 'Lets the connection send or fetch data online.', level: 'high' },
 };
 
@@ -158,17 +158,17 @@ export function classifyApp({ app, offer, forgettable }: ClassifyInput): Connect
         const what = offer.integrationType === 'hybrid' ? 'a connector and a small add-in inside' : 'a small add-in inside';
         const timing = [offer.closeHost ? `${host} has to be closed while it is installed` : '', offer.restartHost ? `${host} has to be opened (or restarted) afterwards so it loads the add-in` : ''].filter(Boolean).join(', and ');
         return make('needs-adapter', true, offer.simulated ? 'Add-in available (simulated test program)' : 'Add-in available',
-          `OmniCandi has ${what} ${host}. Setting it up installs it (you review everything first)${timing ? `; ${timing}` : ''}. It is only called connected after the add-in answers a real test.`);
+          `OmniCandy has ${what} ${host}. Setting it up installs it (you review everything first)${timing ? `; ${timing}` : ''}. It is only called connected after the add-in answers a real test.`);
       }
       return make('needs-adapter', true, 'Connector available',
-        `OmniCandi has a connector for ${name}. Setting it up installs the connector (you review it first), then connects and tests ${name}.`);
+        `OmniCandy has a connector for ${name}. Setting it up installs the connector (you review it first), then connects and tests ${name}.`);
     }
     if (planned) {
       return make('unsupported', false, 'Not supported yet',
-        `OmniCandi recognises ${name} on this PC, but it cannot control it yet: the connector for it has not been built. Nothing is wrong with your installation, and nothing was changed.`);
+        `OmniCandy recognises ${name} on this PC, but it cannot control it yet: the connector for it has not been built. Nothing is wrong with your installation, and nothing was changed.`);
     }
     return make('unsupported', false, 'No connector for this program',
-      `OmniCandi found ${name}, but it has no connector for it, so it cannot control it. If someone gives you a connector file (.ccadapter) for ${name}, you can add it in Settings > Integrations.`);
+      `OmniCandy found ${name}, but it has no connector for it, so it cannot control it. If someone gives you a connector file (.ccadapter) for ${name}, you can add it in Settings > Integrations.`);
   }
 
   const status = app.status;
@@ -180,11 +180,11 @@ export function classifyApp({ app, offer, forgettable }: ClassifyInput): Connect
     case 'incompatible':
       return make('incompatible', false, 'This version is not supported', `${app.statusDetail} Install a supported version of ${name} to connect it.`);
     case 'not-running':
-      return make('attention', true, 'Open the program first', `${name} has to be open for OmniCandi to connect. Open it, then try again.`);
+      return make('attention', true, 'Open the program first', `${name} has to be open for OmniCandy to connect. Open it, then try again.`);
     case 'api-unavailable':
       return make('attention', true, 'Automation is switched off', `${name} is running, but its automation interface is not reachable. ${app.statusDetail}`);
     case 'needs-repair':
-      return make('attention', true, 'Needs a quick repair', `OmniCandi could not talk to ${name} last time. Setting it up again runs a repair and re-tests it.`);
+      return make('attention', true, 'Needs a quick repair', `OmniCandy could not talk to ${name} last time. Setting it up again runs a repair and re-tests it.`);
     default:
       return make('ready', true, experimental ? 'Ready to connect (experimental)' : 'Ready to connect',
         experimental
@@ -218,7 +218,7 @@ export function explainConnectFailure(status: IntegrationStatus, name: string, r
       return { headline: `${name} is not open`, detail: `Open ${name}, wait until it has finished starting, then press Try again.` };
     case 'api-unavailable': return { headline: `${name}’s automation is not available`, detail: `${raw} Check that automation is switched on in ${name}’s preferences (some editions do not include it).` };
     case 'incompatible': return { headline: `This version of ${name} is not supported`, detail: raw };
-    default: return { headline: `Could not connect to ${name}`, detail: `OmniCandi could not start or test ${name}. Nothing was changed. You can try again, or use Repair in Settings > Integrations.` };
+    default: return { headline: `Could not connect to ${name}`, detail: `OmniCandy could not start or test ${name}. Nothing was changed. You can try again, or use Repair in Settings > Integrations.` };
   }
 }
 
@@ -230,13 +230,13 @@ export function approvalDetail(r: { command: { description: string }; params: Re
   const nl = String.fromCharCode(10);
   const lines: string[] = [r.command.description, ''];
   if (r.needed.length) {
-    lines.push('To do this OmniCandi needs your OK to:');
+    lines.push('To do this OmniCandy needs your OK to:');
     for (const p of r.needed) lines.push(`  • ${PERMISSION_PLAIN[p].title}`);
     lines.push(`Technical: ${r.needed.map((p) => PERMISSION_LABEL[p].toLowerCase()).join('; ')}.`);
   } else lines.push('You already allowed everything this needs.');
   if (Object.keys(r.params).length) lines.push('', `Settings: ${Object.entries(r.params).map(([k, v]) => `${k} ${String(v)}`).join(', ')}`);
   lines.push('');
-  if (r.untrusted) lines.push('This connector is NOT signed, so OmniCandi cannot tell who made it. You are asked every time.');
+  if (r.untrusted) lines.push('This connector is NOT signed, so OmniCandy cannot tell who made it. You are asked every time.');
   lines.push(r.destructive
     ? 'This can change or remove work you already have and may not be undoable. You are asked every time.'
     : 'New files go into this project’s external folder; your existing files are not changed.');
@@ -272,7 +272,7 @@ export function integrationLines(r: Pick<PackageReview, 'integration' | 'integra
   const host = i.hostName ?? 'the program';
   const out: string[] = [`Kind: ${INTEGRATION_TYPE_LABEL[i.type]}${i.simulated ? ' (SIMULATED test program, not real software)' : ''}`];
   for (const d of i.destinations) out.push(`It adds files to ${host}'s plugin folder: ${d.path}${d.scope === 'machine' ? ' (all users)' : ''}`);
-  if (i.closeHost) out.push(`Close ${host} before installing; OmniCandi never closes it for you.`);
+  if (i.closeHost) out.push(`Close ${host} before installing; OmniCandy never closes it for you.`);
   if (i.restartHost) out.push(`Open or restart ${host} afterwards so it loads the add-in.`);
   if (i.needsAdmin) out.push('That folder needs administrator rights.');
   out.push('Only a real answer from the add-in counts as connected.');

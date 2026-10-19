@@ -1,5 +1,5 @@
 // An adapter whose whole job is done by a plugin inside the program (internal-only integrations). It runs no third-party
-// code in OmniCandi at all: every command is a typed request over the authenticated bridge, answered from inside the
+// code in OmniCandy at all: every command is a typed request over the authenticated bridge, answered from inside the
 // program's own API context.
 
 import type { AdapterManifest, CommandSpec, DiscoveredApp, Permission, TrustLevel } from '@shared/integrations';
@@ -23,7 +23,7 @@ export function toAdapterError(e: unknown): Error {
 
 export async function pluginHealth(link: PluginLink, appName: string, waitMs = NOT_CONNECTED_WAIT_MS): Promise<HealthResult> {
   const s = await link.waitForSession(waitMs);
-  if (!s) return { ok: false, state: 'not-running', detail: `${appName} has to be open so its OmniCandi add-in can connect. Open ${appName} (restart it if it was already open when the add-in was installed), then try again.` };
+  if (!s) return { ok: false, state: 'not-running', detail: `${appName} has to be open so its OmniCandy add-in can connect. Open ${appName} (restart it if it was already open when the add-in was installed), then try again.` };
   try {
     const r = await link.health(10_000);
     return { ok: true, detail: `${s.appName}${s.appVersion ? ` ${s.appVersion}` : ''} answered a real check from inside the program through the add-in. ${r.message}`.trim() };

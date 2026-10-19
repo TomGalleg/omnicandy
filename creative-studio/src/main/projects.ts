@@ -35,14 +35,14 @@ export function folderNameFor(name: string): string {
 
 /** Throws a plain-language error unless `dir` exists (or can be created) and can be written to. */
 export async function checkWritableFolder(dir: string): Promise<void> {
-  if (!path.isAbsolute(dir)) throw new Error('Choose a full folder path, for example D:\\OmniCandi Projects.');
+  if (!path.isAbsolute(dir)) throw new Error('Choose a full folder path, for example D:\\OmniCandy Projects.');
   try {
     await fs.mkdir(dir, { recursive: true });
     const probe = path.join(dir, `.createcraft-write-test-${process.pid}`);
     await fs.writeFile(probe, 'ok');
     await fs.rm(probe, { force: true });
   } catch {
-    throw new Error(`OmniCandi can't write to "${dir}". Pick a folder you have permission to change, or reconnect the drive.`);
+    throw new Error(`OmniCandy can't write to "${dir}". Pick a folder you have permission to change, or reconnect the drive.`);
   }
 }
 
@@ -261,7 +261,7 @@ export class ProjectManager {
   /** Registers an existing project folder (from any drive) so it appears in the list; returns its key. */
   async addExisting(dir: string): Promise<string> {
     const abs = path.resolve(dir);
-    if (!(await new ProjectStore(abs).exists())) throw new Error('That folder is not an OmniCandi project (no project.json).');
+    if (!(await new ProjectStore(abs).exists())) throw new Error('That folder is not an OmniCandy project (no project.json).');
     const st = await this.readState();
     const known = Object.entries(st.locations).find(([, v]) => path.resolve(v).toLowerCase() === abs.toLowerCase());
     if (known) return known[0];
@@ -279,7 +279,7 @@ export class ProjectManager {
     const st = await this.readState();
     if (!st.locations[key]) throw new Error('This project is stored in the default location and does not need locating.');
     const target = new ProjectStore(path.resolve(dir));
-    if (!(await target.exists())) throw new Error('That folder is not an OmniCandi project (no project.json).');
+    if (!(await target.exists())) throw new Error('That folder is not an OmniCandy project (no project.json).');
     await this.writeState({ ...st, locations: { ...st.locations, [key]: path.resolve(dir) } });
   }
 

@@ -105,7 +105,7 @@ export class ModelDownloads {
   async start(id: string, consented: boolean): Promise<DownloadState> {
     if (consented !== true) throw new Error('The license and download size must be accepted first.');
     const m = this.model(id);
-    if (!m.files.length) throw new Error(`${m.name} cannot be downloaded through OmniCandi yet.`);
+    if (!m.files.length) throw new Error(`${m.name} cannot be downloaded through OmniCandy yet.`);
     if (this.active.has(id)) throw new Error('This model is already downloading.');
     const root = await this.d.modelDir();
     const dir = path.join(root, id);

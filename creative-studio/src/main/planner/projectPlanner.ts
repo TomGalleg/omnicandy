@@ -1,4 +1,4 @@
-// The Planner of the project that is open: one plan per OmniCandi project, kept inside the project folder (see routedStore.ts). Everything here is
+// The Planner of the project that is open: one plan per OmniCandy project, kept inside the project folder (see routedStore.ts). Everything here is
 // about tying a plan to its project and starting it from what the project already holds. Nothing here writes to the project's own files.
 
 import type { PlannerProject } from '@shared/planner';
@@ -8,7 +8,7 @@ import { analyzeProject, type ProjectFindings } from './projectContext';
 import type { RoutedPlannerStore } from './routedStore';
 import { PlannerService, userCtx } from './service';
 
-/** The OmniCandi project that is open. */
+/** The OmniCandy project that is open. */
 export interface OpenProject { id: string; name: string; root: string; store: ProjectStore }
 
 export class ProjectPlanner {

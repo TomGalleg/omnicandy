@@ -252,7 +252,7 @@ describe('Browse for Application', () => {
     expect((await r.mgr.scan()).apps.some((a) => a.exePath.toLowerCase().endsWith('port.exe'))).toBe(true);
   });
 
-  it('explains a program OmniCandi has no connector for and saves nothing', async () => {
+  it('explains a program OmniCandy has no connector for and saves nothing', async () => {
     const r = await rig();
     const p = await exeAt(path.join(tmp, 'portable3'), 'notepad.exe');
     const res = await r.svc.browse(p);

@@ -1,5 +1,5 @@
 // The Blueprint: the ONLY thing the AI hands to the builder. It is data (a strict JSON document), not a package.
-// Everything that can run is produced by OmniCandi's own templates from this data; the AI-written parts are
+// Everything that can run is produced by OmniCandy's own templates from this data; the AI-written parts are
 // confined to named slots (a Python function per command, a command-line argument list, a file template, plug-in
 // sources) that the validators check before anything is built. A blueprint cannot name paths, scripts to run or
 // permissions beyond what its template allows.
@@ -134,7 +134,7 @@ export const decisionSchema = z.object({
   template: z.enum(['python-script', 'cli', 'file-exchange', 'dotnet-addin', 'uxp-plugin']),
   methods: z.array(z.enum(['api', 'scripting', 'mcp', 'cli', 'file-exchange', 'ui-automation', 'visual'])).max(4),
   rationale: text(1200),
-  /** internal and hybrid only: the id of an installation profile OmniCandi already has. */
+  /** internal and hybrid only: the id of an installation profile OmniCandy already has. */
   hostProfile: z.string().max(60).nullable(),
 }).strict().superRefine((d, ctx) => {
   // A "not feasible" answer has no method to offer; a feasible one must name at least one.
@@ -171,7 +171,7 @@ export const blueprintSchema = z.object({
       launchArgs: z.array(z.string().regex(/^[A-Za-z0-9_./={}-]{1,60}$/)).min(1).max(8),
       /** The program needs a project file (for example ".uproject"): every command then takes a `project` setting, passed where {project} stands in launchArgs. */
       projectExtension: z.string().regex(/^\.[A-Za-z0-9]{1,12}$/).optional(),
-      /** "file": the program has no version option, so the version OmniCandi detected from the program file is used (default "command"). */
+      /** "file": the program has no version option, so the version OmniCandy detected from the program file is used (default "command"). */
       versionFrom: z.enum(['command', 'file']).optional(),
       hostModules: z.array(z.string().regex(/^[A-Za-z_][A-Za-z0-9_]{0,40}$/)).max(12),
     }).strict().optional(),

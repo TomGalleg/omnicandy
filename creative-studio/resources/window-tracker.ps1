@@ -1,4 +1,4 @@
-# Window tracker for docking OmniCandi's control panel to another app's window (e.g. PhotoCraft).
+# Window tracker for docking OmniCandy's control panel to another app's window (e.g. PhotoCraft).
 #   powershell -NoProfile -ExecutionPolicy Bypass -File window-tracker.ps1 -TargetPid <pid> -PanelHwnd <hwnd> [-Cloak]
 # -Cloak hides the target's window the instant it appears (DWM cloak, else moved off-screen) until "uncloak".
 # Prints one JSON line whenever the target window's bounds/state change:
@@ -45,14 +45,14 @@ public static class CsWindowTracker {
   [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW")] static extern IntPtr GetWindowLongPtr(IntPtr h, int idx);
   const long FRAME = 0x00C00000L | 0x00040000L | 0x00020000L | 0x00010000L; // CAPTION | THICKFRAME | MINIMIZEBOX | MAXIMIZEBOX
 
-  // allowHidden: a window OmniCandi itself put away earlier (SW_HIDE when the app was handed back) is still the app's main window.
+  // allowHidden: a window OmniCandy itself put away earlier (SW_HIDE when the app was handed back) is still the app's main window.
   // A visible one always wins; a hidden one is only taken once the app has had time to show its real window.
   static IntPtr FindMain(int pid, bool allowHidden) {
     IntPtr best = IntPtr.Zero; long bestArea = 0;
     IntPtr hidden = IntPtr.Zero; long hiddenArea = 0;
     EnumWindows((h, l) => {
       uint p; GetWindowThreadProcessId(h, out p);
-      if (p != (uint)pid || GetWindowTextLength(h) == 0) return true; // owned allowed: embedded windows are owned by OmniCandi
+      if (p != (uint)pid || GetWindowTextLength(h) == 0) return true; // owned allowed: embedded windows are owned by OmniCandy
       RECT r; GetWindowRect(h, out r);
       long area = (long)(r.R - r.L) * (r.B - r.T);
       if (IsWindowVisible(h)) { if (area > bestArea) { bestArea = area; best = h; } }

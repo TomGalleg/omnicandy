@@ -1,15 +1,15 @@
-// Plugin bridge protocol, version 1. OmniCandi <-> a plugin running INSIDE another program.
+// Plugin bridge protocol, version 1. OmniCandy <-> a plugin running INSIDE another program.
 //
-// Transport: a Windows named pipe (a Unix socket elsewhere) created by OmniCandi with a random name per run; newline-
+// Transport: a Windows named pipe (a Unix socket elsewhere) created by OmniCandy with a random name per run; newline-
 // delimited JSON frames, at most 1 MB each. The pipe is local only. Windows rejects remote clients on pipes created this way.
 //
-// Who is who: OmniCandi is the server and the only side that issues work. The plugin dials in, proves it knows the secret
-// that was created when it was installed (mutual HMAC challenge, the secret is never sent), tells OmniCandi which
-// capabilities it can offer in this program right now, and then answers typed commands. A plugin cannot ask OmniCandi for
+// Who is who: OmniCandy is the server and the only side that issues work. The plugin dials in, proves it knows the secret
+// that was created when it was installed (mutual HMAC challenge, the secret is never sent), tells OmniCandy which
+// capabilities it can offer in this program right now, and then answers typed commands. A plugin cannot ask OmniCandy for
 // anything: the only frames it may send are hello, register, progress, result and pong.
 //
 // Execution context: the plugin must run every command inside the host program's supported API context (for example a
-// Revit ExternalEvent or the host's main-thread dispatcher) and answer from there. OmniCandi only describes WHAT to run.
+// Revit ExternalEvent or the host's main-thread dispatcher) and answer from there. OmniCandy only describes WHAT to run.
 
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { z } from 'zod';
@@ -21,7 +21,7 @@ export const MAX_RESULT_DATA_BYTES = 64 * 1024;
 const proto = z.object({ min: z.number().int().min(1), max: z.number().int().min(1) }).strict();
 const idStr = z.string().min(1).max(80);
 
-// ---- plugin -> OmniCandi ----
+// ---- plugin -> OmniCandy ----
 export const clientHello = z.object({
   t: z.literal('hello'),
   protocol: proto,
@@ -47,7 +47,7 @@ export const clientFrame = z.discriminatedUnion('t', [clientHello, clientRegiste
 export type ClientFrame = z.infer<typeof clientFrame>;
 export type ClientResult = z.infer<typeof clientResult>;
 
-// ---- OmniCandi -> plugin ----
+// ---- OmniCandy -> plugin ----
 export type ServerFrame =
   | { t: 'hello'; product: 'createcraft'; protocol: { min: number; max: number }; nonce: string }
   | { t: 'welcome'; protocol: number; proof: string; sessionId: string; heartbeatMs: number }
@@ -71,7 +71,7 @@ const sign = (secret: string, role: 'c' | 's', snonce: string, cnonce: string, p
 /** What the plugin sends as proof: bound to both nonces, its id and the ranges it offered. */
 export const clientProof = (secret: string, snonce: string, cnonce: string, pluginId: string, offered: { min: number; max: number }) =>
   sign(secret, 'c', snonce, cnonce, pluginId, `${offered.min}-${offered.max}`);
-/** What OmniCandi sends back: proves it also knows the secret (so a fake server cannot collect commands or results). */
+/** What OmniCandy sends back: proves it also knows the secret (so a fake server cannot collect commands or results). */
 export const serverProof = (secret: string, snonce: string, cnonce: string, pluginId: string, negotiated: number) =>
   sign(secret, 's', snonce, cnonce, pluginId, String(negotiated));
 

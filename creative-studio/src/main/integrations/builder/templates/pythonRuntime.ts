@@ -1,7 +1,7 @@
-// The fixed Python half of the "python-script" template. Written by OmniCandi, not by the AI. The generated command code is
+// The fixed Python half of the "python-script" template. Written by OmniCandy, not by the AI. The generated command code is
 // wrapped by `assemblePythonJob` (python.ts) between RUNTIME_HEAD and RUNTIME_TAIL. Python 3.8 syntax only (Blender 4.0 ships 3.10).
 
-export const RUNTIME_HEAD = String.raw`# OmniCandi AI Adapter Builder: fixed runtime (not written by the AI).
+export const RUNTIME_HEAD = String.raw`# OmniCandy AI Adapter Builder: fixed runtime (not written by the AI).
 #
 # The generated header above defines PHASE ("run" or "verify"), COMMAND, NONCE, PARAMS and PRIOR as DATA (decoded base64 JSON),
 # never as code. Everything the AI wrote lives in the factory functions below and may only use the helper object H.
@@ -102,7 +102,7 @@ def _list_of_str(value, limit):
     return out[:limit]
 
 
-# ---- generated command code (wrapped by OmniCandi into factory functions) ----
+# ---- generated command code (wrapped by OmniCandy into factory functions) ----
 `;
 
 export const RUNTIME_TAIL = String.raw`

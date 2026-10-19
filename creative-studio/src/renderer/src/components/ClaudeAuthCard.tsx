@@ -36,7 +36,7 @@ export function ClaudeAuthCard() {
           ? (b?.keyReady ? 'Active: Anthropic API key. Usage is billed to your Anthropic account.' : 'Active: Anthropic API key, but no usable key is saved. Add one below.')
           : 'Active: Claude sign-in (your plan). Chat, model choice and sign-in are in the Claude panel.'}
       </p>
-      {b?.keyIgnored && <small>An Anthropic API key was found on this PC (an environment variable). OmniCandi never uses it unless you choose the API key option and add a key here.</small>}
+      {b?.keyIgnored && <small>An Anthropic API key was found on this PC (an environment variable). OmniCandy never uses it unless you choose the API key option and add a key here.</small>}
       {msg && <div className="wf-msg error" role="alert">{msg}</div>}
       <div className="provider-row" aria-label="Anthropic API key">
         <div className="provider-head">
@@ -44,7 +44,7 @@ export function ClaudeAuthCard() {
           <span className={`chip ${b?.keyUnreadable ? 'warn' : b?.keyReady ? 'ok' : 'off'}`}><span className="dot" />{b?.keyUnreadable ? "Key can't be read" : b?.keyReady ? 'Key saved' : 'Not set up'}</span>
         </div>
         {b?.keyUnreadable && <div className="asset-meta err">A key is saved here, but this PC can't decrypt it (it was saved by another PC or Windows user). Paste the key again to replace it.</div>}
-        <div className="asset-meta">Copy your key (it starts with sk-ant-), then click Paste key. OmniCandi reads it from the clipboard, encrypts it with your operating system and clears the clipboard. The key is never shown, logged or saved in projects. It is not tested when saved (a test would be an API request); the first Claude message uses it.</div>
+        <div className="asset-meta">Copy your key (it starts with sk-ant-), then click Paste key. OmniCandy reads it from the clipboard, encrypts it with your operating system and clears the clipboard. The key is never shown, logged or saved in projects. It is not tested when saved (a test would be an API request); the first Claude message uses it.</div>
         <div className="btn-row">
           <button className="btn small primary" disabled={busy} onClick={() => void act(() => window.studio.claude.pasteApiKey())}>{busy ? 'Saving…' : b?.keyReady || b?.keyUnreadable ? 'Replace key (paste)' : 'Paste key'}</button>
           {(b?.keyReady || b?.keyUnreadable) && <button className="btn small danger" disabled={busy} onClick={() => { if (window.confirm('Remove the saved Anthropic API key from this PC? Claude goes back to the Claude sign-in.')) void act(() => window.studio.claude.removeApiKey()); }}>Remove</button>}

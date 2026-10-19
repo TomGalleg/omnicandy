@@ -82,7 +82,7 @@ const METHODS = new Set(['api', 'scripting', 'mcp', 'cli', 'file-exchange', 'ui-
 /** Validates a manifest before it is registered. Returns the problems (empty when fine). */
 export function validateManifest(m: AdapterManifest, sdkVersion: number): string[] {
   const p: string[] = [];
-  if (m.sdkVersion !== sdkVersion) p.push(`built for adapter SDK ${m.sdkVersion}, this OmniCandi speaks ${sdkVersion}`);
+  if (m.sdkVersion !== sdkVersion) p.push(`built for adapter SDK ${m.sdkVersion}, this OmniCandy speaks ${sdkVersion}`);
   if (!/^[a-z0-9][a-z0-9.-]{1,60}$/.test(m.id)) p.push('id must be lower-case letters, digits, "." or "-"');
   if (!m.exeNames.length && !m.selfContained) p.push('exeNames is empty');
   for (const r of m.versionRanges ?? []) {

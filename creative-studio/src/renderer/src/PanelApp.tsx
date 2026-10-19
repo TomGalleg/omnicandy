@@ -24,10 +24,10 @@ export function PanelApp() {
       <header className="dock-head">
         <img className="brand-logo" src={logo} alt="" />
         <div className="dock-title">
-          <strong>OmniCandi</strong>
+          <strong>OmniCandy</strong>
           <span className="asset-meta">{live?.asset ? `${app?.name ?? ''} · ${live.asset.name}` : ''}</span>
         </div>
-        <button className="btn small" disabled={busy} title="Put the app back inside OmniCandi" onClick={() => void act('Put back', window.studio.live.dock)}>Put back</button>
+        <button className="btn small" disabled={busy} title="Put the app back inside OmniCandy" onClick={() => void act('Put back', window.studio.live.dock)}>Put back</button>
       </header>
       <div className="dock-body">
         <div className="btn-row">

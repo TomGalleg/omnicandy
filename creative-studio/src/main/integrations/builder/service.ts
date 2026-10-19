@@ -1,11 +1,11 @@
 // BuilderService: the whole life of a privately generated integration.
 //
-//   create    research -> design -> build -> test (static, security, simulated)   [AI, then OmniCandi's own checks]
+//   create    research -> design -> build -> test (static, security, simulated)   [AI, then OmniCandy's own checks]
 //   install   NOT here: the existing review + native confirmation + AdapterPackages.install path is used unchanged
 //   verify    live testing of an installed integration against the real program, per command and per program version
-//   repair    AI proposes a patch; OmniCandi tests it; the user approves; the old package is kept for rollback
+//   repair    AI proposes a patch; OmniCandy tests it; the user approves; the old package is kept for rollback
 //
-// Nothing here trusts, installs or runs generated code on its own. The AI's output is a blueprint (data); OmniCandi's
+// Nothing here trusts, installs or runs generated code on its own. The AI's output is a blueprint (data); OmniCandy's
 // templates and validators decide whether a package exists at all.
 
 import { createHash } from 'node:crypto';
@@ -67,7 +67,7 @@ const sha = (b: Buffer) => createHash('sha256').update(b).digest('hex');
 const bump = (v: string) => { const p = v.split('.').map(Number); while (p.length < 3) p.push(0); p[2] = (p[2] ?? 0) + 1; return p.join('.'); };
 const MAX_ATTEMPTS = 3;
 
-/** Asks a known program for its version (read-only: its own --version option) when detection could not read it. Only programs in OmniCandi's host table. */
+/** Asks a known program for its version (read-only: its own --version option) when detection could not read it. Only programs in OmniCandy's host table. */
 async function probeVersion(exePath: string): Promise<string | null> {
   const exe = path.basename(exePath).toLowerCase();
   const host = Object.values(PYTHON_HOSTS).find((h) => h.exeNames.some((e) => e.toLowerCase() === exe));
@@ -192,14 +192,14 @@ export class BuilderService {
     const r = await a.research(req, ac.signal);
     this.addUsage(rec, r.value && r.usage);
     for (const n of r.notes ?? []) await this.note(rec, 'researching', `Research adjusted: ${n}`);
-    // The collected documents are added to the sources by OmniCandi itself: their origin is known, not claimed.
+    // The collected documents are added to the sources by OmniCandy itself: their origin is known, not claimed.
     r.value = mergeDocSources(r.value, collected.docs);
     rec.research = { ...r.value };
     rec.author = { ...r.author };
     if (r.value.insufficient || !r.value.sourcesConsulted || !r.value.sources.length) {
       rec.nextSteps = [
         r.value.insufficient ? `Not enough trustworthy information was found: ${r.value.insufficient}` : 'No documentation could be read.',
-        `Add more documentation and start again: paste links to the specific pages that describe scripting, the command line or the API (not just overview pages), or add the program's documentation or SDK folder (text, HTML or source files). OmniCandi will not guess what the program can do.`,
+        `Add more documentation and start again: paste links to the specific pages that describe scripting, the command line or the API (not just overview pages), or add the program's documentation or SDK folder (text, HTML or source files). OmniCandy will not guess what the program can do.`,
       ];
       await this.note(rec, 'researching', 'Stopped: not enough documentation.', 'needs-documentation');
       return;
@@ -269,7 +269,7 @@ export class BuilderService {
       return;
     }
     if (rec.app.installed) {
-      rec.nextSteps = ['Review the permissions and approve the installation. OmniCandi then connects and tests it on the real program.'];
+      rec.nextSteps = ['Review the permissions and approve the installation. OmniCandy then connects and tests it on the real program.'];
       await this.note(rec, 'ready', 'Ready for your approval.', 'ready-for-approval');
     } else {
       rec.nextSteps = [`${rec.request.appName} is not installed on this computer, so this integration was only tested with simulations. It is saved as "Awaiting live verification".`, `Install ${rec.request.appName}, then open My Custom Integrations and choose "Test on the real program".`];

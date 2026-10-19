@@ -173,13 +173,13 @@ export class DeliverQueue {
 
   /**
    * Hands a finished export on to another app: a copy goes into the library as a new file derived from
-   * the source (the file in exports/ and its manifest record stay). Only types OmniCandi can open.
+   * the source (the file in exports/ and its manifest record stay). Only types OmniCandy can open.
    */
   async addToLibrary(jobId: string): Promise<Asset> {
     const j = this.jobs.find((x) => x.id === jobId);
     if (!j || j.status !== 'done' || !j.output) throw new Error('That export has not finished.');
     const ext = path.extname(j.output).slice(1).toLowerCase();
-    if (!kindForExtension(ext)) throw new Error(`.${ext} files can't be opened in OmniCandi, so there is nothing to hand on.`);
+    if (!kindForExtension(ext)) throw new Error(`.${ext} files can't be opened in OmniCandy, so there is nothing to hand on.`);
     const manifest = await this.d.store.loadManifest();
     const src = manifest.assets.find((x) => x.id === j.assetId);
     if (!src) throw new Error('The source file is no longer in the library.');

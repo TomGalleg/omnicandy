@@ -41,7 +41,7 @@ export class DockedPanel {
       maximizable: false,
       fullscreenable: false,
       skipTaskbar: true,
-      title: 'OmniCandi · PhotoCraft controls',
+      title: 'OmniCandy · PhotoCraft controls',
       icon: this.o.icon(),
       backgroundColor: this.o.backgroundColor,
       webPreferences: { preload: this.o.preload, contextIsolation: true, nodeIntegration: false, sandbox: true, spellcheck: false },

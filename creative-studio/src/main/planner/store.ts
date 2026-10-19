@@ -1,4 +1,4 @@
-// Durable storage of planner projects, shared by OmniCandi and the planner MCP server (two processes, one folder):
+// Durable storage of planner projects, shared by OmniCandy and the planner MCP server (two processes, one folder):
 //   <root>/projects/<id>/project.json     the whole current state (written atomically, never edited in place)
 //   <root>/projects/<id>/history.jsonl    append-only activity log (who did what, at which revision)
 //   <root>/projects/<id>/raw/<reportId>.txt   the original pasted response of an imported report

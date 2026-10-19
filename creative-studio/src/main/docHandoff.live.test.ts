@@ -97,7 +97,7 @@ describe.skipIf(!on)('WordCraft <-> PdfCraft hand-off (real apps)', () => {
     expect(await asset(saved.savedVersionIds[0]!)).toMatchObject({ sourceFormat: 'docx', parentId: kept.id });
   }, 180000);
 
-  it('refuses to hand on an export OmniCandi cannot open', async () => {
+  it('refuses to hand on an export OmniCandy cannot open', async () => {
     const docx = (await store.importFile(path.join(FIXTURES, 'quarterly-report.docx'))).asset.id;
     const [job] = await q.enqueue(docx, ['document-odt']);
     const [done] = await q.wait([job!.id]);

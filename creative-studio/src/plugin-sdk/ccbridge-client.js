@@ -1,11 +1,11 @@
 'use strict';
-// OmniCandi plugin bridge client (protocol 1). Zero dependencies: copy this one file into a Node-based plugin.
+// OmniCandy plugin bridge client (protocol 1). Zero dependencies: copy this one file into a Node-based plugin.
 // Plugins written in other technologies (C# add-ins, CEP/UXP panels, Python add-ins) implement the same frames; see
 // docs/universal-installer.md ("Plugin bridge protocol").
 //
 //   const { connectPlugin } = require('./ccbridge-client.js');
 //   const bridge = connectPlugin({
-//     configFile: path.join(__dirname, 'cc-bridge.json'),   // written by OmniCandi when the plugin was installed
+//     configFile: path.join(__dirname, 'cc-bridge.json'),   // written by OmniCandy when the plugin was installed
 //     app: { name: 'SimCAD', version: '1.2', edition: 'Pro', pid: process.pid },
 //     pluginVersion: '1.0.0',
 //     capabilities: ['scene.describe'],                       // what THIS program/edition can do right now
@@ -37,7 +37,7 @@ function connectPlugin(o) {
   function connect() {
     if (closed) return;
     let endpoint;
-    try { endpoint = JSON.parse(fs.readFileSync(cfg.endpointFile, 'utf8')).pipe; } catch (e) { return retry('OmniCandi is not running'); }
+    try { endpoint = JSON.parse(fs.readFileSync(cfg.endpointFile, 'utf8')).pipe; } catch (e) { return retry('OmniCandy is not running'); }
     let buf = '', snonce = null, cnonce = nodeCrypto.randomBytes(16).toString('hex'), welcomed = false;
     const s = net.connect(endpoint);
     socket = s;

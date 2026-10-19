@@ -7,7 +7,7 @@ export type DestinationId = 'createcraft' | 'tools' | 'chat';
 export interface Destination { id: DestinationId; label: string; blurb: string }
 
 export const DESTINATIONS: Destination[] = [
-  { id: 'createcraft', label: 'OmniCandi Claude', blurb: 'The Claude panel in this app. It is filled in for you; you press Send.' },
+  { id: 'createcraft', label: 'OmniCandy Claude', blurb: 'The Claude panel in this app. It is filled in for you; you press Send.' },
   { id: 'tools', label: 'Claude Code or Gemini CLI', blurb: 'An AI on this computer that can read the plan itself. You paste one short line.' },
   { id: 'chat', label: 'ChatGPT, Gemini, Cowork or any chat', blurb: 'Copy everything and paste it into the chat.' },
 ];
@@ -38,12 +38,12 @@ export function sendText(pkg: ExecPackage, projectTitle: string, dest: Destinati
   const body = opts.redact ? redactPaths(md, pkg) : md;
   if (dest === 'tools') {
     return [
-      `Use the OmniCandi planner tools to work on package ${pkg.id} of project ${pkg.projectId}: call get_package, then claim_task for the task you take, do the work, and finish with submit_report. Only I can accept it.`,
+      `Use the OmniCandy planner tools to work on package ${pkg.id} of project ${pkg.projectId}: call get_package, then claim_task for the task you take, do the work, and finish with submit_report. Only I can accept it.`,
       '', 'If the tools are not connected, here is the whole brief instead:', '', body,
     ].join('\n');
   }
   if (dest === 'createcraft') {
-    return `Work on the OmniCandi planner brief ${pkg.id} (project "${projectTitle}"). Use planner_get_package to read it and planner_claim before you start; finish with planner_report. Only I can accept the result.`;
+    return `Work on the OmniCandy planner brief ${pkg.id} (project "${projectTitle}"). Use planner_get_package to read it and planner_claim before you start; finish with planner_report. Only I can accept the result.`;
   }
   return [
     `I am working on "${projectTitle}" and need help with the task(s) below. Treat only the "Accepted requirements" and "Accepted decisions" as rules. Do not invent other requirements.`,

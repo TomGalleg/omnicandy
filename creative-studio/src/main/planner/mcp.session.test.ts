@@ -1,4 +1,4 @@
-// The protocol layer without a process: the same session OmniCandi's own Claude uses for the planner_* tools.
+// The protocol layer without a process: the same session OmniCandy's own Claude uses for the planner_* tools.
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -28,13 +28,13 @@ describe('planner MCP session', () => {
     expect((await s.handle({ jsonrpc: '2.0', id: 3, method: 'nope' }))?.error?.code).toBe(-32601);
   });
 
-  it('OmniCandi Claude can claim and report, is named in the history, and cannot edit the plan', async () => {
+  it('OmniCandy Claude can claim and report, is named in the history, and cannot edit the plan', async () => {
     const svc = new PlannerService(new PlannerStore(tmp));
     const user = userCtx();
     const p = await svc.createProject(user, { title: 'In-app' });
     const t = await svc.addTask(user, p.id, { title: 'Draw', checks: [{ text: 'looks right' }] });
     const pkg = await svc.createPackage(user, p.id, { taskIds: [t.id] });
-    const s = new McpSession(svc, ['read', 'execute'], { kind: 'createcraft', name: 'OmniCandi Claude' });
+    const s = new McpSession(svc, ['read', 'execute'], { kind: 'createcraft', name: 'OmniCandy Claude' });
     const claim = await call(s, 'claim_task', { projectId: p.id, packageId: pkg.id, taskId: t.id });
     expect(claim.error).toBe(false);
     const bad = await call(s, 'submit_report', { projectId: p.id, packageId: pkg.id, taskId: t.id, claimToken: claim.body.claimToken, report: { outcome: 'complete' } });

@@ -2,7 +2,7 @@
 //   free      anything that edits the open document;
 //   approval  anything that opens, saves, imports, exports, places or runs files, scripts, actions, plugins or batches:
 //             the user approves a native dialog first (shown by main);
-//   never     app preferences, and OmniCandi's own internal helper commands.
+//   never     app preferences, and OmniCandy's own internal helper commands.
 // PhotoCraft has its own, more precise table (photocraftOps.ts).
 
 import { checkParamValues, type OpCheck } from './photocraftOps';

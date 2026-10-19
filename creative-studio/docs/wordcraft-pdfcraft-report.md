@@ -3,7 +3,7 @@
 Date: 2026-10-15 · PC: Windows 11, the same machine as the earlier audits · Branch `main` (local commit, not pushed)
 Apps: WordCraft 0.7.0 (`wordcraft-cli 0.7.0`), PdfCraft 0.8.0 (`pdfcraft-cli 0.8.0`; the earlier audit saw 0.7.1).
 Cost: no paid API and no downloads. Real Claude panel use through the existing local Claude Code sign-in: **$0.826** for the one smoke run.
-Nobody else's windows were touched: the user's OmniCandi was not running; every OmniCandi instance used a scratch profile
+Nobody else's windows were touched: the user's OmniCandy was not running; every OmniCandy instance used a scratch profile
 (`CS_USER_DATA_DIR`) and every app window the tests opened was closed afterwards. One stray PdfCraft window opened by an
 exploratory `pdfcraft.exe --help` (it has no CLI mode) was closed immediately; it was not the user's.
 
@@ -14,7 +14,7 @@ exploratory `pdfcraft.exe --help` (it has no CLI mode) was closed immediately; i
 | Headless CLI | `info`, `render`, `text`, `edit`, `combine`, `extract`, `split`, `check`, `audit`, `batch`, `tools`, `run <tool> | --script`, `mcp`, `ui` |
 | Automation engine | `pdfcraft-cli mcp --root DIR` (stdio MCP, **163 tools**, e.g. `doc_open`, `doc_save`, `text_paragraphs`, `text_edit`, `page_*`, `doc_watermark`, `doc_export_office`, `doc_reduce`, `render_preview`). `--root` is the only file confinement and may be given once, so work happens in a work folder copy |
 | Window control | `pdfcraft.exe --control FILE` writes `{pid, port, token}` to FILE. Loopback JSON-RPC, first message `auth {token}`; then **only** `ui.state, ui.inspect, ui.click, ui.focus, ui.resize, ui.quit, ui.move, ui.drag, ui.type, ui.key, ui.command, ui.commands, ui.set, ui.open, ui.screenshot`. No document tools on that port, and `ui.command` ignores parameters |
-| Consequence | The window cannot be edited through its own port. OmniCandi edits a working copy with the CLI's engine and keeps the window showing that copy |
+| Consequence | The window cannot be edited through its own port. OmniCandy edits a working copy with the CLI's engine and keeps the window showing that copy |
 | Native / project format | `.pdf` is the only format; there is no separate project file. The source PDF is kept in the library and every save is a new version next to it |
 
 ## VERIFIED
@@ -75,7 +75,7 @@ Evidence is a command and a count; all on the real installed apps.
 - **Theme sync for PdfCraft is not possible** through its control port: `ui.set` exists but no theme setting was found/verified, so PdfCraft is
   listed as "manual" like WordCraft.
 - **No parametered commands in the live window**: `ui.command` ignores parameters, so Claude and the quick edits cannot drive the *window's* tools.
-  The window is therefore a live view of the working copy that OmniCandi refreshes after each edit (a short reload each time, and scroll
+  The window is therefore a live view of the working copy that OmniCandy refreshes after each edit (a short reload each time, and scroll
   position is not kept), not the engine that makes the change. This is the honest ceiling of what PdfCraft 0.8.0 exposes.
 - No PDF **project** format exists, so "keep the source project file next to the exported PDF" is satisfied by the library: the original PDF and
   each saved version stay as files with lineage, and Deliver records the source versions in `exports/manifest.json`.

@@ -1,4 +1,4 @@
-// Builds the OmniCandi add-in for Autodesk Revit 2027 (addins/revit/CreateCraft.Revit) and copies the result into the
+// Builds the OmniCandy add-in for Autodesk Revit 2027 (addins/revit/CreateCraft.Revit) and copies the result into the
 // connector package folder (fixtures/revit-adapter/plugin). Needs the .NET SDK and a Revit 2027 installation, but only to
 // reference Revit's API assemblies: none of Autodesk's files are copied or shipped.
 //

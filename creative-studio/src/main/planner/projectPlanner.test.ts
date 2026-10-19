@@ -1,4 +1,4 @@
-// Every OmniCandi project has its own Planner, kept inside the project folder. These tests use real project folders and the real planner service.
+// Every OmniCandy project has its own Planner, kept inside the project folder. These tests use real project folders and the real planner service.
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';

@@ -10,7 +10,7 @@ import { connectionCtx, type Ctx, type PlannerService } from './service';
 import { PlannerError } from './store';
 
 export const SUPPORTED_PROTOCOLS = ['2025-06-18', '2025-03-26', '2024-11-05'] as const;
-const SERVER = { name: 'createcraft-planner', title: 'OmniCandi Project Planner', version: '1.0.0' };
+const SERVER = { name: 'createcraft-planner', title: 'OmniCandy Project Planner', version: '1.0.0' };
 
 interface ToolDef { name: string; scope: Scope; description: string; schema: z.ZodObject; run: (svc: PlannerService, c: Ctx, a: never) => Promise<unknown>; readOnly?: boolean }
 
@@ -111,7 +111,7 @@ export class McpSession {
         }
         return ok({
           protocolVersion: (SUPPORTED_PROTOCOLS as readonly string[]).includes(want) ? want : SUPPORTED_PROTOCOLS[0], capabilities: { tools: { listChanged: false } }, serverInfo: SERVER,
-          instructions: 'OmniCandi Project Planner. Read the plan with get_project_context. Ideas, questions and proposals are not decisions. Work from execution packages: get_package, claim_task, then submit_report with verification you actually ran. The user accepts or rejects results.',
+          instructions: 'OmniCandy Project Planner. Read the plan with get_project_context. Ideas, questions and proposals are not decisions. Work from execution packages: get_package, claim_task, then submit_report with verification you actually ran. The user accepts or rejects results.',
         });
       }
       case 'ping': return ok({});

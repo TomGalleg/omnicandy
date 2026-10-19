@@ -108,7 +108,7 @@ export function normalizeResearch(input: unknown): NormalizedResearch {
   for (const m of list(r.methods, notes, 'methods')) {
     if (!isObj(m)) continue;
     const method = METHOD[word(m.method)];
-    if (!method) { notes.push(`A method named "${String(m.method).slice(0, 30)}" is not one OmniCandi knows and was dropped.`); continue; }
+    if (!method) { notes.push(`A method named "${String(m.method).slice(0, 30)}" is not one OmniCandy knows and was dropped.`); continue; }
     const support = SUPPORT[word(m.officialSupport)] ?? 'none';
     if (!SUPPORT[word(m.officialSupport)]) notes.push(`The support level of method ${method} was unclear and was recorded as "none".`);
     methods.push({ method, officialSupport: support, note: clip(m.note, 400, notes, `The note for method ${method}`) || 'No note given.' });

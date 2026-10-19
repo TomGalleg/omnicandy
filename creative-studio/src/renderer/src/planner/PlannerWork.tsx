@@ -45,9 +45,9 @@ function TaskForm({ p, reload, task, onDone, projectKey, projectName }: { p: Pla
         <label>Uses (optional)
           <select value={app} onChange={(e) => setApp(e.target.value)}>
             <option value="">Nothing specific</option>
-            <optgroup label="OmniCandi apps">{NATIVE.map((n) => <option key={n.id} value={`native:${n.id}`}>{n.name}</option>)}</optgroup>
-            {projectKey && <optgroup label="Workflow"><option value={`workflow:${projectKey}`}>The workflow of {projectName ?? 'this OmniCandi project'}</option></optgroup>}
-            {app && !app.startsWith('native:') && app !== `workflow:${projectKey}` && <option value={app}>{app.startsWith('workflow:') ? 'A workflow in another OmniCandi project' : app}</option>}
+            <optgroup label="OmniCandy apps">{NATIVE.map((n) => <option key={n.id} value={`native:${n.id}`}>{n.name}</option>)}</optgroup>
+            {projectKey && <optgroup label="Workflow"><option value={`workflow:${projectKey}`}>The workflow of {projectName ?? 'this OmniCandy project'}</option></optgroup>}
+            {app && !app.startsWith('native:') && app !== `workflow:${projectKey}` && <option value={app}>{app.startsWith('workflow:') ? 'A workflow in another OmniCandy project' : app}</option>}
           </select>
         </label>
       </div>
@@ -86,7 +86,7 @@ function WorkflowStatus({ appId, projectKey }: { appId: string; projectKey?: str
     const off = window.studio.onWorkflowEvent(read);
     return () => { live = false; off(); };
   }, [here]);
-  return <p className="pl-hint">{here ? `Workflow: ${line ?? 'checking…'}` : 'Workflow in another OmniCandi project. Open that project to see its progress.'}</p>;
+  return <p className="pl-hint">{here ? `Workflow: ${line ?? 'checking…'}` : 'Workflow in another OmniCandy project. Open that project to see its progress.'}</p>;
 }
 
 export function TaskRow({ t, p, reload, onWork, projectKey, projectName, inColumn, current }: { t: PlanTask; p: PlannerProject; reload: () => Promise<void>; onWork?: () => void; projectKey?: string | null; projectName?: string; inColumn?: boolean; current?: boolean }) {

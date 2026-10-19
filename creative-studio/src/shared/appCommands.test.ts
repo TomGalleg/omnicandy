@@ -8,7 +8,7 @@ describe('app command tiers', () => {
   it('anything that reaches files, scripts or plugins needs approval', () => {
     for (const id of ['file.open', 'file.saveAs', 'document.save', 'export.pdf', 'exportPdf', 'tool:open_file', 'script.run', 'plugin.load', 'batch.process', 'import_image']) expect(appCommandTier(id), id).toBe('approval');
   });
-  it('preferences and OmniCandi internals are never reachable', () => {
+  it('preferences and OmniCandy internals are never reachable', () => {
     for (const id of ['prefs.set', 'edit.preferences.general', 'createcraft.place', 'x;rm -rf', '']) expect(appCommandTier(id), id).toBe('never');
   });
   it('approval commands run only once approved and may then name a file', () => {

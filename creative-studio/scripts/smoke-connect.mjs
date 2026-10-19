@@ -1,5 +1,5 @@
-// Universal Connect (Settings > Integrations > Connect Applications) in the REAL OmniCandi window, in scratch profiles
-// (never your own OmniCandi or projects), against the REAL programs on this PC: Blender, FreeCAD (connector installed from
+// Universal Connect (Settings > Integrations > Connect Applications) in the REAL OmniCandy window, in scratch profiles
+// (never your own OmniCandy or projects), against the REAL programs on this PC: Blender, FreeCAD (connector installed from
 // the signed package shipped in resources/adapters), DaVinci Resolve (experimental; closed here so it must FAIL honestly),
 // Revit (placeholder only). Native dialogs (install confirmation, file picker) are answered by this script on the user's
 // behalf; everything else is the real app. Costs nothing; no Claude usage.
@@ -174,7 +174,7 @@ try {
   await pickNext(app, path.join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'notepad.exe'));
   await dlg.getByRole('button', { name: 'Browse for Application…' }).click();
   await dlg.locator('.connect-notice').filter({ hasText: /no connector for/ }).waitFor({ timeout: 30000 });
-  check('Browse: a program OmniCandi has no connector for gets a plain explanation and is not saved', true, (await dlg.locator('.connect-notice').textContent())?.slice(0, 140));
+  check('Browse: a program OmniCandy has no connector for gets a plain explanation and is not saved', true, (await dlg.locator('.connect-notice').textContent())?.slice(0, 140));
   if (hasBlender) {
     const real = (await win.evaluate(async () => (await window.studio.external.list()).find((a) => a.adapterId === 'blender')?.exePath)) ?? '';
     portable = path.join(profile, 'Blender Portable');

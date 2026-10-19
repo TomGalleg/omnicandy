@@ -4,7 +4,7 @@ Status: **research only. Nothing below has been run on this PC. No hardware is c
 Sources are official model cards and AMD/ComfyUI pages read on this date; items marked *unverified*
 could not be confirmed from them.
 
-## What OmniCandi already has
+## What OmniCandy already has
 
 * Cloud video is `VideoService` (`src/main/videoGeneration.ts`) with a model catalogue in `src/shared/video.ts`
   (Veo verified, Runway built but untested). Every paid call goes through the approval dialog and the
@@ -55,7 +55,7 @@ other cell is an expectation until a real clip comes out.
 1. **Ship Motion Effects now (done, Stage B).** It is the only mode proven here and runs on any PC that has
    FilmCraft, with no GPU requirement.
 2. **First local-AI engine: LTX-Video 2B distilled through a small bundled-free Python/diffusers runner**,
-   started and monitored by OmniCandi, installed only after user consent. Reasons: smallest model, fastest
+   started and monitored by OmniCandy, installed only after user consent. Reasons: smallest model, fastest
    distilled schedule, and the most modest stated needs. ComfyUI is not required; add it as an
    *optional* second backend only if it proves a measurable advantage (it gives the AMD ROCm-Windows build
    for supported Radeon cards and ready-made offload nodes).

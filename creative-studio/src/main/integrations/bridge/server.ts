@@ -1,4 +1,4 @@
-// BridgeServer: the OmniCandi end of the plugin bridge (see protocol.ts for the rules).
+// BridgeServer: the OmniCandy end of the plugin bridge (see protocol.ts for the rules).
 
 import { EventEmitter } from 'node:events';
 import { randomBytes, randomUUID } from 'node:crypto';
@@ -94,7 +94,7 @@ export class BridgeServer extends EventEmitter {
     const s = this.server;
     this.server = null;
     this.endpoint = null;
-    for (const sess of [...this.sessions.values()]) this.closeSession(sess, 'OmniCandi is shutting down.');
+    for (const sess of [...this.sessions.values()]) this.closeSession(sess, 'OmniCandy is shutting down.');
     for (const c of this.connections) c.destroy();
     this.connections.clear();
     if (s) await new Promise<void>((r) => s.close(() => r()));
@@ -211,7 +211,7 @@ export class BridgeServer extends EventEmitter {
     try { raw = JSON.parse(line); } catch { reject('malformed', 'Not valid JSON.'); return; }
     const parsed = clientFrame.safeParse(raw);
     const sess = getSess();
-    if (!parsed.success) { if (sess) this.closeSession(sess, 'The add-in sent a frame OmniCandi does not accept.', true); else reject('malformed', 'Unexpected frame.'); return; }
+    if (!parsed.success) { if (sess) this.closeSession(sess, 'The add-in sent a frame OmniCandy does not accept.', true); else reject('malformed', 'Unexpected frame.'); return; }
     const f = parsed.data;
     if (!sess) {
       if (f.t !== 'hello') { reject('malformed', 'Expected hello.'); return; }
@@ -221,7 +221,7 @@ export class BridgeServer extends EventEmitter {
       if (!secret || this.o.allowedCapabilities(f.pluginId) === null) { fail(); return; }
       if (!proofEquals(clientProof(secret, snonce, f.nonce, f.pluginId, f.protocol), f.proof)) { fail(); return; }
       const proto = negotiate(offered, f.protocol);
-      if (proto === null) { reject('protocol-mismatch', `OmniCandi speaks bridge protocol ${offered.min}-${offered.max}; the add-in speaks ${f.protocol.min}-${f.protocol.max}. Update the add-in.`); return; }
+      if (proto === null) { reject('protocol-mismatch', `OmniCandy speaks bridge protocol ${offered.min}-${offered.max}; the add-in speaks ${f.protocol.min}-${f.protocol.max}. Update the add-in.`); return; }
       const old = this.sessions.get(f.pluginId);
       if (old) this.closeSession(old, 'A newer connection from the same add-in replaced this one.', false, 'replaced');
       const hb = this.o.heartbeatMs ?? 5000;

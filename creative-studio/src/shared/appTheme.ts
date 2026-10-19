@@ -1,4 +1,4 @@
-// Which ArtCraft apps OmniCandi can switch between dark and light, and how. Every "auto" entry
+// Which ArtCraft apps OmniCandy can switch between dark and light, and how. Every "auto" entry
 // was verified live through the app's own official control (docs/integration-audit.md); nothing
 // here edits app config files or recolours windows.
 
@@ -30,7 +30,7 @@ export const APP_THEME_SUPPORT: AppThemeInfo[] = [
   { id: 'wordcraft', name: 'WordCraft', support: 'manual', note: 'Keeps its own look (no verified theme setting)' },
 ];
 
-/** The app's own theme value for an OmniCandi palette. */
+/** The app's own theme value for an OmniCandy palette. */
 export function appThemeValue(appId: string, palette: ThemePalette): string | null {
   switch (appId) {
     // PhotoCraft built-in themes: proMedium is its charcoal default (what ArtCraft Match is measured from).

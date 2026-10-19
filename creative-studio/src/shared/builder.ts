@@ -117,7 +117,7 @@ export interface BuilderProjectSummary {
   /** The program was found on this PC when the integration was built. */
   appInstalled: boolean;
   appVersion: string | null;
-  /** Installed in OmniCandi (reviewed and approved by the user). */
+  /** Installed in OmniCandy (reviewed and approved by the user). */
   installed: boolean;
   verification: { verified: number; failed: number; untested: number };
   /** Paths to a package that can be reviewed and installed (null while nothing is built). */
@@ -242,7 +242,7 @@ export interface RepairProposal {
 
 /** Plain wording for the first screen. */
 export const BUILDER_CONSENT =
-  'To build this, OmniCandi asks Claude (your Claude sign-in) to research the program and write the connector. The program\'s name and any documentation you choose are sent to Claude. Nothing else leaves your computer, and nothing is installed or run until you review and approve it.';
+  'To build this, OmniCandy asks Claude (your Claude sign-in) to research the program and write the connector. The program\'s name and any documentation you choose are sent to Claude. Nothing else leaves your computer, and nothing is installed or run until you review and approve it.';
 
 /** A permission set is "read only" when no command can change anything. */
 export const MUTATING_PERMISSIONS: Permission[] = ['modify-project', 'write-files', 'ui-automation', 'execute-scripts', 'network', 'launch'];

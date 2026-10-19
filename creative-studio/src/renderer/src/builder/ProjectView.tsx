@@ -54,7 +54,7 @@ function Advanced({ d, onRefreshDocs, busy }: { d: BuilderProjectDetail; onRefre
               {d.research.limitations.length > 0 && <><span className="menu-label">Limits</span><ul className="status-list">{d.research.limitations.map((l) => <li key={l}><small>{l}</small></li>)}</ul></>}
               <small>Licence: {d.research.licensing || 'not stated'}. Needs: {d.research.requiredTools.join('; ') || 'nothing else'}.</small>
               <span className="menu-label">Documentation used (kept on this computer)</span>
-              {d.documentation.length === 0 ? <small>No documentation was collected by OmniCandi; only what Claude read itself.</small> : (
+              {d.documentation.length === 0 ? <small>No documentation was collected by OmniCandy; only what Claude read itself.</small> : (
                 <ul className="status-list">{d.documentation.map((x) => <li key={x.url}><small><strong>{x.title}</strong> · {x.originLabel} · {x.versionNote} · {new Date(x.fetchedAt).toLocaleDateString()}{x.outdated ? ' · outdated' : ''}<span className="ext-block">{x.url}</span></small></li>)}</ul>
               )}
               <div className="ext-actions"><button className="btn small" disabled={busy} onClick={onRefreshDocs}>Refresh official documentation</button></div>

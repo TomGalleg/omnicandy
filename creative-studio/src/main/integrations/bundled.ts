@@ -1,4 +1,4 @@
-// Where the connectors that ship with OmniCandi live, and which publisher keys OmniCandi itself vouches for.
+// Where the connectors that ship with OmniCandy live, and which publisher keys OmniCandy itself vouches for.
 //
 // Development: <repo>/resources/adapters. Installed application: <install>/resources/adapters (electron-builder
 // extraResources, outside the asar archive so the files stay plain, hashable packages). Nothing here depends on the

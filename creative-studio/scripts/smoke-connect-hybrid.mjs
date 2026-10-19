@@ -1,9 +1,9 @@
-// Universal Connect with a HYBRID integration (connector + add-in) in the REAL OmniCandi window, scratch profile only.
+// Universal Connect with a HYBRID integration (connector + add-in) in the REAL OmniCandy window, scratch profile only.
 // The program is SimCAD, a SIMULATED test application (fixtures/simcad). This script plays the user's part: it answers the
 // native dialogs and "opens" SimCAD at the right moment. Nothing real is installed or changed; costs nothing.
 //
-// Run after `npm run build`:  node scripts/smoke-connect-hybrid.mjs [--exe <OmniCandi.exe>]
-//   --exe  launch the PACKAGED application (electron-builder output, e.g. release/win-unpacked/OmniCandi.exe) from a scratch
+// Run after `npm run build`:  node scripts/smoke-connect-hybrid.mjs [--exe <OmniCandy.exe>]
+//   --exe  launch the PACKAGED application (electron-builder output, e.g. release/win-unpacked/OmniCandy.exe) from a scratch
 //          working folder instead of the repository, to prove nothing depends on repository development paths
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';

@@ -1,8 +1,8 @@
-// Shows an ArtCraft app's real window inside OmniCandi's Edit area.
+// Shows an ArtCraft app's real window inside OmniCandy's Edit area.
 //
 // The app window is not reparented (fragile across processes); instead it is made borderless and
-// *owned* by the OmniCandi window, then kept exactly over the Edit area's viewport rectangle
-// (reported by the renderer) as OmniCandi moves or resizes. Owned windows stay above their owner
+// *owned* by the OmniCandy window, then kept exactly over the Edit area's viewport rectangle
+// (reported by the renderer) as OmniCandy moves or resizes. Owned windows stay above their owner
 // and hide/minimize with it; because it is still the app's own top-level window, mouse, keyboard,
 // menus and dialogs work natively. "Open in its own window" restores the frame and ownership.
 

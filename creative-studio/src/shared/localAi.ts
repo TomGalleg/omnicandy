@@ -91,7 +91,7 @@ export interface LocalModel {
   engine: 'sdcpp' | 'diffusers' | null;
   /** sd.cpp: model files (paths inside the model folder) for the command line. */
   sdcpp?: { diffusion: string; vae: string; textEncoder: string; flowShift: number; cfg: number; defaultSteps: number };
-  /** Files to download. Empty = not downloadable through OmniCandi yet. */
+  /** Files to download. Empty = not downloadable through OmniCandy yet. */
   files: LocalModelFile[];
   id: string;
   name: string;
@@ -155,7 +155,7 @@ export const LOCAL_MODELS: LocalModel[] = [
     sourceUrl: 'https://huggingface.co/Lightricks/LTX-Video', license: 'LTX-Video Open Weights License',
     licenseNote: 'Not a plain open-source license: read its terms before using output commercially.',
     downloadGb: 27, minVramGb: 6, minRamGb: 16, backends: ['cuda'], capabilities: ['text-to-video', 'image-to-video'],
-    minTier: 'experimental', note: 'Needs a PyTorch runner OmniCandi does not have (torch-directml is stale: torch 2.4.1, Python 3.12 or older, last release Sept 2024), so it is only offered with NVIDIA CUDA. Smallest and fastest candidate. The download is the 6.3 GB model plus its 19 GB text encoder and 1.7 GB VAE (file sizes read from the Hugging Face listing). Resolution divisible by 32, frames 8n+1, best under 720x1280.', verified: [],
+    minTier: 'experimental', note: 'Needs a PyTorch runner OmniCandy does not have (torch-directml is stale: torch 2.4.1, Python 3.12 or older, last release Sept 2024), so it is only offered with NVIDIA CUDA. Smallest and fastest candidate. The download is the 6.3 GB model plus its 19 GB text encoder and 1.7 GB VAE (file sizes read from the Hugging Face listing). Resolution divisible by 32, frames 8n+1, best under 720x1280.', verified: [],
   },
   {
     kind: 'model', engine: 'sdcpp',

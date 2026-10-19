@@ -1,4 +1,4 @@
-// FreeCAD adapter package through the real OmniCandi UI, in a scratch profile (never your own OmniCandi or projects).
+// FreeCAD adapter package through the real OmniCandy UI, in a scratch profile (never your own OmniCandy or projects).
 //
 // !! FreeCAD is replaced by the clearly marked TEST DOUBLE in fixtures/freecad-mock (a FreeCADCmd.exe launcher + a Python
 // !! imitation of the FreeCAD API). Nothing here proves behaviour of real FreeCAD.
@@ -44,7 +44,7 @@ if (realBin) {
   execFileSync('C:\\Windows\\Microsoft.NET\\Framework64\\v4.0.30319\\csc.exe', ['-nologo', `-out:${mockExe}`, cs]);
 }
 // Tell the scratch profile where the "installed" program is (what Add location... does in the UI). A REAL FreeCAD is NOT
-// told: it must be found by OmniCandi's own discovery (uninstall record / Start Menu shortcut).
+// told: it must be found by OmniCandy's own discovery (uninstall record / Start Menu shortcut).
 fs.mkdirSync(path.join(profile, 'secrets'), { recursive: true });
 fs.writeFileSync(path.join(profile, 'secrets', 'external-apps.json'), JSON.stringify({ grants: {}, paths: realBin ? [] : [mockExe] }));
 
@@ -74,7 +74,7 @@ try {
   const review = pk.locator('.ext-review');
   await review.waitFor();
   const reviewText = (await review.textContent()) ?? '';
-  check('the review lists the publisher, the commands and what FreeCAD must provide', /OmniCandi Integrations/.test(reviewText) && /Create a parametric 3D model/.test(reviewText) && /FreeCAD 0\.21 or newer/.test(reviewText), reviewText.slice(0, 200));
+  check('the review lists the publisher, the commands and what FreeCAD must provide', /OmniCandy Integrations/.test(reviewText) && /Create a parametric 3D model/.test(reviewText) && /FreeCAD 0\.21 or newer/.test(reviewText), reviewText.slice(0, 200));
   check('the review lists the three permissions the commands need', /Run scripts inside the application/i.test(reviewText) && /Write or export files/i.test(reviewText));
   await win.screenshot({ path: path.join(shots, '110-freecad-review.png') });
   await review.getByRole('checkbox', { name: /I trust/ }).check();

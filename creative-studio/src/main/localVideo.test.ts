@@ -1,4 +1,4 @@
-// SIMULATED engine: these tests prove OmniCandi's own runner logic (args, progress, cancel, import,
+// SIMULATED engine: these tests prove OmniCandy's own runner logic (args, progress, cancel, import,
 // isolation, no paid usage) with a fake process. They do NOT show that any GPU can generate video.
 import fs from 'node:fs/promises';
 import os from 'node:os';

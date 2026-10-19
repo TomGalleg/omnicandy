@@ -75,7 +75,7 @@ export async function probeArtCraftApp(def: ArtCraftAppDef, programFiles: string
 export async function probeAllArtCraftApps(programFiles: string | null = craftInstallRoot()): Promise<AppProbeResult[]> {
   // No known install location on this system (Linux): report the apps as unavailable instead of looking in invented places.
   if (!programFiles) {
-    return ARTCRAFT_APPS.map((d) => ({ appId: d.id, displayName: d.displayName, installed: false, connected: false, version: null, capabilities: [], notes: [`No ${OS_LABEL[currentOs()]} version of ${d.displayName} is known to OmniCandi (unverified, not available).`] }));
+    return ARTCRAFT_APPS.map((d) => ({ appId: d.id, displayName: d.displayName, installed: false, connected: false, version: null, capabilities: [], notes: [`No ${OS_LABEL[currentOs()]} version of ${d.displayName} is known to OmniCandy (unverified, not available).`] }));
   }
   return Promise.all(ARTCRAFT_APPS.map((d) => probeArtCraftApp(d, programFiles)));
 }

@@ -11,7 +11,7 @@ export class ErrorBoundary extends Component<{ children: ReactNode }, State> {
   }
 
   componentDidCatch(error: unknown) {
-    console.error('OmniCandi view crashed:', error);
+    console.error('OmniCandy view crashed:', error);
   }
 
   render() {

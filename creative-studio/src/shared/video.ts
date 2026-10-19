@@ -5,7 +5,7 @@
 //   Lite has no 4k); the file stays on Google's servers for 2 days. Prices per second of video
 //   (paid tier, with audio): Veo 3.1 $0.40 / $0.40 / $0.60 (720p / 1080p / 4k), Fast $0.10 / $0.12 / $0.30,
 //   Lite $0.05 / $0.08. Cancellation of a running Veo operation is not documented, so "Cancel" only
-//   stops OmniCandi from waiting (the provider may still bill it).
+//   stops OmniCandy from waiting (the provider may still bill it).
 //   Runway (docs.dev.runwayml.com, 2026-10-14): POST /v1/text_to_video | /v1/image_to_video with header
 //   X-Runway-Version 2024-11-06, poll GET /v1/tasks/{id} (PENDING/THROTTLED/RUNNING/SUCCEEDED/FAILED/CANCELLED),
 //   output[] temporary URLs, DELETE /v1/tasks/{id} cancels. 1 credit = $0.01; gen4.5 12 credits/s, gen4_turbo 5/s.

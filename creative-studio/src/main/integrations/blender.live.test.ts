@@ -105,9 +105,9 @@ describe.skipIf(!on)('Blender integration (real Blender)', { timeout: 180_000 },
     const k = (await first.scan()).apps.find((a) => a.adapterId === 'blender')!.key;
     await first.connect(k);
     expect(saved).toContain(k);
-    await first.shutdown(); // quitting OmniCandi keeps it remembered
+    await first.shutdown(); // quitting OmniCandy keeps it remembered
     expect(saved).toContain(k);
-    const second = make(); // a new OmniCandi run
+    const second = make(); // a new OmniCandy run
     await second.autoConnect();
     expect((await second.scan()).apps.find((a) => a.key === k)!.status).toBe('connected');
     await second.disconnect(k); // the user disconnects on purpose

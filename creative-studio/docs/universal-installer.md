@@ -5,8 +5,8 @@ One architecture for every kind of external-program integration. It extends the 
 
 | Type | What is installed | Who does the work | Example |
 |---|---|---|---|
-| `external` | A connector (adapter process inside OmniCandi, restricted) | The connector drives the program from outside (CLI, files, COM...) | Blender, FreeCAD, Resolve |
-| `internal` | An add-in inside the program. **No connector code runs in OmniCandi** | The add-in, over the bridge | SimCAD add-in sample |
+| `external` | A connector (adapter process inside OmniCandy, restricted) | The connector drives the program from outside (CLI, files, COM...) | Blender, FreeCAD, Resolve |
+| `internal` | An add-in inside the program. **No connector code runs in OmniCandy** | The add-in, over the bridge | SimCAD add-in sample |
 | `hybrid` | Both. They are installed, repaired and removed together | The connector orchestrates and verifies; the add-in does what only code inside the program can do | SimCAD hybrid sample |
 
 Autodesk and Adobe are **not** special cases: they are rows in the same host-profile table
@@ -34,7 +34,7 @@ optional (internal-only packages carry no adapter code).
   "host":   { "profile": "simcad", "simulated": true, "editions": ["Pro","Lite"], "versions": [{ "min": "1.0", "max": "1.9" }] },
   "plugin": {
     "id": "simcad.bridge.hybrid", "version": "1.0.0", "technology": "node-module",
-    "mechanism": "file-copy",             // or "vendor-workflow": OmniCandi only guides
+    "mechanism": "file-copy",             // or "vendor-workflow": OmniCandy only guides
     "destination": "simcad-plugins",      // an id from the INSTALLER's table, not a path
     "files": [{ "from": "plugin/x.plugin.js", "to": "x.plugin.js" }],
     "restart": "required", "closeHost": "required", "admin": "never",
@@ -67,7 +67,7 @@ test), blockers, the exact folders, and everything technical for the Advanced se
 1. Re-read the package, re-check hashes/signature/permissions (nothing from the screen is trusted).
 2. Plan the add-in install. Permanent problems (unknown destination, wrong file type, path escape, ...) block the package;
    transient blockers (the program is open and must be closed) stop the install with a plain message and a **Check again** button.
-   OmniCandi never closes the program.
+   OmniCandy never closes the program.
 3. **Add-in files first** (`PluginInstaller.install`), because they have their own undo. Then the package (`PackageStore.install`) and
    registration. If the second half fails after the first succeeded, the add-in is taken out again (fresh install) so nothing is
    left half-installed. An interrupted install is rolled back at the next start (`recover()`).
@@ -80,7 +80,7 @@ test), blockers, the exact folders, and everything technical for the Advanced se
 - the installer-owned pairing file `cc-bridge.json` (random 256-bit secret) is added to every plugin install; the same secret is
   stored under `<userData>/integrations/bridge/pairing/<pluginId>.json`;
 - a journal (`ledger.json`) is written before each change; backups of replaced files; rollback on error, cancel or crash;
-- existing files OmniCandi did not install are never overwritten; uninstall removes only files whose hash still matches what was
+- existing files OmniCandy did not install are never overwritten; uninstall removes only files whose hash still matches what was
   installed (user-edited files are kept and reported) and the folders it created;
 - **verify** compares disk with the ledger (`installed`, `restart-needed`, `modified`, `missing-files`); **repair** reinstalls from the
   verified saved original (`source-<version>.ccadapter`), never from the possibly damaged installed copy;
@@ -92,18 +92,18 @@ claim otherwise), (b) the user's native confirmation covered it, and (c) an `Ele
 The path is implemented and unit-tested with a fake elevator; a real UAC helper needs its own security review.
 
 **Vendor workflows.** For technologies the vendor installs itself (for example Adobe UXP through Creative Cloud) the manifest uses
-`mechanism: "vendor-workflow"`; OmniCandi shows the steps, creates the pairing secret, copies nothing, and the integration becomes
+`mechanism: "vendor-workflow"`; OmniCandy shows the steps, creates the pairing secret, copies nothing, and the integration becomes
 Connected only when the add-in actually connects.
 
 ### 3. Plugin bridge (`bridge/`)
 
-Transport: a Windows **named pipe** (Unix socket elsewhere) created by OmniCandi with a random name per run, announced in
+Transport: a Windows **named pipe** (Unix socket elsewhere) created by OmniCandy with a random name per run, announced in
 `<userData>/integrations/bridge/endpoint.json`. Chosen because it is local by construction (the OS rejects remote clients on these
 pipes), needs no port, firewall rule or HTTP stack, and every host technology that can open a file or pipe can use it. No TCP/HTTP
 endpoint is opened. Newline-delimited JSON, frames at most 1 MB.
 
-Roles: OmniCandi is the server and the only side that issues work. The plugin dials in, so it can run inside the program's own
-context and survive OmniCandi restarts by reconnecting. **Protocol version 1:**
+Roles: OmniCandy is the server and the only side that issues work. The plugin dials in, so it can run inside the program's own
+context and survive OmniCandy restarts by reconnecting. **Protocol version 1:**
 
 | Frame | Direction | Purpose |
 |---|---|---|
@@ -129,7 +129,7 @@ sample plugin works because it goes through the executor.
 Timeouts, cancellation, loss: each call has a timeout (on expiry the plugin is sent `cancel`); the manager's cancel/job-cancel sends
 `cancel` and waits a short grace period; if the connection drops during a command the call fails as **`connection-lost` (outcome
 unknown: the command may have run)**, never as success; the plugin reconnects by itself with backoff and re-reads the endpoint file,
-so an application restart or an OmniCandi restart recovers without user action.
+so an application restart or an OmniCandy restart recovers without user action.
 
 Dynamic capabilities: the manifest lists the **maximum** set (with permissions); the plugin registers what its program/edition can
 actually do. The manager refuses commands the plugin did not register ("the add-in has not made X available (this edition...)").
@@ -154,7 +154,7 @@ their own program (self-contained, e.g. the simulated SimCAD) are offered direct
 
 ## Security statement
 
-What is enforced: strict manifest schema; no scripts; approved destinations/extensions/limits owned by OmniCandi; hash and signature
+What is enforced: strict manifest schema; no scripts; approved destinations/extensions/limits owned by OmniCandy; hash and signature
 checks (unchanged); journalled, reversible installs; no overwrite of foreign files; the program is never closed; elevation needs
 user approval and an elevator; authenticated, mutual, nonce-bound local pipe; typed, validated parameters (data, never concatenated
 into a shell or script); capability allow-list; result size limits; main-process decisions, not the renderer's, for plugin install.
@@ -166,7 +166,7 @@ What is **not** provided (unchanged and new):
 - The pairing secret is protected by the user's profile permissions. Another process of the *same user* (or malware running as
   that user) can read it and talk to the bridge. Different users and remote machines cannot. Binding the secret to the add-in
   process identity needs OS APIs not used here.
-- The plugin code itself runs inside the other program with that program's privileges. OmniCandi verifies the files it installs but
+- The plugin code itself runs inside the other program with that program's privileges. OmniCandy verifies the files it installs but
   cannot sandbox what a signed add-in does inside Revit or Photoshop.
 - A running host that already loaded an add-in keeps it until restarted; uninstall disconnects the session but cannot unload code.
 - No network isolation for adapters, no revocation feed, no production signing key (see `docs/release-signing.md`).

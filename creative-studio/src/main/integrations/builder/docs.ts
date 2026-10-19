@@ -26,7 +26,7 @@ export async function readDocumentation(paths: string[]): Promise<ReadDocs> {
   const take = async (file: string): Promise<void> => {
     if (docs.length >= MAX_FILES || total >= MAX_TOTAL) return;
     const ext = path.extname(file).toLowerCase();
-    if (ext === '.pdf' || ext === '.docx' || ext === '.chm') { notes.push(`${path.basename(file)} was skipped: OmniCandi reads text, HTML and source files, not ${ext.slice(1).toUpperCase()}. Save it as text or HTML.`); return; }
+    if (ext === '.pdf' || ext === '.docx' || ext === '.chm') { notes.push(`${path.basename(file)} was skipped: OmniCandy reads text, HTML and source files, not ${ext.slice(1).toUpperCase()}. Save it as text or HTML.`); return; }
     if (!TEXT_EXT.has(ext)) return;
     try {
       const st = await fs.stat(file);

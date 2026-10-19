@@ -1,7 +1,7 @@
 # Project Planner
 
 One current plan per project, kept while you brainstorm in ChatGPT or Gemini and run the work in Claude Code, Cowork or
-OmniCandi. It works on its own (copy and paste, no AI, no API key) and can optionally connect to a local AI through an MCP
+OmniCandy. It works on its own (copy and paste, no AI, no API key) and can optionally connect to a local AI through an MCP
 server. Open it from **More > Planner** (Simplified) or **Planner** (Advanced). It opens in a plain four-area view; the original
 screens are one checkbox away (see below). How and why it was simplified, with the checks made, is in `docs/planner-simplification-plan.md`;
 a plain-language description is in `docs/planner-explained.md`.
@@ -12,7 +12,7 @@ press a button in it, your message and a short summary of the plan go to the AI 
 
 ## Every project has its own Planner
 
-The Planner is part of each OmniCandi project (the **Planner** tab beside Project, Create, AI Generate and Deliver). It is optional, and always there.
+The Planner is part of each OmniCandy project (the **Planner** tab beside Project, Create, AI Generate and Deliver). It is optional, and always there.
 
 * **Where the plan lives.** In the project's own folder: `<project>/Planner/projects/<planId>/` (`project.json`, `history.jsonl`, `chat.json`, raw
   pasted responses). The plan records the project's identity (`ownerProjectId` = the project's manifest id), so it travels with **Move** and
@@ -28,7 +28,7 @@ The Planner is part of each OmniCandi project (the **Planner** tab beside Projec
   marks a chunk as done, no history is assumed, and the project's own files (including `project.json`) are not written. The planning AI is also told the
   project's file names and counts (never paths), so it understands what exists.
 * **Flow.** **Idea** (a conversation that ends with a list of clear chunks), **Plan** (the work in editable **chunks**
-  (tasks) and milestones), **Work** (one **current chunk**: send it to ChatGPT, Gemini, Claude or OmniCandi, bring the result back, review it, approve
+  (tasks) and milestones), **Work** (one **current chunk**: send it to ChatGPT, Gemini, Claude or OmniCandy, bring the result back, review it, approve
   it or ask for changes). Everything copies out as text and comes back through Paste back or the review inbox.
 * **Pick up where I left off.** The chunk worked on last is recorded in the plan (`lastActive`: opened in Work, sent to an AI, a result brought back,
   approved or sent back for changes) without changing the accepted plan. When the project is opened later the Planner shows **Pick up where I left off** with
@@ -47,7 +47,7 @@ There is no Advanced switch any more. The Planner shows **Idea, Plan, Work** (ta
 |---|---|
 | **Idea** | Only the conversation with the AI (see below). "Use ChatGPT, Gemini or another AI instead" is folded under it. |
 | **Plan** | The **chunks** (tasks): add one with a single line (extra detail under More options), edit, Mark done, Remove, and **Work on this**. **Milestones** are a folded section. |
-| **Work** | What **needs you** (results to review, suggestions, stalled chunks) appears only when something waits; the **current chunk**; **Do this chunk** (pick OmniCandi, Claude Code / Gemini CLI, or ChatGPT / Gemini / any chat; one button copies the instructions); **Bring the result back** (paste, preview, review, approve or ask for changes). |
+| **Work** | What **needs you** (results to review, suggestions, stalled chunks) appears only when something waits; the **current chunk**; **Do this chunk** (pick OmniCandy, Claude Code / Gemini CLI, or ChatGPT / Gemini / any chat; one button copies the instructions); **Bring the result back** (paste, preview, review, approve or ask for changes). |
 | **⋯ menu** | **What changed** (the full history), **Connect an AI tool** (the connection snippets), **Export this plan**, **Export with linked files**, **Import a plan**, **Open the plan's folder**, and **Older plans**. |
 | Header | The plan's title, "n of m chunks done", and **Pick up where I left off** when you come back. |
 
@@ -76,7 +76,7 @@ All optional except a title (and a simple project needs only a title and goal).
 | Ideas, references, open questions | not part of the plan; never sent as requirements |
 | Requirements and decisions | accepted ones form the plan. Decisions keep their reason |
 | Tasks | subtasks, dependencies (no cycles), priority, completion checks, expected outputs, optional native app / external integration reference |
-| Assets | references, working files, deliverables (output versions share a group). Files are linked by path, never copied; OmniCandi art-project assets are linked by id |
+| Assets | references, working files, deliverables (output versions share a group). Files are linked by path, never copied; OmniCandy art-project assets are linked by id |
 | Milestones | tasks can point at one |
 | Proposals, packages, reports | see below |
 | History | who did what (every entry names the actor) and every version of the accepted plan |
@@ -109,9 +109,9 @@ separate project system per template.
    headings, at most 30 changes and 200,000 characters. The preview marks each item **changes the plan** (rule, decision, edit) or **adds to
    your list**. *Add selected to my plan* stores a pending proposal (source `pasted`) and then accepts the ticked items as you; *Save for
    later* stops after storing. Both history entries are yours, with the named AI as proposer.
-3. **Send to AI**: tick tasks (or press Send to AI on a task), choose OmniCandi Claude, Claude Code or Gemini CLI, or any chat, press one
+3. **Send to AI**: tick tasks (or press Send to AI on a task), choose OmniCandy Claude, Claude Code or Gemini CLI, or any chat, press one
    button, copy. `prepareSend()` creates the package like `createPackage` but returns an identical open one instead of superseding it
-   (`contentKey`: plan, tasks, assets, objective, note and what the AI receives, not the package number). OmniCandi Claude gets its box
+   (`contentKey`: plan, tasks, assets, objective, note and what the AI receives, not the package number). OmniCandy Claude gets its box
    filled (you press Send); nothing is started or paid for by the Planner.
 4. The result comes back by paste (or MCP), the task shows **Needs Review**, and you accept, ask for changes or reject.
 
@@ -174,7 +174,7 @@ paths with file names. A package made with `createPackage` (Advanced, MCP) has n
 
 `out/planner-mcp.cjs` (built by `npm run build`; shipped as `planner-mcp.cjs` in the installed app) is a stand-alone MCP server
 (protocol 2025-06-18, 2025-03-26, 2024-11-05) over stdio, with an optional local HTTP mode. It reads the same folder as the app,
-so it works even when OmniCandi is closed.
+so it works even when OmniCandy is closed.
 
 Permissions are separate scopes given when the connection is started (`--scopes`):
 
@@ -194,24 +194,24 @@ node out/planner-mcp.cjs --scopes read,execute --actor "Claude Code" --kind clau
 node out/planner-mcp.cjs --http --port 8765 --token-file token.txt --scopes read,propose         # local HTTP, 127.0.0.1
 ```
 
-Installed app: use OmniCandi's own runtime, `ELECTRON_RUN_AS_NODE=1 OmniCandi.exe planner-mcp.cjs ...` (the app generates the
+Installed app: use OmniCandy's own runtime, `ELECTRON_RUN_AS_NODE=1 OmniCandy.exe planner-mcp.cjs ...` (the app generates the
 snippet). Tried here with the dev Electron binary.
 
 HTTP mode listens on `127.0.0.1` only, requires `Authorization: Bearer <token>` (24+ characters), rejects non-local `Origin`
-headers, and answers only `/mcp`. Making it reachable from the internet is your explicit choice and is not set up by OmniCandi.
+headers, and answers only `/mcp`. Making it reachable from the internet is your explicit choice and is not set up by OmniCandy.
 
-### OmniCandi's own Claude
+### OmniCandy's own Claude
 
 The Claude panel has `planner_packages`, `planner_get_package`, `planner_claim`, `planner_report` and `planner_propose`, backed by the same
-MCP session with `read,propose,execute` only (named "OmniCandi Claude" in history). It only works from a package, or suggests changes,
+MCP session with `read,propose,execute` only (named "OmniCandy Claude" in history). It only works from a package, or suggests changes,
 when you ask it to. `planner_propose` creates a pending suggestion; the panel cannot create packages, edit the plan, accept or review.
-Send to AI > OmniCandi Claude fills the panel's box with a message you send yourself.
+Send to AI > OmniCandy Claude fills the panel's box with a message you send yourself.
 
 ### Workflow and Home
 
-* A task can use **the workflow of the open OmniCandi project** (the existing `appRef {kind:'workflow'}`). The task shows a Workflow chip
+* A task can use **the workflow of the open OmniCandy project** (the existing `appRef {kind:'workflow'}`). The task shows a Workflow chip
   and a read-only line from the run state; a finished run never accepts or changes a task. Only the open project's workflow has a live state.
-* Home's **Create with Claude** makes an OmniCandi project. With "Also keep these steps in the Planner as suggestions" ticked (default),
+* Home's **Create with Claude** makes an OmniCandy project. With "Also keep these steps in the Planner as suggestions" ticked (default),
   the steps and questions become one pending suggestion list in a new Planner plan (source `home`); nothing joins the plan until you accept it.
 
 ## What each client can do (checked 2026-10-16)
@@ -223,10 +223,10 @@ Send to AI > OmniCandi Claude fills the panel's box with a message you send your
 | ChatGPT | unavailable (local) | Needs a public HTTPS MCP server in Developer Mode, plan limits vary; local stdio does not work. Third-party guides only. Use copy and paste. The local HTTP mode exists but has never been exposed or called by ChatGPT |
 | Gemini CLI | untested | Documented stdio `mcpServers` shape generated; CLI not installed here |
 | Gemini app | unavailable (local) | Remote URL only, reported since mid-2026; third-party summaries only |
-| OmniCandi's Claude | untested live | Handlers tested against the real service; no live Claude session (paid) |
+| OmniCandy's Claude | untested live | Handlers tested against the real service; no live Claude session (paid) |
 
 "Verified" means a real client of that kind was connected to the real server. The in-repo tests (`mcp.roundtrip.test.ts`) use
-OmniCandi's own MCP client for full round trips; the Claude Code check covers the handshake and health only.
+OmniCandy's own MCP client for full round trips; the Claude Code check covers the handshake and health only.
 
 ## Tests
 
@@ -259,7 +259,7 @@ referenced files.
 * Remote access for cloud chat clients is not built (no tunnel, no OAuth); copy and paste covers them.
 * No live Claude/Cowork/ChatGPT/Gemini session was run (spend is $0).
 * Tasks have no due dates; milestones have an optional due date.
-* Linking OmniCandi assets stores the project key and asset id; resolving a link into a file open is not wired.
+* Linking OmniCandy assets stores the project key and asset id; resolving a link into a file open is not wired.
 * Not run (they need paid calls or a sign-in): the planning chat against a real Claude, OpenAI or Gemini account (request shapes are tested with faked providers only), Home's Create with Claude into the Planner from the real screen, `planner_propose` from a live
   Claude session, "Put it in the Claude panel", any live ChatGPT/Gemini/Cowork session.
 * No stored per-rule "always include" pin (the owner can put left-out rules back for one send). The context builder's relevance is plain

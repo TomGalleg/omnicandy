@@ -1,7 +1,7 @@
 # Final validation: WordCraft, GridCraft, DeckCraft, FigCraft, CADCraft (2026-10-15)
 
 Method: isolated copy of the repo built to its own `out/` (your instance's build untouched), scratch profile via
-`CS_USER_DATA_DIR`, real ArtCraft apps, real Claude requests through OmniCandi's Claude panel. $0 API spend.
+`CS_USER_DATA_DIR`, real ArtCraft apps, real Claude requests through OmniCandy's Claude panel. $0 API spend.
 The harness is `scripts/smoke-five.mjs` (kept only in the scratch copy; not added to the repo).
 
 Legend: PASS / FAIL / BLOCKED / NOT TESTED
@@ -34,11 +34,11 @@ lint and typecheck clean. WordCraft headless conformance 6/6 and its live-window
    label string, not a list. FIXED in `src/main/liveApps.ts` (`LiveDeckCraft.history`), verified live. Uncommitted.
 2. **WordCraft: unchanged save and undo-then-save each create a version.** `LiveWordCraft` has no `writeBaseline`, so
    `documentDigest` has no baseline. An added baseline could not be verified because of problem 3, so it was reverted. Not fixed.
-3. **WordCraft and FigCraft intermittently fail `open` with "tools/call timed out"** when started/reopened from OmniCandi
-   (WordCraft worked in earlier runs today and passes the direct live test and a manual `open_document`; from OmniCandi it began
-   timing out consistently around 17:28 and the existing `smoke:docs` fails the same way). Cause not found; not an OmniCandi
-   regression from the digest change (reproduced with it removed). Next step: trace what OmniCandi calls before `open_document`
+3. **WordCraft and FigCraft intermittently fail `open` with "tools/call timed out"** when started/reopened from OmniCandy
+   (WordCraft worked in earlier runs today and passes the direct live test and a manual `open_document`; from OmniCandy it began
+   timing out consistently around 17:28 and the existing `smoke:docs` fails the same way). Cause not found; not an OmniCandy
+   regression from the digest change (reproduced with it removed). Next step: trace what OmniCandy calls before `open_document`
    (window hide/minimise before open is the main suspect).
 
 ## Not done
-Nothing pushed or committed. Your own OmniCandi was not touched (it was closed when I started the launches).
+Nothing pushed or committed. Your own OmniCandy was not touched (it was closed when I started the launches).

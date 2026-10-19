@@ -3,7 +3,7 @@
 
 export type OsId = 'win32' | 'linux' | 'darwin';
 
-/** Maps Node's `process.platform` to the three systems OmniCandi knows about (anything else is treated as Linux-like). */
+/** Maps Node's `process.platform` to the three systems OmniCandy knows about (anything else is treated as Linux-like). */
 export const osFrom = (platform: string): OsId => (platform === 'win32' || platform === 'darwin' ? platform : 'linux');
 
 export const currentOs = (): OsId => osFrom((globalThis as { process?: { platform?: string } }).process?.platform ?? 'win32');

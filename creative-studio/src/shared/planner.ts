@@ -1,5 +1,5 @@
 // Project Planner: the data model and the pure rules around it (no Node, no Electron). One current plan per project, kept
-// while the user brainstorms elsewhere and runs work through Claude Code, Cowork or OmniCandi. Everything optional except
+// while the user brainstorms elsewhere and runs work through Claude Code, Cowork or OmniCandy. Everything optional except
 // a title; AI is never required. Proposed changes live apart from accepted state; an executor's report is never acceptance.
 import { z } from 'zod';
 
@@ -77,7 +77,7 @@ export interface PlanAsset {
   id: string;
   role: 'reference' | 'working' | 'deliverable';
   title: string;
-  /** A file on disk (linked, not copied), a web link, or an asset of an OmniCandi art project. */
+  /** A file on disk (linked, not copied), a web link, or an asset of an OmniCandy art project. */
   source: 'file' | 'link' | 'createcraft';
   path: string;
   url: string;
@@ -232,7 +232,7 @@ export interface PlannerProject {
   reports: PlanReport[];
   planVersions: PlanVersion[];
   counters: { package: number; activity: number };
-  /** The OmniCandi project this plan belongs to (its manifest id). Plans made before projects owned their plan have none. */
+  /** The OmniCandy project this plan belongs to (its manifest id). Plans made before projects owned their plan have none. */
   ownerProjectId?: string;
   /** The older plan this one was copied from when it was brought into a project (the original is left as it was). */
   importedFrom?: string;

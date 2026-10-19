@@ -14,7 +14,7 @@ interface Props {
   onConfirm(approval: PackageApproval): void;
   onCancel(): void;
   cancelLabel?: string;
-  /** Plain-language framing for the guided setup ("Before OmniCandi connects Name…"). */
+  /** Plain-language framing for the guided setup ("Before OmniCandy connects Name…"). */
   intro?: string;
   /** Reviews the package again (the user closed the program, for example). */
   onRecheck?(): void;
@@ -58,7 +58,7 @@ export function PackageReviewCard({ review, busy, confirmLabel, onConfirm, onCan
           {integ.blockers.map((b) => <small key={b} className="ext-error" role="alert">{b}</small>)}
           {stopped && onRecheck && <div className="ext-actions"><button className="btn small" disabled={!!busy} onClick={onRecheck}>Check again</button></div>}
           <details className="more-details">
-            <summary>Advanced: where files go and how the add-in talks to OmniCandi</summary>
+            <summary>Advanced: where files go and how the add-in talks to OmniCandy</summary>
             {integ.destinations.map((d) => <small key={d.path} className="ext-block">{d.label} ({d.scope === 'machine' ? 'all users' : 'this user'}): <code>{d.path}</code></small>)}
             {integ.technology && <small className="ext-block">Technology: {integ.technology}</small>}
             {integ.communication && <small className="ext-block">Local connection: {integ.communication.transport}, protocol {integ.communication.protocol.min}-{integ.communication.protocol.max}, authenticated with a secret created at install. Capabilities: {integ.communication.capabilities.join(', ') || 'none'}.</small>}

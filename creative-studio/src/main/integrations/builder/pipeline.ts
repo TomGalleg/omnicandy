@@ -20,7 +20,7 @@ export interface CandidateResult {
   scan: ScanOutcome;
   /** The blueprint that was built (citations may have been completed from the documentation). */
   blueprint: Blueprint;
-  /** Citations OmniCandi completed from collected documentation, and symbols no document contains. */
+  /** Citations OmniCandy completed from collected documentation, and symbols no document contains. */
   citations: { added: CompletionResult['added']; unresolved: CompletionResult['unresolved'] };
   /** static and security passed (warnings allowed). */
   safe: boolean;

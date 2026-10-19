@@ -16,7 +16,7 @@ protocol.registerSchemesAsPrivileged([
   { scheme: ASSET_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true, corsEnabled: true } },
 ]);
 
-app.setName('OmniCandi');
+app.setName('OmniCandy');
 // Data stays where it has always been (%APPDATA%\creative-studio) despite the rename.
 // CS_USER_DATA_DIR gives automated smoke tests an isolated profile; never set in normal use.
 // Linux: ask for the Secret Service keyring when Chromium would not recognise the desktop (see platform/secureStorage.ts).
@@ -74,7 +74,7 @@ async function createWindow() {
     minWidth: 1100,
     minHeight: 700,
     show: false,
-    title: 'OmniCandi',
+    title: 'OmniCandy',
     icon: appIcon(),
     backgroundColor: PALETTES[resolveTheme(appearance, nativeTheme.shouldUseDarkColors)].bg,
     autoHideMenuBar: true,
@@ -95,7 +95,7 @@ async function createWindow() {
 
   // A crashed renderer would leave a blank window: load the app again (projects are on disk, nothing is lost).
   mainWindow.webContents.on('render-process-gone', (_e, details) => {
-    console.error('OmniCandi window process ended:', details.reason);
+    console.error('OmniCandy window process ended:', details.reason);
     if (details.reason !== 'clean-exit' && mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.reload();
   });
 

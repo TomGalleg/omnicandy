@@ -85,7 +85,7 @@ describe.skipIf(!canRun)('BuilderService (scripted author, mock program)', () =>
     const s1 = await (async () => { const c = await a.create({ appName: 'Mystery' }); return a.settled(c.id); })();
     expect(s1.status).toBe('needs-documentation');
     expect(s1.packagePath).toBeNull();
-    const nf = { ...base, decision: { ...base.decision, feasible: false, notFeasibleReason: 'Only UI automation is possible, which OmniCandi will not use.' }, commands: [] };
+    const nf = { ...base, decision: { ...base.decision, feasible: false, notFeasibleReason: 'Only UI automation is possible, which OmniCandy will not use.' }, commands: [] };
     const b = r.mk(new ScriptedAuthor({ blueprint: nf }));
     const s2 = await (async () => { const c = await b.create({ appName: 'Closed App' }); return b.settled(c.id); })();
     expect(s2.status).toBe('not-feasible');
@@ -160,7 +160,7 @@ describe.skipIf(!canRun)('BuilderService (scripted author, mock program)', () =>
     expect(d1.compatibility.tested).toEqual(['1.50.0']);
     expect(await svc.compatibility(c.id)).toMatchObject({ needsCheck: false });
 
-    // repair: AI proposes, OmniCandi tests, nothing changes until approved
+    // repair: AI proposes, OmniCandy tests, nothing changes until approved
     const p = await svc.propose(c.id, { commandId: 'enclosure.measure', error: 'FreeCAD 1.2 renamed something' });
     expect(p.passed).toBe(true);
     expect(p.fromVersion).toBe('1.0.0');

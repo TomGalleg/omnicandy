@@ -539,7 +539,7 @@ Result: ${(typeof res === 'string' ? res : JSON.stringify(res)).slice(0, 6000)}`
     const details = ready && this.doc!.describe ? await this.doc!.describe().catch(() => undefined) : undefined;
     return {
       open: this.asset ? { file: this.asset.name, app: app.name, tab: app.tab, ...(details ? { details } : {}) } : null,
-      // Every app a file can be handed to with open_file (app id, OmniCandi tab, file types).
+      // Every app a file can be handed to with open_file (app id, OmniCandy tab, file types).
       apps: LIVE_APPS.map((id) => ({ app: id, name: EDITOR_APPS[id].name, tab: EDITOR_APPS[id].tab, for: EDITOR_APPS[id].blurb, fileTypes: EDITOR_APPS[id].formats })),
       history: this.history,
       lock: this.collab.lockOwner === 'user' ? 'the user has control (do not edit)' : this.collab.phase === 'paused' || this.collab.phase === 'pausing' ? 'paused by the user (do not edit)' : 'free',
@@ -555,7 +555,7 @@ Result: ${(typeof res === 'string' ? res : JSON.stringify(res)).slice(0, 6000)}`
   }
 
   /**
-   * Matches the open app's interface theme to OmniCandi's (official app control only). Never
+   * Matches the open app's interface theme to OmniCandy's (official app control only). Never
    * touches the document: it changes the app's chrome, not the artwork or its history.
    */
   async applyAppTheme(palette: ThemePalette): Promise<void> {

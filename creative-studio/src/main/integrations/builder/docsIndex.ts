@@ -117,7 +117,7 @@ export function digestOf(d: StoredDoc, cap = 14_000): string {
   return `Source: ${d.url} (${DOC_ORIGIN_LABEL[d.origin]}; ${d.versionNote})\n${d.text.slice(0, cap)}`;
 }
 
-/** Adds the collected documents to the research sources (their origin is known to OmniCandi, not claimed by Claude). */
+/** Adds the collected documents to the research sources (their origin is known to OmniCandy, not claimed by Claude). */
 export function mergeDocSources(research: ResearchData, docs: StoredDoc[]): ResearchData {
   const have = new Set(research.sources.map((s) => s.url));
   const add = docs.filter((d) => !have.has(d.url)).map((d) => ({

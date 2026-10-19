@@ -1,6 +1,6 @@
 // OPT-IN (uses Claude usage under your existing login; no external API spend). Real Claude, in the Claude panel of
-// a scratch OmniCandi profile, discovers an INSTALLED integration package (the sample adapter) through
-// external_apps and drives it with external_run / external_job. Nothing in OmniCandi's code names the adapter.
+// a scratch OmniCandy profile, discovers an INSTALLED integration package (the sample adapter) through
+// external_apps and drives it with external_run / external_job. Nothing in OmniCandy's code names the adapter.
 // Pass criteria are on disk and in the job table, not in Claude's words. Run after `npm run build`.
 import fs from 'node:fs';
 import os from 'node:os';
