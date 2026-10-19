@@ -8,6 +8,6 @@ export async function programFromPath(file: string): Promise<InstalledProgram> {
   if (!st?.isFile()) throw new Error('That file does not exist any more. Choose the program file again.');
   const ext = path.extname(file);
   if (process.platform === 'win32' && ext.toLowerCase() !== '.exe') throw new Error('Choose the program file (it ends in .exe).');
-  const name = path.basename(file, ext).replace(/[-_]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 80) || 'Program';
+  const name = path.basename(file, ext).replace(/([a-z])([A-Z])/g, '$1 $2').replace(/[-_]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 80) || 'Program';
   return { key: `picked:${path.normalize(file).toLowerCase()}`, name, publisher: null, version: null, exePath: file, installLocation: path.dirname(file) };
 }

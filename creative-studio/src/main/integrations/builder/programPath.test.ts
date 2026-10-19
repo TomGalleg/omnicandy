@@ -18,6 +18,12 @@ describe('programFromPath', () => {
     expect(await programFromPath(file)).toEqual({ key: expect.stringContaining('picked:'), name: 'my cad tool', publisher: null, version: null, exePath: file, installLocation: dir });
   });
 
+  it('splits a CamelCase file name into words', async () => {
+    const file = path.join(tmp, `UnrealEditor${exe}`);
+    await fs.writeFile(file, 'x');
+    expect((await programFromPath(file)).name).toBe('Unreal Editor');
+  });
+
   it('refuses a file that is gone, and (on Windows) a file that is not a program', async () => {
     await expect(programFromPath(path.join(tmp, `nope${exe}`))).rejects.toThrow(/does not exist/);
     if (process.platform === 'win32') {

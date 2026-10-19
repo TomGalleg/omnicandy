@@ -919,7 +919,10 @@ export function registerIpc(d: IpcDeps): void {
     const win = d.window();
     const o: Electron.OpenDialogOptions = { title: 'Choose the program file', properties: ['openFile'], ...(process.platform === 'win32' ? { filters: [{ name: 'Programs', extensions: ['exe'] }] } : {}) };
     const r = await (win ? dialog.showOpenDialog(win, o) : dialog.showOpenDialog(o));
-    return r.canceled || !r.filePaths[0] ? null : programFromPath(r.filePaths[0]);
+    if (r.canceled || !r.filePaths[0]) return null;
+    const program = await programFromPath(r.filePaths[0]);
+    offeredPrograms.add(r.filePaths[0].toLowerCase()); // chosen by the user in the file picker, so Create Integration accepts it
+    return program;
   });
   handle(IPC.builderCancel, z.tuple([projectId]), async (id) => { builder.cancel(id); });
   handle(IPC.builderSync, z.tuple([projectId]), async (id) => { await packagesReady; return builder.syncInstalled(id); });
