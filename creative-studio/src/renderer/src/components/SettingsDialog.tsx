@@ -2,6 +2,7 @@ import { Fragment, useEffect, useRef, useState } from 'react';
 import { APP_THEME_SUPPORT } from '@shared/appTheme';
 import type { ClaudeState } from '@shared/claude';
 import type { IntegrationSnapshot, StorageDto } from '@shared/ipc';
+import { ClaudeAuthCard } from './ClaudeAuthCard';
 import { ProvidersCard } from './ProvidersCard';
 import { formatBytes } from '../format';
 import type { LiveSnapshot } from '@shared/live';
@@ -181,7 +182,6 @@ function StorageSettings() {
 }
 
 function IntegrationSettings({ apps }: { apps: AppProbeResult[] }) {
-  const claude = useClaudeState();
   const installed = apps.filter((a) => a.installed).length;
   return (
     <>
@@ -201,11 +201,7 @@ function IntegrationSettings({ apps }: { apps: AppProbeResult[] }) {
         <small>Installed means the app was found on this PC. CreateCraft starts and controls an app when you open a file in it.</small>
       </div>
       <ExternalApps />
-      <div className="field">
-        <span className="menu-label">Claude</span>
-        <p className="asset-meta">{claudeText(claude)}</p>
-        <small>Chat, model choice and sign-in are in the Claude panel.</small>
-      </div>
+      <ClaudeAuthCard />
       <ProvidersCard />
     </>
   );

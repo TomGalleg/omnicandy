@@ -23,7 +23,7 @@ import type { RunSnapshot } from '@shared/workflowControl';
 import type { DeliverQueue } from './deliver';
 import { buildResumeContext } from '@shared/claudeHistory';
 import { builtinTemplates, templateCatalogForClaude } from '@shared/templates';
-import { claudeBilling, claudeEnv } from './claudeEnv';
+import { signInEnv, type ClaudeAuth } from './claudeAuth';
 import { claudeLoginLaunch, defaultClaudeCliPath, findOnPath } from './platform/exec';
 import { parseProjectPlan, PROJECT_KINDS, type ProjectPlan } from '@shared/projectPlan';
 import type { LiveTaskController } from './liveTask';
@@ -91,6 +91,8 @@ export interface ClaudePartnerDeps {
   emit: (s: ClaudeState) => void;
   /** Claude Code CLI on this PC, used only for `auth status` / `auth login`. */
   cliPath: string;
+  /** Which credentials every Claude session uses (the Claude sign-in, or the Anthropic API key chosen in Settings). */
+  auth: ClaudeAuth;
   workDir: () => Promise<string>;
   /** Same path as the Generate tab: approval dialog in main, then the provider call. */
   generate: (job: ImageJob) => Promise<GenerateResultDto>;
@@ -156,7 +158,7 @@ export class ClaudePartner {
   constructor(private readonly d: ClaudePartnerDeps) {}
 
   state(): ClaudeState {
-    return { status: this.status, model: this.model, items: this.items, signedIn: this.signedIn, costUsd: this.costUsd, login: this.login, installed: this.installed, billing: this.billing() };
+    return { status: this.status, model: this.model, items: this.items, signedIn: this.signedIn, costUsd: this.costUsd, login: this.login, installed: this.installed, billing: this.billingInfo };
   }
 
   /** Loads this project's saved chat once (before the first state or message). */
@@ -218,15 +220,39 @@ export class ClaudePartner {
     return found;
   }
 
-  /** How Claude is paid for, in words for the panel: the sign-in (plan) unless an API key is deliberately used. */
-  billing(): ClaudeState['billing'] { return claudeBilling(process.env); }
+  private billingInfo: ClaudeState['billing'] = { mode: 'sign-in', keyReady: false, keyUnreadable: false, keyIgnored: false };
 
-  /** Reads `claude auth status` (never prints or stores credentials). */
+  /** Re-reads which credentials are in use (after the Settings card changes them) and tells the panel. */
+  async refreshAuth(): Promise<ClaudeState['billing']> {
+    this.billingInfo = await this.d.auth.billing();
+    if (this.billingInfo.mode === 'api-key' && this.status === 'signed-out') this.status = 'idle';
+    this.publish();
+    return this.billingInfo;
+  }
+
+  /** The credentials changed: the next message starts a fresh Claude session with them. */
+  async authChanged(): Promise<ClaudeState['billing']> {
+    this.sessionId = null;
+    this.signedIn = null;
+    return this.refreshAuth();
+  }
+
+  /** What to tell the user when Claude Code reports it cannot authenticate, depending on the credentials in use. */
+  private async authFailure(): Promise<Error> {
+    if ((await this.d.auth.mode()) === 'api-key') return new Error('Anthropic did not accept the API key. Check or replace it in Settings, or switch back to the Claude sign-in.');
+    this.status = 'signed-out';
+    this.signedIn = false;
+    return new Error('Claude Code on this PC is not signed in. Open the Claude panel, click "Sign in to Claude", then try again.');
+  }
+
+  /** Reads `claude auth status` (never prints or stores credentials). Not used in API-key mode, which needs no sign-in. */
   async checkAuth(): Promise<boolean | null> {
     const cli = await this.findCli();
+    const b = await this.refreshAuth();
+    if (b.mode === 'api-key') { this.signedIn = null; this.publish(); return b.keyReady; }
     if (!cli) { this.signedIn = null; this.publish(); return null; }
     const out = await new Promise<string>((resolve) => {
-      execFile(cli, ['auth', 'status'], { windowsHide: true, timeout: 20_000, env: claudeEnv(process.env) }, (_e, stdout) => resolve(String(stdout ?? '')));
+      execFile(cli, ['auth', 'status'], { windowsHide: true, timeout: 20_000, env: signInEnv(process.env) }, (_e, stdout) => resolve(String(stdout ?? '')));
     });
     try { this.signedIn = !!(JSON.parse(out) as { loggedIn?: boolean }).loggedIn; } catch { this.signedIn = null; }
     if (this.signedIn && this.status === 'signed-out') this.status = 'idle';
@@ -245,7 +271,7 @@ export class ClaudePartner {
     if (!cli) throw new Error(CLAUDE_CODE_MISSING);
     void claudeLoginLaunch(cli).then((plan) => {
       if (!plan) { this.login = { stage: 'failed', url: null, message: 'No terminal program was found. Open a terminal yourself and run: claude auth login' }; this.publish(); return; }
-      spawn(plan.cmd, plan.args, { detached: true, stdio: 'ignore', windowsHide: false, env: claudeEnv(process.env), ...(plan.verbatim ? { windowsVerbatimArguments: true } : {}) }).unref();
+      spawn(plan.cmd, plan.args, { detached: true, stdio: 'ignore', windowsHide: false, env: signInEnv(process.env), ...(plan.verbatim ? { windowsVerbatimArguments: true } : {}) }).unref();
     }).catch((e: unknown) => { this.login = { stage: 'failed', url: null, message: e instanceof Error ? e.message : String(e) }; this.publish(); });
     this.login = { stage: 'waiting-code', url: null, message: null };
     this.publish();
@@ -684,11 +710,6 @@ New files: ${names.join(', ') || '(none)'}`);
     this.publish();
     const abort = new AbortController();
     this.abort = abort;
-    const signedOut = () => {
-      this.status = 'signed-out';
-      this.signedIn = false;
-      return new Error('Claude Code on this PC is not signed in. Open the Claude panel, click "Sign in to Claude", then try again.');
-    };
     try {
       const ready = await this.d.imageModels().catch(() => []);
       const models = IMAGE_MODELS.filter((m) => ready.some((p) => p.id === m.provider && p.billable))
@@ -716,7 +737,7 @@ Available AI image models: ${models.length ? models.join('; ') : 'none set up'}.
         options: {
           model: this.model, systemPrompt: PLAN_PROMPT, tools: [], allowedTools: [], permissionMode: 'dontAsk',
           settingSources: [], maxTurns: 1, cwd: await this.d.workDir(), abortController: abort,
-          env: claudeEnv(process.env),
+          env: await this.d.auth.env(),
         },
       });
       let said = '';
@@ -725,7 +746,7 @@ Available AI image models: ${models.length ? models.join('; ') : 'none set up'}.
         else if (m.type === 'result') {
           this.costUsd += m.total_cost_usd ?? 0;
           const resultText = 'result' in m ? String(m.result ?? '') : '';
-          if (/not logged in|\/login/i.test(resultText)) throw signedOut();
+          if (/not logged in|\/login|invalid api key/i.test(resultText)) throw await this.authFailure();
           if (m.is_error) throw new Error('Claude could not make a plan right now. Try again in a moment.');
         }
       }
@@ -734,7 +755,8 @@ Available AI image models: ${models.length ? models.join('; ') : 'none set up'}.
       return parsed;
     } catch (e) {
       if (abort.signal.aborted) throw new Error('Planning was cancelled.');
-      if (e instanceof Error && /not logged in|\/login/i.test(e.message)) throw signedOut();
+      if (e instanceof Error && /not logged in|\/login|invalid api key/i.test(e.message)) throw await this.authFailure();
+      if (e instanceof Error) throw new Error(await this.d.auth.scrub(e.message));
       throw e;
     } finally {
       this.abort = null;
@@ -750,11 +772,6 @@ Available AI image models: ${models.length ? models.join('; ') : 'none set up'}.
     this.publish();
     const abort = new AbortController();
     this.abort = abort;
-    const signedOut = () => {
-      this.status = 'signed-out';
-      this.signedIn = false;
-      return new Error('Claude Code on this PC is not signed in. Open the Claude panel, click "Sign in to Claude", then try again.');
-    };
     try {
       const { query } = await import('@anthropic-ai/claude-agent-sdk');
       const q = query({
@@ -762,7 +779,7 @@ Available AI image models: ${models.length ? models.join('; ') : 'none set up'}.
         options: {
           model: (model as ClaudeModelId | undefined) ?? this.model, systemPrompt: system, tools: [], allowedTools: [], permissionMode: 'dontAsk',
           settingSources: [], maxTurns: 1, cwd: await this.d.workDir(), abortController: abort,
-          env: claudeEnv(process.env),
+          env: await this.d.auth.env(),
         },
       });
       let said = '';
@@ -771,7 +788,7 @@ Available AI image models: ${models.length ? models.join('; ') : 'none set up'}.
         else if (m.type === 'result') {
           this.costUsd += m.total_cost_usd ?? 0;
           const resultText = 'result' in m ? String(m.result ?? '') : '';
-          if (/not logged in|\/login/i.test(resultText)) throw signedOut();
+          if (/not logged in|\/login|invalid api key/i.test(resultText)) throw await this.authFailure();
           if (m.is_error) throw new Error('Claude could not answer right now. Try again in a moment.');
         }
       }
@@ -779,7 +796,8 @@ Available AI image models: ${models.length ? models.join('; ') : 'none set up'}.
       return said;
     } catch (e) {
       if (abort.signal.aborted) throw new Error('The request was cancelled.');
-      if (e instanceof Error && /not logged in|\/login/i.test(e.message)) throw signedOut();
+      if (e instanceof Error && /not logged in|\/login|invalid api key/i.test(e.message)) throw await this.authFailure();
+      if (e instanceof Error) throw new Error(await this.d.auth.scrub(e.message));
       throw e;
     } finally {
       this.abort = null;
@@ -816,7 +834,7 @@ Available AI image models: ${models.length ? models.join('; ') : 'none set up'}.
           cwd: await this.d.workDir(),
           abortController: abort,
           ...(this.sessionId ? { resume: this.sessionId } : {}),
-          env: claudeEnv(process.env),
+          env: await this.d.auth.env(),
         },
       });
       for await (const m of q) {
@@ -827,24 +845,20 @@ Available AI image models: ${models.length ? models.join('; ') : 'none set up'}.
         } else if (m.type === 'result') {
           this.costUsd += m.total_cost_usd ?? 0;
           const resultText = 'result' in m ? String(m.result ?? '') : '';
-          if (/not logged in|\/login/i.test(resultText)) {
-            this.status = 'signed-out';
-            this.signedIn = false;
+          if (/not logged in|\/login|invalid api key/i.test(resultText)) {
+            const problem = await this.authFailure();
             this.items = this.items.filter((i) => i.text !== resultText);
-            this.add('error', 'Claude Code on this PC is not signed in. Click "Sign in to Claude", finish in your browser, then send your message again.');
+            this.add('error', problem.message);
           } else if (m.is_error) {
-            this.add('error', `Claude stopped: ${'errors' in m && Array.isArray(m.errors) ? m.errors.join('; ') : m.subtype}`);
+            this.add('error', await this.d.auth.scrub(`Claude stopped: ${'errors' in m && Array.isArray(m.errors) ? m.errors.join('; ') : m.subtype}`));
           }
         }
       }
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       if (abort.signal.aborted) this.add('activity', 'Stopped.');
-      else if (/not logged in|\/login/i.test(msg)) {
-        this.status = 'signed-out';
-        this.signedIn = false;
-        this.add('error', 'Claude Code on this PC is not signed in. Click "Sign in to Claude", finish in your browser, then send your message again.');
-      } else this.add('error', msg);
+      else if (/not logged in|\/login|invalid api key/i.test(msg)) this.add('error', (await this.authFailure()).message);
+      else this.add('error', await this.d.auth.scrub(msg));
     } finally {
       this.abort = null;
       try { (await this.d.live()).claudeDone(); } catch { /* no live doc */ }

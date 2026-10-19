@@ -1,7 +1,7 @@
 // The complete renderer ↔ main surface. Every channel here is validated in main (src/main/ipc.ts).
 
 import type { AppearanceSettings, AppProbeResult, Asset, ProjectManifest, ProjectSummary } from './types';
-import type { ClaudeState } from './claude';
+import type { ClaudeAuthMode, ClaudeBilling, ClaudeState } from './claude';
 import type { ProjectPlan } from './projectPlan';
 
 export type ProjectMeta = Pick<ProjectManifest, 'kind' | 'brief' | 'objective'>;
@@ -89,6 +89,10 @@ export const IPC = {
   claudeReset: 'claude:reset',
   claudeModel: 'claude:model',
   claudeAuth: 'claude:auth',
+  claudeAuthGet: 'claude:auth-get',
+  claudeAuthMode: 'claude:auth-mode',
+  claudeAuthPasteKey: 'claude:auth-paste-key',
+  claudeAuthRemoveKey: 'claude:auth-remove-key',
   claudeSignIn: 'claude:sign-in',
   claudeCancelSignIn: 'claude:cancel-sign-in',
   claudeEvent: 'claude:event',
@@ -364,6 +368,12 @@ export interface StudioApi {
     setModel(model: string): Promise<ClaudeState>;
     /** Re-checks whether Claude Code on this PC is signed in. */
     checkAuth(): Promise<boolean | null>;
+    /** Which credentials Claude uses (the Claude sign-in by default, or an Anthropic API key saved in Settings). Never contains the key. */
+    authInfo(): Promise<ClaudeBilling>;
+    setAuthMode(mode: ClaudeAuthMode): Promise<ClaudeBilling>;
+    /** Main reads the key from the clipboard, stores it encrypted and clears the clipboard. The key never passes through the renderer. */
+    pasteApiKey(): Promise<ClaudeBilling>;
+    removeApiKey(): Promise<ClaudeBilling>;
     /** Starts Claude Code's own sign-in (opens the browser). */
     signIn(): Promise<void>;
     cancelSignIn(): Promise<void>;

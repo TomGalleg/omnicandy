@@ -13,6 +13,9 @@ export interface ClaudeChatItem {
   at: string;
 }
 
+export type ClaudeAuthMode = 'sign-in' | 'api-key';
+export interface ClaudeBilling { mode: ClaudeAuthMode; keyReady: boolean; keyUnreadable: boolean; keyIgnored: boolean }
+
 export interface ClaudeState {
   /** working = Claude is thinking or editing; signed-out = Claude Code on this PC needs sign-in. */
   status: 'idle' | 'working' | 'signed-out' | 'unavailable';
@@ -26,6 +29,9 @@ export interface ClaudeState {
   login: { stage: 'idle' | 'waiting-code' | 'checking' | 'failed'; url: string | null; message: string | null };
   /** Whether the Claude Code command was found on this PC; null until the first check. */
   installed: boolean | null;
-  /** How Claude is paid for: the Claude sign-in (plan), or an API key the user chose on purpose (pay per use). keyIgnored = a key was found on the PC and not used. */
-  billing: { mode: 'sign-in' | 'api-key'; keyIgnored: boolean };
+  /**
+   * How Claude is paid for: the Claude sign-in (plan, the default) or an Anthropic API key the user added in Settings (billed per use by Anthropic).
+   * keyReady = a usable key is saved; keyUnreadable = one is saved but cannot be decrypted here; keyIgnored = a key in the PC's environment was found and is not used.
+   */
+  billing: ClaudeBilling;
 }

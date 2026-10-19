@@ -27,6 +27,7 @@ export function checkKeyShape(providerId: string, raw: string): string {
   const key = raw.trim();
   if (!key) throw new Error('The clipboard is empty. Copy your API key first.');
   if (key.length < 20 || key.length > 512 || !/^[\x21-\x7e]+$/.test(key)) throw new Error("That doesn't look like an API key. Copy just the key (one line, no spaces).");
+  if (providerId === 'anthropic' && !key.startsWith('sk-ant-')) throw new Error('Anthropic API keys start with "sk-ant-". Copy the key from console.anthropic.com/settings/keys.');
   if (providerId === 'openai' && !key.startsWith('sk-')) throw new Error('OpenAI keys start with "sk-". Copy the key from platform.openai.com/api-keys.');
   return key;
 }

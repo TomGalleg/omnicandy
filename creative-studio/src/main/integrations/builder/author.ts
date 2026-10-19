@@ -9,7 +9,8 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { DENIED_ATTRIBUTES, DENIED_BUILTINS, DENIED_MODULES, PYTHON_HOSTS, SAFE_STDLIB } from './hosts';
 import { BlueprintError, extractJson, parseBlueprint, parseBlueprintDetailed, parseResearchDetailed, type Blueprint, type ResearchData } from './blueprint';
-import { claudeEnv } from '../../claudeEnv';
+import { signInEnv } from '../../claudeAuth';
+import { redact } from '../../credentialVault';
 
 export interface AuthorDoc { name: string; text: string }
 
@@ -171,11 +172,13 @@ export interface ClaudeAuthorOptions {
   onUsage?: (u: AuthorUsage) => void;
   /** Allows Claude's web tools during research. */
   web?: boolean;
+  /** The environment for the Claude session (the credentials chosen in Settings). Default: the Claude sign-in, with no inherited API key. */
+  env?: () => Promise<Record<string, string>>;
   log?: (line: string) => void;
 }
 
 /** The exact SDK request configuration (pure, so a test can check it without calling Claude). */
-export function buildQueryOptions(model: string, cwd: string, system: string, opts: { tools: string[]; maxTurns: number; schema?: Record<string, unknown> }, abort: AbortController) {
+export function buildQueryOptions(model: string, cwd: string, system: string, opts: { tools: string[]; maxTurns: number; schema?: Record<string, unknown> }, abort: AbortController, env: Record<string, string> = signInEnv(process.env)) {
   return {
     model, systemPrompt: system,
     // Only the listed built-in tools exist for this call (web research for the research step, none for generation); no user settings,
@@ -183,7 +186,7 @@ export function buildQueryOptions(model: string, cwd: string, system: string, op
     tools: opts.tools, allowedTools: opts.tools, permissionMode: 'dontAsk' as const, settingSources: [] as never[],
     maxTurns: opts.maxTurns, cwd, abortController: abort,
     ...(opts.schema ? { outputFormat: { type: 'json_schema' as const, schema: opts.schema } } : {}),
-    env: claudeEnv(process.env),
+    env,
   };
 }
 
@@ -198,7 +201,7 @@ export class ClaudeAuthor implements AdapterAuthor {
     const { query } = await import('@anthropic-ai/claude-agent-sdk');
     const abort = new AbortController();
     opts.signal?.addEventListener('abort', () => abort.abort(), { once: true });
-    const q = query({ prompt, options: buildQueryOptions(this.o.model, this.o.cwd, system, opts, abort) });
+    const q = query({ prompt, options: buildQueryOptions(this.o.model, this.o.cwd, system, opts, abort, this.o.env ? await this.o.env() : undefined) });
     let text = '';
     let cost = 0;
     for await (const m of q) {
@@ -211,8 +214,9 @@ export class ClaudeAuthor implements AdapterAuthor {
         const so = (m as { structured_output?: unknown }).structured_output;
         if (so && typeof so === 'object') text = JSON.stringify(so);
         const resultText = 'result' in m ? String(m.result ?? '') : '';
+        if (/invalid api key/i.test(resultText)) throw new Error('Anthropic did not accept the API key. Check or replace it in Settings, or switch back to the Claude sign-in.');
         if (/not logged in|\/login/i.test(resultText)) throw new Error('Claude Code on this PC is not signed in. Open the Claude panel, click "Sign in to Claude", then try again.');
-        if (m.is_error) throw new Error(`Claude could not finish this step (${'subtype' in m ? String(m.subtype) : 'error'}${'errors' in m && Array.isArray(m.errors) && m.errors.length ? ': ' + m.errors.join('; ').slice(0, 300) : ''}). Try again in a moment.`);
+        if (m.is_error) throw new Error(`Claude could not finish this step (${'subtype' in m ? String(m.subtype) : 'error'}${'errors' in m && Array.isArray(m.errors) && m.errors.length ? ': ' + redact(m.errors.join('; ').slice(0, 300), null) : ''}). Try again in a moment.`);
       }
     }
     const usage = { calls: 1, costUsd: cost };

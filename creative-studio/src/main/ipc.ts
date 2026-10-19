@@ -22,6 +22,7 @@ import { AppEditors } from './appEditors';
 import { showApprovalCard } from './approvalWindow';
 import { randomUUID } from 'node:crypto';
 import { ClaudePartner, defaultClaudeCli, type PlanReference } from './claudePartner';
+import { ANTHROPIC_VAULT_ID, ClaudeAuth } from './claudeAuth';
 import { LiveTaskController } from './liveTask';
 import { PhotoCraftCliAdapter } from './photocraftCli';
 import type { ProjectManager } from './projects';
@@ -104,6 +105,7 @@ export function registerIpc(d: IpcDeps): void {
 
   const capture = new UnavailableWindowCapture();
   const vault = new SafeStorageVault(path.join(d.secretsDir, 'providers'), secureEncryptor(safeStorage));
+  const claudeAuth = new ClaudeAuth(path.join(path.dirname(d.secretsDir), 'claudeAuth.json'), vault);
   const storageStatus = () => secureStorageStatus(safeStorage);
   const mockProvider = new MockGenerationProvider();
   // PhotoCraft is REAL when photocraft-cli.exe is installed; otherwise a labelled mock stands in.
@@ -873,7 +875,7 @@ export function registerIpc(d: IpcDeps): void {
         return new ScriptedAuthor({ blueprint: read(process.env.CS_BUILDER_BLUEPRINT), note: 'blueprint supplied by a smoke script', ...(repairFile ? { repair: () => ({ blueprint: read(repairFile), changes: ['Applied the supplied corrected blueprint.'] }) } : {}) });
       }
       if (claude().state().signedIn === false) return { error: 'Claude is not signed in. Open the Claude panel, click "Sign in to Claude", then try again.' };
-      return new ClaudeAuthor({ model: claude().state().model, cwd: builderRoot, web: true });
+      return new ClaudeAuthor({ model: claude().state().model, cwd: builderRoot, web: true, env: () => claudeAuth.env() });
     },
     skipDocs: !!(process.env.CS_BUILDER_BLUEPRINT && process.env.CS_USER_DATA_DIR), // smoke scripts do not download documentation
     confirm: async (title, detail, ok) => (await ask({ type: 'question', title, message: title, detail, buttons: ['Cancel', ok], defaultId: 0, cancelId: 0, noLink: true })) === 1,
@@ -957,6 +959,7 @@ export function registerIpc(d: IpcDeps): void {
     },
     emit: (st) => { for (const w of BrowserWindow.getAllWindows()) if (!w.isDestroyed()) w.webContents.send(IPC.claudeEvent, st); },
     cliPath: defaultClaudeCli(),
+    auth: claudeAuth,
     generate: (job) => runGeneration(job, 'claude'),
     generateVideo: (job) => video.submit(job, 'claude'),
     localAi: {
@@ -1211,6 +1214,23 @@ export function registerIpc(d: IpcDeps): void {
   handle(IPC.claudeReset, none, () => { claude().reset(); return claude().state(); });
   handle(IPC.claudeModel, z.tuple([z.string().max(64)]), (m) => { claude().setModel(m); return claude().state(); });
   handle(IPC.claudeAuth, none, () => claude().checkAuth());
+  // Claude's credentials: the Claude sign-in (default) or an Anthropic API key saved with the credential vault (see claudeAuth.ts).
+  const changeClaudeAuth = async (change: () => Promise<void>) => {
+    if (claude().state().status === 'working') throw new Error('Claude is working. Wait for it to finish or stop it, then change this.');
+    await change();
+    return claude().authChanged();
+  };
+  handle(IPC.claudeAuthGet, none, () => claude().refreshAuth());
+  handle(IPC.claudeAuthMode, z.tuple([z.enum(['sign-in', 'api-key'])]), (mode) => changeClaudeAuth(() => claudeAuth.setMode(mode)));
+  handle(IPC.claudeAuthPasteKey, none, () => changeClaudeAuth(async () => {
+    const copied = await clipboard.readText();
+    await vault.save(ANTHROPIC_VAULT_ID, copied);
+    if ((await clipboard.readText()) === copied) await clipboard.clear(); // don't leave the key on the clipboard
+  }));
+  handle(IPC.claudeAuthRemoveKey, none, () => changeClaudeAuth(async () => {
+    await vault.remove(ANTHROPIC_VAULT_ID);
+    if ((await claudeAuth.mode()) === 'api-key') await claudeAuth.setMode('sign-in'); // no key left: back to the sign-in
+  }));
   handle(IPC.claudeSignIn, none, () => claude().signIn());
   handle(IPC.claudeCancelSignIn, none, () => claude().cancelSignIn());
   handle(IPC.livePopOut, none, () => popOut());

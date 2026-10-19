@@ -17,7 +17,7 @@ afterEach(async () => {
   await fs.rm(tmp, { recursive: true, force: true });
 });
 
-const partner = (cliPath: string) => new ClaudePartner({ cliPath, emit: () => undefined, history: { load: async () => [], save: async () => undefined } } as unknown as ClaudePartnerDeps);
+const partner = (cliPath: string) => new ClaudePartner({ cliPath, auth: { billing: async () => ({ mode: 'sign-in', keyReady: false, keyUnreadable: false, keyIgnored: false }), mode: async () => 'sign-in' }, emit: () => undefined, history: { load: async () => [], save: async () => undefined } } as unknown as ClaudePartnerDeps);
 
 describe('Claude Code install detection', () => {
   it('reports not installed, with plain guidance, when the command is nowhere', async () => {

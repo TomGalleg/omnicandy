@@ -41,8 +41,10 @@ export function ClaudePanel({ liveApi }: Props) {
   }, []);
 
   const working = st?.status === 'working';
-  const notInstalled = st?.installed === false;
-  const signedOut = !notInstalled && (st?.signedIn === false || st?.status === 'signed-out');
+  const apiKeyMode = st?.billing.mode === 'api-key';
+  const needsKey = apiKeyMode && !st?.billing.keyReady;
+  const notInstalled = !apiKeyMode && st?.installed === false;
+  const signedOut = !apiKeyMode && !notInstalled && (st?.signedIn === false || st?.status === 'signed-out');
   const open = live?.status === 'ready' && !!live.asset;
   const appName = live ? EDITOR_APPS[live.appId].name : '';
 
@@ -74,6 +76,12 @@ export function ClaudePanel({ liveApi }: Props) {
         </div>
         {open && <TaskControls liveApi={liveApi} />}
       </div>
+
+      {needsKey && (
+        <div className="claude-section">
+          <div className="notice">Claude is set to use an Anthropic API key, but no usable key is saved on this PC. Add the key in <strong>Settings → Integrations → Claude</strong>, or switch back to the Claude sign-in there.</div>
+        </div>
+      )}
 
       {notInstalled && (
         <div className="claude-section">
@@ -134,7 +142,7 @@ export function ClaudePanel({ liveApi }: Props) {
 
       <div className="composer">
         <label className="sr-only" htmlFor="claude-input">Message Claude</label>
-        <textarea id="claude-input" placeholder={notInstalled ? 'Install Claude Code first' : signedOut ? 'Sign in to Claude first' : 'Ask Claude to change something…'} value={draft} disabled={signedOut || notInstalled}
+        <textarea id="claude-input" placeholder={needsKey ? 'Add your API key in Settings first' : notInstalled ? 'Install Claude Code first' : signedOut ? 'Sign in to Claude first' : 'Ask Claude to change something…'} value={draft} disabled={signedOut || notInstalled || needsKey}
           onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } }} />
         {working
           ? <button className="btn danger" onClick={() => void window.studio.claude.stop()}>Stop</button>
@@ -143,8 +151,8 @@ export function ClaudePanel({ liveApi }: Props) {
       {st?.billing && (
         <div className="asset-meta claude-billing">
           {st.billing.mode === 'api-key'
-            ? 'Billing: pay per use through the Anthropic API key set on this PC (you turned this on with CREATECRAFT_USE_ANTHROPIC_API_KEY).'
-            : `Billing: your Claude plan, through the sign-in on this PC.${st.billing.keyIgnored ? ' An Anthropic API key found on this PC is not used. To use it on purpose, set CREATECRAFT_USE_ANTHROPIC_API_KEY=1 and restart CreateCraft.' : ''}`}
+            ? 'Claude is using your Anthropic API key. Usage is billed to your Anthropic account, separately from any Claude plan. Change this in Settings.'
+            : 'Claude is using your Claude sign-in (your plan). Change this in Settings.'}
         </div>
       )}
       {!!st?.costUsd && <div className="asset-meta claude-cost">Usage this session (reported by Claude Code): ${st.costUsd.toFixed(3)}</div>}
