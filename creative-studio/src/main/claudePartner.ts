@@ -23,7 +23,8 @@ import type { RunSnapshot } from '@shared/workflowControl';
 import type { DeliverQueue } from './deliver';
 import { buildResumeContext } from '@shared/claudeHistory';
 import { builtinTemplates, templateCatalogForClaude } from '@shared/templates';
-import { claudeLoginLaunch, defaultClaudeCliPath } from './platform/exec';
+import { claudeBilling, claudeEnv } from './claudeEnv';
+import { claudeLoginLaunch, defaultClaudeCliPath, findOnPath } from './platform/exec';
 import { parseProjectPlan, PROJECT_KINDS, type ProjectPlan } from '@shared/projectPlan';
 import type { LiveTaskController } from './liveTask';
 import type { ProjectStore } from './projectStore';
@@ -60,6 +61,9 @@ const PLAN_PROMPT = `You are Claude, the Creative Partner inside CreateCraft. Th
 "questions": at most 2 essential questions you still need answered (usually none);
 "template": the id of ONE template from the list you are given if it clearly fits the project, otherwise null. Never invent an id.
 Do not start any work and do not mention software internals, node graphs or file formats unless the user did. Write in the user's language.`;
+
+/** Shown when the Claude Code command cannot be found. */
+export const CLAUDE_CODE_MISSING = 'Claude Code is not installed on this PC (or CreateCraft cannot find it). Install it, then press Check again.';
 
 const TOOL_NAMES = ['get_status', 'look_at_document', 'apply_edit', 'photocraft_command', 'app_commands', 'app_command', 'undo', 'save_version', 'list_files', 'open_file', 'new_document', 'list_image_models', 'generate_image', 'list_video_models', 'generate_video', 'local_video_status', 'make_local_video', 'make_motion_video', 'request_model_download', 'list_export_formats', 'export_file', 'timeline_add', 'timeline_move_clip', 'timeline_remove_clip', 'workflow_catalog', 'plan_workflow', 'workflow_status', 'run_workflow', 'rerun_workflow', 'pause_workflow', 'resume_workflow', 'cancel_workflow', 'change_workflow_step', 'list_workflow_versions', 'restore_workflow_version', 'save_workflow_template', 'external_apps', 'external_run', 'external_job', 'integration_builder_start', 'integration_builder_status', 'planner_packages', 'planner_get_package', 'planner_claim', 'planner_report', 'planner_propose'];
 
@@ -138,6 +142,8 @@ export class ClaudePartner {
   private items: ClaudeChatItem[] = [];
   private status: ClaudeState['status'] = 'idle';
   private signedIn: boolean | null = null;
+  /** Whether the Claude Code command was found (null = not looked yet). */
+  private installed: boolean | null = null;
   private costUsd = 0;
   private sessionId: string | null = null;
   private abort: AbortController | null = null;
@@ -150,7 +156,7 @@ export class ClaudePartner {
   constructor(private readonly d: ClaudePartnerDeps) {}
 
   state(): ClaudeState {
-    return { status: this.status, model: this.model, items: this.items, signedIn: this.signedIn, costUsd: this.costUsd, login: this.login };
+    return { status: this.status, model: this.model, items: this.items, signedIn: this.signedIn, costUsd: this.costUsd, login: this.login, installed: this.installed, billing: this.billing() };
   }
 
   /** Loads this project's saved chat once (before the first state or message). */
@@ -205,11 +211,22 @@ export class ClaudePartner {
     this.persist(true);
   }
 
+  /** The Claude Code command: the official install location first, then anywhere on PATH. Looked up each time, so installing it later is noticed. */
+  async findCli(): Promise<string | null> {
+    const found = fs.existsSync(this.d.cliPath) ? this.d.cliPath : await findOnPath('claude').catch(() => null);
+    this.installed = !!found;
+    return found;
+  }
+
+  /** How Claude is paid for, in words for the panel: the sign-in (plan) unless an API key is deliberately used. */
+  billing(): ClaudeState['billing'] { return claudeBilling(process.env); }
+
   /** Reads `claude auth status` (never prints or stores credentials). */
   async checkAuth(): Promise<boolean | null> {
-    if (!fs.existsSync(this.d.cliPath)) { this.signedIn = null; this.publish(); return null; }
+    const cli = await this.findCli();
+    if (!cli) { this.signedIn = null; this.publish(); return null; }
     const out = await new Promise<string>((resolve) => {
-      execFile(this.d.cliPath, ['auth', 'status'], { windowsHide: true, timeout: 20_000 }, (_e, stdout) => resolve(String(stdout ?? '')));
+      execFile(cli, ['auth', 'status'], { windowsHide: true, timeout: 20_000, env: claudeEnv(process.env) }, (_e, stdout) => resolve(String(stdout ?? '')));
     });
     try { this.signedIn = !!(JSON.parse(out) as { loggedIn?: boolean }).loggedIn; } catch { this.signedIn = null; }
     if (this.signedIn && this.status === 'signed-out') this.status = 'idle';
@@ -223,11 +240,12 @@ export class ClaudePartner {
    * if the page shows a code, the user pastes it into that window (Claude Code reads it from its own
    * console, so CreateCraft never sees it). CreateCraft polls `claude auth status` until signed in.
    */
-  signIn() {
-    if (!fs.existsSync(this.d.cliPath)) throw new Error('Claude Code is not installed on this PC.');
-    void claudeLoginLaunch(this.d.cliPath).then((plan) => {
+  async signIn() {
+    const cli = await this.findCli();
+    if (!cli) throw new Error(CLAUDE_CODE_MISSING);
+    void claudeLoginLaunch(cli).then((plan) => {
       if (!plan) { this.login = { stage: 'failed', url: null, message: 'No terminal program was found. Open a terminal yourself and run: claude auth login' }; this.publish(); return; }
-      spawn(plan.cmd, plan.args, { detached: true, stdio: 'ignore', windowsHide: false, ...(plan.verbatim ? { windowsVerbatimArguments: true } : {}) }).unref();
+      spawn(plan.cmd, plan.args, { detached: true, stdio: 'ignore', windowsHide: false, env: claudeEnv(process.env), ...(plan.verbatim ? { windowsVerbatimArguments: true } : {}) }).unref();
     }).catch((e: unknown) => { this.login = { stage: 'failed', url: null, message: e instanceof Error ? e.message : String(e) }; this.publish(); });
     this.login = { stage: 'waiting-code', url: null, message: null };
     this.publish();
@@ -698,7 +716,7 @@ Available AI image models: ${models.length ? models.join('; ') : 'none set up'}.
         options: {
           model: this.model, systemPrompt: PLAN_PROMPT, tools: [], allowedTools: [], permissionMode: 'dontAsk',
           settingSources: [], maxTurns: 1, cwd: await this.d.workDir(), abortController: abort,
-          env: { ...process.env, CLAUDE_AGENT_SDK_CLIENT_APP: 'CreateCraft/0.1' } as Record<string, string>,
+          env: claudeEnv(process.env),
         },
       });
       let said = '';
@@ -744,7 +762,7 @@ Available AI image models: ${models.length ? models.join('; ') : 'none set up'}.
         options: {
           model: (model as ClaudeModelId | undefined) ?? this.model, systemPrompt: system, tools: [], allowedTools: [], permissionMode: 'dontAsk',
           settingSources: [], maxTurns: 1, cwd: await this.d.workDir(), abortController: abort,
-          env: { ...process.env, CLAUDE_AGENT_SDK_CLIENT_APP: 'CreateCraft/0.1' } as Record<string, string>,
+          env: claudeEnv(process.env),
         },
       });
       let said = '';
@@ -798,7 +816,7 @@ Available AI image models: ${models.length ? models.join('; ') : 'none set up'}.
           cwd: await this.d.workDir(),
           abortController: abort,
           ...(this.sessionId ? { resume: this.sessionId } : {}),
-          env: { ...process.env, CLAUDE_AGENT_SDK_CLIENT_APP: 'CreateCraft/0.1' } as Record<string, string>,
+          env: claudeEnv(process.env),
         },
       });
       for await (const m of q) {

@@ -64,6 +64,7 @@ import { approvalDetail, INSTALL_CANCELLED_MESSAGE, integrationLines, type Brows
 import { ExternalState } from './integrations/state';
 import { PERMISSION_LABEL, type ApprovalAnswer, type ExternalAppInfo, type PackageApproval, type PackageListing, type Permission } from '@shared/integrations';
 import { craftBin, craftInstallDir } from './platform/craftApps';
+import { runBounded } from './shutdown';
 
 export interface IpcDeps {
   window: () => BrowserWindow | null;
@@ -493,6 +494,7 @@ export function registerIpc(d: IpcDeps): void {
       return {
         id: p.id, label: p.label, billable: p.billable,
         configured: p.id === 'mock' ? true : !!s?.configured,
+        ...(s?.unreadable ? { unreadable: true } : {}),
         savedAt: s?.meta?.savedAt ?? null,
         lastTest: s?.meta?.lastTest ?? null,
         encryptionAvailable: vault.available,
@@ -727,7 +729,14 @@ export function registerIpc(d: IpcDeps): void {
   };
   // Installable adapter packages: verified on disk, run in their own restricted process (integrations/packageRunner.ts).
   const packages = new AdapterPackages(path.join(path.dirname(d.secretsDir), 'integrations'), external, undefined, { bundledPublishers: () => loadBundledPublishers(bundled.publishersFile) });
-  app.on('will-quit', () => { void packages.shutdown(); void external.shutdown(); });
+  // Quit waits (at most 4 s) for the adapters and the plugin bridge to close, so no helper process is left behind.
+  let cleaned = false;
+  app.on('will-quit', (e) => {
+    if (cleaned) return;
+    cleaned = true;
+    e.preventDefault();
+    void runBounded([() => external.shutdown(), () => packages.shutdown()], 4000).finally(() => app.quit());
+  });
   const packagesReady = packages.load().catch(() => undefined);
   // Applications connected last time are connected again now (quietly), so Software shows them as connected after a restart.
   const restored = packagesReady.then(() => external.autoConnect()).catch(() => undefined);

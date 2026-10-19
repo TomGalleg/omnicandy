@@ -41,7 +41,8 @@ export function ClaudePanel({ liveApi }: Props) {
   }, []);
 
   const working = st?.status === 'working';
-  const signedOut = st?.signedIn === false || st?.status === 'signed-out';
+  const notInstalled = st?.installed === false;
+  const signedOut = !notInstalled && (st?.signedIn === false || st?.status === 'signed-out');
   const open = live?.status === 'ready' && !!live.asset;
   const appName = live ? EDITOR_APPS[live.appId].name : '';
 
@@ -73,6 +74,19 @@ export function ClaudePanel({ liveApi }: Props) {
         </div>
         {open && <TaskControls liveApi={liveApi} />}
       </div>
+
+      {notInstalled && (
+        <div className="claude-section">
+          <div className="notice">
+            <strong>Claude Code is not installed on this PC</strong>, or CreateCraft cannot find it. Claude in CreateCraft uses your own Claude Code sign-in.<br />
+            1. Install Claude Code from <a href="https://docs.claude.com/en/docs/claude-code/setup" target="_blank" rel="noreferrer">the Claude Code setup page</a>.<br />
+            2. Come back here and press <strong>Check again</strong>, then sign in.
+          </div>
+          <div className="btn-row">
+            <button className="btn primary" onClick={() => void window.studio.claude.checkAuth()}>Check again</button>
+          </div>
+        </div>
+      )}
 
       {signedOut && (
         <div className="claude-section">
@@ -120,12 +134,19 @@ export function ClaudePanel({ liveApi }: Props) {
 
       <div className="composer">
         <label className="sr-only" htmlFor="claude-input">Message Claude</label>
-        <textarea id="claude-input" placeholder={signedOut ? 'Sign in to Claude first' : 'Ask Claude to change something…'} value={draft} disabled={signedOut}
+        <textarea id="claude-input" placeholder={notInstalled ? 'Install Claude Code first' : signedOut ? 'Sign in to Claude first' : 'Ask Claude to change something…'} value={draft} disabled={signedOut || notInstalled}
           onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } }} />
         {working
           ? <button className="btn danger" onClick={() => void window.studio.claude.stop()}>Stop</button>
           : <button className="btn primary" disabled={!draft.trim() || signedOut} onClick={send}>Send</button>}
       </div>
+      {st?.billing && (
+        <div className="asset-meta claude-billing">
+          {st.billing.mode === 'api-key'
+            ? 'Billing: pay per use through the Anthropic API key set on this PC (you turned this on with CREATECRAFT_USE_ANTHROPIC_API_KEY).'
+            : `Billing: your Claude plan, through the sign-in on this PC.${st.billing.keyIgnored ? ' An Anthropic API key found on this PC is not used. To use it on purpose, set CREATECRAFT_USE_ANTHROPIC_API_KEY=1 and restart CreateCraft.' : ''}`}
+        </div>
+      )}
       {!!st?.costUsd && <div className="asset-meta claude-cost">Usage this session (reported by Claude Code): ${st.costUsd.toFixed(3)}</div>}
     </aside>
   );

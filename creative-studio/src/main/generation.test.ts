@@ -51,6 +51,22 @@ function service(fetchImpl: (url: string, init?: RequestInit) => Promise<Respons
   return { svc, fetchMock, approveMock };
 }
 
+describe('SafeStorageVault unreadable keys', () => {
+  it('reports a saved key that cannot be decrypted here as unreadable, not as configured, and generation says why', async () => {
+    const picky: Encryptor = { ...fakeCrypto, decryptString: (b) => { if (b.toString().startsWith('FOREIGN')) throw new Error('Decryption failed'); return fakeCrypto.decryptString(b); } };
+    const v = new SafeStorageVault(path.join(tmp, 'secrets', 'providers'), picky);
+    expect(await v.status('openai')).toMatchObject({ configured: false, handle: null });
+    expect((await v.status('openai')).unreadable).toBeUndefined();
+    await v.save('openai', OPENAI_KEY);
+    expect(await v.status('openai')).toMatchObject({ configured: true, handle: 'vault:openai' });
+    await fs.writeFile(path.join(tmp, 'secrets', 'providers', 'openai.key'), Buffer.from('FOREIGN-blob-from-another-pc'));
+    expect(await v.status('openai')).toEqual({ providerId: 'openai', configured: false, unreadable: true, handle: null });
+    const svc = new GenerationService({ vault: v, store: async () => store, approve: async () => true, fetch: (async () => { throw new Error('no network expected'); }) as unknown as typeof fetch });
+    await expect(svc.generate(job(), 'user')).rejects.toThrow(/can't be read on this PC/);
+    expect((await svc.providerStatus()).find((p) => p.id === 'openai')).toMatchObject({ configured: false, unreadable: true });
+  });
+});
+
 describe('SafeStorageVault', () => {
   it('stores keys encrypted, never in plain text, and only lends them to main-process code', async () => {
     await vault.save('openai', `  ${OPENAI_KEY}\n`);

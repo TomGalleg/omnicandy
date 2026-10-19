@@ -205,6 +205,8 @@ export interface ProviderStatusDto {
   label: string;
   billable: boolean;
   configured: boolean;
+  /** A saved key exists but cannot be decrypted on this PC (moved from another PC or user): add it again. */
+  unreadable?: boolean;
   savedAt: string | null;
   lastTest: { ok: boolean; at: string; message: string; models?: string[] } | null;
   /** False when Windows protected storage is unavailable (keys can't be saved). */

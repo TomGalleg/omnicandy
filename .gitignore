@@ -13,3 +13,6 @@ creative-studio/release/
 # C# add-in build output
 creative-studio/addins/**/bin/
 creative-studio/addins/**/obj/
+
+# A stray compiled test double once landed here under this name
+creative-studio/undefined

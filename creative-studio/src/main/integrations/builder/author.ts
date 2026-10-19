@@ -9,6 +9,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { DENIED_ATTRIBUTES, DENIED_BUILTINS, DENIED_MODULES, PYTHON_HOSTS, SAFE_STDLIB } from './hosts';
 import { BlueprintError, extractJson, parseBlueprint, parseBlueprintDetailed, parseResearchDetailed, type Blueprint, type ResearchData } from './blueprint';
+import { claudeEnv } from '../../claudeEnv';
 
 export interface AuthorDoc { name: string; text: string }
 
@@ -182,7 +183,7 @@ export function buildQueryOptions(model: string, cwd: string, system: string, op
     tools: opts.tools, allowedTools: opts.tools, permissionMode: 'dontAsk' as const, settingSources: [] as never[],
     maxTurns: opts.maxTurns, cwd, abortController: abort,
     ...(opts.schema ? { outputFormat: { type: 'json_schema' as const, schema: opts.schema } } : {}),
-    env: { ...process.env, CLAUDE_AGENT_SDK_CLIENT_APP: 'CreateCraft/0.1' } as Record<string, string>,
+    env: claudeEnv(process.env),
   };
 }
 

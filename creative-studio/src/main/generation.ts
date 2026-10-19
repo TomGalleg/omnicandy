@@ -71,9 +71,10 @@ export class GenerationService {
   get isBusy() { return this.busy; }
 
   async providerStatus() {
-    const out: Array<{ id: ProviderId; configured: boolean; meta: KeyMeta | null }> = [];
+    const out: Array<{ id: ProviderId; configured: boolean; unreadable: boolean; meta: KeyMeta | null }> = [];
     for (const p of ['openai', 'gemini', 'runway'] as const) {
-      out.push({ id: p, configured: (await this.d.vault.status(p)).configured, meta: await this.d.vault.meta(p) });
+      const s = await this.d.vault.status(p);
+      out.push({ id: p, configured: s.configured, unreadable: !!s.unreadable, meta: await this.d.vault.meta(p) });
     }
     return out;
   }
@@ -130,7 +131,11 @@ export class GenerationService {
     const job = normalizeJob(raw);
     const model = modelById(job.modelId)!;
     const provider = providerById(model.provider)!;
-    if (provider.billable && !(await this.d.vault.status(provider.id)).configured) throw new Error(`Add your ${provider.label} API key first (Generate → Providers).`);
+    if (provider.billable) {
+      const key = await this.d.vault.status(provider.id);
+      if (key.unreadable) throw new Error(`The saved ${provider.label} API key can't be read on this PC (it was saved by another PC or Windows user). Add it again (Settings → Integrations).`);
+      if (!key.configured) throw new Error(`Add your ${provider.label} API key first (Generate → Providers).`);
+    }
     const store = await this.d.store();
     const manifest = await store.loadManifest();
     const refs: RefImage[] = [];

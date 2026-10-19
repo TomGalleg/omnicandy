@@ -183,3 +183,13 @@ Implement the **first group (items 1-4)** now. Together they fix the one Confirm
 * H3: `ErrorBoundary` around the app in `main.tsx`, plus a `render-process-gone` reload in `index.ts`; test in `ErrorBoundary.test.ts` (`vitest.config.ts` now sets automatic JSX).
 * H4: `release/**` ignored by ESLint, `ignoreRestSiblings` enabled, unused `BLANK_FILES` import removed.
 * Results: `npm run check` passes (lint, typecheck, 713 tests passed, 65 skipped); `electron-vite build` passes; Linux (WSL copy of the working tree) 630 passed, 148 skipped, 0 failed.
+
+## 9. Second group: implemented 2026-10-19
+
+* M1: `IntegrationManager.connect` shares one in-flight connect per program (`manager.ts`); a second or third caller waits for the first. Test: `integrations/reliability.test.ts`.
+* M2: an unexpected adapter failure now closes the session with `forget: false`, so the program stays in the remembered list and reconnects at the next start; a deliberate disconnect still forgets it. Test: same file.
+* M3: on quit, `will-quit` is held (at most 4 s) while the adapters and the plugin bridge shut down (`shutdown.ts`, `ipc.ts`). Tests: `shutdown.test.ts`.
+* M7: the Claude panel shows "Claude Code is not installed" with a setup link and **Check again**; the command is looked up at the official location and then on PATH, every time, so installing it later is noticed (`claudePartner.ts`, `ClaudePanel.tsx`). Tests: `claudePartner.install.test.ts`.
+* M4: a saved key that cannot be decrypted on this PC is reported as `unreadable` (chip "Key can't be read", paste-again hint), and generation refuses it with a clear message instead of "Add your key" or a late failure (`credentialVault.ts`, `generation.ts`, `ProvidersCard.tsx`). Test: `generation.test.ts`.
+* M6: `ANTHROPIC_API_KEY` and `ANTHROPIC_AUTH_TOKEN` are removed from the environment of every Claude Code session (chat, planner, integration builder) and of `claude auth status/login`, so the sign-in is used. Intentional use of a key: start CreateCraft with `CREATECRAFT_USE_ANTHROPIC_API_KEY=1`. The panel states how Claude is billed. Tests: `claudeEnv.test.ts`.
+* L1: `creative-studio/undefined` was a compiled mock FreeCADCmd test double (strings: `MockFreeCADCmd`, "MOCK test double, not real FreeCAD"; source `fixtures/freecad-mock/FreeCADCmd.cs`) built with the output name `undefined`, added by accident in commit `3f97628`. It was not run, is referenced nowhere, and was removed; the path is now git-ignored.

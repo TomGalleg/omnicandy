@@ -29,13 +29,14 @@ export function ProvidersCard() {
         <div key={p.id} className="provider-row" aria-label={`${p.label} provider`}>
           <div className="provider-head">
             <strong>{p.label}</strong>
-            <span className={`chip ${p.configured ? (p.lastTest?.ok === false ? 'warn' : 'ok') : 'off'}`}><span className="dot" />{p.configured ? (p.lastTest?.ok === false ? 'Key saved · test failed' : 'Key saved') : 'Not set up'}</span>
+            <span className={`chip ${p.unreadable ? 'warn' : p.configured ? (p.lastTest?.ok === false ? 'warn' : 'ok') : 'off'}`}><span className="dot" />{p.unreadable ? "Key can't be read" : p.configured ? (p.lastTest?.ok === false ? 'Key saved · test failed' : 'Key saved') : 'Not set up'}</span>
           </div>
           {p.configured && p.lastTest && <div className={`asset-meta${p.lastTest.ok ? '' : ' err'}`}>{p.lastTest.message} <span className="asset-meta">({when(p.lastTest.at)})</span></div>}
-          {!p.configured && <div className="asset-meta">{p.keyHint}</div>}
+          {p.unreadable && <div className="asset-meta err">A key is saved here, but this PC can't decrypt it (it was saved by another PC or Windows user). Paste the key again to replace it.</div>}
+          {!p.configured && !p.unreadable && <div className="asset-meta">{p.keyHint}</div>}
           <div className="btn-row">
             <button className="btn small" onClick={() => void window.studio.generate.openKeyPage(p.id)}>Get a key ↗</button>
-            <button className="btn small primary" disabled={!!busy || !p.encryptionAvailable} onClick={() => void provAct(`paste-${p.id}`, () => window.studio.generate.pasteKey(p.id))}>{busy === `paste-${p.id}` ? 'Saving…' : p.configured ? 'Replace key (paste)' : 'Paste key'}</button>
+            <button className="btn small primary" disabled={!!busy || !p.encryptionAvailable} onClick={() => void provAct(`paste-${p.id}`, () => window.studio.generate.pasteKey(p.id))}>{busy === `paste-${p.id}` ? 'Saving…' : p.configured || p.unreadable ? 'Replace key (paste)' : 'Paste key'}</button>
             {p.configured && <button className="btn small" disabled={!!busy} onClick={() => void provAct(`test-${p.id}`, () => window.studio.generate.test(p.id))}>{busy === `test-${p.id}` ? 'Testing…' : 'Test connection'}</button>}
             {p.configured && <button className="btn small danger" disabled={!!busy} onClick={() => { if (window.confirm(`Remove the saved ${p.label} key from this PC?`)) void provAct(`rm-${p.id}`, () => window.studio.generate.removeKey(p.id)); }}>Remove</button>}
           </div>

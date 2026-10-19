@@ -207,7 +207,18 @@ export class IntegrationManager {
 
   // ---- lifecycle ----
 
-  async connect(key: string): Promise<ExternalAppInfo> {
+  /** Connects in progress, so a second request for the same program waits for the first instead of starting another adapter. */
+  private connecting = new Map<string, Promise<ExternalAppInfo>>();
+
+  connect(key: string): Promise<ExternalAppInfo> {
+    const running = this.connecting.get(key);
+    if (running) return running;
+    const p = this.connectNow(key).finally(() => { if (this.connecting.get(key) === p) this.connecting.delete(key); });
+    this.connecting.set(key, p);
+    return p;
+  }
+
+  private async connectNow(key: string): Promise<ExternalAppInfo> {
     const app = this.apps.get(key);
     if (!app) throw new Error('That application is not in the list. Rescan first.');
     const f = this.factoryFor(app);
@@ -418,7 +429,8 @@ export class IntegrationManager {
       }
       if (e instanceof AdapterError) return fail(e.kind, e.message, app.name);
       // An unexpected adapter failure ends the session so the next call starts clean.
-      await this.disconnect(key);
+      // The program stays in the remembered list, so it is connected again at the next start.
+      await this.disconnect(key, { forget: false });
       return fail('internal', `${f.manifest.name} adapter failed: ${errMsg(e)}`, app.name);
     } finally {
       clearTimeout(timer);

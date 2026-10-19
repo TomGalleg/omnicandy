@@ -50,8 +50,10 @@ export class SafeStorageVault implements CredentialVault {
   }
 
   async status(providerId: string): Promise<CredentialStatus> {
-    const configured = await fs.access(this.file(providerId, 'key')).then(() => true, () => false);
-    return { providerId, configured, handle: configured ? `vault:${providerId}` : null };
+    const present = await fs.access(this.file(providerId, 'key')).then(() => true, () => false);
+    // A key file that cannot be decrypted here (copied from another PC or user) is not a usable key.
+    const readable = present && (await fs.readFile(this.file(providerId, 'key')).then((b) => { this.crypto.decryptString(b); return true; }).catch(() => false));
+    return { providerId, configured: readable, ...(present && !readable ? { unreadable: true } : {}), handle: readable ? `vault:${providerId}` : null };
   }
 
   async meta(providerId: string): Promise<KeyMeta | null> {

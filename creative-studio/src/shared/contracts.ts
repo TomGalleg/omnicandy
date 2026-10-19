@@ -95,7 +95,10 @@ export interface WindowCapture {
 
 export interface CredentialStatus {
   providerId: string;
+  /** True only when a key is saved and can be decrypted on this PC. */
   configured: boolean;
+  /** A key file exists but cannot be decrypted here (copied from another PC or Windows user, or protected storage is gone): the key must be added again. */
+  unreadable?: boolean;
   /** Opaque, non-secret handle. The secret itself never leaves the vault. */
   handle: string | null;
 }

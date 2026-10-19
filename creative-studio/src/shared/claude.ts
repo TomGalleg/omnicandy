@@ -24,4 +24,8 @@ export interface ClaudeState {
   costUsd: number;
   /** Sign-in in progress: the browser opened; paste the code it shows. */
   login: { stage: 'idle' | 'waiting-code' | 'checking' | 'failed'; url: string | null; message: string | null };
+  /** Whether the Claude Code command was found on this PC; null until the first check. */
+  installed: boolean | null;
+  /** How Claude is paid for: the Claude sign-in (plan), or an API key the user chose on purpose (pay per use). keyIgnored = a key was found on the PC and not used. */
+  billing: { mode: 'sign-in' | 'api-key'; keyIgnored: boolean };
 }
