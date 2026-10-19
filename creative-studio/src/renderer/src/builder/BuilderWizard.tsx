@@ -53,6 +53,11 @@ export function BuilderWizard({ onClose, openProjectId }: Props) {
   const targetName = source === 'installed' ? picked?.name ?? '' : name.trim();
   const claudeReady = overview?.claude.ready ?? true;
 
+  const browseProgram = async () => {
+    setError(null);
+    try { const p = await window.studio.builder.pickProgram(); if (p) setPicked(p); } catch (e) { setError(errorText(e)); }
+  };
+
   const addDocs = async (kind: 'files' | 'folder') => {
     setError(null);
     try { const p = await window.studio.builder.pickDocs(kind); if (p.length) setDocs((d) => [...new Set([...d, ...p])].slice(0, 40)); } catch (e) { setError(errorText(e)); }
@@ -99,6 +104,16 @@ export function BuilderWizard({ onClose, openProjectId }: Props) {
                   <label className="menu-label" htmlFor="builder-search">Programs without an integration yet</label>
                   <input id="builder-search" type="search" className="text-input" placeholder="Search by name or publisher" value={query} onChange={(e) => setQuery(e.target.value)} />
                   {overview && overview.programs.length === 0 && <small className="ext-note">No other programs were found, or all of them already have an integration. You can type any program's name instead.</small>}
+                  <div className="ext-actions">
+                    <button className="btn small" onClick={() => void browseProgram()}>Not in the list? Browse for the program file…</button>
+                  </div>
+                  {picked?.key.startsWith('picked:') && (
+                    <div className="field">
+                      <label className="menu-label" htmlFor="builder-picked-name">Program name</label>
+                      <input id="builder-picked-name" className="text-input" value={picked.name} maxLength={80} onChange={(e) => setPicked({ ...picked, name: e.target.value })} />
+                      <small>Chosen file: {picked.exePath}</small>
+                    </div>
+                  )}
                   <ul className="status-list ext-list builder-programs" role="listbox" aria-label="Installed programs">
                     {filtered.map((p) => (
                       <li key={p.key} role="option" aria-selected={picked?.key === p.key}>

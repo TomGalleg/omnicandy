@@ -225,6 +225,7 @@ const api: StudioApi = {
     create: (req) => ipcRenderer.invoke(IPC.builderCreate, req),
     detail: (id) => ipcRenderer.invoke(IPC.builderDetail, id),
     pickDocs: (kind) => ipcRenderer.invoke(IPC.builderPickDocs, kind),
+    pickProgram: () => ipcRenderer.invoke(IPC.builderPickProgram),
     cancel: (id) => ipcRenderer.invoke(IPC.builderCancel, id),
     sync: (id) => ipcRenderer.invoke(IPC.builderSync, id),
     verifyLive: (id) => ipcRenderer.invoke(IPC.builderVerify, id),

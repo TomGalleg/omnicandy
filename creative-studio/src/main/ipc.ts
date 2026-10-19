@@ -59,7 +59,8 @@ import { BuilderService } from './integrations/builder/service';
 import { ClaudeAuthor, ScriptedAuthor } from './integrations/builder/author';
 import { parseBlueprint } from './integrations/builder/blueprint';
 import { readFileSync } from 'node:fs';
-import { BUILDER_CONSENT, type BuilderRequest } from '@shared/builder';
+import { BUILDER_CONSENT, type BuilderRequest, type InstalledProgram } from '@shared/builder';
+import { programFromPath } from './integrations/builder/programPath';
 import { bundledPaths, loadBundledPublishers } from './integrations/bundled';
 import { approvalDetail, INSTALL_CANCELLED_MESSAGE, integrationLines, type BrowseResult, type ConnectOutcome, type ConnectOverview, type ForgetResult } from '@shared/connect';
 import { ExternalState } from './integrations/state';
@@ -913,6 +914,12 @@ export function registerIpc(d: IpcDeps): void {
     if (r.canceled) return [];
     for (const p of r.filePaths) pickedDocs.add(p);
     return r.filePaths;
+  });
+  handle(IPC.builderPickProgram, none, async (): Promise<InstalledProgram | null> => {
+    const win = d.window();
+    const o: Electron.OpenDialogOptions = { title: 'Choose the program file', properties: ['openFile'], ...(process.platform === 'win32' ? { filters: [{ name: 'Programs', extensions: ['exe'] }] } : {}) };
+    const r = await (win ? dialog.showOpenDialog(win, o) : dialog.showOpenDialog(o));
+    return r.canceled || !r.filePaths[0] ? null : programFromPath(r.filePaths[0]);
   });
   handle(IPC.builderCancel, z.tuple([projectId]), async (id) => { builder.cancel(id); });
   handle(IPC.builderSync, z.tuple([projectId]), async (id) => { await packagesReady; return builder.syncInstalled(id); });

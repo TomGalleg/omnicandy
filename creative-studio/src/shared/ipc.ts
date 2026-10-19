@@ -1,6 +1,7 @@
 // The complete renderer ↔ main surface. Every channel here is validated in main (src/main/ipc.ts).
 
 import type { AppearanceSettings, AppProbeResult, Asset, ProjectManifest, ProjectSummary } from './types';
+import type { InstalledProgram } from './builder';
 import type { ClaudeAuthMode, ClaudeBilling, ClaudeState } from './claude';
 import type { ProjectPlan } from './projectPlan';
 
@@ -157,6 +158,7 @@ export const IPC = {
   builderCreate: 'builder:create',
   builderDetail: 'builder:detail',
   builderPickDocs: 'builder:pick-docs',
+  builderPickProgram: 'builder:pick-program',
   builderCancel: 'builder:cancel',
   builderSync: 'builder:sync',
   builderVerify: 'builder:verify',
@@ -508,6 +510,8 @@ export interface StudioApi {
     detail(id: string): Promise<BuilderProjectDetail>;
     /** Native picker for documentation or SDK files/folders. Returns the chosen paths (nothing is read until you create). */
     pickDocs(kind: 'files' | 'folder'): Promise<string[]>;
+    /** Opens a file picker so the user can point at a program installed somewhere unusual. Null when cancelled. */
+    pickProgram(): Promise<InstalledProgram | null>;
     cancel(id: string): Promise<void>;
     /** After an install through the normal review: reads the truth from the installer. */
     sync(id: string): Promise<BuilderProjectSummary>;
