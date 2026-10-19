@@ -1,3 +1,5 @@
+// NOTE (2026-10-19): written for the earlier shared-plan design (a plan picker, tabs Plan/Tasks/AI). The plain flow is now Idea/Plan/Work inside each
+// project and is covered by smoke-project-planner.mjs; this script has not been re-run against it and its first steps need updating before use.
 // Project Planner in the REAL CreateCraft window (scratch profile, never your own data), with a REAL planner MCP server process
 // acting as the executor, and the copy-and-paste path. Spends no Claude usage. Run after `npm run build:planner-mcp` (npm run smoke:planner does both).
 //
@@ -41,8 +43,7 @@ async function launch() {
   return { app, win };
 }
 const openPlanner = async (win) => {
-  await win.locator('nav.workspaces .more-menu > button').click();
-  await win.locator('.more-list [role=menuitem]', { hasText: 'Planner' }).click();
+  await win.locator('nav.workspaces > button', { hasText: 'Planner' }).click();
   await win.locator('.planner').waitFor();
 };
 const tab = (win, name) => win.getByRole('tab', { name, exact: false }).first().click();

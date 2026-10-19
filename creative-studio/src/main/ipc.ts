@@ -90,7 +90,8 @@ export function registerIpc(d: IpcDeps): void {
   const planner = createPlanner(path.dirname(d.secretsDir));
   const plannerSession = new McpSession(planner.service, ['read', 'propose', 'execute'], { kind: 'createcraft', name: 'CreateCraft Claude' });
   registerPlannerIpc({
-    service: planner.service, dir: planner.dir, isTrustedSender: d.isTrustedSender, window: d.window,
+    service: planner.service, store: planner.store, dir: planner.dir, isTrustedSender: d.isTrustedSender, window: d.window,
+    project: async () => { const store = await d.project(); const m = await store.loadManifest().catch(() => null); return m ? { id: m.id, name: m.name, root: store.root, store } : null; },
     // Lazy: the key vault and Claude are created further down. Keys are lent per call and never returned to the page.
     chat: { vault: { status: (id) => vault.status(id as never), withKey: (id, fn) => vault.withKey(id, fn) }, fetch: globalThis.fetch.bind(globalThis), claude: () => claude() },
   });

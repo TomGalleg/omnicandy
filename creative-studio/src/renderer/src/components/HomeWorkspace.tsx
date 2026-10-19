@@ -54,13 +54,20 @@ export function HomeWorkspace({ manifest, projectKey, onSwitched, onGoto, log }:
     log('project', `Opened "${p.name}".`);
     onSwitched(p.id);
   });
-  const createBlank = () => run(async () => {
+  /** `idea`: the Planner opens first, so the project starts as an idea. `create`: a blank workspace. Either way the Planner stays available. */
+  const createBlank = (start: 'idea' | 'create') => run(async () => {
     const name = newName.trim() || 'Untitled project';
     const key = await window.studio.projects.create(name, location ?? undefined, { kind: blankKind });
     await window.studio.projects.open(key);
     setNewName(''); setLocation(null); setBlank(false);
-    log('project', `Created and opened "${name}". Import files to get started.`);
     onSwitched(key);
+    if (start === 'idea') {
+      await window.studio.planner.startPlan({ title: name });
+      log('project', `Created and opened "${name}". Its Planner is open: start with your idea.`);
+      onGoto('planner');
+    } else {
+      log('project', `Created and opened "${name}". Import files to get started. Its Planner is always under More.`);
+    }
   });
 
   const openTemplates = () => {
@@ -152,7 +159,7 @@ Needs: ${t.needs}` : ''}`, objective: t.description };
           <button className="btn" disabled={busy}
             onClick={() => void run(async () => { const key = await window.studio.projects.openExisting(); if (key) { await window.studio.projects.open(key); onSwitched(key); } })}>Open existing project…</button>
           <button className="btn" disabled={busy} aria-pressed={showTemplates} onClick={openTemplates}>Templates</button>
-          <button className="btn" disabled={busy} title="Plan any project, hand work to Claude Code or Cowork, and review what comes back" onClick={() => onGoto('planner')}>Plan a project</button>
+          <button className="btn" disabled={busy} title="Open this project's Planner: develop the idea, break it into chunks and work through them" onClick={() => onGoto('planner')}>Plan this project</button>
           <button className="btn small ghost" type="button" disabled={busy} title={location ?? 'Uses the project folder from Settings'}
             onClick={() => void window.studio.projects.pickFolder().then((d) => { if (d) setLocation(d); })}>
             {folderLabel ? `Save in: ${folderLabel}` : 'Default folder · Choose…'}
@@ -171,12 +178,13 @@ Needs: ${t.needs}` : ''}`, objective: t.description };
         </div>
         <div className="asset-meta">Claude only plans first. Nothing is created, copied or paid until you approve{refs.length ? `; your ${refs.length} reference file${refs.length === 1 ? '' : 's'} stay where they are until then` : ''}.</div>
         {blank && (
-          <form className="new-project" onSubmit={(e) => { e.preventDefault(); void createBlank(); }}>
+          <form className="new-project" onSubmit={(e) => { e.preventDefault(); void createBlank('create'); }}>
             <input aria-label="New project name" placeholder="Project name" value={newName} maxLength={80} onChange={(e) => setNewName(e.target.value)} />
             <select aria-label="Project type" value={blankKind} onChange={(e) => setBlankKind(e.target.value as ProjectKind)}>
               {PROJECT_KINDS.map((k) => <option key={k.id} value={k.id}>{k.label}</option>)}
             </select>
-            <button className="btn primary" type="submit" disabled={busy}>Create project</button>
+            <button className="btn primary" type="button" disabled={busy} title="Opens the project's Planner so you can develop the idea with an AI" onClick={() => void createBlank('idea')}>Start with an idea</button>
+            <button className="btn" type="submit" disabled={busy} title="Opens a blank workspace">Start creating</button>
           </form>
         )}
         {error && <div className="wf-msg error" role="alert">{error}</div>}

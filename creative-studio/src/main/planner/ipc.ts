@@ -11,14 +11,16 @@ import type { PackageView, PlannerConnectionInfo } from '@shared/plannerApi';
 import { defaultPlannerDir } from './dir';
 import { chatSystemPrompt, CHAT_PROVIDER_IDS, MAX_CHAT_MESSAGE_CHARS, MAX_CHAT_MESSAGES } from '@shared/plannerChat';
 import { type ChatDeps, PlannerChat } from './chat';
+import { ProjectPlanner, type OpenProject } from './projectPlanner';
+import { RoutedPlannerStore } from './routedStore';
 import { PlannerService, userCtx } from './service';
-import { PlannerStore } from './store';
 
 export const PLANNER_CALL = 'planner:call';
 
-export function createPlanner(userDataDir: string): { service: PlannerService; store: PlannerStore; dir: string } {
+/** `dir` is the older, shared planner folder; each project keeps its own plan in its own folder (see routedStore.ts). */
+export function createPlanner(userDataDir: string): { service: PlannerService; store: RoutedPlannerStore; dir: string } {
   const dir = process.env.CREATECRAFT_PLANNER_DIR ? defaultPlannerDir() : path.join(userDataDir, 'planner');
-  const store = new PlannerStore(dir);
+  const store = new RoutedPlannerStore(dir);
   return { service: new PlannerService(store), store, dir };
 }
 
@@ -54,7 +56,7 @@ export function connectionInfo(dir: string): PlannerConnectionInfo {
   };
 }
 
-interface Deps { service: PlannerService; dir: string; isTrustedSender: (e: IpcMainInvokeEvent) => boolean; window: () => BrowserWindow | null; chat?: ChatDeps }
+interface Deps { service: PlannerService; store: RoutedPlannerStore; dir: string; project: () => Promise<OpenProject | null>; isTrustedSender: (e: IpcMainInvokeEvent) => boolean; window: () => BrowserWindow | null; chat?: ChatDeps }
 
 export function registerPlannerIpc(d: Deps): void {
   const u = userCtx();
@@ -68,7 +70,18 @@ export function registerPlannerIpc(d: Deps): void {
     projectId: z.string().max(60), provider, model: z.string().min(1).max(80),
     messages: z.array(z.object({ role: z.enum(['user', 'assistant']), text: z.string().min(1).max(MAX_CHAT_MESSAGE_CHARS) })).min(1).max(MAX_CHAT_MESSAGES),
   });
+  // Which project is open decides where plans are read from and written to (see projectPlanner.ts).
+  const pp = new ProjectPlanner(s, d.store, d.project);
+  const sync = () => pp.sync();
   const methods: Record<string, (...a: any[]) => unknown> = { // eslint-disable-line @typescript-eslint/no-explicit-any
+    forProject: () => pp.forProject(),
+    startPlan: (input?: { title?: string; goal?: string }) => pp.startPlan(input),
+    analyze: () => pp.analyze(),
+    applyFindings: (id: string, only: number[]) => pp.applyFindings(id, only),
+    touchTask: async (id: string, taskId: string, what: string) => { await sync(); await s.touchTask(u, id, taskId, String(what).slice(0, 80)); },
+    attachOlder: (id: string) => pp.attachOlder(id),
+    chatLoad: async (id: string) => { await sync(); return d.store.readChat(id); },
+    chatSave: async (id: string, chat: { messages: Array<{ role: 'user' | 'assistant'; text: string }>; provider?: string; model?: string }) => { await sync(); await d.store.writeChat(id, chat); },
     list: () => s.listProjects(u),
     get: (id: string) => s.getProject(u, id),
     activity: (id: string) => s.activity(u, id),
@@ -130,16 +143,20 @@ export function registerPlannerIpc(d: Deps): void {
     chatModels: (p: unknown) => needChat().models(provider.parse(p)),
     chat: async (req: unknown) => {
       const r = chatReq.parse(req);
-      return needChat().reply({ system: chatSystemPrompt(await s.getProject(u, r.projectId)), provider: r.provider, model: r.model, messages: r.messages });
+      const plan = await s.getProject(u, r.projectId);
+      // What the project already contains (names and counts only) is part of what the AI is told, when this is the open project's plan.
+      const context = await pp.chatContext(plan);
+      return needChat().reply({ system: chatSystemPrompt(plan, context), provider: r.provider, model: r.model, messages: r.messages });
     },
-    connectionInfo: () => connectionInfo(d.dir),
-    openFolder: async () => { await fs.mkdir(d.dir, { recursive: true }); await shell.openPath(d.dir); },
+    connectionInfo: async () => { await sync(); return connectionInfo(d.store.projectRoot ?? d.dir); },
+    openFolder: async () => { await sync(); const dir = d.store.projectRoot ?? d.dir; await fs.mkdir(dir, { recursive: true }); await shell.openPath(dir); },
   };
   ipcMain.handle(PLANNER_CALL, async (e, ...raw) => {
     if (!d.isTrustedSender(e)) throw new Error('Untrusted sender.');
     const [method, args] = z.tuple([z.string(), z.array(z.unknown())]).parse(raw);
     const fn = Object.prototype.hasOwnProperty.call(methods, method) ? methods[method] : undefined;
     if (!fn) throw new Error(`Unknown planner call ${method}.`);
+    await sync();
     return fn(...args);
   });
 }

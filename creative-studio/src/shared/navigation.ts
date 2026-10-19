@@ -23,6 +23,7 @@ export const ADVANCED_NAV: NavItem[] = [
 /** Simplified mode shows these directly; everything else sits under "More". */
 export const SIMPLE_NAV: NavItem[] = [
   { id: 'home', label: 'Project' },
+  { id: 'planner', label: 'Planner' },
   { id: 'edit', label: 'Create' },
   { id: 'generate', label: 'AI Generate' },
   { id: 'deliver', label: 'Deliver' },

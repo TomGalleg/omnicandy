@@ -15,6 +15,7 @@ import { buildContext, type Delivery } from '@shared/plannerContext';
 import { packageToMarkdown, reportInstructionsFor } from '@shared/plannerHandoff';
 import type { DestinationId } from '@shared/plannerSend';
 import { readZip, writeZip } from '../integrations/zip';
+import { RoutedPlannerStore } from './routedStore';
 import { newId, PlannerError, type LogFn, type PlannerStore } from './store';
 
 export interface Ctx { actor: Actor; scopes: ReadonlySet<Scope> }
@@ -80,12 +81,15 @@ export class PlannerService {
   }
 
   // ---------------------------------------------------------------- projects (the user edits these)
-  async createProject(c: Ctx, input: ProjectInput): Promise<PlannerProject> {
+  async createProject(c: Ctx, input: ProjectInput, opts: { ownerProjectId?: string } = {}): Promise<PlannerProject> {
     need(c, 'edit');
     const v = projectInputSchema.parse(input);
     const now = this.now().toISOString();
+    // The plan belongs to the project that is open (when the store knows one).
+    const owner = opts.ownerProjectId ?? (this.store instanceof RoutedPlannerStore ? this.store.ownerId : null);
     const p: PlannerProject = {
       id: `plan_${randomBytes(6).toString('hex')}`, title: v.title, goal: v.goal, description: v.description, scope: v.scope, constraints: v.constraints, deliverables: [...v.deliverables],
+      ...(owner ? { ownerProjectId: owner } : {}),
       kinds: [], revision: 1, planRevision: 1, metaRev: 1, createdAt: now, updatedAt: now, items: [], tasks: [], assets: [], milestones: [], proposals: [], packages: [], reports: [], planVersions: [], counters: { package: 0, activity: 0 },
     };
     const tpls = v.templates.map((t) => templateById(t)).filter((t): t is NonNullable<typeof t> => !!t);
@@ -119,6 +123,33 @@ export class PlannerService {
       log('project.updated', `Edited ${changed.join(', ')}`, { planAffecting: changed.some((k) => ['goal', 'description', 'scope', 'constraints', 'deliverables'].includes(k)) });
     });
     return this.store.read(id);
+  }
+
+  /** Remembers the chunk worked on last (not part of the accepted plan, so it never changes the plan version). */
+  private markActive(p: PlannerProject, t: PlanTask, what: string, at: string) {
+    p.lastActive = { taskId: t.id, title: t.title, at, what };
+  }
+
+  /** The owner opened or worked on a chunk. Recorded at most once every ten minutes for the same chunk and action. */
+  async touchTask(c: Ctx, id: string, taskId: string, what: string): Promise<void> {
+    need(c, 'edit');
+    await this.store.mutate(id, c.actor, (p, log, now) => {
+      const t = find(p.tasks, taskId, 'task');
+      const la = p.lastActive;
+      if (la && la.taskId === taskId && la.what === what && now.getTime() - Date.parse(la.at) < 10 * 60_000) return;
+      this.markActive(p, t, what.slice(0, 80), now.toISOString());
+      log('project.active', `Worked on "${t.title}" (${what.slice(0, 80)})`, { targetId: taskId });
+    });
+  }
+
+  /** A plan copied together with its project (Duplicate) or brought in from the shared folder now belongs to the project that holds it. */
+  async adoptPlan(c: Ctx, id: string, ownerProjectId: string): Promise<void> {
+    need(c, 'edit');
+    await this.store.mutate(id, c.actor, (p, log) => {
+      if (p.ownerProjectId === ownerProjectId) return;
+      p.ownerProjectId = ownerProjectId;
+      log('project.relinked', 'This plan now belongs to this project');
+    });
   }
 
   // ---------------------------------------------------------------- plan items
@@ -423,6 +454,7 @@ export class PlannerService {
     p.packages.push(pkg);
     for (const t of tasks) { t.packageId = pkg.id; t.claim = null; t.rev++; t.updatedAt = pkg.createdAt; }
     this.refreshPackages(p);
+    if (tasks[0]) this.markActive(p, tasks[0], 'sent to an AI', pkg.createdAt);
     log('package.created', `Prepared execution package ${number} (${tasks.length} task(s), plan revision ${p.planRevision}); nothing was started`, { targetId: pkg.id });
     return pkg;
   }
@@ -574,6 +606,7 @@ export class PlannerService {
       const t = find(p.tasks, req.taskId, 'task');
       if (t.packageId !== req.packageId) throw new PlannerError('stale', 'That task is not in that package any more (a newer package replaced it, or it was cancelled).');
       if (t.status === 'accepted' || t.status === 'cancelled') throw new PlannerError('blocked', `The task is already ${t.status}.`);
+      this.markActive(p, t, 'result brought back', now.toISOString());
       return this.applyReport(p, req.executor, now, { packageId: req.packageId, taskId: req.taskId, draft: req.report, source: 'pasted', uncertain: req.uncertain, rawText: req.rawText }, log);
     });
     if (!res.duplicate) await this.store.saveRaw(id, res.report.id, req.rawText);
@@ -587,8 +620,10 @@ export class PlannerService {
   async createFromHomePlan(c: Ctx, input: { title: string; goal: string; kind?: string; steps: string[]; questions: string[] }): Promise<{ project: PlannerProject; proposal: Proposal }> {
     need(c, 'edit'); need(c, 'review');
     const kinds: Record<string, string> = { image: 'art', design: 'art', video: 'media', audio: 'media' };
-    const created = await this.createProject(c, { title: input.title.slice(0, 120) || 'Untitled project', goal: input.goal.slice(0, 2000) });
-    if (input.kind && kinds[input.kind]) await this.updateProject(c, created.id, { kinds: [kinds[input.kind] as string] });
+    // A project has one plan: when it already has one, the steps are suggested to that plan instead of starting a second plan.
+    const existing = this.store instanceof RoutedPlannerStore ? await this.store.projectPlan() : null;
+    const created = existing ? await this.store.read(existing.id) : await this.createProject(c, { title: input.title.slice(0, 120) || 'Untitled project', goal: input.goal.slice(0, 2000) });
+    if (!existing && input.kind && kinds[input.kind]) await this.updateProject(c, created.id, { kinds: [kinds[input.kind] as string] });
     const clip = (t: string) => t.replace(/\s+/g, ' ').trim().slice(0, 200);
     const changes: ProposalChange[] = [
       ...input.steps.slice(0, 8).filter((t) => clip(t)).map((t) => changeSchema.parse({ op: 'add_task', title: clip(t) })),
@@ -646,6 +681,7 @@ export class PlannerService {
       }
       r.review = { at: now.toISOString(), note: note.slice(0, 2000) };
       t.rev++; t.updatedAt = now.toISOString();
+      this.markActive(p, t, decision === 'accept' ? 'approved' : decision === 'revise' ? 'asked for changes' : 'result rejected', now.toISOString());
       this.refreshPackages(p);
       log(`report.${r.status}`, `${decision === 'accept' ? 'Accepted' : decision === 'revise' ? 'Asked for a revision of' : 'Rejected'} the report on "${t.title}"${note ? `: ${note.slice(0, 80)}` : ''}`, { targetId: r.id });
       return { report: r, driftNow, uncovered };

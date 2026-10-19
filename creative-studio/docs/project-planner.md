@@ -10,9 +10,38 @@ Private and local: plans live in `<user data>/planner` (on Windows `%APPDATA%\cr
 marketplace or publishing feature, and nothing is uploaded. The one exception is the optional **Plan with an AI** chat (below): when you
 press a button in it, your message and a short summary of the plan go to the AI you chose.
 
+## Every project has its own Planner
+
+The Planner is part of each CreateCraft project (the **Planner** tab beside Project, Create, AI Generate and Deliver). It is optional, and always there.
+
+* **Where the plan lives.** In the project's own folder: `<project>/Planner/projects/<planId>/` (`project.json`, `history.jsonl`, `chat.json`, raw
+  pasted responses). The plan records the project's identity (`ownerProjectId` = the project's manifest id), so it travels with **Move** and
+  **Duplicate** (a duplicated project adopts its copy of the plan the first time the Planner opens) and reopening the project restores the plan,
+  the planning conversation (`chat.json`), the current chunk and progress. A project has **one** plan; the plan approved on Home is added to it as suggestions.
+* **Code.** The planner engine is unchanged. `RoutedPlannerStore` (`main/planner/routedStore.ts`) decides where a plan id is read or written: the open
+  project's folder first, then the shared folder; new plans go to the open project. `ProjectPlanner` (`projectPlanner.ts`) ties a plan to its project,
+  starts it and applies findings. The stand-alone connection (MCP) is pointed at the open project's `Planner` folder by the connection panel.
+* **Starting.** New project: **Start with an idea** (opens the Planner on the Idea step) or **Start creating** (a blank workspace). An existing project, or
+  one made before this existed, shows an entry screen on first open: **Start with an idea**, or **Look at what is already here**.
+* **Looking at what is already here** (`projectContext.ts`, local and read-only): counts of files, saved versions, exports, the workflow, the saved
+  brief and objective, and the saved Claude conversation. It proposes the goal and description from a saved brief (if there is one), the notable files as
+  **References**, and questions. Each suggestion has a tick box; nothing is added until the owner presses **Start my plan with these**. A file existing never
+  marks a chunk as done, no history is assumed, and the project's own files (including `project.json`) are not written. The planning AI is also told the
+  project's file names and counts (never paths), so it understands what exists.
+* **Flow.** Plain view: **Idea** (the brief, rules, decisions, questions, ideas, references, and the planning chat), **Plan** (the work in editable **chunks**
+  (tasks) and milestones), **Work** (one **current chunk**: send it to ChatGPT, Gemini, Claude or CreateCraft, bring the result back, review it, approve
+  it or ask for changes), **Files**. Everything copies out as text and comes back through Paste back or the review inbox.
+* **Pick up where I left off.** The chunk worked on last is recorded in the plan (`lastActive`: opened in Work, sent to an AI, a result brought back,
+  approved or sent back for changes) without changing the accepted plan. When the project is opened later the Planner shows **Pick up where I left off** with
+  that chunk and how long ago; **Pick up** goes straight to it in Work.
+* **Files stay the source of truth.** The Planner tracks goals, decisions, approvals and progress. It never moves, edits or deletes the project's assets. A chunk that
+  has been handed off cannot be deleted (only cancelled, history kept), and the owner approves every result; nothing is marked done by itself.
+* **Older plans.** Plans made before this (in the shared planner folder) keep working. **Older plans (n)** in the header lists them: **Just open it** (as they were) or,
+  on the entry screen, **Bring into this project** (a copy; the original is never changed, and the copy records `importedFrom`).
+
 ## Plain view and Advanced
 
-The Planner opens in the **plain view**: four areas, **Plan, Tasks, AI, Files**, and one **Needs you** list. The **Advanced** checkbox in the
+The Planner opens in the **plain view**: four areas, **Idea, Plan, Work, Files** (ids `plan`, `tasks`, `handoffs`, `assets`), and one **Needs you** list. The **Advanced** checkbox in the
 header (remembered per user, off by default) shows the original six tabs (Overview, Plan, Tasks, Assets, Handoffs, History), revision
 chips, packages, claims, plan versions and connection profiles. Both views read and write the same data through the same rules; only
 wording and layout differ.
@@ -103,7 +132,7 @@ ideas, no task details) and **can write nothing**.
   milestone with the same name is never duplicated); brief text parts replace the old text, while constraints and deliverables only gain new
   lines (nothing you wrote is removed). A brief suggestion is tied to the brief as it was when the answer arrived: if you edit the brief before
   accepting, it is refused instead of overwriting your edit. At most 80 suggestions are read from one answer.
-* The chat itself is kept on that screen only; it is not saved with the plan. Keys are lent from the encrypted store for one call, are never sent
+* The conversation is saved with the project's plan (`chat.json`, the newest 48 messages) and comes back when the project is opened. Keys are lent from the encrypted store for one call, are never sent
   to the page, and are removed from any error text.
 
 ### What the AI receives (context builder)

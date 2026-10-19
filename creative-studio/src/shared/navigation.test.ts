@@ -6,8 +6,8 @@ describe('navigation', () => {
   it('simplified plus More reaches every advanced workspace', () => {
     const ids = [...SIMPLE_NAV, ...MORE_NAV].map((n) => n.id).sort();
     expect(ids).toEqual(ADVANCED_NAV.map((n) => n.id).sort());
-    expect(SIMPLE_NAV.map((n) => n.label)).toEqual(['Project', 'Create', 'AI Generate', 'Deliver']);
-    expect(MORE_NAV.map((n) => n.id)).toEqual(['media', 'workflow', 'effects', 'color', 'audio', 'planner', 'software']);
+    expect(SIMPLE_NAV.map((n) => n.label)).toEqual(['Project', 'Planner', 'Create', 'AI Generate', 'Deliver']);
+    expect(MORE_NAV.map((n) => n.id)).toEqual(['media', 'workflow', 'effects', 'color', 'audio', 'software']);
   });
   it('detects specialist workspaces and parses the saved preference', () => {
     expect(isMoreWorkspace('audio')).toBe(true);

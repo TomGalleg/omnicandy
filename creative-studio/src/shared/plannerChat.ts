@@ -26,13 +26,14 @@ export function trimChat(messages: ChatMessage[]): ChatMessage[] {
 }
 
 /** What the AI is told. It sees the short plan summary (no file locations, no task details, no ideas) and may only suggest. */
-export function chatSystemPrompt(p: PlannerProject): string {
+export function chatSystemPrompt(p: PlannerProject, projectContext: string[] = []): string {
   return [
     'You are a friendly planning helper inside CreateCraft. You help the user plan a project of any kind (art, video, software, documents, research, engineering). Write in plain, short sentences for someone with no project-management experience.',
     'If the goal is unclear, ask at most three short questions first. Otherwise suggest a plan.',
     PLAN_FORMAT,
     'Keep everything outside those sections to a few sentences. Fill in as many sections as you honestly can; leave out a heading when you have nothing useful for it. Do not repeat things the project already has.',
     'Everything you write is only a suggestion. Never say the plan has changed or that work is done: the user decides what joins the plan and what is finished.',
+    ...(projectContext.length ? ['', 'What this CreateCraft project already contains:', ...projectContext] : []),
     '', 'The project so far:', ...planSummary(p),
   ].join('\n');
 }

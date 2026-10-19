@@ -1,6 +1,6 @@
 // The planning chat beside the project brief. One message goes to the chosen AI only when the owner presses a button (the offer after
 // saving the brief, or Send). The answer is text; anything it suggests is shown with tick boxes and joins the plan only when the owner
-// adds it, exactly like Paste back. The chat itself is kept on this screen only (it is not saved with the plan).
+// adds it, exactly like Paste back. The conversation is saved with the plan (inside the project), so it is here when the project is opened again.
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { describeChange, changesThePlan, parseSuggestionText } from '@shared/plannerPaste';
 import type { PlannerProject } from '@shared/planner';
@@ -61,6 +61,19 @@ export function PlannerChat({ p, reload, savedTick }: { p: PlannerProject; reloa
   const seen = useRef(savedTick);
 
   useEffect(() => { void api().chatProviders().then(setProviders).catch((e) => setModelErr(errMsg(e))); }, []);
+  // The conversation kept with this plan comes back when the plan is opened.
+  const [restored, setRestored] = useState<string | null>(null);
+  useEffect(() => {
+    let live = true;
+    void api().chatLoad(p.id).then((c) => {
+      if (!live) return;
+      setMessages(c.messages);
+      if (c.provider && ['claude', 'openai', 'gemini'].includes(c.provider)) setProvider(c.provider as ChatProviderId);
+      setRestored(c.messages.length && c.savedAt ? c.savedAt : null);
+    }).catch(() => {});
+    return () => { live = false; };
+  }, [p.id]);
+  const save = (next: ChatMessage[]) => { void api().chatSave(p.id, { messages: next, provider, model }).catch(() => {}); };
   const info = providers?.find((x) => x.id === provider);
   useEffect(() => {
     setModels(null); setModelErr(null);
@@ -86,7 +99,9 @@ export function PlannerChat({ p, reload, savedTick }: { p: PlannerProject; reloa
     setMessages(next); setInput(''); setOffer(false); setBusy(true); setError(null);
     try {
       const r = await api().chat({ projectId: p.id, provider, model, messages: next });
-      setMessages([...next, { role: 'assistant', text: r.text }]);
+      const all: ChatMessage[] = [...next, { role: 'assistant', text: r.text }];
+      setMessages(all);
+      save(all);
     } catch (e) { setError(errMsg(e)); } finally { setBusy(false); }
   };
 
@@ -114,6 +129,7 @@ export function PlannerChat({ p, reload, savedTick }: { p: PlannerProject; reloa
         <p className="pl-offer" role="status">Brief saved. <button className="btn small primary" disabled={busy} onClick={() => void ask(starterMessage(p))}>Ask {info.label} to help plan this</button> <button className="btn small ghost" onClick={() => setOffer(false)}>Not now</button></p>
       )}
       <div className="pl-chat" ref={listRef} aria-live="polite">
+        {restored && messages.length > 0 && <p className="pl-hint">Your earlier conversation is back (saved {new Date(restored).toLocaleString()}).</p>}
         {!messages.length && (
           <p className="pl-hint">
             Nothing sent yet. Press the button to have {info?.label ?? 'the AI'} fill in your plan, or type a message below.{' '}
@@ -135,7 +151,7 @@ export function PlannerChat({ p, reload, savedTick }: { p: PlannerProject; reloa
           onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void ask(input); } }} />
         <button className="btn primary pl-send" disabled={busy || !input.trim() || !model || !info?.ready} onClick={() => void ask(input)}>Send</button>
       </div>
-      {messages.length > 0 && <p className="pl-hint"><button className="btn small ghost" onClick={() => { setMessages([]); setError(null); }}>Clear this chat</button> The chat is not saved with your plan.</p>}
+      {messages.length > 0 && <p className="pl-hint"><button className="btn small ghost" onClick={() => { setMessages([]); setError(null); setRestored(null); save([]); }}>Clear this chat</button> The conversation is saved with this project's plan.</p>}
     </Section>
     </div>
   );

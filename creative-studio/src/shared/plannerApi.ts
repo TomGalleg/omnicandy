@@ -18,6 +18,21 @@ export interface PlannerConnectionInfo {
   http: string;
 }
 
+/** The plan of the project that is open, and the older plans (made before projects held their own plan) that could be brought in. */
+export interface ProjectPlannerState {
+  project: { id: string; name: string } | null;
+  plan: PlannerProject | null;
+  older: ProjectSummary[];
+}
+
+/** What a look at the project's own files found. Suggestions need the owner's tick; nothing is marked as done. */
+export interface ProjectFindingsDto {
+  projectName: string;
+  lines: string[];
+  changes: ProposalChange[];
+  stats: { files: number; originals: number; versions: number; exports: number; workflowSteps: number; chatMessages: number; lastActivity: string | null };
+}
+
 export interface ChatProviderInfo { id: 'claude' | 'openai' | 'gemini'; label: string; cost: string; ready: boolean; note: string }
 
 export interface PackageView { package: ExecPackage; markdown: string; json: string; drift: PlanDrift; tasks: Array<{ id: string; status: PlanTask['status']; claimedBy: string | null; blockedBy: string[] }> }
@@ -65,6 +80,21 @@ export interface PlannerApi {
   chatProviders(): Promise<ChatProviderInfo[]>;
   chatModels(provider: 'claude' | 'openai' | 'gemini'): Promise<string[]>;
   chat(req: { projectId: string; provider: 'claude' | 'openai' | 'gemini'; model: string; messages: Array<{ role: 'user' | 'assistant'; text: string }> }): Promise<{ text: string }>;
+  /** The conversation kept with the plan (restored when the project is opened again). */
+  chatLoad(id: string): Promise<{ messages: Array<{ role: 'user' | 'assistant'; text: string }>; provider?: string; model?: string; savedAt?: string }>;
+  chatSave(id: string, chat: { messages: Array<{ role: 'user' | 'assistant'; text: string }>; provider?: string; model?: string }): Promise<void>;
+  /** This project's plan (null when it has none yet) and the older plans that could be brought into it. */
+  forProject(): Promise<ProjectPlannerState>;
+  /** Starts this project's plan (a project has one). Title defaults to the project's name. */
+  startPlan(input?: { title?: string; goal?: string }): Promise<PlannerProject>;
+  /** Looks at the project's own files, exports, workflow and saved Claude conversation (read-only). */
+  analyze(): Promise<ProjectFindingsDto>;
+  /** Adds the ticked findings to the plan (indexes into analyze().changes). The scan is done again here; nothing from the page is trusted. */
+  applyFindings(id: string, only: number[]): Promise<void>;
+  /** The owner opened or worked on a chunk (for "Pick up where I left off"). */
+  touchTask(id: string, taskId: string, what: string): Promise<void>;
+  /** Copies an older plan into this project. The original is left as it was. */
+  attachOlder(id: string): Promise<PlannerProject>;
   connectionInfo(): Promise<PlannerConnectionInfo>;
   openFolder(): Promise<void>;
 }

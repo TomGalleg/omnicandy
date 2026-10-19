@@ -32,6 +32,7 @@
     "smoke:docks": "electron-vite build && node scripts/smoke-docks.mjs",
     "smoke:docs": "electron-vite build && node scripts/smoke-docs.mjs",
     "smoke:reopen": "electron-vite build && node scripts/smoke-reopen.mjs",
+    "smoke:project-planner": "electron-vite build && node scripts/smoke-project-planner.mjs",
     "smoke:planner": "electron-vite build && node scripts/build-planner-mcp.mjs && node scripts/smoke-planner.mjs",
     "smoke:external": "electron-vite build && node scripts/smoke-external.mjs",
     "smoke:claude-external": "electron-vite build && node scripts/smoke-claude-external.mjs"

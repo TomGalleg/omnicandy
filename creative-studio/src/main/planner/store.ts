@@ -135,6 +135,19 @@ export class PlannerStore {
     return all.slice(-limit);
   }
 
+  /** The planning conversation, kept with the plan so it is there when the project is opened again. */
+  async readChat(id: string): Promise<{ messages: Array<{ role: 'user' | 'assistant'; text: string }>; provider?: string; model?: string; savedAt?: string }> {
+    try {
+      const j = JSON.parse(await fs.readFile(path.join(this.dir(id), 'chat.json'), 'utf8')) as { messages?: unknown; provider?: unknown; model?: unknown; savedAt?: unknown };
+      const messages = Array.isArray(j.messages) ? j.messages.filter((m): m is { role: 'user' | 'assistant'; text: string } => !!m && typeof m === 'object' && ((m as { role?: unknown }).role === 'user' || (m as { role?: unknown }).role === 'assistant') && typeof (m as { text?: unknown }).text === 'string').slice(-48) : [];
+      return { messages, ...(typeof j.provider === 'string' ? { provider: j.provider } : {}), ...(typeof j.model === 'string' ? { model: j.model } : {}), ...(typeof j.savedAt === 'string' ? { savedAt: j.savedAt } : {}) };
+    } catch { return { messages: [] }; }
+  }
+  async writeChat(id: string, chat: { messages: Array<{ role: 'user' | 'assistant'; text: string }>; provider?: string; model?: string }): Promise<void> {
+    await fs.mkdir(this.dir(id), { recursive: true });
+    await writeJsonAtomic(path.join(this.dir(id), 'chat.json'), { messages: chat.messages.slice(-48).map((m) => ({ role: m.role, text: m.text.slice(0, 6000) })), provider: chat.provider, model: chat.model, savedAt: this.now().toISOString() });
+  }
+
   async saveRaw(id: string, reportId: string, text: string) {
     const dir = path.join(this.dir(id), 'raw');
     await fs.mkdir(dir, { recursive: true });

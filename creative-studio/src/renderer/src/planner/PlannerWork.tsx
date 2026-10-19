@@ -81,7 +81,7 @@ function WorkflowStatus({ appId, projectKey }: { appId: string; projectKey?: str
   return <p className="pl-hint">{here ? `Workflow: ${line ?? 'checking…'}` : 'Workflow in another CreateCraft project. Open that project to see its progress.'}</p>;
 }
 
-function TaskRow({ t, p, reload, onSend, projectKey, projectName, inColumn }: { t: PlanTask; p: PlannerProject; reload: () => Promise<void>; onSend?: () => void; projectKey?: string | null; projectName?: string; inColumn?: boolean }) {
+export function TaskRow({ t, p, reload, onSend, onWork, projectKey, projectName, inColumn, current }: { t: PlanTask; p: PlannerProject; reload: () => Promise<void>; onSend?: () => void; onWork?: () => void; projectKey?: string | null; projectName?: string; inColumn?: boolean; current?: boolean }) {
   const plain = useContext(PlainWords);
   const [edit, setEdit] = useState(false);
   const a = useAction(reload);
@@ -96,7 +96,7 @@ function TaskRow({ t, p, reload, onSend, projectKey, projectName, inColumn }: { 
   if (edit) return <li className="pl-task"><TaskForm p={p} reload={reload} task={t} onDone={() => setEdit(false)} projectKey={projectKey} projectName={projectName} /></li>;
   const idle = t.status !== 'accepted' && t.status !== 'cancelled' && t.status !== 'reported';
   return (
-    <li className="pl-task">
+    <li className={`pl-task${current ? ' current' : ''}`}>
       <div><strong>{t.title}</strong> <StatusChip status={t.status} task={t} p={p} inColumn={plain && inColumn} /> {(!plain || t.priority !== 'normal') && <span className="chip">{t.priority}</span>}{t.appRef && <span className="chip">{t.appRef.kind === 'native' ? EDITOR_APPS[t.appRef.id as keyof typeof EDITOR_APPS]?.name ?? t.appRef.id : t.appRef.kind === 'workflow' ? 'Workflow' : t.appRef.id}</span>}</div>
       {t.appRef?.kind === 'workflow' && <WorkflowStatus appId={t.appRef.id} projectKey={projectKey} />}
       {t.description && <p>{t.description}</p>}
@@ -106,6 +106,7 @@ function TaskRow({ t, p, reload, onSend, projectKey, projectName, inColumn }: { 
       {t.completionChecks.length > 0 && <ul className="pl-checks">{t.completionChecks.map((c) => <li key={c.id}>{!plain && <span className="chip">{c.kind}</span>} {c.text}</li>)}</ul>}
       <div className="pl-actions">
         <button className="btn small" onClick={() => setEdit(true)}>Edit</button>
+        {plain && onWork && t.status !== 'accepted' && t.status !== 'cancelled' && <button className="btn small primary" title="Open this chunk in Work" onClick={onWork}>Work on this</button>}
         {t.status === 'reported' && !plain && <span className="pl-hint">Review the report in Handoffs.</span>}
         {plain && onSend && (t.status === 'todo' || t.status === 'revision') && !live && <button className="btn small primary" onClick={onSend}>{pkg?.state === 'open' ? 'Send again' : 'Send to AI'}</button>}
         {live && <button className="btn small" disabled={a.busy} title={plain ? 'Stop waiting for the AI and put the task back on your list' : undefined} onClick={() => void a.run(() => api().releaseClaim(p.id, t.id))}>{plain ? 'Take back' : 'Release claim'}</button>}
@@ -124,7 +125,7 @@ function TaskRow({ t, p, reload, onSend, projectKey, projectName, inColumn }: { 
   );
 }
 
-export function TasksTab({ p, reload, go, setSendSel, projectKey, projectName }: TabProps) {
+export function TasksTab({ p, reload, go, setSendSel, projectKey, projectName, setFocusTaskId }: TabProps) {
   const plain = useContext(PlainWords);
   const [view, setView] = useState<'list' | 'board'>('list');
   const [showRemoved, setShowRemoved] = useState(false);
@@ -133,11 +134,11 @@ export function TasksTab({ p, reload, go, setSendSel, projectKey, projectName }:
   const shown = plain && !showRemoved ? p.tasks.filter((t) => t.status !== 'cancelled') : p.tasks;
   return (
     <div className="pl-stack">
-      <Section title="Tasks" actions={<div className="pl-actions"><button className="btn small" aria-pressed={view === 'list'} onClick={() => setView('list')}>List</button><button className="btn small" aria-pressed={view === 'board'} onClick={() => setView('board')}>Board</button></div>}
-        hint={plain ? 'A task is Done when you say so. When an AI finishes, it moves to Needs Review and waits for you.' : "A task is done when you accept it. An executor's report only says the work is finished."}>
-        {!p.tasks.length && <p className="pl-hint">No tasks yet.</p>}
-        {plain && p.tasks.some((t) => t.status === 'cancelled') && <label className="pl-check"><input type="checkbox" checked={showRemoved} onChange={(e) => setShowRemoved(e.target.checked)} />Show removed tasks</label>}
-        {view === 'list' ? <ul className="pl-tasks">{shown.map((t) => <TaskRow key={`${t.id}:${t.rev}`} t={t} p={p} reload={reload} projectKey={projectKey} projectName={projectName} onSend={() => { setSendSel?.([t.id]); go('handoffs'); }} />)}</ul> : plain ? (
+      <Section title={plain ? 'Chunks' : 'Tasks'} actions={<div className="pl-actions"><button className="btn small" aria-pressed={view === 'list'} onClick={() => setView('list')}>List</button><button className="btn small" aria-pressed={view === 'board'} onClick={() => setView('board')}>Board</button></div>}
+        hint={plain ? 'Break the idea into chunks small enough to finish one at a time, and edit them whenever you like. A chunk is Done when you say so. When an AI finishes, it moves to Needs Review and waits for you.' : "A task is done when you accept it. An executor's report only says the work is finished."}>
+        {!p.tasks.length && <p className="pl-hint">{plain ? 'No chunks yet. Add one below, or ask the AI to suggest them on the Idea tab.' : 'No tasks yet.'}</p>}
+        {plain && p.tasks.some((t) => t.status === 'cancelled') && <label className="pl-check"><input type="checkbox" checked={showRemoved} onChange={(e) => setShowRemoved(e.target.checked)} />Show removed chunks</label>}
+        {view === 'list' ? <ul className="pl-tasks">{shown.map((t) => <TaskRow key={`${t.id}:${t.rev}`} t={t} p={p} reload={reload} projectKey={projectKey} projectName={projectName} onSend={() => { setSendSel?.([t.id]); setFocusTaskId?.(t.id); go('handoffs'); }} onWork={() => { setSendSel?.([t.id]); setFocusTaskId?.(t.id); go('handoffs'); }} />)}</ul> : plain ? (
           <div className="pl-board">
             {SIMPLE_STATUSES.map((label) => (
               <div key={label} className="pl-col"><h4>{label}</h4><ul className="pl-tasks">{shown.filter((t) => displayStatus(t, p, now).label === label && !displayStatus(t, p, now).removed).map((t) => <TaskRow key={`${t.id}:${t.rev}`} inColumn t={t} p={p} reload={reload} onSend={() => { setSendSel?.([t.id]); go('handoffs'); }} />)}</ul></div>
@@ -151,7 +152,7 @@ export function TasksTab({ p, reload, go, setSendSel, projectKey, projectName }:
           </div>
         )}
       </Section>
-      <Section title="Add a task"><TaskForm p={p} reload={reload} projectKey={projectKey} projectName={projectName} /></Section>
+      <Section title={plain ? 'Add a chunk' : 'Add a task'}><TaskForm p={p} reload={reload} projectKey={projectKey} projectName={projectName} /></Section>
     </div>
   );
 }
@@ -448,7 +449,37 @@ function ReviewInbox({ p, reload }: { p: PlannerProject; reload: () => Promise<v
   );
 }
 
-export function HandoffsTab({ p, reload, sendSel, setSendSel }: TabProps) {
+/**
+ * Work, one chunk at a time: the chunk being worked on (the one picked up, or the next one ready), with everything to do with it.
+ * Nothing here changes a file in the project: results come back as text and wait for the owner's review.
+ */
+export function CurrentChunk({ p, reload, go, sendSel, setSendSel, focusTaskId, setFocusTaskId, projectKey, projectName }: TabProps) {
+  const open = p.tasks.filter((t) => t.status !== 'accepted' && t.status !== 'cancelled');
+  const ready = open.find((t) => ['todo', 'revision'].includes(t.status) && !unmetDependencies(p, t).length);
+  const t = open.find((x) => x.id === focusTaskId) ?? open.find((x) => x.id === p.lastActive?.taskId) ?? ready ?? open[0];
+  if (!t) {
+    return (
+      <Section title="Current chunk" hint="Work on one chunk at a time.">
+        <p className="pl-hint">{p.tasks.length ? 'Every chunk is done. Add another one in Plan, or you are finished.' : 'There are no chunks yet. Break your idea into chunks in Plan first.'}</p>
+        <button className="btn small" onClick={() => go('tasks')}>Go to Plan</button>
+      </Section>
+    );
+  }
+  const others = open.filter((x) => x.id !== t.id);
+  return (
+    <Section title="Current chunk" hint="Do one chunk at a time: send it to an AI (or to CreateCraft), bring the result back, review it, then approve it or ask for changes.">
+      <ul className="pl-tasks"><TaskRow key={`${t.id}:${t.rev}`} current t={t} p={p} reload={reload} projectKey={projectKey} projectName={projectName} onSend={() => { setSendSel?.([t.id]); setFocusTaskId?.(t.id); }} /></ul>
+      {sendSel && sendSel.length === 0 && ['todo', 'revision'].includes(t.status) && <p className="pl-hint">Press <strong>Send to AI</strong> on this chunk to get the instructions to copy.</p>}
+      {others.length > 0 && (
+        <details><summary>Switch to another chunk ({others.length})</summary>
+          <ul>{others.map((o) => <li key={o.id}>{o.title} <button className="btn small" onClick={() => { setSendSel?.([o.id]); setFocusTaskId?.(o.id); }}>Work on this</button></li>)}</ul>
+        </details>
+      )}
+    </Section>
+  );
+}
+
+export function HandoffsTab({ p, reload, sendSel, setSendSel, go, focusTaskId, setFocusTaskId, projectKey, projectName }: TabProps) {
   const ready = p.tasks.filter((t) => ['todo', 'revision'].includes(t.status) && !isClaimLive(t.claim, new Date()));
   const [sel, setSel] = useState<string[]>([]);
   const [objective, setObjective] = useState('');
@@ -459,6 +490,7 @@ export function HandoffsTab({ p, reload, sendSel, setSendSel }: TabProps) {
   if (plain) {
     return (
       <div className="pl-stack">
+        <CurrentChunk p={p} reload={reload} go={go} sendSel={sendSel} setSendSel={setSendSel} focusTaskId={focusTaskId} setFocusTaskId={setFocusTaskId} projectKey={projectKey} projectName={projectName} />
         <ReviewInbox p={p} reload={reload} />
         <SendPanel p={p} reload={reload} sel={sendSel ?? []} setSel={setSendSel ?? (() => {})} />
         <AskPanel p={p} />

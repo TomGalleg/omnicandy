@@ -232,7 +232,16 @@ export interface PlannerProject {
   reports: PlanReport[];
   planVersions: PlanVersion[];
   counters: { package: number; activity: number };
+  /** The CreateCraft project this plan belongs to (its manifest id). Plans made before projects owned their plan have none. */
+  ownerProjectId?: string;
+  /** The older plan this one was copied from when it was brought into a project (the original is left as it was). */
+  importedFrom?: string;
+  /** The chunk worked on last, so coming back after weeks can start there. Never part of the accepted plan. */
+  lastActive?: LastActive;
 }
+
+/** What "Pick up where I left off" shows. */
+export interface LastActive { taskId: string; title: string; at: string; what: string }
 
 export interface ActivityEntry {
   seq: number;
@@ -248,6 +257,10 @@ export interface ActivityEntry {
 export interface ProjectSummary {
   id: string; title: string; goal: string; kinds: string[]; revision: number; updatedAt: string;
   tasks: number; accepted: number; pendingProposals: number; awaitingReview: number; blocked: number;
+  ownerProjectId?: string;
+  /** True for the plan of the project that is open now. Older plans in the shared planner folder are false until brought in. */
+  inThisProject?: boolean;
+  lastActive?: LastActive;
 }
 
 // ---- pure rules ---------------------------------------------------------------------------------------------------
@@ -308,6 +321,7 @@ export function summarize(p: PlannerProject): ProjectSummary {
   return {
     id: p.id, title: p.title, goal: p.goal, kinds: p.kinds, revision: p.revision, updatedAt: p.updatedAt, tasks: pr.total, accepted: pr.accepted,
     pendingProposals: p.proposals.filter((x) => x.status === 'pending').length, awaitingReview: p.reports.filter((r) => r.status === 'submitted').length, blocked: pr.blocked,
+    ...(p.ownerProjectId ? { ownerProjectId: p.ownerProjectId } : {}), ...(p.lastActive ? { lastActive: p.lastActive } : {}),
   };
 }
 
