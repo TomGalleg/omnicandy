@@ -595,7 +595,7 @@ async function vi_waitFor(fn: () => boolean, ms = 5000): Promise<void> {
 
 // ---------------------------------------------------------------------------------------------
 describe('the sample adapter (fixtures/sample-adapter)', () => {
-  it('installs with no change to CreateCraft code and behaves as documented', async () => {
+  it('installs with no change to OmniCandi code and behaves as documented', async () => {
     const r = await rig();
     const dir = path.resolve(__dirname, '../../../fixtures/sample-adapter');
     const packed = packAdapter({ dir, privateKeyPem: KEY_A });

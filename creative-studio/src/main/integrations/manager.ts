@@ -1,6 +1,6 @@
 // IntegrationManager: the one engine for external applications. Discovery, adapter lifecycle,
 // permissions, parameter validation, timeouts, cancellation, output verification and an audit log.
-// Adapters can fail or hang without taking CreateCraft down: every adapter call is guarded.
+// Adapters can fail or hang without taking OmniCandi down: every adapter call is guarded.
 
 import { randomUUID } from 'node:crypto';
 import fs from 'node:fs/promises';
@@ -277,7 +277,7 @@ export class IntegrationManager {
     } catch { /* not remembered */ }
   }
 
-  /** Connects again every application that was connected when CreateCraft last ran. Failures are quiet: the app just shows as available. */
+  /** Connects again every application that was connected when OmniCandi last ran. Failures are quiet: the app just shows as available. */
   async autoConnect(): Promise<void> {
     if (!this.d.connected) return;
     const keys = await this.d.connected.load().catch(() => [] as string[]);
@@ -286,7 +286,7 @@ export class IntegrationManager {
     for (const key of keys) if (this.apps.has(key) && !this.sessions.has(key)) await this.connect(key).catch(() => undefined);
   }
 
-  /** `forget: false` closes the session but keeps the app in the remembered list (CreateCraft quitting, repairs). */
+  /** `forget: false` closes the session but keeps the app in the remembered list (OmniCandi quitting, repairs). */
   async disconnect(key: string, opts: { forget?: boolean } = {}): Promise<ExternalAppInfo | null> {
     if (opts.forget !== false) await this.remember(key, false);
     const s = this.sessions.get(key);

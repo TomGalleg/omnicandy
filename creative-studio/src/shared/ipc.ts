@@ -343,7 +343,7 @@ export interface StudioApi {
     refresh(): Promise<LiveSnapshot>;
     /** Opens the app in its own window, with the controls docked beside it. */
     popOut(): Promise<LiveSnapshot>;
-    /** Puts the app back inside CreateCraft's Edit area. */
+    /** Puts the app back inside OmniCandi's Edit area. */
     dock(): Promise<LiveSnapshot>;
     /** Where the Edit area's app viewport is (CSS px relative to the window content); null/invisible hides the app. */
     setViewport(v: { x: number; y: number; width: number; height: number; visible: boolean } | null): Promise<void>;
@@ -466,7 +466,7 @@ export interface StudioApi {
     scan(): Promise<ExternalScan>;
     /** Last scan result without scanning again. */
     list(): Promise<ExternalAppInfo[]>;
-    /** The third-party program whose window is open for Claude (docked into CreateCraft's Software tab), if any. */
+    /** The third-party program whose window is open for Claude (docked into OmniCandi's Software tab), if any. */
     liveState(): Promise<ExternalLiveState>;
     /** Brings the open program's window back into the Software tab (after another app was shown). */
     liveShow(): Promise<void>;
@@ -505,7 +505,7 @@ export interface StudioApi {
     /** Remembers that the guided setup was completed once. */
     done(): Promise<void>;
   };
-  /** AI Adapter Builder: private, local integrations for programs CreateCraft has no connector for. */
+  /** AI Adapter Builder: private, local integrations for programs OmniCandi has no connector for. */
   builder: {
     overview(): Promise<BuilderOverview>;
     /** Starts research and building. Returns at once; follow it with onProgress and detail(). */

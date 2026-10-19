@@ -1,7 +1,7 @@
-// End-to-end smoke of the Edit tab with the REAL apps shown inside CreateCraft:
+// End-to-end smoke of the Edit tab with the REAL apps shown inside OmniCandi:
 // PhotoCraft (PNG), VectorCraft (SVG) and SoundCraft (WAV) open automatically in the Edit area,
 // quick edits apply live, Undo, Save as new version, "Open in its own window" / "Put back", and the
-// app follows CreateCraft when it moves. Opens real app windows (closed afterwards).
+// app follows OmniCandi when it moves. Opens real app windows (closed afterwards).
 // Run after `npm run build`: node scripts/smoke-live.mjs
 import { execFileSync, spawn } from 'node:child_process';
 import fs from 'node:fs';
@@ -97,11 +97,11 @@ try {
   await win.getByText('Undone.').first().waitFor({ timeout: 15000 });
   check('Undo works', true);
 
-  // Follow a move of the CreateCraft window.
+  // Follow a move of the OmniCandi window.
   await app.evaluate(({ BrowserWindow }) => { const w = BrowserWindow.getAllWindows().find((x) => !x.webContents.getURL().endsWith('#panel')); const b = w.getBounds(); w.setBounds({ ...b, x: b.x + 60, y: b.y + 30 }); });
   await sleep(1500);
   const moved = pcProbe.state();
-  check('app follows when CreateCraft moves', moved?.found && near(await toDip(moved), await stageRect()), JSON.stringify(await toDip(moved)));
+  check('app follows when OmniCandi moves', moved?.found && near(await toDip(moved), await stageRect()), JSON.stringify(await toDip(moved)));
 
   // Pop out and back.
   await win.getByRole('button', { name: 'Open in its own window' }).click();
@@ -110,9 +110,9 @@ try {
   await sleep(1000);
   const out = pcProbe.state();
   check('"Open in its own window" pops PhotoCraft out with the controls beside it', !!panel && out?.visible && !near(await toDip(out), await stageRect(), 20), JSON.stringify(await toDip(out)));
-  await win.getByRole('button', { name: 'Put back in CreateCraft' }).click();
+  await win.getByRole('button', { name: 'Put back in OmniCandi' }).click();
   await sleep(1500);
-  check('"Put back in CreateCraft" returns it to the Edit area', near(await toDip(pcProbe.state()), await stageRect()) && !app.windows().some((p) => p.url().endsWith('#panel')));
+  check('"Put back in OmniCandi" returns it to the Edit area', near(await toDip(pcProbe.state()), await stageRect()) && !app.windows().some((p) => p.url().endsWith('#panel')));
 
   await win.evaluate(() => window.studio.live.quickEdit('blackWhite', {}));
   let before = (await win.evaluate(() => window.studio.loadProject())).assets.length;

@@ -1,5 +1,5 @@
 // Unpacking a downloaded .zip (the local video engine). Windows 10+ ships bsdtar, which reads zip. Linux's default `tar` is GNU tar
-// and does not, so: `unzip` if installed (keeps file modes), else Python's zipfile, else CreateCraft's own zip reader (no external
+// and does not, so: `unzip` if installed (keeps file modes), else Python's zipfile, else OmniCandi's own zip reader (no external
 // program needed). Only run after the download's size and SHA-256 were verified.
 
 import { execFile } from 'node:child_process';

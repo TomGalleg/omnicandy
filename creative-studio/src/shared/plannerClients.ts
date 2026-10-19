@@ -1,4 +1,4 @@
-// What CreateCraft can honestly say about each AI client and the planner connection. Three words only:
+// What OmniCandi can honestly say about each AI client and the planner connection. Three words only:
 //   verified     - a real client of that kind was connected to the real planner server in this repository's tests
 //   untested     - implemented from the client's documentation, never run against the real client
 //   unavailable  - the client cannot reach this kind of connection (stated by its documentation)
@@ -12,12 +12,12 @@ export interface PlannerClient {
 export const PLANNER_CLIENTS: PlannerClient[] = [
   {
     id: 'claude-code', name: 'Claude Code', status: 'verified', how: 'Local stdio server (claude mcp add ... -- <command>). Also accepts HTTP servers with a bearer header.',
-    evidence: 'Claude Code\'s own "claude mcp list" health check started the planner server and reported it Connected (isolated config, no model call). Tool listing and a full claim/report/review round trip are covered by the MCP tests with CreateCraft\'s MCP client.',
+    evidence: 'Claude Code\'s own "claude mcp list" health check started the planner server and reported it Connected (isolated config, no model call). Tool listing and a full claim/report/review round trip are covered by the MCP tests with OmniCandi\'s MCP client.',
     limits: 'A model-driven session (Claude Code deciding to call the tools) was not run: it would be a paid call.', source: 'code.claude.com/docs/en/mcp (official)',
   },
   {
     id: 'cowork', name: 'Claude Cowork', status: 'unavailable', how: 'Cowork uses remote connectors hosted by Anthropic; local stdio servers configured in Claude Desktop apply to Claude Desktop only.',
-    evidence: 'Not run.', limits: 'The local planner server is not reachable from Cowork. Use copy and paste (Markdown package out, JSON or Markdown report in). A remote HTTPS connector would be your own hosting choice and is not set up by CreateCraft.',
+    evidence: 'Not run.', limits: 'The local planner server is not reachable from Cowork. Use copy and paste (Markdown package out, JSON or Markdown report in). A remote HTTPS connector would be your own hosting choice and is not set up by OmniCandi.',
     source: 'Third-party setup guides (Boomi, Drio) found 2026-10-16; not confirmed in Anthropic\'s own pages',
   },
   {
@@ -34,7 +34,7 @@ export const PLANNER_CLIENTS: PlannerClient[] = [
     evidence: 'Not run.', limits: 'A local server cannot be added. Use copy and paste.', source: 'Third-party summaries only; Google\'s own documentation was not confirmed',
   },
   {
-    id: 'createcraft', name: 'CreateCraft\'s own Claude', status: 'untested', how: 'Built-in tools in the Claude panel (planner_packages, planner_get_package, planner_claim, planner_report), the same rules as the MCP server.',
+    id: 'createcraft', name: 'OmniCandi\'s own Claude', status: 'untested', how: 'Built-in tools in the Claude panel (planner_packages, planner_get_package, planner_claim, planner_report), the same rules as the MCP server.',
     evidence: 'The tool handlers are tested offline against the real service. A live Claude session using them was not run (it would be a paid call).', limits: 'It only retrieves and reports on a package when you ask it to; it never starts by itself.', source: 'This repository',
   },
 ];

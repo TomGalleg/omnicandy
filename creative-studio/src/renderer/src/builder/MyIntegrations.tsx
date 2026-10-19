@@ -24,7 +24,7 @@ export function CreateIntegrationCard() {
   );
 }
 
-/** My Integrations: official ones that come with CreateCraft, and the private ones created on this computer. */
+/** My Integrations: official ones that come with OmniCandi, and the private ones created on this computer. */
 export function MyIntegrations({ onOpen, reloadKey }: { onOpen: (projectId: string) => void; reloadKey: number }) {
   const [mine, setMine] = useState<MyIntegration[] | null>(null);
   const [overview, setOverview] = useState<BuilderOverview | null>(null);
@@ -65,11 +65,11 @@ export function MyIntegrations({ onOpen, reloadKey }: { onOpen: (projectId: stri
     <div className="field" aria-label="My Integrations">
       <span className="menu-label">My Integrations</span>
       {error && <small className="ext-error" role="alert">{error}</small>}
-      <section aria-label="Official CreateCraft Integrations">
-        <small className="menu-label">Official CreateCraft Integrations</small>
+      <section aria-label="Official OmniCandi Integrations">
+        <small className="menu-label">Official OmniCandi Integrations</small>
         {builtIn.length + officialInstalled.length === 0 ? <small>None connected yet. Use Connect Applications above.</small> : (
           <ul className="status-list">
-            {builtIn.map((a) => <li key={a.adapterId}><span className="chip ok"><span className="dot" />Official</span> <strong>{a.adapterName ?? a.name}</strong> <small>{a.origin === 'built-in' ? 'comes with CreateCraft' : 'official package'} · {a.commands.length} command{a.commands.length === 1 ? '' : 's'}{a.maturity === 'experimental' ? ' · experimental' : ''}</small></li>)}
+            {builtIn.map((a) => <li key={a.adapterId}><span className="chip ok"><span className="dot" />Official</span> <strong>{a.adapterName ?? a.name}</strong> <small>{a.origin === 'built-in' ? 'comes with OmniCandi' : 'official package'} · {a.commands.length} command{a.commands.length === 1 ? '' : 's'}{a.maturity === 'experimental' ? ' · experimental' : ''}</small></li>)}
             {officialInstalled.map((a) => <li key={a.adapterId}><span className="chip ok"><span className="dot" />Official</span> <strong>{a.name}</strong> <small>version {a.version} · {a.signed ? 'signed' : 'not signed'}</small></li>)}
           </ul>
         )}

@@ -102,7 +102,7 @@ export async function runSetup(entries: ConnectEntry[], deps: SetupDeps): Promis
         const list = await deps.refresh();
         const now = list.find((a) => a.key === key) ?? list.find((a) => a.adapterId === entry.offer!.adapterId && (!entry.exePath || sameInstall(a.exePath, entry.exePath)));
         if (!now || now.adapterState !== 'installed') {
-          patch(i, { outcome: 'failed', connect: 'skipped', headline: 'Installed, but the program was not found afterwards', detail: `The connector was installed, but CreateCraft could not find ${name} with it. Use Browse for Application to point to it.` });
+          patch(i, { outcome: 'failed', connect: 'skipped', headline: 'Installed, but the program was not found afterwards', detail: `The connector was installed, but OmniCandi could not find ${name} with it. Use Browse for Application to point to it.` });
           continue;
         }
         if (now.group === 'incompatible') { patch(i, { outcome: 'failed', connect: 'skipped', headline: now.headline, detail: now.explanation }); continue; }

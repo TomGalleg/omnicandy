@@ -1,6 +1,6 @@
 // NOTE (2026-10-19): written for the earlier shared-plan design (a plan picker, tabs Plan/Tasks/AI). The plain flow is now Idea/Plan/Work inside each
 // project and is covered by smoke-project-planner.mjs; this script has not been re-run against it and its first steps need updating before use.
-// Project Planner in the REAL CreateCraft window (scratch profile, never your own data), with a REAL planner MCP server process
+// Project Planner in the REAL OmniCandi window (scratch profile, never your own data), with a REAL planner MCP server process
 // acting as the executor, and the copy-and-paste path. Spends no Claude usage. Run after `npm run build:planner-mcp` (npm run smoke:planner does both).
 //
 // Mixed project (research + document + image deliverable): create from three templates, accept a requirement, prepare a package,
@@ -272,7 +272,7 @@ try {
   await win.locator('.pl-col', { hasText: 'Done' }).locator('.pl-task', { hasText: secondTitle }).waitFor({ timeout: 5000 });
   check('Accepting the result inline moves the task to Done', true);
 
-  // ---- a task can point at the workflow of the open CreateCraft project (read-only status, nothing started)
+  // ---- a task can point at the workflow of the open OmniCandi project (read-only status, nothing started)
   await win.getByRole('button', { name: 'List' }).click();
   await win.getByLabel('Task', { exact: true }).fill('Run the poster workflow');
   const wfValue = await win.locator('label:has-text("Uses (optional)") option', { hasText: 'The workflow of' }).getAttribute('value');

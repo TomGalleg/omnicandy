@@ -1,4 +1,4 @@
-// End-to-end smoke of the apps added in Phase 3, shown inside CreateCraft with the REAL apps:
+// End-to-end smoke of the apps added in Phase 3, shown inside OmniCandi with the REAL apps:
 // video in FilmCraft (Edit tab, live timeline), photos in LightCraft (Color tab), effects in
 // EffectCraft (Effects tab) and layouts in DesignCraft (Edit tab). Checks embedding, quick edits,
 // save as new version and theme matching (ArtCraft Match). Opens real app windows (closed afterwards).
@@ -72,7 +72,7 @@ async function embeddedCheck(label, pid) {
     ok = s.visible && near(appDip, stage);
     detail = `app ${JSON.stringify(appDip)} · area ${JSON.stringify(stage)}`;
   }
-  check(`${label} shows inside CreateCraft`, ok, detail);
+  check(`${label} shows inside OmniCandi`, ok, detail);
   return pr;
 }
 const live = () => win.evaluate(() => window.studio.live.state());

@@ -3,7 +3,7 @@
 // instructions) and never executed. Nothing here is shared or uploaded; the only network use is reading public documentation files.
 //
 // Priority when collecting (all origins are combined, each document remembers where it came from):
-//   1. official documentation online      (curated pages on hosts CreateCraft knows are official)
+//   1. official documentation online      (curated pages on hosts OmniCandi knows are official)
 //   2. official source repositories       (single files from the vendor's repository at the tag of the installed version)
 //   3. documentation installed with the program (a few text files from its own folder)
 //   4. documentation the user provided
@@ -79,7 +79,7 @@ function freecadSources(ref: string): DocSource[] {
   ];
 }
 
-/** Curated documentation per program (data owned by CreateCraft; a row is added only after its files were checked to exist). */
+/** Curated documentation per program (data owned by OmniCandi; a row is added only after its files were checked to exist). */
 export function curatedSources(appSlugName: string, version: string | null): { sources: DocSource[]; versionNote: string; appVersion: string | null } {
   if (appSlugName === 'freecad') {
     const tagged = version && /^\d+\.\d+\.\d+$/.test(version);
@@ -99,7 +99,7 @@ export const FETCH_HOSTS = ['raw.githubusercontent.com'];
 export type Fetcher = (url: string) => Promise<{ status: number; contentType: string; body: string }>;
 
 export const realFetcher: Fetcher = async (url) => {
-  const res = await fetch(url, { redirect: 'manual', signal: AbortSignal.timeout(25_000), headers: { 'user-agent': 'CreateCraft-docs/0.1', accept: 'text/plain,text/markdown,text/html;q=0.8' } });
+  const res = await fetch(url, { redirect: 'manual', signal: AbortSignal.timeout(25_000), headers: { 'user-agent': 'OmniCandi-docs/0.1', accept: 'text/plain,text/markdown,text/html;q=0.8' } });
   const len = Number(res.headers.get('content-length') ?? 0);
   if (len > MAX_DOC_BYTES) throw new Error(`The document is larger than ${MAX_DOC_BYTES} bytes.`);
   const buf = Buffer.from(await res.arrayBuffer());

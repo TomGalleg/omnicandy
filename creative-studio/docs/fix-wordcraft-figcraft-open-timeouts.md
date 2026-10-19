@@ -1,7 +1,7 @@
 # WordCraft and FigCraft open timeouts: diagnosis, fixes, results (2026-10-15)
 
 Method: isolated copy of the repo built to its own `out/`, scratch Electron profiles (`CS_USER_DATA_DIR`), the real
-installed apps, no commits, no pushes, your running CreateCraft untouched. Legend: VERIFIED / FAILED / BLOCKED / NOT TESTED.
+installed apps, no commits, no pushes, your running OmniCandi untouched. Legend: VERIFIED / FAILED / BLOCKED / NOT TESTED.
 
 ## 1. Root causes (VERIFIED by instrumentation and by turning each factor on and off)
 
@@ -11,7 +11,7 @@ command sent to and state received from the window tracker, per tracker). Withou
 
 | App | What actually hung | Cause | Evidence |
 |---|---|---|---|
-| WordCraft | Not `open_document` (it answered in ~20 ms). The **next** call, `edit.undoHistory`, never returned; so the open looked "stuck in starting" | CreateCraft hid the app window (`ShowWindow(SW_HIDE)`) the instant it appeared, because the Edit area had not reported its size yet. A window hidden before its first frame leaves WordCraft's control channel unanswered (even after the window is shown again) | Trace of a failing run: `target` -> `found` -> `hide` -> `#3 undoHistory` never answered. Standalone, early hide hung 2 of 14 launches; the same launches without the hide hung 0 of 24; cloaking/off-screen only 0 of 20 |
+| WordCraft | Not `open_document` (it answered in ~20 ms). The **next** call, `edit.undoHistory`, never returned; so the open looked "stuck in starting" | OmniCandi hid the app window (`ShowWindow(SW_HIDE)`) the instant it appeared, because the Edit area had not reported its size yet. A window hidden before its first frame leaves WordCraft's control channel unanswered (even after the window is shown again) | Trace of a failing run: `target` -> `found` -> `hide` -> `#3 undoHistory` never answered. Standalone, early hide hung 2 of 14 launches; the same launches without the hide hung 0 of 24; cloaking/off-screen only 0 of 20 |
 | FigCraft | `open_file` on an already-running FigCraft (reopening a file after switching away). Even a second, independent control connection got no answer, while the process reported Responding=True | "Putting away" a window by `unembed -> uncloak -> minimize`, then restoring it with `embed -> move -> show` for the next open, wedged FigCraft's control channel | Bisected in the real app flow by dropping single tracker commands: dropping `hide` still hung 2 of 2; dropping `minimize` passed 4 of 4 (also with `hide` dropped too) |
 
 Why it looked intermittent / time dependent: both are races against the app's first frame or its restore from minimized, so
@@ -43,7 +43,7 @@ baseline file deleted after `save_file`, binary versions (nothing changed on dis
 - `src/main/liveDrivers.test.ts` (new): DeckCraft history as one string / list / null / missing; WordCraft baseline.
 - `src/main/zipDigest.test.ts`: Office core.xml stamps ignored, real property and body changes not.
 - `src/main/liveApps.live.test.ts` (live, `CS_LIVE_TESTS=1`): DeckCraft history assertions no longer encode the letter-per-entry bug.
-- `scripts/smoke-reopen.mjs` (new, `npm run smoke:reopen`): per round and per app, in the real CreateCraft: open (timed, fails over 20 s),
+- `scripts/smoke-reopen.mjs` (new, `npm run smoke:reopen`): per round and per app, in the real OmniCandi: open (timed, fails over 20 s),
   quick edit, save version, save again unchanged (no version), edit+undo+save (no version), real edit (new version), switch to the
   other app, reopen the **saved** version. Edits are tagged per run so duplicate content is not mistaken for a failure.
   On a hang it prints process responsiveness and whether an independent control connection is answered.
@@ -78,8 +78,8 @@ baseline file deleted after `save_file`, binary versions (nothing changed on dis
 
 - Root causes are inferred from controlled on/off experiments in the real flow; the apps' own source is not available, so
   *why* a hidden-before-first-frame or minimize-restored window wedges the control channel is not explained.
-  I could not reproduce either hang outside CreateCraft with a synthetic window host (only inside the real Electron flow).
-- A put-away app is hidden, not minimized: no taskbar entry. If CreateCraft crashes, a hidden app process may stay running until ended in Task Manager.
+  I could not reproduce either hang outside OmniCandi with a synthetic window host (only inside the real Electron flow).
+- A put-away app is hidden, not minimized: no taskbar entry. If OmniCandi crashes, a hidden app process may stay running until ended in Task Manager.
 - Saved versions made in separate sessions are both named `...-live1.*` (the counter restarts per open); `smoke-reopen`
   reopens by name so it may pick the older of two. Not changed here.
 - GridCraft, DeckCraft, CADCraft, PdfCraft were verified through the live driver tests, smoke-apps (PdfCraft via smoke-docs) and

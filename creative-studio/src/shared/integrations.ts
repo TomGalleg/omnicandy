@@ -84,7 +84,7 @@ export interface AdapterManifest {
   commands: CommandSpec[];
   /** Plain-language note shown to the user (requirements, administrator rights, licence...). */
   notes?: string;
-  /** The adapter's own version (packages); built-in adapters are versioned with CreateCraft. */
+  /** The adapter's own version (packages); built-in adapters are versioned with OmniCandi. */
   version?: string;
   description?: string;
   license?: string;
@@ -95,13 +95,13 @@ export interface AdapterManifest {
   source?: 'built-in' | 'package';
   /** Packages only: how far the publisher is trusted. */
   trust?: TrustLevel;
-  /** The adapter needs no installed program (it brings its own logic); CreateCraft lists it directly. */
+  /** The adapter needs no installed program (it brings its own logic); OmniCandi lists it directly. */
   selfContained?: boolean;
   /** Packages: how the integration reaches the program. Absent means external. */
   integrationType?: IntegrationType;
 }
 
-/** built-in: ships with CreateCraft. trusted-publisher: signed by a publisher the user trusted. unsigned: no signature. */
+/** built-in: ships with OmniCandi. trusted-publisher: signed by a publisher the user trusted. unsigned: no signature. */
 export type TrustLevel = 'built-in' | 'trusted-publisher' | 'unsigned';
 
 export type IntegrationStatus = 'detected' | 'available' | 'connected' | 'limited' | 'unsupported' | 'needs-repair' | 'incompatible' | 'not-running' | 'api-unavailable';

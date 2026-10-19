@@ -25,7 +25,7 @@ describe.skipIf(!on)('collecting the real FreeCAD 1.1.4 documentation', () => {
       fs.mkdirSync(out, { recursive: true });
       const manifest = c.docs.map((d, i) => { const file = `${String(i + 1).padStart(2, '0')}-${path.basename(d.url)}.txt`; fs.writeFileSync(path.join(out, file), d.text); const { text: _t, ...rest } = d; void _t; return { ...rest, file }; });
       fs.writeFileSync(path.join(out, 'manifest.json'), JSON.stringify(manifest, null, 2));
-      fs.writeFileSync(path.join(out, 'README.md'), '# FreeCAD 1.1.4 documentation snapshot (test fixture)\n\nOfficial files fetched by CreateCraft\'s documentation collector from https://github.com/FreeCAD/FreeCAD (tag 1.1.4, LGPL-2.1-or-later) and https://github.com/FreeCAD/FreeCAD-documentation (wiki export, CC-BY 3.0 per the FreeCAD documentation project). The text is stored unchanged; `manifest.json` records each URL, fetch time and SHA-256. Used only by offline tests.\n');
+      fs.writeFileSync(path.join(out, 'README.md'), '# FreeCAD 1.1.4 documentation snapshot (test fixture)\n\nOfficial files fetched by OmniCandi\'s documentation collector from https://github.com/FreeCAD/FreeCAD (tag 1.1.4, LGPL-2.1-or-later) and https://github.com/FreeCAD/FreeCAD-documentation (wiki export, CC-BY 3.0 per the FreeCAD documentation project). The text is stored unchanged; `manifest.json` records each URL, fetch time and SHA-256. Used only by offline tests.\n');
     }
   }, 180_000);
 });

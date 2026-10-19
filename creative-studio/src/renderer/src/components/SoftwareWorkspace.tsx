@@ -7,7 +7,7 @@ import { ExternalApps } from './ExternalApps';
 
 const TAB_LABEL = { edit: 'Create', color: 'Color', effects: 'Effects', audio: 'Audio' } as const;
 
-/** The window of a third-party program Claude is working in (Blender), shown inside CreateCraft. */
+/** The window of a third-party program Claude is working in (Blender), shown inside OmniCandi. */
 function LiveStage({ live, onList }: { live: ExternalLiveState; onList: () => void }) {
   const ref = useRef<HTMLDivElement>(null);
   const overlay = useOverlayOpen();
@@ -36,7 +36,7 @@ function LiveStage({ live, onList }: { live: ExternalLiveState; onList: () => vo
   );
 }
 
-/** Every program connected to CreateCraft: the ArtCraft apps (with what each one opens) and third-party software. */
+/** Every program connected to OmniCandi: the ArtCraft apps (with what each one opens) and third-party software. */
 export function SoftwareWorkspace({ apps }: { apps: AppProbeResult[] }) {
   const installed = apps.filter((a) => a.installed).length;
   const [msg, setMsg] = useState<{ text: string; error?: boolean } | null>(null);
@@ -55,8 +55,8 @@ export function SoftwareWorkspace({ apps }: { apps: AppProbeResult[] }) {
   return (
     <div className="software-screen">
       {live?.pid && <div className="btn-row"><button className="btn small primary" onClick={() => setShowList(false)}>Back to {live.name}</button></div>}
-      <h2>Software connected to CreateCraft</h2>
-      <p className="asset-meta">Claude and you can open and edit your media in these programs. Installed means the program was found on this PC; CreateCraft starts it when you open a file in it.</p>
+      <h2>Software connected to OmniCandi</h2>
+      <p className="asset-meta">Claude and you can open and edit your media in these programs. Installed means the program was found on this PC; OmniCandi starts it when you open a file in it.</p>
 
       <div className="field">
         <span className="menu-label">ArtCraft apps · {installed} of {Object.keys(EDITOR_APPS).length} installed</span>

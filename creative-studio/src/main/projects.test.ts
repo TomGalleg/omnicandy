@@ -98,7 +98,7 @@ describe('ProjectManager', { timeout: 30_000 }, () => {
     const pm = make();
     const oldKey = await pm.create('Old');
     const oldDir = path.join(tmp, 'projects', oldKey);
-    const dest = path.join(tmp, 'Big Drive', 'CreateCraft Projects');
+    const dest = path.join(tmp, 'Big Drive', 'OmniCandi Projects');
     const info = await pm.setDefaultDir(dest);
     expect(info).toMatchObject({ defaultDir: dest, isCustom: true });
     const key = await pm.create('My: Project?');
@@ -152,7 +152,7 @@ describe('ProjectManager', { timeout: 30_000 }, () => {
     const k2 = await fresh.addExisting(dir);
     expect((await fresh.list()).find((p) => p.id === k2)).toMatchObject({ name: 'Travel', originals: 1, folder: dir });
     expect(await fresh.addExisting(dir)).toBe(k2); // same folder, same key
-    await expect(fresh.addExisting(tmp)).rejects.toThrow(/not a CreateCraft project/);
+    await expect(fresh.addExisting(tmp)).rejects.toThrow(/not an OmniCandi project/);
 
     const dupKey = await pm.duplicate(k1, elsewhere);
     const dup = (await pm.list()).find((p) => p.id === dupKey)!;

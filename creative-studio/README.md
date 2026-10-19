@@ -1,6 +1,6 @@
-# CreateCraft
+# OmniCandi
 
-CreateCraft is a Windows-first desktop app for creative production. Claude acts as a Creative
+OmniCandi is a Windows-first desktop app for creative production. Claude acts as a Creative
 Partner that coordinates the 13 first-party Craft apps (PhotoCraft, VectorCraft, SoundCraft, FilmCraft,
 LightCraft, EffectCraft, DesignCraft, WordCraft, PDFCraft, GridCraft, DeckCraft, FigCraft, CADCraft),
 third-party software through an adapter framework, and optional generation providers (bring your own keys).
@@ -19,7 +19,7 @@ the integration evidence is in [`../docs/integration-audit.md`](../docs/integrat
 
 ## Run it
 
-Requires Node 22+ (Windows is the primary platform; on Linux use `../Run CreateCraft.sh`, see [`docs/linux-compatibility.md`](docs/linux-compatibility.md)).
+Requires Node 22+ (Windows is the primary platform; on Linux use `../Run OmniCandi.sh`, see [`docs/linux-compatibility.md`](docs/linux-compatibility.md)).
 
 ```bash
 npm install
@@ -72,7 +72,7 @@ The list below describes the core app; later areas (integrations, AI Adapter Bui
   inspector on the left, workspace in the centre, Claude panel on the right, and a context-sensitive
   bottom pane. Workspaces: Home, Media, Edit, AI Generate, Workflow, Effects, Color, Audio, Deliver and Planner (Simplified mode shows Project, Create, AI Generate and Deliver, with the rest under More).
 - **Appearance.** Four choices, switched instantly and remembered: **ArtCraft Match** (charcoal,
-  measured from PhotoCraft's own "proMedium" theme so CreateCraft and the embedded app read as one
+  measured from PhotoCraft's own "proMedium" theme so OmniCandi and the embedded app read as one
   application), **Studio Dark** (the original near-black look), **Light** (coordinated with
   PhotoCraft's "studioLight") and **System** (follows Windows, with a choice of dark look). New
   installs default to System with ArtCraft Match; earlier choices are preserved ("Dark" becomes
@@ -80,10 +80,10 @@ The list below describes the core app; later areas (integrations, AI Adapter Bui
   custom accent apply to selections and active controls. The canvas, artwork and exports are never
   recoloured.
 - **ArtCraft theme sync.** With "Match the open ArtCraft app" on (default), the open app's own
-  interface theme follows CreateCraft through its official control: PhotoCraft `ui.set theme`
+  interface theme follows OmniCandi through its official control: PhotoCraft `ui.set theme`
   (proMedium / pro / studioLight), VectorCraft `prefs.set uiBrightness` (mediumDark / dark / light),
   SoundCraft `ui.set theme` (dark / light). These are the apps' own settings, so they also persist in
-  the apps. DesignCraft, FilmCraft and LightCraft have theme settings but aren't opened by CreateCraft
+  the apps. DesignCraft, FilmCraft and LightCraft have theme settings but aren't opened by OmniCandi
   yet; EffectCraft has no theme control.
 - **Media library.** Import through a native dialog. Each original is copied into the project,
   hashed (SHA-256) and marked read-only, and the source file is never touched. Exact duplicates are
@@ -107,13 +107,13 @@ The list below describes the core app; later areas (integrations, AI Adapter Bui
   never modified. SVG inputs are flattened first, and chained edit nodes continue from the layered
   `.pcraft`. Commands that open, save, run scripts or reference other files are refused, as are
   path-like parameters. PhotoCraft runs with a fixed argument list and no shell.
-- **Edit tab: the app opens right inside CreateCraft (real).** Pick a file and go to Edit: it opens
+- **Edit tab: the app opens right inside OmniCandi (real).** Pick a file and go to Edit: it opens
   automatically in its app (PhotoCraft for photos, VectorCraft for vector art, SoundCraft for audio),
-  shown in the big Edit area. The app's real window is made borderless and owned by CreateCraft,
-  then kept exactly over the Edit area as CreateCraft moves or resizes (`src/main/embeddedApp.ts`,
+  shown in the big Edit area. The app's real window is made borderless and owned by OmniCandi,
+  then kept exactly over the Edit area as OmniCandi moves or resizes (`src/main/embeddedApp.ts`,
   `resources/window-tracker.ps1`); input works natively because it is still the app's own window.
   On the right, a short list of edits grouped by intent applies live in the app; Undo, Save as new
-  version, and **Open in its own window** / **Put back in CreateCraft** sit in the top bar. Leaving
+  version, and **Open in its own window** / **Put back in OmniCandi** sit in the top bar. Leaving
   the Edit tab hides the app; switching files minimizes the previous app.
 - **Edit tab: the right app for each file type (real).** Photos and PhotoCraft/PSD documents go to
   PhotoCraft, SVG/AI/EPS/PDF to VectorCraft, audio to SoundCraft, and video to FilmCraft (no quick
@@ -146,7 +146,7 @@ The list below describes the core app; later areas (integrations, AI Adapter Bui
 ## Project Planner
 
 A plain planning workspace (**More > Planner**) that keeps one current plan per project while you brainstorm elsewhere and execute in Claude Code,
-Cowork or CreateCraft. It opens in a four-area view (Plan, Tasks, AI, Files) with one Send to AI and one Paste back; an Advanced checkbox shows packages, claims and the full history. Works with no AI and no API key (copy and paste); an optional local MCP server lets Claude Code read the plan, claim
+Cowork or OmniCandi. It opens in a four-area view (Plan, Tasks, AI, Files) with one Send to AI and one Paste back; an Advanced checkbox shows packages, claims and the full history. Works with no AI and no API key (copy and paste); an optional local MCP server lets Claude Code read the plan, claim
 tasks and report back. An executor's report is never acceptance: only you accept. Status of each client (verified / untested / unavailable) and
 how it works: [docs/project-planner.md](docs/project-planner.md).
 

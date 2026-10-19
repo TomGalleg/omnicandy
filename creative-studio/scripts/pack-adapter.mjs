@@ -3,7 +3,7 @@
 //
 //   node scripts/pack-adapter.mjs <folder> <out.ccadapter> [--key <private-key.pem>] [--generate-key <private-key.pem>]
 //
-// Without --key/--generate-key the package is unsigned (CreateCraft installs it only on explicit confirmation).
+// Without --key/--generate-key the package is unsigned (OmniCandi installs it only on explicit confirmation).
 // The private key stays yours: it is never part of the package. The folder must contain adapter.json
 // (its "files" field is filled in here) and the files listed under runtime.entry.
 

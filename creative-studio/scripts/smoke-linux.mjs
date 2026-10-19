@@ -1,4 +1,4 @@
-// What CreateCraft reports about THIS operating system, in the real window and a scratch profile. Meant for Linux (run it with and
+// What OmniCandi reports about THIS operating system, in the real window and a scratch profile. Meant for Linux (run it with and
 // without a desktop keyring); on Windows it checks the Windows answers so both are comparable.
 //   Linux: the 13 Craft apps are "not installed / no version known", the key store is a real keyring or is refused (never
 //          basic_text), external adapters declare platforms, and project creation, save and reopen work.
@@ -31,7 +31,7 @@ try {
   if (linux) {
     check('all 13 Craft apps are reported as not installed, with the reason', apps.length === 13 && apps.every((a) => !a.installed && /No Linux version/.test(a.notes.join(' '))), `${apps.length} apps`);
     check('key storage is a real keyring, or refused with setup help (never basic_text)', vault.available ? /GNOME Keyring|KWallet/.test(vault.label) : /basic_text|keyring|secure storage/i.test(vault.problem ?? '') && /gnome-keyring|KWallet/i.test(vault.help ?? ''), vault.label);
-    check('CreateCraft itself started and shows its workspaces', (await win.locator('nav.workspaces button').count()) >= 4);
+    check('OmniCandi itself started and shows its workspaces', (await win.locator('nav.workspaces button').count()) >= 4);
   } else {
     check('Windows: ArtCraft detection is attempted at the Program Files location', apps.length === 13);
   }

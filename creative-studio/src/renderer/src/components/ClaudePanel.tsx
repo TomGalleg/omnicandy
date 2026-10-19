@@ -16,7 +16,7 @@ const errText = (e: unknown) => (e instanceof Error ? e.message : String(e)).rep
 
 /**
  * Claude, the Creative Partner. Uses Claude Code on this PC (its own sign-in, no API key in
- * CreateCraft). Claude edits the file open in the Edit tab through CreateCraft's tools only, under
+ * OmniCandi). Claude edits the file open in the Edit tab through OmniCandi's tools only, under
  * the same lock as everything else: Pause / Take Control stop it.
  */
 export function ClaudePanel({ liveApi }: Props) {
@@ -86,7 +86,7 @@ export function ClaudePanel({ liveApi }: Props) {
       {notInstalled && (
         <div className="claude-section">
           <div className="notice">
-            <strong>Claude Code is not installed on this PC</strong>, or CreateCraft cannot find it. Claude in CreateCraft uses your own Claude Code sign-in.<br />
+            <strong>Claude Code is not installed on this PC</strong>, or OmniCandi cannot find it. Claude in OmniCandi uses your own Claude Code sign-in.<br />
             1. Install Claude Code from <a href="https://docs.claude.com/en/docs/claude-code/setup" target="_blank" rel="noreferrer">the Claude Code setup page</a>.<br />
             2. Come back here and press <strong>Check again</strong>, then sign in.
           </div>
@@ -104,7 +104,7 @@ export function ClaudePanel({ liveApi }: Props) {
                 A <strong>Sign in to Claude</strong> window opened, and your browser shows the Claude sign-in page.<br />
                 1. Sign in and click <strong>Authorize</strong> in the browser.<br />
                 2. If the browser then shows a code, copy it, click into the black sign-in window, paste it (right-click) and press Enter.<br />
-                CreateCraft notices automatically when you're signed in.
+                OmniCandi notices automatically when you're signed in.
               </div>
               <div className="btn-row">
                 <span className="asset-meta">Waiting for sign-in…</span>

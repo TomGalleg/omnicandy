@@ -1,7 +1,7 @@
 // Is there a secure place for API keys on this computer? Windows: Electron safeStorage uses DPAPI (per Windows user).
 // Linux: Electron picks a backend at start-up; only the desktop keyrings protect keys (GNOME Keyring through libsecret, or KWallet).
 // The `basic_text` backend stores keys with a hard-coded key, which is obfuscation, not protection, so it is rejected, and an
-// unknown backend is rejected too. Nothing else in CreateCraft depends on credentials, so those features keep working.
+// unknown backend is rejected too. Nothing else in OmniCandi depends on credentials, so those features keep working.
 import { currentOs, type OsId } from '@shared/platform';
 
 /** The slice of Electron's safeStorage this module needs (an interface so tests can inject any backend). */
@@ -25,7 +25,7 @@ export interface SecureStorageStatus {
 const LINUX_SECURE = new Set(['gnome_libsecret', 'kwallet', 'kwallet5', 'kwallet6']);
 const LABEL: Record<string, string> = { gnome_libsecret: 'GNOME Keyring', kwallet: 'KWallet', kwallet5: 'KWallet', kwallet6: 'KWallet' };
 
-const LINUX_HELP = 'Install and unlock a keyring, then restart CreateCraft: on GNOME or Ubuntu install "gnome-keyring" and "libsecret-1-0" and log in to a desktop session that starts it (the "Passwords and Keys" app should show a Login keyring); on KDE use KWallet. CreateCraft will not store keys in plain text. Everything that does not need a saved key (projects, Planner, workflows, a Claude login handled by Claude itself) keeps working.';
+const LINUX_HELP = 'Install and unlock a keyring, then restart OmniCandi: on GNOME or Ubuntu install "gnome-keyring" and "libsecret-1-0" and log in to a desktop session that starts it (the "Passwords and Keys" app should show a Login keyring); on KDE use KWallet. OmniCandi will not store keys in plain text. Everything that does not need a saved key (projects, Planner, workflows, a Claude login handled by Claude itself) keeps working.';
 
 export function secureStorageStatus(src: StorageSource, os: OsId = currentOs()): SecureStorageStatus {
   if (os !== 'linux') {
@@ -36,7 +36,7 @@ export function secureStorageStatus(src: StorageSource, os: OsId = currentOs()):
   let backend = 'unknown';
   try { backend = src.getSelectedStorageBackend?.() ?? 'unknown'; } catch { backend = 'unknown'; }
   if (!src.isEncryptionAvailable() || backend === 'basic_text' || !LINUX_SECURE.has(backend)) {
-    const why = LINUX_SECURE.has(backend) ? `CreateCraft asked for the keyring (${LABEL[backend] ?? backend}), but none is running or it is locked, so Electron cannot use it.` : backend === 'basic_text' ? 'No keyring was found, so Electron fell back to its plain "basic_text" storage, which does not protect keys.' : backend === 'unknown' ? 'CreateCraft could not tell which secure storage is in use.' : `The storage backend "${backend}" is not a supported keyring.`;
+    const why = LINUX_SECURE.has(backend) ? `OmniCandi asked for the keyring (${LABEL[backend] ?? backend}), but none is running or it is locked, so Electron cannot use it.` : backend === 'basic_text' ? 'No keyring was found, so Electron fell back to its plain "basic_text" storage, which does not protect keys.' : backend === 'unknown' ? 'OmniCandi could not tell which secure storage is in use.' : `The storage backend "${backend}" is not a supported keyring.`;
     return { available: false, label: 'unavailable', problem: `${why} API keys cannot be saved safely on this computer yet.`, help: LINUX_HELP };
   }
   return { available: true, label: LABEL[backend] ?? backend, problem: null, help: null };

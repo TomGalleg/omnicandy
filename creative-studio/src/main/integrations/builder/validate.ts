@@ -101,7 +101,7 @@ export async function staticChecks(bp: Blueprint, a: Assembled, scan: ScanOutcom
   for (const c of bp.commands) {
     const spec = a.manifest.commands && Array.isArray(a.manifest.commands) ? (a.manifest.commands as Array<{ id: string }>).find((x) => x.id === c.id) : null;
     if (!spec) continue;
-    // The project-file setting is added by CreateCraft (the simulated run and the live test supply it), so examples need not carry one.
+    // The project-file setting is added by OmniCandi (the simulated run and the live test supply it), so examples need not carry one.
     const addedByTemplate = a.host?.projectExtension ? 'project' : null;
     const specParams = (spec as unknown as { params: Record<string, unknown> }).params;
     const typed = { ...spec, params: Object.fromEntries(Object.entries(specParams).filter(([k]) => k !== addedByTemplate)) };
@@ -125,7 +125,7 @@ export async function staticChecks(bp: Blueprint, a: Assembled, scan: ScanOutcom
         : findings.length ? bad('plugin-source', 'Add-in source', findings.map((f) => `${f.file}: ${f.problems.join('; ')}`).join(' | '))
         : ok('plugin-source', 'Add-in source', `${p.files.length} source file${p.files.length === 1 ? '' : 's'} laid out; every command maps to a registered capability.`));
     }
-    checks.push(skip('compile', 'Build', 'Building add-ins needs the vendor SDK and a build step that CreateCraft does not run yet, so the source was not compiled.'));
+    checks.push(skip('compile', 'Build', 'Building add-ins needs the vendor SDK and a build step that OmniCandi does not run yet, so the source was not compiled.'));
     return reportOf('static', 'Static validation', checks);
   }
 
@@ -141,7 +141,7 @@ export async function staticChecks(bp: Blueprint, a: Assembled, scan: ScanOutcom
   // source validation
   const main = a.files.get('main.js');
   if (main) {
-    try { new vm.Script(main.toString('utf8'), { filename: 'main.js' }); checks.push(ok('javascript', 'Connector code', 'main.js (rendered from CreateCraft\'s template) compiles.')); } catch (e) { checks.push(bad('javascript', 'Connector code', `main.js does not compile: ${(e as Error).message}`)); }
+    try { new vm.Script(main.toString('utf8'), { filename: 'main.js' }); checks.push(ok('javascript', 'Connector code', 'main.js (rendered from OmniCandi\'s template) compiles.')); } catch (e) { checks.push(bad('javascript', 'Connector code', `main.js does not compile: ${(e as Error).message}`)); }
   }
   if (t === 'python-script') {
     const body = a.files.get(JOB_BODY_FILE);
@@ -229,12 +229,12 @@ export async function securityChecks(bp: Blueprint, a: Assembled, scan: ScanOutc
       checks.push(m.publisher.name === 'Created on this computer (AI-generated)' && m.id.startsWith('custom.')
         ? ok('identity', 'Identity', 'Publisher is fixed to "Created on this computer (AI-generated)" and the id starts with "custom.", so it cannot pass as an official integration.')
         : bad('identity', 'Identity', 'The package does not carry the fixed local publisher identity.'));
-      checks.push(m.integration ? bad('destination', 'Installation destination', 'Generated external integrations must not declare an in-program installer section.') : ok('destination', 'Installation destination', 'Installs nothing outside CreateCraft\'s own integrations folder; no plug-in files are copied into other programs.'));
+      checks.push(m.integration ? bad('destination', 'Installation destination', 'Generated external integrations must not declare an in-program installer section.') : ok('destination', 'Installation destination', 'Installs nothing outside OmniCandi\'s own integrations folder; no plug-in files are copied into other programs.'));
     }
   } else checks.push(bad('integrity', 'Package integrity', a.problems.join('; ')));
   if (!EXTERNAL_TEMPLATES.includes(t)) {
     const profile = profileById(bp.decision.hostProfile ?? '');
-    checks.push(profile ? ok('destination', 'Installation destination', `Uses CreateCraft's installation profile for ${profile.name} (readiness: ${profile.readiness}).`) : bad('destination', 'Installation destination', 'CreateCraft has no installation profile for this program, so it will not write plug-in files for it.'));
+    checks.push(profile ? ok('destination', 'Installation destination', `Uses OmniCandi's installation profile for ${profile.name} (readiness: ${profile.readiness}).`) : bad('destination', 'Installation destination', 'OmniCandi has no installation profile for this program, so it will not write plug-in files for it.'));
   }
 
   // 5. restricted runtime
@@ -271,7 +271,7 @@ function documentedInterfaceCheck(bp: Blueprint, scan: ScanOutcome): CheckResult
     }
   }
   if (problems.length) return bad('documented', 'Documented interfaces only', problems.slice(0, 6).join('; '));
-  if (unknown.length) return warn('documented', 'Documented interfaces only', `Every interface is cited. CreateCraft does not recognise ${[...new Set(unknown)].slice(0, 5).join(', ')}; only a real run can confirm they exist.`);
+  if (unknown.length) return warn('documented', 'Documented interfaces only', `Every interface is cited. OmniCandi does not recognise ${[...new Set(unknown)].slice(0, 5).join(', ')}; only a real run can confirm they exist.`);
   return ok('documented', 'Documented interfaces only', 'Every function, class or option used is cited with a source that the research consulted.');
 }
 

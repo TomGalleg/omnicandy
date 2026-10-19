@@ -65,7 +65,7 @@ export function VideoPanel({ providers, selected, onGoto, log }: Props) {
 
   const cancel = (id: string) => {
     const j = jobs.find((x) => x.id === id);
-    const text = j?.provider === 'runway' ? 'CreateCraft will ask Runway to cancel this job and will not import it. Cancel it?' : 'Google does not offer a way to cancel a running video. CreateCraft will stop waiting and will not import it, but Google may still finish it and bill your account. Stop waiting?';
+    const text = j?.provider === 'runway' ? 'OmniCandi will ask Runway to cancel this job and will not import it. Cancel it?' : 'Google does not offer a way to cancel a running video. OmniCandi will stop waiting and will not import it, but Google may still finish it and bill your account. Stop waiting?';
     if (!window.confirm(text)) return;
     void window.studio.generate.videoCancel(id).catch((e: unknown) => setMsg({ text: errText(e), error: true }));
   };

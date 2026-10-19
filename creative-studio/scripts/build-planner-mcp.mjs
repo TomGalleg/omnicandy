@@ -1,5 +1,5 @@
 // Bundles the planner MCP server into one file (out/planner-mcp.cjs) that runs with plain Node or, in the installed app,
-// with CreateCraft's own runtime (ELECTRON_RUN_AS_NODE=1). No other dependency is needed at run time.
+// with OmniCandi's own runtime (ELECTRON_RUN_AS_NODE=1). No other dependency is needed at run time.
 import { build } from 'esbuild';
 import path from 'node:path';
 

@@ -4,8 +4,8 @@ Three different things get signed or trusted. They must not be confused.
 
 | What | Signed by | Verified by | Where the key lives |
 |---|---|---|---|
-| **Connector / add-in packages** (`.ccadapter`) | Ed25519 key (the *publisher key*) | CreateCraft, on review, install, every start-up and Repair | Release owner's secure store (never in the repository) |
-| **The installer and `CreateCraft.exe`** | The organisation's Authenticode code-signing certificate | Windows (SmartScreen, UAC) | Certificate store / HSM / signing service |
+| **Connector / add-in packages** (`.ccadapter`) | Ed25519 key (the *publisher key*) | OmniCandi, on review, install, every start-up and Repair | Release owner's secure store (never in the repository) |
+| **The installer and `OmniCandi.exe`** | The organisation's Authenticode code-signing certificate | Windows (SmartScreen, UAC) | Certificate store / HSM / signing service |
 | **Update channel (future)** | Not built yet | n/a | n/a |
 
 ## The development key is not an identity
@@ -29,8 +29,8 @@ this publisher* (existing behaviour), exactly as for any third party.
 2. Store the private key in the organisation's secret store with at least two named custodians and an offline backup. Never put it
    in the repository, CI logs, or a developer laptop's working folder.
 3. Record its fingerprint (printed by the build) in `resources/trust/release-publishers.json` through a reviewed change:
-   `{ "publishers": [{ "name": "CreateCraft Integrations", "fingerprint": "ABCD EF01 …" }] }` (8 groups of 4 hex characters).
-   Listing a fingerprint tells CreateCraft to treat packages signed by that key as from a trusted publisher *without* the new-publisher
+   `{ "publishers": [{ "name": "OmniCandi Integrations", "fingerprint": "ABCD EF01 …" }] }` (8 groups of 4 hex characters).
+   Listing a fingerprint tells OmniCandi to treat packages signed by that key as from a trusted publisher *without* the new-publisher
    checkbox. Review it like a security change.
 
 ## Producing a release
@@ -46,7 +46,7 @@ release list; a private key file (`*.pem`, `*.key`, `*.pfx`), `.local`, `fixture
 a sample or simulated-application connector is bundled; or any Autodesk/Adobe program or library is present. `--allow-dev` turns the
 key check into a warning for local test builds; the result is then reported as **NOT RELEASABLE**.
 
-Then sign the installer and `CreateCraft.exe` with the organisation's code-signing certificate (set `win.signAndEditExecutable`
+Then sign the installer and `OmniCandi.exe` with the organisation's code-signing certificate (set `win.signAndEditExecutable`
 and the certificate variables in CI; not configured here because no certificate exists).
 
 ## Independent updates

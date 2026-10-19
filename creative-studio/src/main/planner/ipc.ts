@@ -52,7 +52,7 @@ export function connectionInfo(dir: string): PlannerConnectionInfo {
       mk('brainstorm', 'Brainstorming connection: can read the plan and suggest changes. Cannot start or finish work.', ['read', 'propose'], 'Brainstorm AI', 'other'),
       mk('executor', 'Executor connection: can read packages, claim tasks and report. Cannot change the plan.', ['read', 'execute'], 'Claude Code', 'claude-code'),
     ],
-    http: `Remote clients (ChatGPT, the Gemini app) cannot reach a program on this computer. A local HTTP mode exists: run "${[command, b.bundlePath].map((s) => (/\s/.test(s) ? `"${s}"` : s)).join(' ')}" --http --port 8765 --token-file <file with a random token of 24+ characters> --scopes read,propose. It listens on 127.0.0.1 only and requires "Authorization: Bearer <token>". Making it reachable from the internet (a tunnel or your own HTTPS host) is your explicit choice and is not set up by CreateCraft.`,
+    http: `Remote clients (ChatGPT, the Gemini app) cannot reach a program on this computer. A local HTTP mode exists: run "${[command, b.bundlePath].map((s) => (/\s/.test(s) ? `"${s}"` : s)).join(' ')}" --http --port 8765 --token-file <file with a random token of 24+ characters> --scopes read,propose. It listens on 127.0.0.1 only and requires "Authorization: Bearer <token>". Making it reachable from the internet (a tunnel or your own HTTPS host) is your explicit choice and is not set up by OmniCandi.`,
   };
 }
 

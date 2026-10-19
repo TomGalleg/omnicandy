@@ -1,6 +1,6 @@
 // Blender adapter (Blender 3.6 and newer; developed and verified against Blender 4.0).
 // Control method: scripting. Blender runs in the background (`--background --factory-startup --python`),
-// so no window is opened and a crash cannot touch CreateCraft. The scripts are fixed templates;
+// so no window is opened and a crash cannot touch OmniCandi. The scripts are fixed templates;
 // parameters travel in a JSON file and are never spliced into code. Version differences are handled
 // inside the templates (only API calls that are stable across 3.6 to 4.x are used).
 
@@ -155,14 +155,14 @@ class BlenderAdapter implements ExternalAdapter {
   async connect(app: DiscoveredApp): Promise<void> { this.app = app; }
   async disconnect(): Promise<void> { await this.releaseLive(); this.app = null; }
 
-  /** Leaves an open Blender window to the user (it keeps running; CreateCraft stops sending it commands). */
+  /** Leaves an open Blender window to the user (it keeps running; OmniCandi stops sending it commands). */
   private async releaseLive(): Promise<void> {
     const l = this.live;
     this.live = null;
     if (l?.alive) await l.detach();
   }
 
-  /** Opens the Blender window (docked into CreateCraft by the host) the first time a command needs it. Falls back to background runs if it cannot start. */
+  /** Opens the Blender window (docked into OmniCandi by the host) the first time a command needs it. Falls back to background runs if it cannot start. */
   private async ensureLive(ctx: ExecuteContext): Promise<void> {
     if (!blenderLiveEnabled() || !this.app || this.live?.alive) return;
     this.liveStarting ??= (async () => {

@@ -22,7 +22,7 @@ export function ProvidersCard() {
   return (
     <div className="field">
       <span className="menu-label">AI image providers</span>
-      <p className="asset-meta">Use your own OpenAI or Google account. Copy your API key, then click <strong>Paste key</strong>: CreateCraft reads it straight from the clipboard, encrypts it with your operating system and clears the clipboard. The key is never shown, logged, saved in projects or given to Claude. Every paid request asks for your approval first.</p>
+      <p className="asset-meta">Use your own OpenAI or Google account. Copy your API key, then click <strong>Paste key</strong>: OmniCandi reads it straight from the clipboard, encrypts it with your operating system and clears the clipboard. The key is never shown, logged, saved in projects or given to Claude. Every paid request asks for your approval first.</p>
       {providers?.find((p) => !p.encryptionAvailable) && <div className="wf-msg error">{providers.find((p) => !p.encryptionAvailable)?.encryptionProblem ?? "Protected storage is unavailable, so keys can't be saved."}</div>}
       {msg && <div className="wf-msg error" role="alert">{msg}</div>}
       {providers?.filter((p) => p.billable).map((p) => (

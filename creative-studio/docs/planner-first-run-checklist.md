@@ -57,5 +57,5 @@ and the three things that went well. Keep it next to this file as `planner-first
 ## Not covered by this walkthrough (needs a signed-in Claude and may cost money)
 
 * Home "Create with Claude" with the Planner box ticked, then accepting the steps under **Needs you**.
-* CreateCraft Claude: **Put it in the Claude panel**, and `planner_propose` suggestions appearing under **Needs you**.
+* OmniCandi Claude: **Put it in the Claude panel**, and `planner_propose` suggestions appearing under **Needs you**.
 * A direct Claude Code connection (`claude mcp add ...`) claiming and reporting a task, shown as In Progress and then Needs Review.

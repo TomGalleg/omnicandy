@@ -7,7 +7,7 @@ import { announceExternalChanged, errorText, EXTERNAL_CHANGED } from '../connect
 import { PackageReviewCard, trustChip, trustLabel } from '../connect/PackageReviewCard';
 
 const STATE_LABEL: Record<InstalledState, string> = {
-  ok: 'Ready', disabled: 'Turned off', tampered: 'Files changed', incompatible: 'Needs a newer CreateCraft', 'missing-files': 'Files missing', 'crash-disabled': 'Stopped after crashes',
+  ok: 'Ready', disabled: 'Turned off', tampered: 'Files changed', incompatible: 'Needs a newer OmniCandi', 'missing-files': 'Files missing', 'crash-disabled': 'Stopped after crashes',
 };
 const STATE_CHIP: Record<InstalledState, string> = { ok: 'ok', disabled: 'off', tampered: 'warn', incompatible: 'warn', 'missing-files': 'warn', 'crash-disabled': 'warn' };
 
@@ -97,7 +97,7 @@ export function IntegrationPackages({ onChanged }: { onChanged: () => void }) {
   return (
     <div className="field ext-packages">
       <span className="menu-label">Integration packages · {installed.length} installed</span>
-      <small>Add support for another program by installing an integration package. CreateCraft checks the package before anything runs, and each integration works in its own restricted process.</small>
+      <small>Add support for another program by installing an integration package. OmniCandi checks the package before anything runs, and each integration works in its own restricted process.</small>
       <div className="ext-actions">
         <button className="btn small" disabled={!!busy} onClick={() => void pick('file')}>Install integration package…</button>
         <button className="btn small ghost" disabled={!!busy} onClick={() => void pick('folder')}>Install from folder…</button>

@@ -1,4 +1,4 @@
-// Reopen-lifecycle smoke for WordCraft (.docx) and FigCraft (.figcraft) inside CreateCraft with the REAL apps, in a scratch
+// Reopen-lifecycle smoke for WordCraft (.docx) and FigCraft (.figcraft) inside OmniCandi with the REAL apps, in a scratch
 // profile (CS_USER_DATA_DIR): open -> edit -> save as new version -> switch to the other app -> reopen the SAVED version,
 // plus unchanged-save / undo-then-save (no new version) and a real edit after that (new version). Every open is timed;
 // the check fails when an open takes longer than 20 s. Set CS_PROFILE_DIR to reuse a profile (lifecycle runs).
@@ -72,7 +72,7 @@ async function embeddedCheck(label, pid) {
     ok = s.visible && near(appDip, stage);
     detail = `app ${JSON.stringify(appDip)} · area ${JSON.stringify(stage)}`;
   }
-  check(`${label} shows inside CreateCraft`, ok, detail);
+  check(`${label} shows inside OmniCandi`, ok, detail);
   return pr;
 }
 const live = () => win.evaluate(() => window.studio.live.state());
@@ -157,7 +157,7 @@ try {
       await pick(new RegExp(a.asset.replace(/\./g, '\\.'), ''));
       await tab('Edit');
       await timedOpen(a.id, a.asset);
-      if (process.env.EMBED_WAIT) await embeddedCheck(`${L}: ${a.id} shows inside CreateCraft`, await waitPid(a.exe));
+      if (process.env.EMBED_WAIT) await embeddedCheck(`${L}: ${a.id} shows inside OmniCandi`, await waitPid(a.exe));
       const te = Date.now();
       await win.evaluate(([op, v]) => window.studio.live.quickEdit(op, v), a.edit);
       console.log(`      quick edit took ${((Date.now() - te) / 1000).toFixed(1)} s`);

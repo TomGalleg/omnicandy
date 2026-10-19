@@ -154,7 +154,7 @@ export class VideoService {
     const cur = (await this.read(store)).find((j) => j.id === id);
     if (!cur) throw new Error('That video job was not found.');
     if (!ACTIVE_VIDEO_STATES.includes(cur.state)) return cur;
-    let message = 'Stopped waiting. Google does not offer a way to cancel a running video, so it may still finish and be billed to your account; CreateCraft will not import it.';
+    let message = 'Stopped waiting. Google does not offer a way to cancel a running video, so it may still finish and be billed to your account; OmniCandi will not import it.';
     if (cur.provider === 'runway' && cur.operation) {
       try {
         await this.d.vault.withKey('runway', async (key) => {
@@ -163,7 +163,7 @@ export class VideoService {
         });
         message = 'Cancelled at Runway. Credits for a cancelled job are normally not charged; check your Runway balance.';
       } catch (e) {
-        message = `Stopped waiting, but Runway could not confirm the cancel (${e instanceof Error ? e.message : String(e)}). It may still finish and be billed; CreateCraft will not import it.`;
+        message = `Stopped waiting, but Runway could not confirm the cancel (${e instanceof Error ? e.message : String(e)}). It may still finish and be billed; OmniCandi will not import it.`;
       }
     }
     return (await this.update(store, id, { state: 'cancelled', message }))!;

@@ -9,7 +9,7 @@ export function ConnectApplicationsCard() {
     <section className="connect-card" aria-labelledby="connect-card-title">
       <div>
         <h3 id="connect-card-title">Connect Applications</h3>
-        <p>Find programs like Blender or FreeCAD on this PC and connect them to CreateCraft in a few clicks. CreateCraft explains what each one may do, asks before anything is installed, and tests every connection for real.</p>
+        <p>Find programs like Blender or FreeCAD on this PC and connect them to OmniCandi in a few clicks. OmniCandi explains what each one may do, asks before anything is installed, and tests every connection for real.</p>
       </div>
       <button ref={btn} className="btn primary" onClick={() => setOpen(true)}>Connect Applications…</button>
       {open && <ConnectWizard onClose={() => { setOpen(false); queueMicrotask(() => btn.current?.focus()); }} />}

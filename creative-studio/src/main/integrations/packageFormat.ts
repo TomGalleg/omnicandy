@@ -101,7 +101,7 @@ export const integrationSchema = z.object({
 }).strict();
 
 export const packageManifestSchema = z.object({
-  manifestVersion: z.number().int().refine((v) => SUPPORTED_MANIFEST_VERSIONS.includes(v), 'unsupported manifestVersion (this CreateCraft reads 1 and 2)'),
+  manifestVersion: z.number().int().refine((v) => SUPPORTED_MANIFEST_VERSIONS.includes(v), 'unsupported manifestVersion (this OmniCandi reads 1 and 2)'),
   id: z.string().regex(/^[a-z0-9][a-z0-9.-]{1,60}$/, 'id: lower-case letters, digits, "." or "-" (2 to 61 characters)'),
   /** Where the package may run; missing = Windows only. */
   platforms: platformsField,
@@ -228,7 +228,7 @@ export function parsePackage(files: Map<string, Buffer>): ParsedPackage | { prob
   const m = r.data;
   const problems: string[] = [];
   if (m.sdk.min > m.sdk.max) problems.push('sdk.min is greater than sdk.max');
-  if (ADAPTER_SDK_VERSION < m.sdk.min || ADAPTER_SDK_VERSION > m.sdk.max) problems.push(`needs adapter SDK ${m.sdk.min}-${m.sdk.max}; this CreateCraft speaks ${ADAPTER_SDK_VERSION}`);
+  if (ADAPTER_SDK_VERSION < m.sdk.min || ADAPTER_SDK_VERSION > m.sdk.max) problems.push(`needs adapter SDK ${m.sdk.min}-${m.sdk.max}; this OmniCandi speaks ${ADAPTER_SDK_VERSION}`);
   if (m.application.kind === 'program' && !m.application.exeNames?.length) problems.push('a program adapter must list application.exeNames');
   if (m.application.kind === 'self-contained' && m.application.exeNames?.length) problems.push('a self-contained adapter must not list application.exeNames');
   if (m.commands.length && !m.capabilities.includes('executeCommand')) problems.push('declares commands without the executeCommand capability');
@@ -280,7 +280,7 @@ function integrationProblems(m: PackageManifest, type: IntegrationType): string[
     }
     if (pl.mechanism === 'file-copy' && !pl.files.length) out.push('a file-copy plugin lists no files');
     if (pl.mechanism === 'vendor-workflow' && !pl.vendorWorkflow) out.push('a vendor-workflow plugin needs vendorWorkflow steps');
-    if (pl.mechanism === 'vendor-workflow' && pl.files.length) out.push('a vendor-workflow plugin must not list files for CreateCraft to copy');
+    if (pl.mechanism === 'vendor-workflow' && pl.files.length) out.push('a vendor-workflow plugin must not list files for OmniCandi to copy');
     if (pl.vendorWorkflow?.officialUrl && !/^https:\/\//.test(pl.vendorWorkflow.officialUrl)) out.push('vendorWorkflow.officialUrl must be https');
   }
   const c = i.communication;
@@ -293,7 +293,7 @@ function integrationProblems(m: PackageManifest, type: IntegrationType): string[
   return out;
 }
 
-/** Converts a package manifest into the registry's AdapterManifest. Packages are always "experimental": verified is CreateCraft's word. */
+/** Converts a package manifest into the registry's AdapterManifest. Packages are always "experimental": verified is OmniCandi's word. */
 export function toAdapterManifest(m: PackageManifest, trust: 'trusted-publisher' | 'unsigned'): AdapterManifest {
   const ranges = m.application.versions;
   const mins = (ranges ?? []).map((r) => r.min).filter((x): x is string => !!x);

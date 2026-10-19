@@ -1,6 +1,6 @@
-// A Blender window that stays open, so the user can watch Claude work in it (docked into CreateCraft) and
+// A Blender window that stays open, so the user can watch Claude work in it (docked into OmniCandi) and
 // edit by hand. Blender has no remote-control port, so the window starts with one fixed script
-// (LISTENER below) that checks a private folder for command files. CreateCraft only ever writes the
+// (LISTENER below) that checks a private folder for command files. OmniCandi only ever writes the
 // SAME fixed command scripts the background mode uses, with the parameters in a JSON file; nothing else
 // is run. Every edit is saved to the .blend file in place, so the file on disk is always current.
 
@@ -8,7 +8,7 @@ import { spawn, type ChildProcess } from 'node:child_process';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
-/** Called by the host (ipc.ts) so the new window can be docked into CreateCraft. */
+/** Called by the host (ipc.ts) so the new window can be docked into OmniCandi. */
 export interface BlenderLiveHooks { onSpawn?: (pid: number) => void; onExit?: () => void }
 let hooks: BlenderLiveHooks | null = null;
 export function setBlenderLiveHooks(h: BlenderLiveHooks | null): void { hooks = h; }
@@ -161,7 +161,7 @@ export class LiveBlenderSession {
     throw new Error('Blender did not answer in time.');
   }
 
-  /** Stops polling and leaves the window open for the user (CreateCraft is closing or disconnecting). */
+  /** Stops polling and leaves the window open for the user (OmniCandi is closing or disconnecting). */
   async detach(): Promise<void> {
     await fs.writeFile(path.join(this.dir, 'detach.flag'), '1').catch(() => undefined);
     this.proc = null;

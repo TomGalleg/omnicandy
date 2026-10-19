@@ -1,4 +1,4 @@
-// VOLTERRA X1 files edited through CreateCraft's own Claude panel (real Claude, scratch profile, $0 other spend).
+// VOLTERRA X1 files edited through OmniCandi's own Claude panel (real Claude, scratch profile, $0 other spend).
 // Originals are copied into a scratch project; the source folder is hash-checked before and after.
 // Run after `npm run build`: node scripts/smoke-volterra.mjs [only,labels]
 import { execFileSync } from 'node:child_process';

@@ -37,9 +37,9 @@ export interface InstalledRecord {
 interface RegistryFile { version: 1; adapters: Record<string, InstalledRecord>; trusted: Record<string, { name: string; addedAt: string }> }
 
 export interface StoreHooks {
-  /** Problems with registering this manifest next to what CreateCraft already has (id or program taken). */
+  /** Problems with registering this manifest next to what OmniCandi already has (id or program taken). */
   conflicts(m: PackageManifest): string[];
-  /** Publisher key fingerprints CreateCraft itself ships as trusted (official release keys). Never a development key. */
+  /** Publisher key fingerprints OmniCandi itself ships as trusted (official release keys). Never a development key. */
   bundledPublishers?: () => string[];
 }
 
@@ -127,7 +127,7 @@ export class PackageStore {
     });
     if (parsed.signature.state === 'invalid') rev.problems.push(`Signature check failed: ${parsed.signature.detail}`);
     rev.publisherTrusted = !!(parsed.signature.state === 'valid' && parsed.signature.fingerprint && (reg.trusted[parsed.signature.fingerprint] || (this.hooks.bundledPublishers?.() ?? []).includes(parsed.signature.fingerprint)));
-    if (parsed.signature.state === 'unsigned') rev.warnings.push('This package is not signed, so CreateCraft cannot tell who made it or whether it was changed. It will ask you before every command it runs.');
+    if (parsed.signature.state === 'unsigned') rev.warnings.push('This package is not signed, so OmniCandi cannot tell who made it or whether it was changed. It will ask you before every command it runs.');
     else if (parsed.signature.state === 'valid' && !rev.publisherTrusted) rev.warnings.push(`This publisher is new to you. Only continue if you trust "${m.publisher.name}" (key ${parsed.signature.fingerprint}).`);
     rev.problems.push(...this.hooks.conflicts(m));
     if (installed) {

@@ -5,7 +5,7 @@ export const DEFAULT_APPEARANCE: AppearanceSettings = { version: 2, mode: 'syste
 
 export const THEME_OPTIONS: ReadonlyArray<{ id: ThemeMode; label: string; hint: string }> = [
   { id: 'artcraft', label: 'ArtCraft Match', hint: 'Charcoal grey, matches PhotoCraft and the other ArtCraft apps' },
-  { id: 'studioDark', label: 'Studio Dark', hint: 'The original near-black CreateCraft look' },
+  { id: 'studioDark', label: 'Studio Dark', hint: 'The original near-black OmniCandi look' },
   { id: 'light', label: 'Light', hint: 'Light grey, matches the ArtCraft light themes' },
   { id: 'system', label: 'System', hint: 'Follows Windows dark/light' },
 ];
@@ -19,7 +19,7 @@ export type ThemeTokens = Record<
 /**
  * Palettes. ArtCraft Match is measured from PhotoCraft's own "proMedium" theme (canvas surround
  * #282828, panels #535353, fields #424242); Light is coordinated with PhotoCraft's "studioLight"
- * (#e2e2e6 / #f6f6f8 / #fcfcfd). Studio Dark is the original CreateCraft palette, unchanged.
+ * (#e2e2e6 / #f6f6f8 / #fcfcfd). Studio Dark is the original OmniCandi palette, unchanged.
  */
 export const PALETTES: Record<ThemePalette, ThemeTokens> = {
   artcraft: {

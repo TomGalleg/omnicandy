@@ -43,7 +43,7 @@ try {
     await win.locator('.claude .chip', { hasText: 'Ready' }).waitFor({ timeout: 240000 });
     const s = await win.evaluate(() => window.studio.claude.state());
     const after = await win.evaluate(() => window.studio.live.state());
-    check('Claude edited the open document through CreateCraft tools', after.history.length > before, JSON.stringify(after.history));
+    check('Claude edited the open document through OmniCandi tools', after.history.length > before, JSON.stringify(after.history));
     check('Claude replied', s.items.some((i) => i.role === 'claude'), s.items.filter((i) => i.role !== 'user').map((i) => `${i.role}: ${i.text}`).join(' | ').slice(0, 400));
     check('lock released after Claude finished', after.collab.lockOwner === null, after.collab.phase);
     await win.screenshot({ path: path.join(shots, '24-claude-edit.png') });

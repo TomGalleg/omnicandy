@@ -1,4 +1,4 @@
-// Real MCP round trips against the bundled server process (out/planner-mcp.cjs): over stdio with the same client CreateCraft uses
+// Real MCP round trips against the bundled server process (out/planner-mcp.cjs): over stdio with the same client OmniCandi uses
 // for ArtCraft, and over local HTTP with a bearer token. The "user" side is the app's own service on the same folder.
 import { execFileSync, spawn } from 'node:child_process';
 import fs from 'node:fs/promises';

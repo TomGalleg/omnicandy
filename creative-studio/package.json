@@ -1,9 +1,9 @@
 {
   "name": "creative-studio",
-  "productName": "CreateCraft",
+  "productName": "OmniCandi",
   "version": "0.1.0",
   "private": true,
-  "description": "CreateCraft: Windows-first creative desktop app with Claude as Creative Partner for ArtCraft apps",
+  "description": "OmniCandi: Windows-first creative desktop app with Claude as Creative Partner for ArtCraft apps",
   "main": "out/main/index.js",
   "scripts": {
     "dev": "electron-vite dev",

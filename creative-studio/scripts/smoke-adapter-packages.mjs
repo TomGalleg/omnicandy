@@ -1,4 +1,4 @@
-// Settings > Integrations > Integration packages, in a scratch profile (never your own CreateCraft or projects).
+// Settings > Integrations > Integration packages, in a scratch profile (never your own OmniCandi or projects).
 // Packs the sample adapter (signed with a throw-away key, plus an unsigned copy), drops them in the inbox folder
 // and exercises review, publisher trust, install, turn off/on, remove. Costs nothing; no Claude usage.
 // Run after `npm run build`: node scripts/smoke-adapter-packages.mjs
@@ -61,7 +61,7 @@ try {
   await signedRow.getByRole('button', { name: 'Review…' }).click();
   const review = pk.locator('.ext-review');
   await review.waitFor();
-  check('the review shows publisher, key fingerprint and what it can do', /CreateCraft Samples/.test((await review.textContent()) ?? '') && /Publisher key/.test((await review.textContent()) ?? '') && /Count words in text/.test((await review.textContent()) ?? ''));
+  check('the review shows publisher, key fingerprint and what it can do', /OmniCandi Samples/.test((await review.textContent()) ?? '') && /Publisher key/.test((await review.textContent()) ?? '') && /Count words in text/.test((await review.textContent()) ?? ''));
   check('install is disabled until the new publisher is trusted', await review.getByRole('button', { name: 'Install', exact: true }).isDisabled());
   await win.screenshot({ path: path.join(shots, '101-adapter-review.png') });
   await review.getByRole('checkbox', { name: /I trust/ }).check();

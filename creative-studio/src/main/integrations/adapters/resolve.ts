@@ -9,7 +9,7 @@
 //    Local in Preferences > System > General. A Free edition, or a disabled preference, makes the
 //    connection return nothing; that is reported as "Scripting not available", never as success.
 //  * The API library can crash some Python versions at import (seen with 3.13 here). Scripts always
-//    run in a child process, so a crash cannot reach CreateCraft; other interpreters are then tried.
+//    run in a child process, so a crash cannot reach OmniCandi; other interpreters are then tried.
 // Scripts are fixed templates; parameters travel in a JSON file and are never spliced into code.
 
 import fs from 'node:fs/promises';
@@ -19,7 +19,7 @@ import { ADAPTER_SDK_VERSION, type AdapterManifest, type CommandSpec, type Disco
 import { parseResultLine, runProcess, safeFileName, type RunResult } from '../process';
 import { AdapterError, type AdapterFactory, type AdapterOutcome, type ExecuteContext, type ExternalAdapter, type HealthResult, type ProbeResult } from '../sdk';
 
-/** Only projects whose name starts with this may be created or deleted by CreateCraft. */
+/** Only projects whose name starts with this may be created or deleted by OmniCandi. */
 export const SCRATCH_PREFIX = 'CreateCraft';
 
 const COMMANDS: CommandSpec[] = [
@@ -72,7 +72,7 @@ export const RESOLVE_MANIFEST: AdapterManifest = {
   methods: ['scripting', 'file-exchange'],
   capabilities: ['detect', 'inspectCapabilities', 'connect', 'disconnect', 'healthCheck', 'executeCommand', 'cancelOperation', 'exportFile', 'dispose'],
   commands: COMMANDS,
-  notes: 'Needs Resolve to be running and External scripting set to Local (Preferences > System > General). Resolve\'s external scripting is a Studio-edition feature; with the Free edition this integration reports "Scripting not available". CreateCraft never starts Resolve or opens your projects; only projects named "CreateCraft ..." can be created or deleted.',
+  notes: 'Needs Resolve to be running and External scripting set to Local (Preferences > System > General). Resolve\'s external scripting is a Studio-edition feature; with the Free edition this integration reports "Scripting not available". OmniCandi never starts Resolve or opens your projects; only projects named "OmniCandi ..." can be created or deleted.',
 };
 
 const PRELUDE = `import json, os, sys
@@ -264,7 +264,7 @@ class ResolveAdapter implements ExternalAdapter {
   async healthCheck(): Promise<HealthResult> {
     if (!this.app) return { ok: false, detail: 'Not connected.' };
     if (!(await (this.o.isRunning ?? resolveIsRunning)())) {
-      return { ok: false, state: 'not-running', detail: 'DaVinci Resolve is not running. Start Resolve (CreateCraft never starts it or opens your projects), then connect again.' };
+      return { ok: false, state: 'not-running', detail: 'DaVinci Resolve is not running. Start Resolve (OmniCandi never starts it or opens your projects), then connect again.' };
     }
     const lib = this.libPath();
     if (!(await fs.stat(lib).then(() => true, () => false))) return { ok: false, detail: `The Resolve scripting library was not found at ${lib}.` };

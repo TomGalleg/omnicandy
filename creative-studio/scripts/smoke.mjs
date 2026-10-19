@@ -16,7 +16,7 @@ async function launch() {
   const app = await electron.launch({ args: [root], cwd: root, env: { ...process.env, CS_USER_DATA_DIR: profile } });
   const win = await app.firstWindow();
   await win.setViewportSize({ width: 1600, height: 960 }).catch(() => {});
-  await win.getByText('CreateCraft').first().waitFor();
+  await win.getByText('OmniCandi').first().waitFor();
   await win.locator('.asset').first().waitFor({ timeout: 20000 });
   return { app, win };
 }

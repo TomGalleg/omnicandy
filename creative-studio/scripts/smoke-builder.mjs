@@ -1,4 +1,4 @@
-// AI Adapter Builder in the REAL CreateCraft window, in scratch profiles (never your own CreateCraft or projects).
+// AI Adapter Builder in the REAL OmniCandi window, in scratch profiles (never your own OmniCandi or projects).
 //
 // Run 1: REAL FreeCAD on this PC. Pick FreeCAD from the installed programs, Create Integration, wait for build + tests,
 //        review and approve the install, connect, run the live test on the real program, open Advanced, then repair
@@ -58,7 +58,7 @@ try {
   const order = await win.evaluate(() => { const c = document.querySelector('.connect-card'); const b = [...document.querySelectorAll('.connect-card')][1]; return !!c && !!b && !!(c.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING); });
   check('Settings > Integrations has Connect Applications and, below it, Create Custom Integration', order);
   check('the card says the result is private and nothing is installed without the user', /Nothing is installed without you/.test((await win.locator('.connect-card').nth(1).textContent()) ?? ''));
-  check('My Integrations shows Official and Custom sections', (await win.getByLabel('Official CreateCraft Integrations').count()) > 0 && (await win.getByLabel('My Custom Integrations').count()) > 0);
+  check('My Integrations shows Official and Custom sections', (await win.getByLabel('Official OmniCandi Integrations').count()) > 0 && (await win.getByLabel('My Custom Integrations').count()) > 0);
 
   await win.getByRole('button', { name: 'Create Integration…' }).click();
   const dlg = win.locator('.connect-dialog');

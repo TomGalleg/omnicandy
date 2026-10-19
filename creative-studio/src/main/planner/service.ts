@@ -279,7 +279,7 @@ export class PlannerService {
     if (!i.title.trim()) throw new PlannerError('invalid', 'Give the asset a title.');
     if (i.source === 'file' && !i.path) throw new PlannerError('invalid', 'A file asset needs a path.');
     if (i.source === 'link' && !/^https?:\/\//i.test(i.url ?? '')) throw new PlannerError('invalid', 'A link needs an http(s) address.');
-    if (i.source === 'createcraft' && !i.createcraft) throw new PlannerError('invalid', 'A CreateCraft asset needs a project and asset id.');
+    if (i.source === 'createcraft' && !i.createcraft) throw new PlannerError('invalid', 'An OmniCandi asset needs a project and asset id.');
     return this.store.mutate(id, c.actor, (p, log, now) => {
       const group = i.group ?? '';
       const version = i.version ?? (group ? 1 + Math.max(0, ...p.assets.filter((a) => a.group === group).map((a) => a.version)) : 1);
@@ -631,7 +631,7 @@ export class PlannerService {
     ];
     if (!changes.length) throw new PlannerError('invalid', 'The plan has no steps to suggest.');
     const proposal = await this.store.mutate(created.id, c.actor, (p, log, now) => {
-      const made = this.addProposal(p, { kind: 'createcraft', name: 'CreateCraft Claude' }, now, 'Steps and questions from the plan you approved on Home', changes, 'home');
+      const made = this.addProposal(p, { kind: 'createcraft', name: 'OmniCandi Claude' }, now, 'Steps and questions from the plan you approved on Home', changes, 'home');
       log('proposal.created', `${changes.length} suggestion(s) from the plan approved on Home; waiting for your decision`, { targetId: made.id });
       return made;
     });
@@ -708,11 +708,11 @@ export class PlannerService {
         } catch { assets.push({ id: a.id, how: 'referenced', why: 'The file was not found when exporting.' }); }
         continue;
       }
-      assets.push({ id: a.id, how: 'referenced', ...(a.source === 'createcraft' ? { why: 'Lives in a CreateCraft art project; relink after import.' } : {}) });
+      assets.push({ id: a.id, how: 'referenced', ...(a.source === 'createcraft' ? { why: 'Lives in an OmniCandi art project; relink after import.' } : {}) });
     }
     for (const t of p.tasks) { if (t.claim) { t.claim = null; if (t.status === 'in_progress') t.status = 'todo'; } }
     files['planner.json'] = JSON.stringify({ format: PLANNER_FORMAT, version: 1, exportedAt: this.now().toISOString(), mode, project: p, activity: await this.store.history(id, 0, 5000), assets }, null, 2);
-    files['README.txt'] = 'CreateCraft Project Planner export. planner.json holds the plan; assets/ holds bundled files. Referenced files keep the path they had on the exporting computer. Claims are removed. No credentials or settings are included.';
+    files['README.txt'] = 'OmniCandi Project Planner export. planner.json holds the plan; assets/ holds bundled files. Referenced files keep the path they had on the exporting computer. Claims are removed. No credentials or settings are included.';
     return writeZip(files);
   }
 

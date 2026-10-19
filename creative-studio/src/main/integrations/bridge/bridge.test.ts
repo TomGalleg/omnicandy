@@ -278,7 +278,7 @@ describe('commands', () => {
     expect((await r.server.call(PLUGIN, 'echo', { text: 'again' })).message).toBe('echo again');
   });
 
-  it('reconnects after CreateCraft itself restarts (new pipe name)', async () => {
+  it('reconnects after OmniCandi itself restarts (new pipe name)', async () => {
     const r = await rig();
     plugin(r);
     await r.server.waitForSession(PLUGIN, 5000);

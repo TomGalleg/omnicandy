@@ -39,7 +39,7 @@ export function Header({ projectName, onProjectHome, workspace, onWorkspace, nav
   const moreLabel = MORE_NAV.find((n) => n.id === workspace)?.label;
   return (
     <header className="header">
-      <div className="brand"><img className="brand-logo" src={logo} alt="" /> CreateCraft</div>
+      <div className="brand"><img className="brand-logo" src={logo} alt="" /> OmniCandi</div>
       <button className="project-name" title="Projects" onClick={onProjectHome}>Project: <strong>{projectName}</strong> <span aria-hidden>▾</span></button>
       <nav className="workspaces" aria-label="Workspaces">
         {(simple ? SIMPLE_NAV : ADVANCED_NAV).map((w) => (

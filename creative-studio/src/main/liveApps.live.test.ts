@@ -1,5 +1,5 @@
 // Drives the REAL FilmCraft, LightCraft, EffectCraft and DesignCraft windows through every quick edit
-// CreateCraft offers, plus undo, save-as-new-version and theme. Opens windows on screen, so it only
+// OmniCandi offers, plus undo, save-as-new-version and theme. Opens windows on screen, so it only
 // runs with CS_LIVE_TESTS=1. Each app's theme is put back to what it was before the test.
 import { existsSync, readFileSync } from 'node:fs';
 import fs from 'node:fs/promises';

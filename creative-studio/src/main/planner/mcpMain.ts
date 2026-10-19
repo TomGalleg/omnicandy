@@ -1,7 +1,7 @@
 // Entry point of the planner MCP server (bundled to out/planner-mcp.cjs by scripts/build-planner-mcp.mjs).
 //   node planner-mcp.cjs --scopes read,execute --actor "Claude Code"            stdio (what Claude Code, Gemini CLI and Claude Desktop use)
 //   node planner-mcp.cjs --http --port 8765 --token-file <file> --scopes read   local HTTP, bearer token required
-// The folder is --dir, else CREATECRAFT_PLANNER_DIR, else <CreateCraft user data>/planner. Nothing is sent anywhere.
+// The folder is --dir, else CREATECRAFT_PLANNER_DIR, else <OmniCandi user data>/planner. Nothing is sent anywhere.
 import { createServer } from 'node:http';
 import path from 'node:path';
 import fs from 'node:fs';

@@ -58,7 +58,7 @@ export class WorkflowSteps {
       const entries = await fs.readdir(dir, { withFileTypes: true }).catch(() => { throw new Error(`Can't read the folder ${dir}.`); });
       const files = entries.filter((e) => e.isFile() && IMPORTABLE_EXTENSIONS.includes(path.extname(e.name).slice(1).toLowerCase()))
         .map((e) => path.join(dir, e.name)).sort();
-      if (!files.length) throw new Error('The folder has no files CreateCraft can open.');
+      if (!files.length) throw new Error('The folder has no files OmniCandi can open.');
       const out = [];
       for (const f of files.slice(0, 200)) {
         const r = await this.d.store.importFile(f, { origin: 'imported', source: `Imported by a workflow from ${dir}` });

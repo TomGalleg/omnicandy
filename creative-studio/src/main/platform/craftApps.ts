@@ -1,4 +1,4 @@
-// Where the 13 Craft apps live. CreateCraft does not contain them; it drives separately installed programs.
+// Where the 13 Craft apps live. OmniCandi does not contain them; it drives separately installed programs.
 // Windows: <Program Files>\<App>\<app>.exe and <app>-cli.exe (verified on this PC). Linux: no Linux builds are known, so no path
 // is guessed and the apps are reported as unavailable instead of failing in odd ways. (No Wine, no invented locations.)
 
@@ -7,7 +7,7 @@ import { binName, currentOs, OS_LABEL, type OsId } from '@shared/platform';
 
 export class CraftAppUnavailableError extends Error {
   constructor(app: string, os: OsId) {
-    super(`${app} has no ${OS_LABEL[os]} version that CreateCraft knows about, so it cannot be used on this computer.`);
+    super(`${app} has no ${OS_LABEL[os]} version that OmniCandi knows about, so it cannot be used on this computer.`);
     this.name = 'CraftAppUnavailableError';
   }
 }

@@ -1,5 +1,5 @@
 // "dotnet-addin" and "uxp-plugin" templates: source for code that runs INSIDE the program. Today these produce SOURCE FOR REVIEW
-// ONLY: CreateCraft does not compile add-ins against vendor SDKs, and its plug-in bridge is a Windows named pipe that Adobe UXP
+// ONLY: OmniCandi does not compile add-ins against vendor SDKs, and its plug-in bridge is a Windows named pipe that Adobe UXP
 // plug-ins cannot open, so nothing generated here can be installed or connected yet. The templates still do the useful safe
 // part: lay the sources out, derive the capability contract from the blueprint, and refuse sources that touch processes, files,
 // the registry or the network.
@@ -15,19 +15,19 @@ export function renderPluginSource(bp: Blueprint): Map<string, Buffer> {
   if (!p) return out;
   for (const f of p.files) out.set(`plugin-src/${f.path}`, buf(f.content));
   out.set('plugin-src/bridge-contract.json', buf(`${JSON.stringify({
-    note: 'The capabilities this add-in may register with CreateCraft. CreateCraft refuses anything not listed here and anything whose permissions the user did not approve.',
+    note: 'The capabilities this add-in may register with OmniCandi. OmniCandi refuses anything not listed here and anything whose permissions the user did not approve.',
     application: bp.application.name, hostProfile: bp.decision.hostProfile, technology: p.technology,
     capabilities: p.capabilities,
     commands: bp.commands.map((c) => ({ command: c.id, capability: c.plugin?.capability ?? null, permissions: c.permissions })),
   }, null, 2)}\n`));
   if (p.technology === 'uxp' && !p.files.some((f) => f.path === 'manifest.json')) {
     out.set('plugin-src/manifest.json', buf(`${JSON.stringify({
-      manifestVersion: 5, id: `custom.${bp.application.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 30)}.createcraft`, name: `${bp.application.name} for CreateCraft`, version: '1.0.0',
+      manifestVersion: 5, id: `custom.${bp.application.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 30)}.createcraft`, name: `${bp.application.name} for OmniCandi`, version: '1.0.0',
       main: 'index.html', host: { app: 'TO_BE_CONFIRMED_BY_THE_USER', minVersion: '0' }, requiredPermissions: {},
       note: 'Generated scaffold: confirm the host id and minimum version in the vendor documentation before loading this plug-in.',
     }, null, 2)}\n`));
   }
-  out.set('plugin-src/README.md', buf(`# ${bp.application.name} add-in (generated source, not installable yet)\n\nTechnology: ${p.technology}\n\nThis folder is a review copy. CreateCraft cannot build, install or connect it today. See the integration's limitations in the app.\n`));
+  out.set('plugin-src/README.md', buf(`# ${bp.application.name} add-in (generated source, not installable yet)\n\nTechnology: ${p.technology}\n\nThis folder is a review copy. OmniCandi cannot build, install or connect it today. See the integration's limitations in the app.\n`));
   return out;
 }
 
@@ -40,7 +40,7 @@ const CS_DENIED: Array<[RegExp, string]> = [
 ];
 const JS_DENIED: Array<[RegExp, string]> = [
   [/require\s*\(\s*['"](child_process|fs|os|net|http|https|dgram|worker_threads|vm)['"]\s*\)|from\s+['"](child_process|net|http|https)['"]/, 'imports process, network or file modules'],
-  [/\bfetch\s*\(|\bXMLHttpRequest\b|\bWebSocket\b|\bnavigator\s*\.\s*sendBeacon\b/, 'uses the network (CreateCraft has no network transport for UXP yet)'],
+  [/\bfetch\s*\(|\bXMLHttpRequest\b|\bWebSocket\b|\bnavigator\s*\.\s*sendBeacon\b/, 'uses the network (OmniCandi has no network transport for UXP yet)'],
   [/\beval\s*\(|\bnew\s+Function\s*\(|\bsetTimeout\s*\(\s*['"]/, 'runs text as code'],
   [/\bshell\s*\.\s*(openExternal|openPath)\b|\blocalFileSystem\b|\bstorage\s*\.\s*localFileSystem\b/, 'opens external programs or reads the disk'],
 ];

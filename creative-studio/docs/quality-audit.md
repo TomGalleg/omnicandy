@@ -1,4 +1,4 @@
-# CreateCraft quality, reliability and user-experience audit
+# OmniCandi quality, reliability and user-experience audit
 
 Date 2026-10-19. Scope: `creative-studio` at commit `2b81b5b` plus the 73 uncommitted changes in the working tree. Audit only: no fixes were made, nothing was installed, nothing was pushed, no paid API call was made.
 
@@ -77,8 +77,8 @@ Confirmed strengths first, because they set the baseline:
 
 Data-loss and reliability risks (not proven to occur):
 
-* **R1. No process-level error handling in the main process.** `src/main` has no `uncaughtException`, `unhandledRejection`, `render-process-gone` or `child-process-gone` handler (grep: only the adapter runner sub-process has them, `packageRunner.ts:52-53`). A crashed renderer or an unhandled rejection is not logged or surfaced by CreateCraft. There is also no log file anywhere in the app for a user to send when something breaks.
-* **R2. Unsaved work in an ArtCraft app is not warned about.** Edits made in a live app window exist only in that app until the user presses Save version (`liveTask.ts:312`). Closing CreateCraft leaves the app window open ("no unsaved work is lost", `ipc.ts:346`), which is safe, but nothing in CreateCraft says the library copy lacks those edits. `open_file` relies on the model prompt to "ask the user first if the current document has unsaved changes" (`claudePartner.ts:641`), with no code check.
+* **R1. No process-level error handling in the main process.** `src/main` has no `uncaughtException`, `unhandledRejection`, `render-process-gone` or `child-process-gone` handler (grep: only the adapter runner sub-process has them, `packageRunner.ts:52-53`). A crashed renderer or an unhandled rejection is not logged or surfaced by OmniCandi. There is also no log file anywhere in the app for a user to send when something breaks.
+* **R2. Unsaved work in an ArtCraft app is not warned about.** Edits made in a live app window exist only in that app until the user presses Save version (`liveTask.ts:312`). Closing OmniCandi leaves the app window open ("no unsaved work is lost", `ipc.ts:346`), which is safe, but nothing in OmniCandi says the library copy lacks those edits. `open_file` relies on the model prompt to "ask the user first if the current document has unsaved changes" (`claudePartner.ts:641`), with no code check.
 * **R3. Partial multi-step user edits are not rolled back.** `quickEdit`, `editTimeline` (`liveTask.ts:385`, `:591`) run several steps in a loop; if step 2 fails, step 1 stays applied and the controller's known version is not synced, so the next Claude call sees "changed by hand" and pauses (`:425-431`). Safe (it errs on pausing) but confusing.
 * **R4. `saveVersion` is not guarded against two overlapping calls** (double click). Both would read the same `saveCount` and produce two files named `...-live<n>` with different ids (`liveTask.ts:332`). Names are not unique keys, so nothing is overwritten.
 * **R5. The Claude chat can get stuck on a stale `resume` id.** `claudePartner.ts:800` resumes `sessionId` for every message; if that session is deleted from Claude Code's own store, each send would fail until the panel is reset. I did not test it.
@@ -140,7 +140,7 @@ Not run, and why:
 
 Test coverage gaps found while reading: `claudeUndo` has no test (H1); there is no test for concurrent `ProjectStore` writes (H2); the manager has no test for two simultaneous `connect()` calls (M1); no test checks the missing-Claude-Code state of the panel.
 
-Cross-platform readiness: the 624 passing Linux tests show the shared logic holds. The Windows-only pieces are the ones `docs/linux-compatibility.md` already lists: window embedding (PowerShell + Win32), `.exe` paths, GPU detection through PowerShell, Revit and the registry-based discovery. I found no new Windows-only assumption outside that list. Paths in messages such as `D:\\CreateCraft Projects` (`projects.ts:38`) are Windows wording. `defaultClaudeCliPath` already has a Linux branch (`platform/exec.ts:33-36`).
+Cross-platform readiness: the 624 passing Linux tests show the shared logic holds. The Windows-only pieces are the ones `docs/linux-compatibility.md` already lists: window embedding (PowerShell + Win32), `.exe` paths, GPU detection through PowerShell, Revit and the registry-based discovery. I found no new Windows-only assumption outside that list. Paths in messages such as `D:\\OmniCandi Projects` (`projects.ts:38`) are Windows wording. `defaultClaudeCliPath` already has a Linux branch (`platform/exec.ts:33-36`).
 
 ## 7. Prioritized repair plan
 

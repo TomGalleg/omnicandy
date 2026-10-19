@@ -93,7 +93,7 @@ export function LocalAiPanel() {
 
 function ModelActions({ id, files, bytes, offered, state, onError }: { id: string; files: number; bytes: number; offered: boolean; state?: DownloadState; onError: (e: unknown) => void }) {
   const s = state?.state ?? 'idle';
-  if (!files) return <div className="asset-meta">Not downloadable through CreateCraft yet.</div>;
+  if (!files) return <div className="asset-meta">Not downloadable through OmniCandi yet.</div>;
   const busy = s === 'downloading' || s === 'verifying';
   const pct = state && state.totalBytes ? Math.min(100, Math.round((state.doneBytes / state.totalBytes) * 100)) : 0;
   return (

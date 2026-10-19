@@ -29,7 +29,7 @@ describe('Claude Code install detection', () => {
     expect(CLAUDE_CODE_MISSING).toMatch(/Check again/);
   });
 
-  it('finds the command at the official location, and notices an install made while CreateCraft is open', async () => {
+  it('finds the command at the official location, and notices an install made while OmniCandi is open', async () => {
     const cli = path.join(tmp, 'bin', 'claude');
     const p = partner(cli);
     expect(await p.findCli()).toBeNull();

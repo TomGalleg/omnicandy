@@ -1,4 +1,4 @@
-// Phase 5: Home plan -> Planner suggestions, planner_propose for CreateCraft's Claude, and the workflow run line.
+// Phase 5: Home plan -> Planner suggestions, planner_propose for OmniCandi's Claude, and the workflow run line.
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -25,7 +25,7 @@ describe('the plan approved on Home', () => {
     expect(project.items).toHaveLength(0);
     expect(project.kinds).toEqual(['art']);
     expect(proposal).toMatchObject({ status: 'pending', source: 'home' });
-    expect(proposal.proposedBy).toEqual({ kind: 'createcraft', name: 'CreateCraft Claude' });
+    expect(proposal.proposedBy).toEqual({ kind: 'createcraft', name: 'OmniCandi Claude' });
     expect(proposal.changes.map((c) => c.op)).toEqual(['add_task', 'add_task', 'add_task', 'add_item']);
     const planBefore = project.planRevision;
     await svc.decideProposal(user, project.id, proposal.id, true, [0, 1, 3]); // the owner leaves one step out
@@ -45,14 +45,14 @@ describe('the plan approved on Home', () => {
   });
 });
 
-describe("CreateCraft's Claude can suggest, never decide", () => {
+describe("OmniCandi's Claude can suggest, never decide", () => {
   it('propose_changes through the panel session creates a pending, attributed proposal; nothing else changes', async () => {
     const svc = mk('panel');
     const p = await svc.createProject(user, { title: 'Panel' });
-    const s = new McpSession(svc, ['read', 'propose', 'execute'], { kind: 'createcraft', name: 'CreateCraft Claude' });
+    const s = new McpSession(svc, ['read', 'propose', 'execute'], { kind: 'createcraft', name: 'OmniCandi Claude' });
     const call = async (name: string, args: unknown) => JSON.parse(((await s.handle({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } })) as { result: { content: Array<{ text: string }> } }).result.content[0]!.text);
     const out = await call('propose_changes', { projectId: p.id, note: 'More tasks', changes: [{ op: 'add_task', title: 'Draft the outline' }, { op: 'add_item', itemType: 'requirement', title: 'Keep it short' }] });
-    expect(out).toMatchObject({ status: 'pending', proposedBy: { name: 'CreateCraft Claude' } });
+    expect(out).toMatchObject({ status: 'pending', proposedBy: { name: 'OmniCandi Claude' } });
     const after = await svc.getProject(user, p.id);
     expect(after.tasks).toHaveLength(0);
     expect(after.items).toHaveLength(0);

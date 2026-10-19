@@ -1,4 +1,4 @@
-// How the rest of CreateCraft reaches ONE installed plugin: a thin, permission-aware view of the bridge server.
+// How the rest of OmniCandi reaches ONE installed plugin: a thin, permission-aware view of the bridge server.
 
 import type { Permission } from '@shared/integrations';
 import type { BridgeServer, CallOptions, CallResult, SessionInfo } from './server';

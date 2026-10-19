@@ -39,7 +39,7 @@ export interface ProjectRecord {
   /** Permissions the user approved when installing (needed to reinstall a rolled-back version). */
   approvedPermissions: string[];
   docNames: string[];
-  /** Documentation that was collected for this project (origin and version are CreateCraft's knowledge, not Claude's claim). */
+  /** Documentation that was collected for this project (origin and version are OmniCandi's knowledge, not Claude's claim). */
   docs: Array<{ origin: string; title: string; url: string; versionNote: string; fetchedAt: string; bytes: number; outdated: boolean }>;
   proposal: RepairProposal | null;
 }

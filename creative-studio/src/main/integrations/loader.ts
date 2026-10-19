@@ -78,7 +78,7 @@ export class AdapterPackages {
         if (this.manager.isBuiltin(other.id)) out.push(`"${m.id}" is a built-in integration and cannot be replaced by a package.`);
         continue;
       }
-      if (other.exeNames.some((e) => exes.has(e.toLowerCase()))) out.push(`It drives the same program as "${other.name}", which CreateCraft already integrates.`);
+      if (other.exeNames.some((e) => exes.has(e.toLowerCase()))) out.push(`It drives the same program as "${other.name}", which OmniCandi already integrates.`);
     }
     return out;
   }
@@ -135,7 +135,7 @@ export class AdapterPackages {
     return { files: loaded.files, ...p };
   }
 
-  /** The version of the program a plugin would be installed for, if CreateCraft has found it. */
+  /** The version of the program a plugin would be installed for, if OmniCandi has found it. */
   private async hostVersion(m: PackageManifest): Promise<string | null> {
     const profile = profileById(m.integration?.host?.profile ?? '');
     if (!profile?.exeNames.length) return null;
@@ -214,7 +214,7 @@ export class AdapterPackages {
     return (await this.view(m.id))!;
   }
 
-  /** Vendor-workflow plugins: CreateCraft cannot copy files, but it can still create the pairing secret the plugin reads. */
+  /** Vendor-workflow plugins: OmniCandi cannot copy files, but it can still create the pairing secret the plugin reads. */
   private async pairOnly(m: PackageManifest): Promise<void> {
     const pl = m.integration!.plugin!;
     const fs = await import('node:fs/promises');

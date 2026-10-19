@@ -96,7 +96,7 @@ export class GenerationService {
       const models = ours.filter((id) => ids.includes(id));
       test = {
         ok: true, at, models,
-        message: models.length ? `Connected. Image models on this key: ${models.length} of ${ours.length}.` : `Connected (${ids.length} models listed, none of CreateCraft's image models among them; all are shown).`,
+        message: models.length ? `Connected. Image models on this key: ${models.length} of ${ours.length}.` : `Connected (${ids.length} models listed, none of OmniCandi's image models among them; all are shown).`,
       };
     } catch (e) {
       test = { ok: false, at, message: e instanceof Error ? e.message : String(e) };

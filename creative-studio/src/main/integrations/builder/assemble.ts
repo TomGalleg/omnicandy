@@ -1,6 +1,6 @@
-// Turns a validated Blueprint into the files of a .ccadapter package, using CreateCraft's fixed templates. The result is
+// Turns a validated Blueprint into the files of a .ccadapter package, using OmniCandi's fixed templates. The result is
 // always a manifest-version-2 EXTERNAL package: generated integrations carry no installer-side behaviour, and every file that
-// can run is either a template rendered by CreateCraft or an AI function that the validators already checked.
+// can run is either a template rendered by OmniCandi or an AI function that the validators already checked.
 
 import { createHash } from 'node:crypto';
 import { ADAPTER_SDK_VERSION, PACKAGE_MANIFEST_VERSION, PERMISSION_LABEL, type CommandSpec, type Permission } from '@shared/integrations';
@@ -104,7 +104,7 @@ function userGuide(bp: Blueprint, specs: CommandSpec[]): string {
     ...sortPerms(specs.flatMap((c) => c.permissions)).map((p) => `- ${PERMISSION_LABEL[p]}`), '',
     '## Good to know', '',
     '- This integration was written by an AI for this computer only. It is not shared or published anywhere.',
-    '- It starts as an untrusted candidate: CreateCraft asks before every command until you decide otherwise.',
+    '- It starts as an untrusted candidate: OmniCandi asks before every command until you decide otherwise.',
     '- "Tested" only ever means tested against the real program on this computer. Simulated tests prove the flow, not the program.',
     ...bp.research.limitations.map((l) => `- ${l}`),
   ];
@@ -177,7 +177,7 @@ export async function assembleBlueprint(bp: Blueprint, o: AssembleOptions): Prom
   files.set('docs/USER_GUIDE.md', buf(userGuide(bp, specs)));
   files.set('tests/mock-cases.json', buf(`${JSON.stringify(bp.commands.map((c) => ({ command: c.id, mock: c.mock })), null, 2)}\n`));
   files.set('provenance.json', buf(`${JSON.stringify({
-    generator: 'CreateCraft AI Adapter Builder', blueprintSchema: bp.schemaVersion, projectId: o.projectId, createdAt: o.createdAt, template: t,
+    generator: 'OmniCandi AI Adapter Builder', blueprintSchema: bp.schemaVersion, projectId: o.projectId, createdAt: o.createdAt, template: t,
     author: o.author, trust: 'untrusted-candidate',
     sources: bp.research.sources,
     documentedInterfaces: bp.commands.map((c) => ({ command: c.id, uses: c.docRefs })),

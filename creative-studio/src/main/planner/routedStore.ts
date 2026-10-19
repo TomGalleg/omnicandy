@@ -1,4 +1,4 @@
-// Where a plan lives. Each CreateCraft project keeps its own plan INSIDE the project folder (<project>/Planner/projects/<planId>/...), so the plan
+// Where a plan lives. Each OmniCandi project keeps its own plan INSIDE the project folder (<project>/Planner/projects/<planId>/...), so the plan
 // is part of the project's data: it travels with Move and Duplicate, and reopening the project restores it. Plans made before this existed stay in
 // the shared planner folder; they keep working, and can be copied into a project (the original is never changed).
 //

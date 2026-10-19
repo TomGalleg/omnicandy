@@ -175,7 +175,7 @@ function StorageSettings() {
           </>
         ) : <div className="asset-meta">Loading…</div>}
         {error && <div className="wf-msg error" role="alert">{error}</div>}
-        <p className="hint">Changing this only affects projects you create from now on. Existing projects stay where they are, and your settings, keys and project list stay in CreateCraft's own data folder.</p>
+        <p className="hint">Changing this only affects projects you create from now on. Existing projects stay where they are, and your settings, keys and project list stay in OmniCandi's own data folder.</p>
       </div>
     </>
   );
@@ -198,7 +198,7 @@ function IntegrationSettings({ apps }: { apps: AppProbeResult[] }) {
             </li>
           ))}
         </ul>
-        <small>Installed means the app was found on this PC. CreateCraft starts and controls an app when you open a file in it.</small>
+        <small>Installed means the app was found on this PC. OmniCandi starts and controls an app when you open a file in it.</small>
       </div>
       <ExternalApps />
       <ClaudeAuthCard />

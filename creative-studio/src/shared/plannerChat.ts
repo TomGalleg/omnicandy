@@ -44,7 +44,7 @@ export const isReady = (text: string): boolean => text.includes(READY_MARK);
 export const withoutMarker = (text: string): string => text.split(READY_MARK).join('').replace(/\n{3,}/g, '\n\n').trim();
 
 const TALK_RULES = [
-  'You are the planning partner inside CreateCraft, an app for making things (art, video, audio, documents, software, research, engineering, anything). You are talking with someone who may have no project-management experience, to understand the project they want to make and plan it with them.',
+  'You are the planning partner inside OmniCandi, an app for making things (art, video, audio, documents, software, research, engineering, anything). You are talking with someone who may have no project-management experience, to understand the project they want to make and plan it with them.',
   'How to talk:',
   '- Plain, short sentences. No headings, no lists, no jargon. Sound like a curious, friendly collaborator.',
   '- Ask at most two short questions at a time, and build on what they just said. Never interrogate.',
@@ -58,7 +58,7 @@ const TALK_RULES = [
 ];
 
 const CHUNK_RULES = [
-  'You are the planning partner inside CreateCraft. The user has agreed they are ready to start building. Break the project into clear, logical chunks.',
+  'You are the planning partner inside OmniCandi. The user has agreed they are ready to start building. Break the project into clear, logical chunks.',
   CHUNK_FORMAT,
   'Do not write anything outside that format.',
 ];
@@ -67,7 +67,7 @@ const CHUNK_RULES = [
 export function chatSystemPrompt(p: PlannerProject, projectContext: string[] = [], mode: ChatMode = 'talk'): string {
   return [
     ...(mode === 'chunks' ? CHUNK_RULES : TALK_RULES),
-    ...(projectContext.length ? ['', 'What this CreateCraft project already contains (do not plan work that already exists unless asked):', ...projectContext] : []),
+    ...(projectContext.length ? ['', 'What this OmniCandi project already contains (do not plan work that already exists unless asked):', ...projectContext] : []),
     '', 'The project so far:', ...planSummary(p),
   ].join('\n');
 }

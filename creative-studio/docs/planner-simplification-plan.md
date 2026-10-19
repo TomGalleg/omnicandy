@@ -17,7 +17,7 @@ the Planner parts of `claudePartner.ts` and `main/ipc.ts`). The existing test su
 | Store | `main/planner/store.ts` | `project.json` (atomic write) + `history.jsonl` (append-only) under a lock file; `mutate()` is the only write path, bumps `revision`, bumps `planRevision` only if the accepted-plan snapshot changed |
 | Service (all rules) | `main/planner/service.ts` | every rule is enforced here, for the app (user ctx, all scopes) and for connections (`read/propose/package/execute` only) |
 | MCP server | `main/planner/mcp.ts`, `mcpMain.ts` | 10 tools over stdio or 127.0.0.1 HTTP; adds no rules |
-| CreateCraft Claude | `claudePartner.ts` (`planner_*` x4) | the same MCP session with `read,execute`, actor "CreateCraft Claude" |
+| OmniCandi Claude | `claudePartner.ts` (`planner_*` x4) | the same MCP session with `read,execute`, actor "OmniCandi Claude" |
 | Paste path | `shared/plannerHandoff.ts` | package -> Markdown; tolerant parser for a pasted report (JSON or Markdown) |
 | UI | `renderer/.../planner/*` | 6 tabs: Overview, Plan, Tasks, Assets, Handoffs, History |
 
@@ -85,7 +85,7 @@ Handoffs tab, which holds six sections (reports to review, prepare a handoff, pa
 2. **Same four verbs for a beginner:** *Describe* the project, *Ask AI*, *Paste back*, *Approve*.
 3. **Nothing an AI produces is ever applied without an owner click on a preview** (including the "Add to my plan" shortcut).
 4. **Plain words in the UI, exact words in Advanced, history and MCP.**
-5. **No new network calls, no automatic AI turns.** Send prepares text and (for CreateCraft Claude) pre-fills a prompt the user submits.
+5. **No new network calls, no automatic AI turns.** Send prepares text and (for OmniCandi Claude) pre-fills a prompt the user submits.
 
 ---
 
@@ -150,8 +150,8 @@ hand; the owner finishing work personally goes straight to Done (existing "mark 
 
 1. From a task ("Send to AI"), from the Tasks column header ("Send all ready"), or from the AI area.
 2. **Pick the AI** (cards, no scope jargon):
-   * *CreateCraft Claude* (in-app): pre-fills the Claude panel with "Work on the planner brief N"; the user presses send. Nothing starts by itself.
-   * *Claude Code / Gemini CLI* (tools-capable, "last active <time>" from history, never "connected"): shows one short instruction to paste ("Use the CreateCraft planner tools: get_package pkg_..., claim, then report"), plus the full text as fallback.
+   * *OmniCandi Claude* (in-app): pre-fills the Claude panel with "Work on the planner brief N"; the user presses send. Nothing starts by itself.
+   * *Claude Code / Gemini CLI* (tools-capable, "last active <time>" from history, never "connected"): shows one short instruction to paste ("Use the OmniCandi planner tools: get_package pkg_..., claim, then report"), plus the full text as fallback.
    * *Anything else* (ChatGPT, Gemini app, Cowork, any chat): **Copy everything** (one button) = readable brief + how to answer.
 3. The app calls the orchestration `prepareSend(taskIds, destination)`:
    * if an **open package with identical content hash** already covers these tasks and the plan has not drifted, **reuse it** (idempotent; kills churn);
@@ -232,10 +232,10 @@ unaffected (the hash is stored, not recomputed).
 Single sources of truth: acceptance and plan state live only in the Planner; execution state of a graph lives only in the Workflow.
 Links are by reference, never copies:
 * A task may have `appRef {kind:'workflow', id}`. Phase 5 adds the missing picker. The task card shows the workflow's run state read-only.
-* A finished workflow run does **not** accept a task. It may create a *result* (actor "CreateCraft Workflow", outputs listed) so the task
+* A finished workflow run does **not** accept a task. It may create a *result* (actor "OmniCandi Workflow", outputs listed) so the task
   becomes Needs Review, and the owner accepts it. Optional and last in the plan.
 * The Claude panel stays a client of the same service (same four tools). Optional: add `planner_propose` (scope `propose`) so the panel can
-  brainstorm into suggestions; it can never edit or accept. "Send to AI -> CreateCraft Claude" just pre-fills the panel.
+  brainstorm into suggestions; it can never edit or accept. "Send to AI -> OmniCandi Claude" just pre-fills the panel.
 
 ---
 
@@ -409,8 +409,8 @@ Not run: the full `npm test`, `npm run smoke:planner` (builds and launches Elect
 **Send to AI**
 * `PlannerService.prepareSend()`: same rules as `createPackage` (the body was split into shared helpers; `createPackage` behaves as before and its `contentHash` is computed exactly as before). It returns an identical open package instead of making a superseding one. "Identical" uses a new optional `contentKey` on the package (accepted plan, tasks, assets, objective, note; **not** number, id or time), set after `contentHash` so the old hash is untouched. Tasks are put in project order so the same selection always gives the same key. It runs in one locked step.
 * The Phase 0 correction was needed: the stored `contentHash` includes the package number, so it cannot be used to recognise a repeat.
-* Plain AI area: pick tasks (a task's own **Send to AI** button opens it ticked), pick **who** (CreateCraft Claude / Claude Code or Gemini CLI / any chat), one button, then one **Copy** button. Shows "same brief as before" or which earlier brief it replaces, a list of local file locations with **Remove file locations** (on by default for chats), and **Unsend**. "Last seen" for tool clients comes from history only; the app does not claim a connection it cannot see.
-* CreateCraft Claude: **Put it in the Claude panel** fills the panel's box through a window event; the user presses Send (nothing starts by itself). If the panel is closed, Copy still works.
+* Plain AI area: pick tasks (a task's own **Send to AI** button opens it ticked), pick **who** (OmniCandi Claude / Claude Code or Gemini CLI / any chat), one button, then one **Copy** button. Shows "same brief as before" or which earlier brief it replaces, a list of local file locations with **Remove file locations** (on by default for chats), and **Unsend**. "Last seen" for tool clients comes from history only; the app does not claim a connection it cannot see.
+* OmniCandi Claude: **Put it in the Claude panel** fills the panel's box through a window event; the user presses Send (nothing starts by itself). If the panel is closed, Copy still works.
 
 **Paste back**
 * `classifyPaste()` decides result / plan suggestions / unclear, locally. Suggestions are read from JSON (`changes`, or `tasks`, `requirements`, `decisions`, `questions`, `ideas`) or Markdown lists under those headings (indented lines under a task become its checks, flagged as a guess). Limits: 200,000 characters, 30 changes, 200-character titles.
@@ -435,7 +435,7 @@ Not run: the full `npm test`, `npm run smoke:planner` (builds and launches Elect
 ## Part 17. Phase 4 results (done)
 
 **Added**
-* `src/shared/plannerContext.ts`: `buildContext()` (pure, local): all accepted rules and decisions are included by default. Only chat destinations have a budget (6,000 characters of rules); above it, rules are ranked by plain word overlap with the chosen tasks and kept until the budget is used. Tools that can read files (Claude Code, Gemini CLI, CreateCraft Claude) get everything. Left-out rules are always listed and the owner can put any back for this send. Ideas, open questions, rejected items, other tasks and history are never part of it. `upstreamResults()` adds the accepted result (summary and output list) of each task a task depends on. `brainstormText()` builds a short request for ideas.
+* `src/shared/plannerContext.ts`: `buildContext()` (pure, local): all accepted rules and decisions are included by default. Only chat destinations have a budget (6,000 characters of rules); above it, rules are ranked by plain word overlap with the chosen tasks and kept until the budget is used. Tools that can read files (Claude Code, Gemini CLI, OmniCandi Claude) get everything. Left-out rules are always listed and the owner can put any back for this send. Ideas, open questions, rejected items, other tasks and history are never part of it. `upstreamResults()` adds the accepted result (summary and output list) of each task a task depends on. `brainstormText()` builds a short request for ideas.
 * Package: optional `delivery` (`includedIds`, `omitted`, `upstream`, destination, budget) stored by `prepareSend` when a destination is given. `plan` keeps the **full** snapshot, so a change to a left-out rule still marks work as outdated. `contentKey` now covers what the AI receives, not the destination, so the same content for another AI is the same brief (no needless "replaced" notices). `createPackage` and MCP `create_execution_package` are unchanged (no `delivery`, every rule listed).
 * The brief text lists only the carried rules, then "Not included here (ask the owner if one might matter): ...", then "Results of earlier tasks you can build on". Upstream file locations are covered by the file-location list and by removal.
 * Plain AI area: the send preview says "The AI will see N of your M agreed rules" with the left-out list and tick boxes, and which finished results it gets; a new **Ask an AI for ideas** block copies the request that goes with Paste back (completes the Describe, Ask AI, Paste back, Approve loop).
@@ -455,15 +455,15 @@ Not run: the full `npm test`, `npm run smoke:planner` (builds and launches Elect
 ## Part 18. Phase 5 results (done)
 
 **Planner and Workflow**
-* A task can point at the workflow of the open CreateCraft project: the "Uses" list gets *The workflow of <project>* (stored as the existing `appRef {kind:'workflow', id: <project key>}`; no data change). The task shows a **Workflow** chip and one read-only line from the existing run state ("Not run yet", "Running: 2 of 5 steps done", "Waiting for you in the Workflow tab: ...", "The last run finished ... mark the task done yourself or send it for review"). For another project's workflow it says to open that project. The line never starts, approves or accepts anything.
+* A task can point at the workflow of the open OmniCandi project: the "Uses" list gets *The workflow of <project>* (stored as the existing `appRef {kind:'workflow', id: <project key>}`; no data change). The task shows a **Workflow** chip and one read-only line from the existing run state ("Not run yet", "Running: 2 of 5 steps done", "Waiting for you in the Workflow tab: ...", "The last run finished ... mark the task done yourself or send it for review"). For another project's workflow it says to open that project. The line never starts, approves or accepts anything.
 * Only the open project's workflow has a live state in the app (there is one run monitor), so no status is shown for other projects.
 * **Not done (kept optional and last, as planned):** a finished run creating a result for review. A run still never changes a task by itself.
 
 **Home "Create with Claude" and the Planner**
-* Finding from reading the code: Home's plan creates a *CreateCraft project* (folder, brief, workflow template). It was never stored in the Planner, so there was no second *plan* to merge; the overlap was the steps and questions. Now, on **Approve and create project**, a tick box (on by default, worded "Also keep these steps in the Planner as suggestions...") calls `createFromHomePlan`: a new Planner project (title, goal = finished output) with **one pending proposal** (source `home`, proposer "CreateCraft Claude", up to 8 steps as tasks, up to 3 questions). Nothing joins the plan until you accept it under Needs you; you can leave steps out. Unticked: nothing is created in the Planner. The paid Claude call that makes the plan is unchanged and still happens only when the user presses Create with Claude.
+* Finding from reading the code: Home's plan creates a *OmniCandi project* (folder, brief, workflow template). It was never stored in the Planner, so there was no second *plan* to merge; the overlap was the steps and questions. Now, on **Approve and create project**, a tick box (on by default, worded "Also keep these steps in the Planner as suggestions...") calls `createFromHomePlan`: a new Planner project (title, goal = finished output) with **one pending proposal** (source `home`, proposer "OmniCandi Claude", up to 8 steps as tasks, up to 3 questions). Nothing joins the plan until you accept it under Needs you; you can leave steps out. Unticked: nothing is created in the Planner. The paid Claude call that makes the plan is unchanged and still happens only when the user presses Create with Claude.
 
-**CreateCraft's Claude**
-* New tool `planner_propose` (the panel's session now holds `read, propose, execute`). It uses the MCP `propose_changes` path, so the result is a pending proposal attributed to "CreateCraft Claude". It cannot create packages, edit the plan, accept or review (tested: `create_execution_package` is refused, no tool name contains accept/review/decide/edit/delete, and the panel code only calls six named planner tools). The system prompt says so.
+**OmniCandi's Claude**
+* New tool `planner_propose` (the panel's session now holds `read, propose, execute`). It uses the MCP `propose_changes` path, so the result is a pending proposal attributed to "OmniCandi Claude". It cannot create packages, edit the plan, accept or review (tested: `create_execution_package` is refused, no tool name contains accept/review/decide/edit/delete, and the panel code only calls six named planner tools). The system prompt says so.
 
 **Tests** (`links.test.ts`, 5): Home plan becomes pending suggestions and accepting leaves the plan revision unchanged; cap and clean-up, connection refused, empty plan refused; panel session proposes but cannot package or decide; source scans pin the panel's allowed tool calls and scopes; workflow run wording. Smoke: new check that a task can point at the workflow and shows its state read-only.
 
@@ -482,7 +482,7 @@ Not run: the full `npm test`, `npm run smoke:planner` (builds and launches Elect
 ## Part 19. Phase 6 results (done) and final state
 
 **Done**
-* `docs/project-planner.md` and `docs/planner-explained.md` updated to the plain view, Send to AI, Paste back, the context builder, Workflow and Home links and CreateCraft's Claude (`planner_propose`). `README.md` Planner paragraph updated. `docs/planner-explained.md` no longer lists "where it is too complicated"; that history is in this file.
+* `docs/project-planner.md` and `docs/planner-explained.md` updated to the plain view, Send to AI, Paste back, the context builder, Workflow and Home links and OmniCandi's Claude (`planner_propose`). `README.md` Planner paragraph updated. `docs/planner-explained.md` no longer lists "where it is too complicated"; that history is in this file.
 * New `docs/planner-first-run-checklist.md`: the hands-on walkthrough (14 tasks, what to watch, pass criteria, what it cannot cover). **It has not been run with anyone.** Whether a non-technical person can use the Planner unaided is therefore **unproven**; the automated tests cannot show it.
 * Dead code removed: the unreachable plain branch in the Advanced Handoffs screen. Small polish found by looking at the screenshots: on the plain board the status label is no longer repeated in its own column (only the explanation, such as "Waiting for ..." or "Changes requested", remains), the "normal" priority chip is hidden, and long explanations wrap instead of being cut off.
 * Hardening found while documenting: `importSuggestions` now validates its changes itself (invalid operations and more than 30 changes are refused) instead of trusting the renderer; 1 new test.

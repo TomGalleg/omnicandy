@@ -1,13 +1,13 @@
-// Host profiles: what CreateCraft itself knows about WHERE and HOW a program accepts plugins.
+// Host profiles: what OmniCandi itself knows about WHERE and HOW a program accepts plugins.
 //
-// This table is owned by CreateCraft, not by packages. A package's manifest can only name a profile id and a
+// This table is owned by OmniCandi, not by packages. A package's manifest can only name a profile id and a
 // destination id from it; the folders, scopes, allowed file types and size limits below decide what the installer
 // may touch, whatever the manifest says. A package can therefore never grant itself a new write location.
 //
 // Readiness is deliberately conservative:
 //   simulated-test  a built-in test double (SimCAD). Real code paths, no real software.
-//   groundwork      the vendor mechanism is documented here; NO working CreateCraft plugin exists for it yet.
-//   supported       a real CreateCraft add-in exists AND was run against the real program (see the program's doc for what
+//   groundwork      the vendor mechanism is documented here; NO working OmniCandi plugin exists for it yet.
+//   supported       a real OmniCandi add-in exists AND was run against the real program (see the program's doc for what
 //                   was verified). Only Autodesk Revit 2027 is in this state.
 
 import path from 'node:path';
@@ -46,17 +46,17 @@ export interface HostProfile {
   name: string;
   readiness: 'simulated-test' | 'groundwork' | 'supported';
   exeNames: string[];
-  /** Process names checked to see whether the program is open (never ended by CreateCraft). */
+  /** Process names checked to see whether the program is open (never ended by OmniCandi). */
   processNames: string[];
   destinations: DestinationDef[];
   /** Supported desktop versions as the vendor documents them; empty when only a test double. */
   supportedVersions: string;
-  /** Plugin technologies the vendor supports on desktop, in rough order of preference for CreateCraft. */
+  /** Plugin technologies the vendor supports on desktop, in rough order of preference for OmniCandi. */
   technologies: Array<{ id: PluginTechnology; label: string; note: string }>;
   restart: Restart;
   restartNote: string;
   adminNote: string;
-  /** How CreateCraft and a plugin inside the program could talk. */
+  /** How OmniCandi and a plugin inside the program could talk. */
   communication: string;
   /** Threading/API-context rule commands must respect. */
   apiContext: string;
@@ -74,7 +74,7 @@ const BUNDLE_EXT = ['.xml', '.dll', '.json', '.js', '.py', '.cuix', '.lsp', '.sc
 
 export const SIMCAD_PROFILE: HostProfile = {
   id: 'simcad',
-  vendor: 'CreateCraft test double',
+  vendor: 'OmniCandi test double',
   name: 'SimCAD (simulated application)',
   readiness: 'simulated-test',
   exeNames: [],
@@ -91,10 +91,10 @@ export const SIMCAD_PROFILE: HostProfile = {
   restart: 'required',
   restartNote: 'SimCAD loads plugins only when it starts, like many real programs.',
   adminNote: 'The user plugin folder needs no administrator rights; the shared folder is a stand-in for a protected location.',
-  communication: 'CreateCraft plugin bridge over a Windows named pipe.',
+  communication: 'OmniCandi plugin bridge over a Windows named pipe.',
   apiContext: 'SimCAD only lets its API be used from its own tick loop; the plugin hands every command over to that loop.',
   vendorInstall: 'None: file copy into the plugin folder.',
-  restrictions: ['Simulated behaviour. Results from SimCAD prove the CreateCraft plumbing, not any real program.'],
+  restrictions: ['Simulated behaviour. Results from SimCAD prove the OmniCandi plumbing, not any real program.'],
   docs: [],
   confidence: 'vendor-documented',
 };
@@ -110,11 +110,11 @@ export const VENDOR_PROFILES: HostProfile[] = [
       { id: 'revit-addins-machine', label: 'Revit add-ins (all users)', scope: 'machine', admin: true, template: '%PROGRAMDATA%/Autodesk/Revit/Addins/{year}', extensions: NET_EXT, maxFileBytes: 64 * MB, maxFiles: 60, technologies: ['dotnet-addin'] },
       { id: 'autodesk-appplugins-user', label: 'Autodesk application plug-ins bundle (this user)', scope: 'user', admin: false, template: '%APPDATA%/Autodesk/ApplicationPlugins', extensions: BUNDLE_EXT.concat(['.addin']), maxFileBytes: 64 * MB, maxFiles: 80, technologies: ['bundle', 'dotnet-addin'] },
     ],
-    supportedVersions: 'A separate add-in build per Revit release year (.NET Framework 4.8 up to Revit 2024, .NET 8 for 2025 and 2026, .NET 10 for Revit 2027). CreateCraft ships the Revit 2027 build only.',
+    supportedVersions: 'A separate add-in build per Revit release year (.NET Framework 4.8 up to Revit 2024, .NET 8 for 2025 and 2026, .NET 10 for Revit 2027). OmniCandi ships the Revit 2027 build only.',
     technologies: [{ id: 'dotnet-addin', label: '.NET add-in with an .addin manifest', note: 'Revit reads *.addin manifests from the Addins/<year> folders at start-up.' }],
     restart: 'required', restartNote: 'Revit reads add-in manifests when it starts. A running Revit must be restarted.',
     adminNote: 'The per-user folder needs no administrator rights; the all-users ProgramData folder does.',
-    communication: 'Plugin dials CreateCraft\'s named pipe. Commands are queued and run through a Revit ExternalEvent handler.',
+    communication: 'Plugin dials OmniCandi\'s named pipe. Commands are queued and run through a Revit ExternalEvent handler.',
     apiContext: 'The Revit API may only be used inside a valid API context (a command, an event or an ExternalEvent handler). Never from a background thread.',
     vendorInstall: 'Autodesk App Store bundles (PackageContents.xml in an ApplicationPlugins .bundle) are the vendor-recommended distribution; a plain .addin copy is the documented manual route.',
     restrictions: ['One build per release year.', 'Modifying the model needs a Transaction, and Revit may show its own security prompt for unsigned add-ins.'],
@@ -231,8 +231,8 @@ function adobeProfile(id: string, name: string, exe: string[], summary: string, 
     adminNote: 'Per-user folders need no administrator rights; all-users folders and folders inside the program\'s own folder do.',
     communication: `Panel or plug-in connects to the named pipe (or a loopback socket where the technology has no pipe access). ${summary}`,
     apiContext: 'Host scripting must be invoked through the host\'s own scripting entry point (main thread); UXP calls go through the plug-in\'s host APIs.',
-    vendorInstall: 'Adobe\'s Unified Plugin Installer Agent / Creative Cloud installs signed .ccx and .zxp packages. CreateCraft guides this workflow instead of copying files for UXP.',
-    restrictions: ['CEP panels that are not signed need PlayerDebugMode, which CreateCraft will not switch on silently.', 'A Creative Cloud licence is required for the program itself.'],
+    vendorInstall: 'Adobe\'s Unified Plugin Installer Agent / Creative Cloud installs signed .ccx and .zxp packages. OmniCandi guides this workflow instead of copying files for UXP.',
+    restrictions: ['CEP panels that are not signed need PlayerDebugMode, which OmniCandi will not switch on silently.', 'A Creative Cloud licence is required for the program itself.'],
     docs: ['https://developer.adobe.com/uxp/', 'https://github.com/Adobe-CEP/CEP-Resources'], confidence,
   };
 }

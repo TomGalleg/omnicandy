@@ -1,4 +1,4 @@
-// CreateCraft's own table of programs that run Python jobs, and the safety lists the validators use. Owned by CreateCraft:
+// OmniCandi's own table of programs that run Python jobs, and the safety lists the validators use. Owned by OmniCandi:
 // a blueprint can pick a row (or, for an unknown program, describe a launch line that is checked against strict rules), but it
 // cannot change a row. Nothing here runs anything.
 
@@ -25,10 +25,10 @@ export interface PythonHost {
   coreModules: string[];
   /** Python's bytecode cache keys on size + whole-second mtime; programs that import the script as a module need the launcher indirection. */
   launcher: 'exec-stub' | 'direct';
-  /** Symbols CreateCraft recognises. A module-level symbol outside the list is flagged "not recognised" (a warning, never trusted). */
+  /** Symbols OmniCandi recognises. A module-level symbol outside the list is flagged "not recognised" (a warning, never trusted). */
   knownSymbols: RegExp[];
   docs: string[];
-  /** Newest version CreateCraft has actually run its scripts on, if any (documentation only). */
+  /** Newest version OmniCandi has actually run its scripts on, if any (documentation only). */
   testedNote: string;
 }
 
@@ -60,7 +60,7 @@ export const PYTHON_HOSTS: Record<'freecad' | 'blender', PythonHost> = {
     coreModules: ['FreeCAD', 'App'],
     launcher: 'exec-stub', knownSymbols: FREECAD_SYMBOLS,
     docs: ['https://wiki.freecad.org/Python_scripting_tutorial', 'https://wiki.freecad.org/Topological_data_scripting'],
-    testedNote: 'FreeCAD 1.1.4 on Windows is the only version CreateCraft has run scripts on.',
+    testedNote: 'FreeCAD 1.1.4 on Windows is the only version OmniCandi has run scripts on.',
   },
   blender: {
     id: 'blender', label: 'Blender', exeNames: ['blender.exe'], displayNames: ['Blender'],
@@ -70,7 +70,7 @@ export const PYTHON_HOSTS: Record<'freecad' | 'blender', PythonHost> = {
     coreModules: ['bpy'],
     launcher: 'direct', knownSymbols: BLENDER_SYMBOLS,
     docs: ['https://docs.blender.org/api/current/'],
-    testedNote: 'Blender 4.0.2 on Windows is the only version CreateCraft has run scripts on.',
+    testedNote: 'Blender 4.0.2 on Windows is the only version OmniCandi has run scripts on.',
   },
 };
 
@@ -104,7 +104,7 @@ export const PLAIN_METHODS = new Set([
   'append', 'extend', 'insert', 'items', 'keys', 'values', 'get', 'pop', 'update', 'setdefault', 'copy', 'clear', 'sort', 'reverse', 'index', 'count',
   'join', 'split', 'rsplit', 'strip', 'lstrip', 'rstrip', 'lower', 'upper', 'title', 'startswith', 'endswith', 'replace', 'format', 'find', 'isdigit', 'zfill',
   'add', 'discard', 'union', 'intersection', 'difference', 'isalpha', 'isalnum', 'encode', 'decode', 'bit_length', 'is_integer', 'hex',
-  // the fixed runtime helpers CreateCraft provides
+  // the fixed runtime helpers OmniCandi provides
   'new_output', 'work_path', 'fail', 'check', 'num', 'close_enough', 'rel',
 ]);
 

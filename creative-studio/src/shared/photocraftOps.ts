@@ -1,4 +1,4 @@
-// Which PhotoCraft engine commands CreateCraft may run, and how their params are checked.
+// Which PhotoCraft engine commands OmniCandi may run, and how their params are checked.
 // Shared so the UI offers exactly what main will accept; main enforces it before spawning anything.
 //
 // Policy, three tiers:

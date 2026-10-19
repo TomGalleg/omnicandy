@@ -26,18 +26,18 @@ async function resources(opts: { key?: string; fixture?: string; listed?: string
   const p = packAdapter({ dir: path.join(FIX, opts.fixture ?? 'freecad-adapter'), privateKeyPem: opts.key });
   const file = path.join(dir, 'adapters', `${p.manifest.id}-${p.manifest.version}.ccadapter`);
   await fs.writeFile(file, p.bytes);
-  await fs.writeFile(path.join(dir, 'trust', 'release-publishers.json'), JSON.stringify({ publishers: (opts.listed ?? []).map((f) => ({ name: 'CreateCraft', fingerprint: f })) }));
+  await fs.writeFile(path.join(dir, 'trust', 'release-publishers.json'), JSON.stringify({ publishers: (opts.listed ?? []).map((f) => ({ name: 'OmniCandi', fingerprint: f })) }));
   for (const [n, t] of Object.entries(opts.extra ?? {})) { await fs.mkdir(path.dirname(path.join(dir, n)), { recursive: true }); await fs.writeFile(path.join(dir, n), t); }
   return { dir, file, fingerprint: p.fingerprint as string | null };
 }
 
 describe('bundled resources', () => {
   it('finds connectors next to the installed program, not in the repository', () => {
-    const dev = bundledPaths({ packaged: false, resourcesPath: 'C:\\Program Files\\CreateCraft\\resources', appPath: 'E:\\repo' });
+    const dev = bundledPaths({ packaged: false, resourcesPath: 'C:\\Program Files\\OmniCandi\\resources', appPath: 'E:\\repo' });
     expect(dev.adaptersDir).toBe(path.join('E:\\repo', 'resources', 'adapters'));
-    const inst = bundledPaths({ packaged: true, resourcesPath: 'C:\\Program Files\\CreateCraft\\resources', appPath: 'C:\\Program Files\\CreateCraft\\resources\\app.asar' });
-    expect(inst.adaptersDir).toBe(path.join('C:\\Program Files\\CreateCraft\\resources', 'adapters'));
-    expect(inst.publishersFile).toBe(path.join('C:\\Program Files\\CreateCraft\\resources', 'trust', 'release-publishers.json'));
+    const inst = bundledPaths({ packaged: true, resourcesPath: 'C:\\Program Files\\OmniCandi\\resources', appPath: 'C:\\Program Files\\OmniCandi\\resources\\app.asar' });
+    expect(inst.adaptersDir).toBe(path.join('C:\\Program Files\\OmniCandi\\resources', 'adapters'));
+    expect(inst.publishersFile).toBe(path.join('C:\\Program Files\\OmniCandi\\resources', 'trust', 'release-publishers.json'));
   });
 
   it('reads only well-formed fingerprints from the release list; the shipped list is empty', async () => {

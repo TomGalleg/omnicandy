@@ -332,7 +332,7 @@ describe('PluginInstaller', () => {
     });
   });
 
-  it('a vendor-workflow plugin copies nothing: CreateCraft only guides', async () => {
+  it('a vendor-workflow plugin copies nothing: OmniCandi only guides', async () => {
     const { inst, sim } = await rig();
     const h = await load('hybrid-sample');
     const m = clone(h.manifest);

@@ -138,7 +138,7 @@ describe('add-in (internal / hybrid) wording', () => {
     const t = lines.join('\n');
     expect(t).toMatch(/SIMULATED test program/);
     expect(t).toContain('C:/sim/plugins (all users)');
-    expect(t).toMatch(/Close SimCAD before installing; CreateCraft never closes it/);
+    expect(t).toMatch(/Close SimCAD before installing; OmniCandi never closes it/);
     expect(t).toMatch(/Open or restart SimCAD afterwards/);
     expect(t).toMatch(/administrator rights/);
     expect(integrationLines({ integrationType: 'external', integration: null })).toEqual([]);

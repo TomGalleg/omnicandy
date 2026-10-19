@@ -1,5 +1,5 @@
 // A local, read-only list of the programs Windows says are installed (name, publisher, version, location), minus system
-// components and the programs CreateCraft already has an integration for. Used for "Option A: select an installed
+// components and the programs OmniCandi already has an integration for. Used for "Option A: select an installed
 // application". It never leaves the computer; nothing is scanned on disk beyond the uninstall records.
 
 import path from 'node:path';
@@ -14,7 +14,7 @@ const KEYS = [
 const NOISE = /(redistributable|runtime|driver|update for|security update|hotfix|\bKB\d{5,}|visual c\+\+|\.net (core|framework|runtime|sdk)|windows sdk|webview2|microsoft edge|vc_redist|language pack|python \d|node\.js|git version|nvidia (physx|hd audio|graphics|frameview|app)|intel\(r\)|realtek|help viewer|nuget|setup|bootstrapper)/i;
 
 export interface IntegrationLookup {
-  /** Does CreateCraft already have a working (non-placeholder) integration for a program with this name or exe? */
+  /** Does OmniCandi already have a working (non-placeholder) integration for a program with this name or exe? */
   covered(name: string, exeName: string | null): boolean;
 }
 

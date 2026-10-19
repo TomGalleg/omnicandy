@@ -347,7 +347,7 @@ export class LiveFilmCraft extends LiveAppBase {
   async open(absPath: string) {
     if (this.opened) {
       await this.cmd('file.closeProject', { force: true });
-      await this.cmd('file.newProject', { name: 'CreateCraft' });
+      await this.cmd('file.newProject', { name: 'OmniCandi' });
     }
     const r = (await this.client().callTool('media_import', { paths: [absPath] })) as { items?: number[]; errors?: unknown[] };
     const item = r.items?.[0];
@@ -795,7 +795,7 @@ const PDF_STEP_LABEL: Record<string, string> = {
   'pdf.replaceText': 'Replace text', 'pdf.addText': 'Add text', 'tool:page_rotate': 'Rotate pages', 'tool:page_delete': 'Delete pages',
   'tool:doc_watermark': 'Add watermark', 'tool:doc_set_info': 'Set title',
 };
-/** Engine tools that manage documents, windows or the machine rather than edit the open PDF; CreateCraft runs those itself or never. */
+/** Engine tools that manage documents, windows or the machine rather than edit the open PDF; OmniCandi runs those itself or never. */
 const PDF_BLOCKED_TOOLS = new Set(['doc_open', 'doc_close', 'doc_list', 'doc_batch', 'doc_save', 'doc_print', 'printers', 'printer_options', 'link_open', 'sign_windows_ids', 'sign_keychain_ids', 'sign_id_create', 'sign_trust', 'command_run', 'command_batch', 'command_list', 'js_enabled', 'ocr_recognize_files', 'doc_create_multiple', 'doc_split']);
 const isPdfEngineTool = (name: string) => /^[a-z][a-z0-9_]*$/.test(name) && !PDF_BLOCKED_TOOLS.has(name);
 

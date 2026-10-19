@@ -5,7 +5,7 @@ The 13 native Craft apps keep their own first-party integrations (`liveApps.ts`,
 
 Two kinds of adapter share one manager, one permission model, one AI router and one screen:
 
-* **Built-in adapters** (Blender, DaVinci Resolve, vendor placeholders) ship inside CreateCraft and run in its process.
+* **Built-in adapters** (Blender, DaVinci Resolve, vendor placeholders) ship inside OmniCandi and run in its process.
 * **Installed packages** (`.ccadapter`) are added by the user at run time, verified, and run only in a separate restricted
   process. See [Installable adapter packages](#installable-adapter-packages).
 
@@ -16,7 +16,7 @@ plugin bridge, host profiles (Autodesk and Adobe groundwork) and security statem
 [`release-signing.md`](release-signing.md). Version 1 packages (Blender-style connectors, FreeCAD) keep working unchanged.
 
 **AI Adapter Builder.** Settings > Integrations > Create Custom Integration lets Claude research a program and write a PRIVATE, local
-integration (a manifest-v2 external `.ccadapter` made by CreateCraft's templates from an AI blueprint), tested in four stages and installed
+integration (a manifest-v2 external `.ccadapter` made by OmniCandi's templates from an AI blueprint), tested in four stages and installed
 only through the normal review and native confirmation. Generated packages are unsigned, labelled "Created on this computer (AI-generated)",
 asked about before every command, and never called tested without a real, independently re-checked run. See
 [`ai-adapter-builder.md`](ai-adapter-builder.md). Nothing in the framework described below changed for it.
@@ -87,7 +87,7 @@ adapter crash isolation (a failing adapter drops its session and returns an `int
 
 ## Security model
 
-- Built-in adapters ship with CreateCraft. Third-party adapters are only loaded as installed packages (below): verified,
+- Built-in adapters ship with OmniCandi. Third-party adapters are only loaded as installed packages (below): verified,
   explicitly approved, and executed in a separate restricted process. There is no marketplace and no network fetch.
 - Scripts that run inside an application are fixed templates; parameters are passed as a JSON file, never spliced into code.
 - Outputs go to `<project>/work/external/<adapter>/`; the library and original files are not modified.
@@ -117,8 +117,8 @@ connection is shown as "Limited functionality", never "Connected".
 | `app.info` | read-info, execute-scripts | edition (from the product name), version, page, open project name |
 | `project.list` | read-project, execute-scripts | project names in the current database folder |
 | `project.inspect` | read-project, execute-scripts | timelines, frame rate, resolution, media pool clip count; changes nothing |
-| `project.create_scratch` | modify-project, execute-scripts | new project `CreateCraft <name>` (+ optional empty timeline); re-opens the previously open project; refuses to switch away from a user project unless `allow_switch` is set; verified by listing |
-| `project.delete_scratch` | modify-project, execute-scripts, always asks | only names starting with `CreateCraft`; verified by listing |
+| `project.create_scratch` | modify-project, execute-scripts | new project `OmniCandi <name>` (+ optional empty timeline); re-opens the previously open project; refuses to switch away from a user project unless `allow_switch` is set; verified by listing |
+| `project.delete_scratch` | modify-project, execute-scripts, always asks | only names starting with `OmniCandi`; verified by listing |
 | `timeline.export` | read-project, write-files, execute-scripts | FCPXML or EDL into the project's `work/external/davinci.resolve/` folder |
 
 What Resolve itself dictates, reported by the adapter instead of hidden:
@@ -129,7 +129,7 @@ What Resolve itself dictates, reported by the adapter instead of hidden:
   running but returns no scripting connection (Free edition, or preference off) the status is "Scripting not available".
   A Free edition cannot be told apart from a disabled preference from outside; the message says both.
 * The scripting library **crashes some Python builds at import** (Python 3.13 on this PC: access violation; 3.14 loads).
-  Because scripts run in a child process the crash cannot reach CreateCraft; the adapter tries the next interpreter
+  Because scripts run in a child process the crash cannot reach OmniCandi; the adapter tries the next interpreter
   (newest first, `CREATECRAFT_PYTHON` first of all) and reports "crashed every Python tried" if none works.
 
 ### What was generalized for the second adapter
@@ -148,7 +148,7 @@ a Resolve-specific branch.
 
 ## Installable adapter packages
 
-Goal: a new application is added by installing a package, without changing CreateCraft's code.
+Goal: a new application is added by installing a package, without changing OmniCandi's code.
 
 ### Package format (`.ccadapter` = ZIP, or an unpacked folder while developing)
 
@@ -166,7 +166,7 @@ main.js        the entry script (CommonJS), plus anything it needs
 | `id`, `name`, `version` | identity; id is lower-case letters, digits, `.`, `-`; version `1.2` or `1.2.3` |
 | `description`, `license`, `homepage` | shown in the review and in Settings |
 | `publisher.name` | display name only. **Identity is the signing key's fingerprint**, never this text |
-| `sdk: { min, max }` | adapter SDK versions it works with (this CreateCraft speaks 1) |
+| `sdk: { min, max }` | adapter SDK versions it works with (this OmniCandi speaks 1) |
 | `application.kind` | `program` (drives an installed program: `exeNames`, `displayNames`, `versions[]`) or `self-contained` |
 | `application.versions` | any number of `{ min, max }` ranges of the program's versions that are supported |
 | `application.displayNames` | literal text; a program matches when its installer name starts with it (not a regex) |
@@ -211,20 +211,20 @@ Build one: `node scripts/pack-adapter.mjs fixtures/sample-adapter out/sample.cca
 
 ### Runtime isolation (what it is and what it is not)
 
-* **Process isolation.** Package code never runs in CreateCraft's main process. Crashes, hangs and busy loops end only the
+* **Process isolation.** Package code never runs in OmniCandi's main process. Crashes, hangs and busy loops end only the
   child. Timeouts and cancellation reach it (cancel signal, then kill after 3 s); a crash is reported as an `internal`
   error, the next call starts a fresh process, and 3 crashes in 10 minutes turn the adapter off until Repair.
 * **Node permission model** (`--permission`). The child may read only its package folder; the operating system refuses
   writes, spawning programs, worker threads and native addons (`ERR_ACCESS_DENIED`, verified in tests and by the
-  sample's *selftest.isolation* command). It gets a minimal environment, so no API keys or tokens from CreateCraft's
+  sample's *selftest.isolation* command). It gets a minimal environment, so no API keys or tokens from OmniCandi's
   environment are inherited.
-* **Host operations.** Everything else goes through CreateCraft, which checks the permissions of the command *in flight*
+* **Host operations.** Everything else goes through OmniCandi, which checks the permissions of the command *in flight*
   (calls run one at a time per adapter): `runApp` needs `execute-scripts`/`launch` (or `read-info` while connecting) and only
   ever starts the discovered program; `writeFile` needs `write-files`; `readFile` needs `read-project`. Files are confined
   to the project's work folder, and every claimed output must exist and be non-empty (manager verification).
 * **Not an operating-system sandbox.** The child runs as the same Windows user, Node's permission model does not
   restrict network access, and `execute-scripts` on a program means exactly the power of that program's scripting. This is
-  why unsigned packages are always asked about and every package is labelled *experimental* (CreateCraft's own
+  why unsigned packages are always asked about and every package is labelled *experimental* (OmniCandi's own
   "verified" status is never granted to a package).
 
 ### Long-running operations (jobs)
@@ -251,7 +251,7 @@ plus Background jobs with Cancel.
 
 `fixtures/sample-adapter` ("Sample Text Kit") is self-contained and harmless: `text.stats`, `report.write` (needs
 `write-files`), `slow.count` (a cancellable job) and `selftest.isolation`. It was installed through the Settings
-screen and driven by real Claude from the Claude panel without any change to CreateCraft code.
+screen and driven by real Claude from the Claude panel without any change to OmniCandi code.
 
 ## Verification status
 
@@ -270,7 +270,7 @@ screen and driven by real Claude from the Claude panel without any change to Cre
 
 To verify the commands for real: run Resolve Studio, set External scripting to Local, open Resolve, then
 `CS_LIVE_TESTS=1 npx vitest run src/main/integrations/resolve.live.test.ts`. It creates and deletes only a project named
-"CreateCraft Live Test" and re-opens whatever was open.
+"OmniCandi Live Test" and re-opens whatever was open.
 
 ## FreeCAD adapter (installable package, `fixtures/freecad-adapter`)
 
@@ -302,7 +302,7 @@ Permissions: every command needs `execute-scripts` + `write-files` (the job scri
 command also `read-info` (so the version probe at Connect is allowed). Nothing is destructive: every edit writes a new file and
 **never overwrites** (an existing output name is refused). Files are plain names inside the work folder only; `main.js`
 validates names and `freecad_job.py` validates them again (real path must be the work folder). FreeCAD files from elsewhere must
-be copied into the work folder first: reading arbitrary folders would need a host operation CreateCraft does not offer. Cancel
+be copied into the work folder first: reading arbitrary folders would need a host operation OmniCandi does not offer. Cancel
 kills FreeCADCmd; results are written under a temporary name and renamed only when complete, so a cancel leaves no half file.
 
 ### FreeCAD verification status (read this before trusting it)
@@ -343,7 +343,7 @@ the beginner text; the technical names stay one click away under **Details** / *
 | `src/main/integrations/connect.ts` | `ConnectService`: `overview` (scan, connectors that could be installed, one row per installation), `connectAndVerify`, `browse`, `forget` |
 | `src/main/integrations/state.ts` | `ExternalState`: grants, user-chosen locations, remembered locations and the first-run flag in `external-apps.json` (same file and format as before; writes are serialised) |
 | `src/renderer/src/connect/` | `ConnectApplicationsCard`, `ConnectWizard`, `PackageReviewCard` (the package review, now shared with Settings > Integration packages), `PermissionExplainer`, `events.ts` |
-| `resources/adapters/` | Connectors that ship with CreateCraft (today `freecad-1.0.0.ccadapter`, signed). They are only LISTED; nothing is installed or trusted until the user does it. Rebuild with `node scripts/build-catalog.mjs` |
+| `resources/adapters/` | Connectors that ship with OmniCandi (today `freecad-1.0.0.ccadapter`, signed). They are only LISTED; nothing is installed or trusted until the user does it. Rebuild with `node scripts/build-catalog.mjs` |
 
 ### What the dialog does
 
@@ -373,7 +373,7 @@ program never changes another program's outcome (unit tests for every combinatio
 
 ### Browse for Application and Forget Application
 
-* **Browse for Application…** (program file) and **Choose a program folder…** (also finds it in the folder's `bin`). Only programs CreateCraft has a connector for, or a planned one, are
+* **Browse for Application…** (program file) and **Choose a program folder…** (also finds it in the folder's `bin`). Only programs OmniCandi has a connector for, or a planned one, are
   saved (as before, in `external-apps.json` `paths`); anything else gets "has no connector for it" and nothing is saved. A program already listed is not added twice.
 * **Forget** (inline confirmation) disconnects the program, forgets its permissions and removes its saved/remembered location (also the folder or `bin`-parent the user chose, never a parent drive). It never touches the program.
   If Windows still lists the program (uninstall record, shortcut) it comes back on the next scan and the message says so instead of pretending.
@@ -425,9 +425,9 @@ have real labels, status changes are announced through a polite live region, col
 
 * Not an OS sandbox: same Windows user; network is not restricted for package code; a program driven with `execute-scripts`
   is as powerful as that program's scripting. Keep "unsigned" and "new publisher" warnings meaningful.
-* There is no CreateCraft signing authority, publisher revocation list, marketplace, remote install or automatic update;
+* There is no OmniCandi signing authority, publisher revocation list, marketplace, remote install or automatic update;
   trusted publisher keys can be added but there is no UI yet to un-trust one (uninstall removes the package).
-* Package code is CommonJS JavaScript on CreateCraft's bundled Node. Packages that need Python or .NET must start them
+* Package code is CommonJS JavaScript on OmniCandi's bundled Node. Packages that need Python or .NET must start them
   through `runApp` of a program they control; a standalone helper executable is not supported yet.
 * Calls to one adapter run one at a time, so a long job blocks its other commands.
 * `readFile` and `writeFile` only see the project's work folder for that adapter; reading library assets is not wired.
@@ -444,5 +444,5 @@ have real labels, status changes are announced through a polite live region, col
 * No administrator elevation helper ships; protected folders are refused with guidance. The elevation gate itself is tested with a fake elevator.
 * The pairing secret protects against other users and remote machines, not against malware running as the same user.
 * No production release key, code-signing certificate, update feed or revocation list exists; see `release-signing.md`.
-* The installer (NSIS) was configured and the unpacked application built and tested; a signed `CreateCraft-Setup.exe` was not produced or run through Windows SmartScreen.
-* Vendor-workflow add-ins (Adobe UXP through Creative Cloud) are guided only; CreateCraft cannot tell that the user finished until the add-in connects.
+* The installer (NSIS) was configured and the unpacked application built and tested; a signed `OmniCandi-Setup.exe` was not produced or run through Windows SmartScreen.
+* Vendor-workflow add-ins (Adobe UXP through Creative Cloud) are guided only; OmniCandi cannot tell that the user finished until the add-in connects.

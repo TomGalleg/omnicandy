@@ -19,7 +19,7 @@ export function signInEnv(env: NodeJS.ProcessEnv): Record<string, string> {
     if (v === undefined || (KEY_VARS as readonly string[]).includes(k)) continue;
     out[k] = v;
   }
-  out.CLAUDE_AGENT_SDK_CLIENT_APP = 'CreateCraft/0.1';
+  out.CLAUDE_AGENT_SDK_CLIENT_APP = 'OmniCandi/0.1';
   return out;
 }
 

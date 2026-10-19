@@ -15,7 +15,7 @@ export interface ExternalStateData {
   remembered: string[];
   /** The guided setup has been finished at least once. */
   onboarded: boolean;
-  /** Applications the user connected and has not disconnected: reconnected automatically when CreateCraft starts. */
+  /** Applications the user connected and has not disconnected: reconnected automatically when OmniCandi starts. */
   connected: string[];
 }
 

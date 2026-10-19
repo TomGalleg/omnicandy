@@ -1,4 +1,4 @@
-// The project-bound Planner in the REAL CreateCraft window (scratch profile, never your own data): an existing project's entry and findings,
+// The project-bound Planner in the REAL OmniCandi window (scratch profile, never your own data): an existing project's entry and findings,
 // chunks and Work, the plan stored inside the project, Pick up where I left off after reopening, the saved conversation, and a new project's
 // "Start with an idea". No AI is called. Screenshots go to a temp folder.
 import fs from 'node:fs'; import os from 'node:os'; import path from 'node:path'; import { _electron } from 'playwright';

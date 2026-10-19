@@ -96,7 +96,7 @@ export function AppWorkspace({ selected, liveApi, onProjectChanged, tab, chosenA
             <button className="btn primary" disabled={busy || !!live!.collab.activeOperation}
               onClick={() => void act('Save', async () => { const s = await window.studio.live.saveVersion(); onProjectChanged(); return s; })}>Save as new version</button>
             {live!.poppedOut
-              ? <button className="btn" disabled={busy} onClick={() => void act('Put back', window.studio.live.dock)}>Put back in CreateCraft</button>
+              ? <button className="btn" disabled={busy} onClick={() => void act('Put back', window.studio.live.dock)}>Put back in OmniCandi</button>
               : <button className="btn" disabled={busy} onClick={() => void act('Open in its own window', window.studio.live.popOut)}>Open in its own window</button>}
           </>
         )}

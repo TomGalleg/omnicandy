@@ -1,4 +1,4 @@
-// Builds the connectors that ship with CreateCraft (resources/adapters/*.ccadapter) from their source folders.
+// Builds the connectors that ship with OmniCandi (resources/adapters/*.ccadapter) from their source folders.
 //
 //   node scripts/build-catalog.mjs                          development build, signed with the LOCAL DEVELOPMENT key
 //   node scripts/build-catalog.mjs --release <key.pem>      release build, signed with the official release key

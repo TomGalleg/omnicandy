@@ -211,7 +211,7 @@ export function ConnectWizard({ onClose }: { onClose: () => void }) {
         </div>
         {forgetKey === e.key && (
           <div className="connect-confirm" role="group" aria-label={`Forget ${nameOf(e)}?`}>
-            <small>Forget {nameOf(e)}? CreateCraft stops remembering where it is and forgets the permissions you gave it. The program itself is <strong>not</strong> uninstalled or changed.</small>
+            <small>Forget {nameOf(e)}? OmniCandi stops remembering where it is and forgets the permissions you gave it. The program itself is <strong>not</strong> uninstalled or changed.</small>
             <div className="ext-actions">
               <button className="btn small primary" onClick={() => void forget(e)}>Forget {nameOf(e)}</button>
               <button className="btn small ghost" onClick={() => setForgetKey(null)}>Keep it</button>
@@ -220,7 +220,7 @@ export function ConnectWizard({ onClose }: { onClose: () => void }) {
         )}
         {isOpen && (
           <div className="connect-details">
-            <small>{ADAPTER_STATE_LABEL[e.adapterState]}{e.offer ? ` · ${e.offer.name} ${e.offer.version} (${e.offer.source === 'bundled' ? 'shipped with CreateCraft' : e.offer.source === 'inbox' ? 'from your inbox folder' : 'installed, turned off'})` : ''}</small>
+            <small>{ADAPTER_STATE_LABEL[e.adapterState]}{e.offer ? ` · ${e.offer.name} ${e.offer.version} (${e.offer.source === 'bundled' ? 'shipped with OmniCandi' : e.offer.source === 'inbox' ? 'from your inbox folder' : 'installed, turned off'})` : ''}</small>
             {e.requirements.length > 0 && <small className="ext-note">Needs: {e.requirements.map((q) => q.text).join(' · ')}</small>}
             {e.notes && <small className="ext-note">{e.notes}</small>}
             <PermissionExplainer
@@ -240,7 +240,7 @@ export function ConnectWizard({ onClose }: { onClose: () => void }) {
         {overview?.firstRun && (
           <div className="connect-welcome" role="note">
             <strong>Welcome. Let’s connect your creative programs.</strong>
-            <small>CreateCraft looks for programs like Blender or FreeCAD on <em>this PC only</em>. Nothing is sent anywhere. Nothing is installed, trusted or changed until you say so, and you see exactly what each one is allowed to do first.</small>
+            <small>OmniCandi looks for programs like Blender or FreeCAD on <em>this PC only</em>. Nothing is sent anywhere. Nothing is installed, trusted or changed until you say so, and you see exactly what each one is allowed to do first.</small>
           </div>
         )}
         <div className="ext-actions">
@@ -285,9 +285,9 @@ export function ConnectWizard({ onClose }: { onClose: () => void }) {
               </div>
               <ol className="connect-steps">
                 {e.group === 'needs-adapter' && <li>First you review the {nameOf(e)} {e.offer?.integrationType === 'external' ? 'connector' : 'connector and add-in'} (who made {e.offer?.integrationType === 'external' ? 'it' : 'them'}, what {e.offer?.integrationType === 'external' ? 'it' : 'they'} can do, which folders are used) and decide whether to trust {e.offer?.integrationType === 'external' ? 'it' : 'them'}. Nothing is installed before that.</li>}
-                {e.group === 'needs-adapter' && e.offer && e.offer.integrationType !== 'external' && e.offer.closeHost && <li>{e.offer.hostName ?? nameOf(e)} has to be closed while the add-in is installed. CreateCraft never closes it for you.</li>}
+                {e.group === 'needs-adapter' && e.offer && e.offer.integrationType !== 'external' && e.offer.closeHost && <li>{e.offer.hostName ?? nameOf(e)} has to be closed while the add-in is installed. OmniCandi never closes it for you.</li>}
                 {e.group === 'needs-adapter' && e.offer && e.offer.integrationType !== 'external' && e.offer.restartHost && <li>Afterwards you open (or restart) {e.offer.hostName ?? nameOf(e)} so it loads the add-in. If it asks whether to allow the add-in, allow it.</li>}
-                <li>CreateCraft connects to {nameOf(e)} and runs a real test to prove it works. {e.group === 'attention' && e.status === 'not-running' ? `${nameOf(e)} has to be open for this.` : ''}</li>
+                <li>OmniCandi connects to {nameOf(e)} and runs a real test to prove it works. {e.group === 'attention' && e.status === 'not-running' ? `${nameOf(e)} has to be open for this.` : ''}</li>
               </ol>
               <span className="menu-label">What this connector may be allowed to do</span>
               <PermissionExplainer permissions={perms} details={{ adapter: e.offer?.name ?? e.adapterName, version: e.version, method: e.methods[0] ?? null, trust: e.trust ?? (e.offer ? (e.offer.signature === 'valid' ? 'Signed package' : 'Not signed') : null), path: e.exePath, commands: e.commands }} />
@@ -295,7 +295,7 @@ export function ConnectWizard({ onClose }: { onClose: () => void }) {
           );
         })}
       </ul>
-      <small className="ext-note">Connecting does not give blanket access. Later, when you or Claude ask {chosen.length === 1 ? 'it' : 'a program'} to do something, CreateCraft asks first in plain language. Anything that could change or delete your work is asked every time. You can take permissions back in Settings, under Integrations (Forget permissions).</small>
+      <small className="ext-note">Connecting does not give blanket access. Later, when you or Claude ask {chosen.length === 1 ? 'it' : 'a program'} to do something, OmniCandi asks first in plain language. Anything that could change or delete your work is asked every time. You can take permissions back in Settings, under Integrations (Forget permissions).</small>
     </>
   );
 
@@ -367,7 +367,7 @@ export function ConnectWizard({ onClose }: { onClose: () => void }) {
           <div className="sr-only" role="status" aria-live="polite">{announce}</div>
           {error && <small className="ext-error" role="alert">{error}</small>}
           {notice && <small className="connect-notice" role="status">{notice}</small>}
-          {phase === 'scanning' && <div className="connect-empty" aria-busy="true"><strong>Scanning this PC…</strong><small>Looking only for programs CreateCraft can connect. Nothing leaves your PC.</small></div>}
+          {phase === 'scanning' && <div className="connect-empty" aria-busy="true"><strong>Scanning this PC…</strong><small>Looking only for programs OmniCandi can connect. Nothing leaves your PC.</small></div>}
           {phase === 'choose' && chooseView()}
           {phase === 'permissions' && permissionsView()}
           {phase === 'running' && runningView()}

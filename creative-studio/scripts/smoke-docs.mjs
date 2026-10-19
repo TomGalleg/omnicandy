@@ -1,4 +1,4 @@
-// End-to-end smoke of WordCraft (.docx) and PdfCraft (.pdf) shown inside CreateCraft with the REAL apps, run in a
+// End-to-end smoke of WordCraft (.docx) and PdfCraft (.pdf) shown inside OmniCandi with the REAL apps, run in a
 // scratch profile (CS_USER_DATA_DIR): embedding, quick edits, undo, save as new version, Deliver and hand-off.
 // Windows the test opens are closed afterwards. Run: npm run smoke:docs
 import { execFileSync, spawn } from 'node:child_process';
@@ -70,7 +70,7 @@ async function embeddedCheck(label, pid) {
     ok = s.visible && near(appDip, stage);
     detail = `app ${JSON.stringify(appDip)} · area ${JSON.stringify(stage)}`;
   }
-  check(`${label} shows inside CreateCraft`, ok, detail);
+  check(`${label} shows inside OmniCandi`, ok, detail);
   return pr;
 }
 const live = () => win.evaluate(() => window.studio.live.state());
