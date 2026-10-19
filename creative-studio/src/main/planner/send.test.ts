@@ -164,7 +164,7 @@ describe('classifyPaste and hostile text', () => {
     expect(classifyPaste('').kind).toBe('unclear');
   });
 
-  it('never throws, never invents more than 40 changes, and keeps titles short', () => {
+  it('never throws, never invents more than 80 changes, and keeps titles short', () => {
     const corpus = [
       '{"changes":[{"op":"drop_table"}]}', '{"changes": [', '{"__proto__":{"polluted":1},"tasks":["x"]}', '{"tasks":[' + '{"title":"' + 'A'.repeat(5000) + '"},'.repeat(1) + '{"title":""}]}',
       '## Tasks\n' + Array.from({ length: 100 }, (_, i) => `- task ${i}`).join('\n'), '<script>alert(1)</script>\n## Tasks\n- <img src=x onerror=alert(1)>',
@@ -174,7 +174,7 @@ describe('classifyPaste and hostile text', () => {
       const r = classifyPaste(c);
       expect(['report', 'suggestions', 'unclear']).toContain(r.kind);
       const n = r.suggestions?.changes ?? [];
-      expect(n.length).toBeLessThanOrEqual(40);
+      expect(n.length).toBeLessThanOrEqual(80);
       for (const ch of n) if ('title' in ch) expect(ch.title.length).toBeLessThanOrEqual(200);
     }
     expect(({} as Record<string, unknown>).polluted).toBeUndefined();
@@ -227,7 +227,7 @@ describe('importSuggestions checks its input itself', () => {
     const svc = mk('sugg-invalid');
     const p = await svc.createProject(user, { title: 'Invalid' });
     await expect(svc.importSuggestions(user, p.id, { changes: [{ op: 'drop_table' }] as never, rawText: '' })).rejects.toMatchObject({ code: 'invalid' });
-    await expect(svc.importSuggestions(user, p.id, { changes: Array.from({ length: 41 }, () => ({ op: 'add_task', title: 't', description: '', priority: 'normal', dependsOn: [], completionChecks: [] })) as never, rawText: '' })).rejects.toMatchObject({ code: 'invalid' });
+    await expect(svc.importSuggestions(user, p.id, { changes: Array.from({ length: 81 }, () => ({ op: 'add_task', title: 't', description: '', priority: 'normal', dependsOn: [], completionChecks: [] })) as never, rawText: '' })).rejects.toMatchObject({ code: 'invalid' });
     expect((await svc.getProject(user, p.id)).proposals).toHaveLength(0);
   });
 });

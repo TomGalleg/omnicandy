@@ -611,7 +611,7 @@ export class PlannerService {
     need(c, 'review');
     if (!req.changes.length) throw new PlannerError('invalid', 'There is nothing to add.');
     // The renderer is trusted, but the changes are checked here like every other path (the MCP boundary does the same).
-    const checked = changeSchema.array().max(40).safeParse(req.changes);
+    const checked = changeSchema.array().max(80).safeParse(req.changes);
     if (!checked.success) throw new PlannerError('invalid', `Those suggestions are not valid: ${checked.error.issues[0]?.message ?? 'unreadable'}.`);
     const proposer: Actor = req.proposer ?? { kind: 'other', name: 'Pasted suggestion' };
     const pr = await this.store.mutate(id, c.actor, (p, log, now) => {

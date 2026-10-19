@@ -144,10 +144,10 @@ describe('reading an answer that fills in the whole plan', () => {
     ]);
   });
 
-  it('never reads more than 40 suggestions and ignores an empty brief', () => {
-    const many = parseSuggestionText(`## Ideas\n${Array.from({ length: 60 }, (_, i) => `- idea ${i}`).join('\n')}`);
-    expect(many.changes).toHaveLength(40);
-    expect(many.errors.join(' ')).toMatch(/Only the first 40/);
+  it('never reads more than 80 suggestions and ignores an empty brief', () => {
+    const many = parseSuggestionText(`## Ideas\n${Array.from({ length: 100 }, (_, i) => `- idea ${i}`).join('\n')}`);
+    expect(many.changes).toHaveLength(80);
+    expect(many.errors.join(' ')).toMatch(/Only the first 80/);
     expect(parseSuggestionText('## Project brief\n## Ideas\n- one').changes.map(describeChange)).toEqual(['Idea: one']);
   });
 });
@@ -182,6 +182,13 @@ describe('adding what the AI suggested', () => {
     const ms = (title: string) => after.milestones.find((m) => m.title === title)!.id;
     expect(after.tasks.map((t) => [t.title, t.milestoneId])).toEqual([['Draw three sketches', ms('Sketches approved')], ['Paint the final artwork', ms('Final artwork')], ['Export the PDF', ms('Print files')]]);
     expect(after.planRevision).toBeGreaterThan(before.planRevision); // the brief, rules and decisions changed the accepted plan
+  });
+
+  it('accepts a big plan (more than 30 suggestions) in one step', async () => {
+    const { svc, p } = await rig();
+    const changes: ProposalChange[] = Array.from({ length: 60 }, (_, i) => ({ op: 'add_item', itemType: 'idea', title: `idea ${i}`, text: '', reason: '' }));
+    await accept(svc, p.id, changes);
+    expect((await svc.getProject(user, p.id)).items).toHaveLength(60);
   });
 
   it('adds only the ticked suggestions', async () => {

@@ -9,7 +9,7 @@ import { ACTOR_KINDS, type Actor, changeSchema, type ProposalChange } from './pl
 import { parseReportText, type ReportImportPreview } from './plannerHandoff';
 
 export const MAX_PASTE_CHARS = 200_000;
-const MAX_CHANGES = 40;
+const MAX_CHANGES = 80;
 
 export interface SuggestionPreview {
   format: 'json' | 'markdown' | 'unreadable';

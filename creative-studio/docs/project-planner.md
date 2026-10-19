@@ -102,7 +102,7 @@ ideas, no task details) and **can write nothing**.
   become accepted; questions, ideas and references stay open items; tasks join the milestone of the same name (milestones are added first, and a
   milestone with the same name is never duplicated); brief text parts replace the old text, while constraints and deliverables only gain new
   lines (nothing you wrote is removed). A brief suggestion is tied to the brief as it was when the answer arrived: if you edit the brief before
-  accepting, it is refused instead of overwriting your edit. At most 40 suggestions are read from one answer.
+  accepting, it is refused instead of overwriting your edit. At most 80 suggestions are read from one answer.
 * The chat itself is kept on that screen only; it is not saved with the plan. Keys are lent from the encrypted store for one call, are never sent
   to the page, and are removed from any error text.
 
