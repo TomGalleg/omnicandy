@@ -132,11 +132,14 @@ export const decisionSchema = z.object({
   notFeasibleReason: z.string().max(1200).nullable(),
   type: z.enum(['external', 'internal', 'hybrid']),
   template: z.enum(['python-script', 'cli', 'file-exchange', 'dotnet-addin', 'uxp-plugin']),
-  methods: z.array(z.enum(['api', 'scripting', 'mcp', 'cli', 'file-exchange', 'ui-automation', 'visual'])).min(1).max(4),
+  methods: z.array(z.enum(['api', 'scripting', 'mcp', 'cli', 'file-exchange', 'ui-automation', 'visual'])).max(4),
   rationale: text(1200),
   /** internal and hybrid only: the id of an installation profile CreateCraft already has. */
   hostProfile: z.string().max(60).nullable(),
-}).strict();
+}).strict().superRefine((d, ctx) => {
+  // A "not feasible" answer has no method to offer; a feasible one must name at least one.
+  if (d.feasible && d.methods.length < 1) ctx.addIssue({ code: 'custom', path: ['methods'], message: 'Too small: expected array to have >=1 items' });
+});
 
 const pluginFile = z.object({ path: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._/-]{0,100}$/), content: z.string().max(60_000) }).strict();
 
