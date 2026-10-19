@@ -20,7 +20,8 @@ import {
 import type { AdapterPackages } from '../loader';
 import type { IntegrationManager } from '../manager';
 import { readPackageSource } from '../packageFormat';
-import type { AdapterAuthor, AuthorRequest } from './author';
+import type { AdapterAuthor, AuthorDoc, AuthorRequest } from './author';
+import { fetchDocLinks } from './docLinks';
 import { BlueprintError, type Blueprint } from './blueprint';
 import { EXTERNAL_TEMPLATES } from './assemble';
 import { readDocumentation } from './docs';
@@ -48,6 +49,8 @@ export interface BuilderDeps {
   /** Override the installed-program list (tests). */
   programs?: () => Promise<InstalledProgram[]>;
   readDocs?: typeof readDocumentation;
+  /** Reads documentation links the user pasted (tests inject a fake; default fetches public https pages). */
+  readLinks?: typeof fetchDocLinks;
   /** How many build attempts Claude gets (the first plus corrections). Default 3. A live test sets it explicitly. */
   maxAttempts?: number;
   /** Downloads documentation (tests inject a fake; default is the real fetcher). */
@@ -98,6 +101,13 @@ export class BuilderService {
   }
 
   // ------------------------------------------------------------------ create
+
+  /** Documentation the user supplied: files and folders they chose, and links they pasted. */
+  private async userDocs(req: BuilderRequest): Promise<{ docs: AuthorDoc[]; notes: string[] }> {
+    const files = req.documentation?.length ? await (this.d.readDocs ?? readDocumentation)(req.documentation) : { docs: [], notes: [] };
+    const links = req.documentationUrls?.length ? await (this.d.readLinks ?? fetchDocLinks)(req.documentationUrls) : { docs: [], notes: [] };
+    return { docs: [...files.docs, ...links.docs], notes: [...files.notes, ...links.notes] };
+  }
 
   async create(req: BuilderRequest): Promise<BuilderProjectSummary> {
     const name = req.appName.trim();
@@ -163,7 +173,7 @@ export class BuilderService {
     await this.note(rec, 'checking', rec.app.installed ? `Found ${rec.request.appName}${rec.app.version ? ` ${rec.app.version}` : ''} on this computer.` : `${rec.request.appName} is not installed here, so a candidate will be built and tested with simulations only.`);
     const a = this.d.author();
     if ('error' in a) { rec.nextSteps = [a.error]; await this.fail(id, a.error); return; }
-    const docs = rec.request.documentation?.length ? await (this.d.readDocs ?? readDocumentation)(rec.request.documentation) : { docs: [], notes: [] };
+    const docs = await this.userDocs(rec.request);
     rec.docNames = docs.docs.map((x) => x.name);
     for (const n of docs.notes) await this.note(rec, 'checking', n);
     // documentation: official online, official repository, installed with the program, provided by the user (combined, origins tracked)
@@ -275,7 +285,7 @@ export class BuilderService {
   /** Downloads the official documentation for this program again (the stored copy is replaced). Nothing else changes. */
   async refreshDocs(id: string): Promise<{ notes: string[]; count: number }> {
     const rec = await this.must(id);
-    const docs = rec.request.documentation?.length ? await (this.d.readDocs ?? readDocumentation)(rec.request.documentation) : { docs: [], notes: [] };
+    const docs = await this.userDocs(rec.request);
     const c = await collectDocumentation({ store: this.docs, appName: rec.request.appName, appVersion: rec.app.version, installDir: rec.app.exePath ? path.dirname(rec.app.exePath) : null, userDocs: docs.docs, refresh: true, fetcher: this.d.docsFetcher });
     this.recordDocs(rec, c);
     await this.store.save(rec);

@@ -99,6 +99,23 @@ describe.skipIf(!canRun)('BuilderService (scripted author, mock program)', () =>
     expect((await c.detail(s3.id)).reports.some((x) => x.state === 'failed')).toBe(true);
   }, 180_000);
 
+  it('reads pasted documentation links, tells the user what could not be read, and keeps the links with the project', async () => {
+    const r = await rig('links');
+    const asked: string[][] = [];
+    const svc = new BuilderService({
+      root: path.join(r.root, 'builder'), packages: r.pk, manager: r.mgr, author: () => new ScriptedAuthor({ blueprint: load('imagemagick.blueprint.json') }), claude: () => ({ ready: true, reason: '' }),
+      confirm: async () => true, programs: async () => [], skipDocs: true,
+      readLinks: async (urls) => { asked.push(urls); return { docs: [{ name: urls[0]!, text: 'Remote Control reference text. '.repeat(20) }], notes: [`${urls[1]} could not be read (the website answered 404).`] }; },
+    });
+    const links = ['https://dev.epicgames.com/documentation/a', 'https://dev.epicgames.com/documentation/b'];
+    const created = await svc.create({ appName: 'ImageMagick', documentationUrls: links });
+    await svc.settled(created.id);
+    const d = await svc.detail(created.id);
+    expect(asked).toEqual([links]);
+    expect(d.request.documentation).toContain(links[0]);
+    expect(d.log.map((l) => l.text).join(' | ')).toContain('answered 404');
+  }, 180_000);
+
   it('signed-out Claude is reported plainly and nothing is built', async () => {
     const r = await rig('signedout');
     const svc = r.mk({ error: 'Claude Code on this PC is not signed in.' });

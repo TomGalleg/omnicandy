@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { BUILDER_CONSENT, type BuilderOverview, type BuilderProjectDetail, type InstalledProgram } from '@shared/builder';
+import { BUILDER_CONSENT, parseLinks, type BuilderOverview, type BuilderProjectDetail, type InstalledProgram } from '@shared/builder';
 import { errorText } from '../connect/events';
 import { ProjectView } from './ProjectView';
 
@@ -26,6 +26,7 @@ export function BuilderWizard({ onClose, openProjectId }: Props) {
   const [name, setName] = useState('');
   const [goal, setGoal] = useState('');
   const [docs, setDocs] = useState<string[]>([]);
+  const [linkText, setLinkText] = useState('');
   const [projectId, setProjectId] = useState<string | null>(openProjectId ?? null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -67,7 +68,7 @@ export function BuilderWizard({ onClose, openProjectId }: Props) {
     if (!targetName) return;
     setBusy(true); setError(null);
     try {
-      const s = await window.studio.builder.create({ appName: targetName, exePath: source === 'installed' ? picked?.exePath ?? null : null, documentation: docs, goal: goal.trim() || undefined });
+      const s = await window.studio.builder.create({ appName: targetName, exePath: source === 'installed' ? picked?.exePath ?? null : null, documentation: docs, documentationUrls: parseLinks(linkText).slice(0, 10), goal: goal.trim() || undefined });
       setProjectId(s.id);
       setPhase('project');
     } catch (e) { setError(errorText(e)); } finally { setBusy(false); }
@@ -143,6 +144,9 @@ export function BuilderWizard({ onClose, openProjectId }: Props) {
                   <button className="btn small" onClick={() => void addDocs('files')}>Add documentation files…</button>
                   <button className="btn small" onClick={() => void addDocs('folder')}>Add a documentation or SDK folder…</button>
                 </div>
+                <label className="menu-label" htmlFor="builder-links">Or paste links to documentation pages</label>
+                <textarea id="builder-links" className="text-input" rows={4} placeholder={'One link per line, for example: https://dev.epicgames.com/documentation/en-us/unreal-engine/python-api/index'} value={linkText} onChange={(e) => setLinkText(e.target.value)} />
+                <small>{(() => { const n = parseLinks(linkText).length; return n === 0 ? 'Links must start with https://. CreateCraft reads each page once, as plain text, and sends it only to Claude. Pages that need a browser to show their content cannot be read; save those as HTML and add them as files.' : `${n} link${n === 1 ? '' : 's'} will be read${n > 10 ? ' (only the first 10 are used)' : ''}.`; })()}</small>
                 {docs.length > 0 && <ul className="status-list">{docs.map((p) => <li key={p}><small>{p}</small> <button className="btn small ghost" aria-label={`Remove ${p}`} onClick={() => setDocs((x) => x.filter((y) => y !== p))}>Remove</button></li>)}</ul>}
               </div>
               <small className="ext-note" role="note">{BUILDER_CONSENT}</small>

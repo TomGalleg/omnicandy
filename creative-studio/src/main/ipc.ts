@@ -889,9 +889,10 @@ export function registerIpc(d: IpcDeps): void {
     if (rec?.proposal?.packagePath) allowedPackagePaths.add(rec.proposal.packagePath);
     for (const v of rec?.versions ?? []) allowedPackagePaths.add(builder.store.packagePath(id, v.version));
   };
-  const requestSchema = z.object({ appName: z.string().min(1).max(80), exePath: z.string().max(600).nullable().optional(), documentation: z.array(z.string().max(600)).max(40).optional(), goal: z.string().max(500).optional() });
+  const requestSchema = z.object({ appName: z.string().min(1).max(80), exePath: z.string().max(600).nullable().optional(), documentation: z.array(z.string().max(600)).max(40).optional(), documentationUrls: z.array(z.string().max(600)).max(10).optional(), goal: z.string().max(500).optional() });
   const startBuild = async (req: BuilderRequest) => {
     if (req.exePath && !offeredPrograms.has(req.exePath.toLowerCase())) throw new Error('Choose the program from the list so CreateCraft knows it is the right one.');
+    for (const u of req.documentationUrls ?? []) { let ok = false; try { ok = new URL(u).protocol === 'https:'; } catch { /* not an address */ } if (!ok) throw new Error(`${u} is not a secure web address. Links must start with https://`); }
     for (const p of req.documentation ?? []) if (!pickedDocs.has(p)) throw new Error('Documentation must be chosen with "Add documentation".');
     return builder.create(req);
   };

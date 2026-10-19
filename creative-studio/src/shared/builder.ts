@@ -158,6 +158,8 @@ export interface BuilderRequest {
   exePath?: string | null;
   /** Documentation or SDK files/folders the user chose themselves (read locally, sent only to the selected AI provider). */
   documentation?: string[];
+  /** Web pages (https links) the user pasted as documentation. Read once as plain text; only public pages. */
+  documentationUrls?: string[];
   /** Extra intent in the user's words, e.g. "export to PDF". */
   goal?: string;
 }
@@ -242,3 +244,13 @@ export const BUILDER_CONSENT =
 
 /** A permission set is "read only" when no command can change anything. */
 export const MUTATING_PERMISSIONS: Permission[] = ['modify-project', 'write-files', 'ui-automation', 'execute-scripts', 'network', 'launch'];
+
+/** Addresses found in text the user pasted (one per line, or separated by spaces or commas). Duplicates removed, bullets and trailing punctuation dropped. */
+export function parseLinks(text: string): string[] {
+  const out: string[] = [];
+  for (const raw of text.split(/[\s,;]+/)) {
+    const t = raw.trim().replace(/^[-*•(<"']+/, '').replace(/[)\].,;>"']+$/, '');
+    if (t && !out.includes(t)) out.push(t);
+  }
+  return out;
+}
