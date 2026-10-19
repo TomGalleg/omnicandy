@@ -101,9 +101,14 @@ export async function staticChecks(bp: Blueprint, a: Assembled, scan: ScanOutcom
   for (const c of bp.commands) {
     const spec = a.manifest.commands && Array.isArray(a.manifest.commands) ? (a.manifest.commands as Array<{ id: string }>).find((x) => x.id === c.id) : null;
     if (!spec) continue;
-    const r = validateParams(spec as never, c.mock.params);
+    // The project-file setting is added by CreateCraft (the simulated run and the live test supply it), so examples need not carry one.
+    const addedByTemplate = a.host?.projectExtension ? 'project' : null;
+    const specParams = (spec as unknown as { params: Record<string, unknown> }).params;
+    const typed = { ...spec, params: Object.fromEntries(Object.entries(specParams).filter(([k]) => k !== addedByTemplate)) };
+    const own = (p: Record<string, unknown>) => Object.fromEntries(Object.entries(p).filter(([k]) => k !== addedByTemplate));
+    const r = validateParams(typed as never, own(c.mock.params));
     if (typeof r === 'string') mockProblems.push(`${c.id} example: ${r}`);
-    if (c.liveTest) { const lr = validateParams(spec as never, c.liveTest.params); if (typeof lr === 'string') mockProblems.push(`${c.id} live test: ${lr}`); }
+    if (c.liveTest) { const lr = validateParams(typed as never, own(c.liveTest.params)); if (typeof lr === 'string') mockProblems.push(`${c.id} live test: ${lr}`); }
   }
   checks.push(mockProblems.length ? bad('examples', 'Example inputs', mockProblems.slice(0, 5).join('; ')) : ok('examples', 'Example inputs', 'The example inputs used for testing satisfy the typed settings.'));
 

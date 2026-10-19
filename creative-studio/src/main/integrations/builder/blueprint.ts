@@ -168,7 +168,11 @@ export const blueprintSchema = z.object({
     custom: z.object({
       versionArgs: z.array(z.string().regex(/^[A-Za-z0-9_./=-]{1,40}$/)).max(3),
       versionRegex: z.string().max(120),
-      launchArgs: z.array(z.string().regex(/^[A-Za-z0-9_./={}-]{1,60}$/)).min(1).max(6),
+      launchArgs: z.array(z.string().regex(/^[A-Za-z0-9_./={}-]{1,60}$/)).min(1).max(8),
+      /** The program needs a project file (for example ".uproject"): every command then takes a `project` setting, passed where {project} stands in launchArgs. */
+      projectExtension: z.string().regex(/^\.[A-Za-z0-9]{1,12}$/).optional(),
+      /** "file": the program has no version option, so the version CreateCraft detected from the program file is used (default "command"). */
+      versionFrom: z.enum(['command', 'file']).optional(),
       hostModules: z.array(z.string().regex(/^[A-Za-z_][A-Za-z0-9_]{0,40}$/)).max(12),
     }).strict().optional(),
   }).strict().optional(),

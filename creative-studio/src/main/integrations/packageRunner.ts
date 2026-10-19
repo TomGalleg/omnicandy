@@ -40,6 +40,7 @@ function makeCtx(ac) {
     signal: ac.signal,
     progress: function (stage, fraction) { send({ t: 'progress', stage: String(stage).slice(0, 200), fraction: typeof fraction === 'number' ? fraction : null }); },
     runApp: function (args, o) { return hostOp('runApp', { args: args, timeoutMs: o && o.timeoutMs }); },
+    workDir: function () { return hostOp('workDir', {}); },
     writeFile: function (name, data) { return hostOp('writeFile', { name: name, data: b64(data) }); },
     readFile: function (name) { return hostOp('readFile', { name: name }).then(function (s) { return Buffer.from(s, 'base64'); }); },
     plugin: {
@@ -336,6 +337,9 @@ export class PackageAdapter implements ExternalAdapter {
           env: { SystemRoot: process.env.SystemRoot ?? '', windir: process.env.windir ?? '', TEMP: process.env.TEMP ?? '', TMP: process.env.TMP ?? '', PATH: process.env.PATH ?? '' },
         });
         reply(true, { code: r.code, out: r.out.slice(-64_000), err: r.err.slice(-16_000) });
+      } else if (m.op === 'workDir') {
+        if (!cur.workDir) throw new Error('The work folder exists only while a command runs.');
+        reply(true, cur.workDir);
       } else if (m.op === 'writeFile') {
         if (!cur.workDir) throw new Error('Files can only be written while a command runs.');
         if (!has('write-files')) throw new Error('Writing files needs the "Write or export files" permission, which this command does not have.');

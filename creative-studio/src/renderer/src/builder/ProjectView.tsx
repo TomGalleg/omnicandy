@@ -103,6 +103,7 @@ export function ProjectView({ id, onChanged, onRetry }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  const [liveProject, setLiveProject] = useState('');
   const [review, setReview] = useState<{ review: PackageReview; kind: 'install' | 'fix' } | null>(null);
   const [live, setLive] = useState<PipelineReport | null>(null);
   const alive = useRef(true);
@@ -146,11 +147,11 @@ export function ProjectView({ id, onChanged, onRetry }: Props) {
     announceExternalChanged();
     if (out.state !== 'verified' && out.state !== 'verified-limited') throw new Error(`${out.headline} ${out.detail}`);
     setNotice(`${out.headline}. Now testing every command on the real program. Each test asks you first.`);
-    setLive(await window.studio.builder.verifyLive(id));
+    setLive(await window.studio.builder.verifyLive(id, d?.needsProject ? liveProject.trim() : undefined));
     await window.studio.builder.sync(id);
   });
 
-  const testOnly = () => run('live', async () => { setLive(await window.studio.builder.verifyLive(id)); await window.studio.builder.sync(id); });
+  const testOnly = () => run('live', async () => { setLive(await window.studio.builder.verifyLive(id, d?.needsProject ? liveProject.trim() : undefined)); await window.studio.builder.sync(id); });
   const propose = (why?: { commandId?: string; error?: string }) => run('propose', async () => { await window.studio.builder.propose(id, why); });
   const discard = () => run('discard', async () => { await window.studio.builder.discardProposal(id); });
   const removeIt = () => run('remove', async () => { await window.studio.builder.removeIntegration(id); announceExternalChanged(); setNotice('Removed. Your saved versions are kept; you can install it again.'); });
@@ -230,6 +231,13 @@ export function ProjectView({ id, onChanged, onRetry }: Props) {
       )}
 
       {/* the next safe step */}
+      {!running && !review && d.installed && d.needsProject && (
+        <div className="field">
+          <label className="menu-label" htmlFor="live-project">Project for the live test ({d.needsProject})</label>
+          <input id="live-project" className="text-input" placeholder={`Full path, for example C:\\Projects\\Test\\Test${d.needsProject}`} value={liveProject} onChange={(e) => setLiveProject(e.target.value)} />
+          <small>{d.appName} works with project files. The tests run on this project, and each command asks you first. Use a copy or a test project, because commands may change it.</small>
+        </div>
+      )}
       {!running && !review && (
         <div className="ext-actions">
           {d.status === 'ready-for-approval' && d.packagePath && !d.installed && <button className="btn small primary" disabled={!!busy} onClick={() => void openReview(d.packagePath!, 'install')}>Review and approve installation…</button>}

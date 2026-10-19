@@ -120,7 +120,7 @@ const BOOT = [
 
 (async () => {
   if (cfg.mode === 'python-mock') {
-    const script = args.find((a) => /\.py$/i.test(a));
+    const script = (args.map((a) => a.replace(/^-{1,2}[A-Za-z][A-Za-z0-9_-]*=/, '')).find((a) => /\.py$/i.test(a)));
     if (!script) { console.error('mock: no script given'); process.exit(2); }
     const text = fs.readFileSync(path.resolve(process.cwd(), script), 'utf8');
     const job = fs.existsSync(path.resolve(process.cwd(), '_cc_job.py')) ? fs.readFileSync(path.resolve(process.cwd(), '_cc_job.py'), 'utf8') : text;

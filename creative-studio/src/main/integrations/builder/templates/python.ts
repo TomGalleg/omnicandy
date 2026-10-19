@@ -23,15 +23,28 @@ export function resolvePythonHost(bp: Blueprint): { host: PythonHost; problems: 
   }
   const c = cfg.custom;
   if (!c) return { host: PYTHON_HOSTS.freecad, problems: ['A custom Python host needs python.custom (version arguments, launch arguments, host modules).'] };
-  for (const a of [...c.versionArgs, ...c.launchArgs]) if (CUSTOM_ARG_FORBIDDEN.test(a)) problems.push(`The argument "${a}" would run text from the command line; only a script file is allowed.`);
-  if (!c.launchArgs.includes('{run}')) problems.push('The launch arguments must contain {run}, the job file.');
-  if (c.launchArgs.filter((a) => a === '{run}').length !== 1) problems.push('{run} must appear exactly once.');
-  try { new RegExp(c.versionRegex); } catch { problems.push('versionRegex is not a valid regular expression.'); }
-  if (!/\((?!\?)/.test(c.versionRegex)) problems.push('versionRegex needs one capture group for the version.');
+  const versionFrom = c.versionFrom ?? 'command';
+  const projectExtension = c.projectExtension ? c.projectExtension.toLowerCase() : null;
+  const names = (a: string) => a.split('=')[0]!;
+  for (const a of [...c.versionArgs, ...c.launchArgs]) if (CUSTOM_ARG_FORBIDDEN.test(a) || CUSTOM_ARG_FORBIDDEN.test(names(a))) problems.push(`The argument "${a}" would run text from the command line; only a script file is allowed.`);
+  // {run} is the job file: a whole argument, or the value of one option such as -script={run}.
+  const runArgs = c.launchArgs.filter((a) => a.includes('{run}'));
+  if (runArgs.length !== 1) problems.push('{run} must appear exactly once.');
+  else if (runArgs[0] !== '{run}' && !/^-{1,2}[A-Za-z][A-Za-z0-9_-]{0,30}=\{run\}$/.test(runArgs[0]!)) problems.push('{run} must be a whole argument or the value of one option, for example -script={run}.');
+  // {project} is the project file the user names in each command; only when the blueprint says the program works with project files.
+  const projArgs = c.launchArgs.filter((a) => a.includes('{project}'));
+  if (projectExtension) {
+    if (projArgs.length !== 1 || projArgs[0] !== '{project}') problems.push('With projectExtension, the launch arguments must contain {project} exactly once as a whole argument.');
+  } else if (projArgs.length) problems.push('{project} can only be used when projectExtension is set (for example ".uproject").');
+  if (versionFrom === 'command') {
+    try { new RegExp(c.versionRegex); } catch { problems.push('versionRegex is not a valid regular expression.'); }
+    if (!/\((?!\?)/.test(c.versionRegex)) problems.push('versionRegex needs one capture group for the version.');
+  } else if (c.versionArgs.length) problems.push('With versionFrom "file" the program is not started to read its version, so versionArgs must be empty.');
+  const absolutePaths = !!projectExtension || runArgs[0] !== '{run}';
   return {
     host: {
       id: 'custom', label: bp.application.name, exeNames: bp.application.exeNames, displayNames: bp.application.displayNames,
-      versionArgs: c.versionArgs, versionRegex: c.versionRegex, launchArgs: c.launchArgs, hostModules: c.hostModules, coreModules: [], launcher: 'exec-stub',
+      versionArgs: c.versionArgs, versionRegex: c.versionRegex, launchArgs: c.launchArgs, versionFrom, projectExtension, absolutePaths, hostModules: c.hostModules, coreModules: [], launcher: 'exec-stub',
       knownSymbols: [], docs: [], testedNote: 'Not yet run on the real program.',
     },
     problems,
@@ -76,6 +89,7 @@ function commandTable(cmds: BlueprintCommand[]) {
 export function renderPythonMain(bp: Blueprint, host: PythonHost): string {
   const config = {
     versionArgs: host.versionArgs, versionRegex: host.versionRegex, launchArgs: host.launchArgs, launcher: host.launcher,
+    versionFrom: host.versionFrom, projectExtension: host.projectExtension, absolutePaths: host.absolutePaths,
     appLabel: bp.application.name, commands: commandTable(bp.commands),
   };
   const json = JSON.stringify(config, null, 2);
@@ -106,19 +120,31 @@ const tail = (s) => String(s || '').trim().split(/\r?\n/).slice(-4).join(' ').sl
 const b64 = (v) => Buffer.from(JSON.stringify(v === undefined ? {} : v), 'utf8').toString('base64');
 
 async function version(ctx) {
+  // A program without a version option is never started just to ask: the version found when it was detected is used (it may be unknown).
+  if (CONFIG.versionFrom === 'file') return (ctx.app && ctx.app.version) || null;
   const r = await ctx.runApp(CONFIG.versionArgs, { timeoutMs: 60000 });
   const m = new RegExp(CONFIG.versionRegex, 'i').exec(r.out + '\n' + r.err);
   if (!m) throw ctx.error('app-error', 'The program did not report a version (exit ' + r.code + '). ' + tail(r.err || r.out));
   return m[1];
 }
 
-exports.probe = async (ctx) => { const v = await version(ctx); return { version: v, detail: CONFIG.appLabel + ' ' + v + '.' }; };
+exports.probe = async (ctx) => { const v = await version(ctx); return { version: v, detail: CONFIG.appLabel + (v ? ' ' + v + '.' : ' (version not reported by the program).') }; };
 exports.connect = async () => undefined;
 exports.healthCheck = async (ctx) => {
-  try { const v = await version(ctx); return { ok: true, detail: CONFIG.appLabel + ' answers (version ' + v + '). Run "Check the connection" for a full check.' }; }
+  try { const v = await version(ctx); return { ok: true, detail: CONFIG.appLabel + (v ? ' answers (version ' + v + ').' : ' is installed (it has no version option; its version is not known).') + ' Run "Check the connection" for a full check.' }; }
   catch (e) { return { ok: false, detail: String((e && e.message) || e) }; }
 };
 exports.disconnect = async () => undefined;
+
+// The project file a command names: one full path ending in the project extension. It is handed to the program as ONE argument and can
+// never look like an option (a full path never starts with "-"), so a setting cannot add switches to the launch line.
+function projectFile(ctx, params) {
+  const p = params && params.project;
+  if (typeof p !== 'string' || !p) throw ctx.error('invalid-params', 'Give the full path of the project file (' + CONFIG.projectExtension + ') in the "project" setting.');
+  if (!(/^[A-Za-z]:[\\/]/.test(p) || p.startsWith('/')) || p.includes('..') || /[\u0000-\u001f"|<>*?]/.test(p) || p.length > 400) throw ctx.error('invalid-params', 'The project setting must be the full path of a project file, for example C:\\Projects\\Game\\Game' + CONFIG.projectExtension + '.');
+  if (p.slice(-CONFIG.projectExtension.length).toLowerCase() !== CONFIG.projectExtension) throw ctx.error('invalid-params', 'The project file must end in ' + CONFIG.projectExtension + '.');
+  return p;
+}
 
 async function runPhase(ctx, phase, command, params, prior, timeoutMs, label) {
   if (ctx.signal.aborted) throw ctx.error('app-error', 'The operation was cancelled.');
@@ -133,16 +159,22 @@ async function runPhase(ctx, phase, command, params, prior, timeoutMs, label) {
     'PRIOR = _json.loads(_b64.b64decode("' + b64(prior) + '").decode("utf-8"))',
     '',
   ].join('\n');
-  await ctx.writeFile(JOB_FILE, head + JOB_BODY);
-  if (CONFIG.launcher === 'exec-stub') await ctx.writeFile(RUN_FILE, RUN_STUB);
+  let work = null;
+  if (CONFIG.absolutePaths) work = await ctx.workDir();
+  // Some programs change their working folder while starting, so the job and its launcher are then named by full path.
+  const jobRef = work ? path.join(work, JOB_FILE) : JOB_FILE;
+  const entryRef = work ? path.join(work, ENTRY) : ENTRY;
+  await ctx.writeFile(JOB_FILE, (work ? 'WORKDIR = ' + JSON.stringify(work) + '\n' : '') + head + JOB_BODY);
+  if (CONFIG.launcher === 'exec-stub') await ctx.writeFile(RUN_FILE, work ? "exec(compile(open(" + JSON.stringify(jobRef) + ", encoding='utf-8').read(), " + JSON.stringify(jobRef) + ", 'exec'))\n" : RUN_STUB);
   ctx.progress(label, phase === 'run' ? 0.25 : 0.7);
-  const args = CONFIG.launchArgs.map((a) => (a === '{run}' ? ENTRY : a));
+  const args = CONFIG.launchArgs.map((a) => (a === '{project}' ? projectFile(ctx, params) : a.replace('{run}', entryRef)));
   const r = await ctx.runApp(args, { timeoutMs });
   if (ctx.signal.aborted) throw ctx.error('app-error', 'The operation was cancelled.');
   // Only a line that carries THIS run's random nonce counts; the last one wins. Anything the job printed cannot forge it.
+  // Some programs put a log prefix in front of what a script prints ("LogPython: ..."), so the marker may be anywhere in the line.
   const prefix = 'CREATECRAFT_RESULT_' + nonce + ' ';
   let line = null;
-  for (const l of r.out.split(/\r?\n/)) if (l.startsWith(prefix)) line = l.slice(prefix.length);
+  for (const l of r.out.split(/\r?\n/)) { const i = l.indexOf(prefix); if (i >= 0) line = l.slice(i + prefix.length); }
   if (!line) throw ctx.error('app-error', 'The program did not report a result (exit ' + r.code + '). ' + tail(r.err || r.out));
   let res;
   try { res = JSON.parse(line); } catch (e) { throw ctx.error('app-error', 'The program reported an unreadable result.'); }

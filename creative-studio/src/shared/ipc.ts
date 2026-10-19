@@ -516,7 +516,8 @@ export interface StudioApi {
     /** After an install through the normal review: reads the truth from the installer. */
     sync(id: string): Promise<BuilderProjectSummary>;
     /** Live testing on the real program (each command still asks you first). */
-    verifyLive(id: string): Promise<PipelineReport>;
+    /** `project`: the full path of a project file, for programs that work with project files (see BuilderProjectDetail.needsProject). */
+    verifyLive(id: string, project?: string): Promise<PipelineReport>;
     propose(id: string, why?: { commandId?: string; error?: string }): Promise<RepairProposal>;
     discardProposal(id: string): Promise<void>;
     rollback(id: string, version: string): Promise<BuilderProjectSummary>;

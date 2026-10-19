@@ -52,6 +52,17 @@ data filled into fixed code.
 The host table (`builder/hosts.ts`) is CreateCraft's: FreeCAD and Blender rows (launch line, version probe, host modules, recognised
 API names). A "custom" Python host is described by the blueprint but checked against strict rules (no inline-code flags, `{run}` exactly once).
 
+### Custom Python hosts for programs with projects (for example Unreal Editor)
+
+`python.host: "custom"` can describe a program whose Python is started from a launch line (`templates/python.ts`, `resolvePythonHost`). Beyond `versionArgs`, `versionRegex`, `launchArgs` and `hostModules` it accepts:
+
+- `launchArgs` with the job file as a whole `{run}` argument **or** as the value of one option (`-script={run}`). In the second form the job, its launcher and the work folder are given by full path (`WORKDIR` in the job), because such programs may change their working folder.
+- `projectExtension` (for example `.uproject`) with `{project}` once, as a whole argument. CreateCraft then adds a required `project` setting to every command (including the connection check). main.js accepts only one full path that ends in that extension, with no `..`, quotes or control characters, so a setting can never become a switch. The simulated run uses a made-up path; the live test asks the user for a real project (a copy or test project).
+- `versionFrom: "file"` (empty `versionArgs`) for programs without a version option: the program is never started to ask; the version found at detection is used and may be unknown.
+- The job's result line may appear behind a log prefix (`LogPython: ...`); it is found by its random nonce.
+
+Rules the validator enforces: `{run}` exactly once; `{project}` only with `projectExtension`; no switch that runs command text (also checked on the name part of `-name=value`); `versionArgs` empty when `versionFrom` is `file`. FreeCAD and Blender are unchanged.
+
 ### Choosing the method
 
 The research step reports which methods exist and how official they are; the generation step picks per the framework rules:

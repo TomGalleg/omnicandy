@@ -927,7 +927,7 @@ export function registerIpc(d: IpcDeps): void {
   });
   handle(IPC.builderCancel, z.tuple([projectId]), async (id) => { builder.cancel(id); });
   handle(IPC.builderSync, z.tuple([projectId]), async (id) => { await packagesReady; return builder.syncInstalled(id); });
-  handle(IPC.builderVerify, z.tuple([projectId]), async (id) => { await packagesReady; return builder.verifyLive(id); });
+  handle(IPC.builderVerify, z.tuple([projectId, z.string().max(400).optional()]) as unknown as z.ZodType<[string, string | undefined]>, async (id, project) => { await packagesReady; return builder.verifyLive(id, project ? { project } : {}); });
   handle(IPC.builderPropose, z.tuple([projectId, z.object({ commandId: z.string().max(80).optional(), error: z.string().max(1000).optional() })]), async (id, why) => {
     await packagesReady;
     const p = await builder.propose(id, why);

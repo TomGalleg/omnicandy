@@ -24,6 +24,11 @@ describe('programFromPath', () => {
     expect((await programFromPath(file)).name).toBe('Unreal Editor');
   });
 
+  it.skipIf(process.platform !== 'win32')('reads the version stored in the program file without starting it', async () => {
+    const p = await programFromPath(process.execPath);
+    expect(p.version).toMatch(/^\d+\.\d+/);
+  });
+
   it('refuses a file that is gone, and (on Windows) a file that is not a program', async () => {
     await expect(programFromPath(path.join(tmp, `nope${exe}`))).rejects.toThrow(/does not exist/);
     if (process.platform === 'win32') {

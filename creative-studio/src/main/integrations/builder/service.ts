@@ -341,6 +341,7 @@ export class BuilderService {
     const rec = await this.must(id);
     const base = await this.summary(rec);
     const bp = await this.store.readBlueprint(id, rec.version ?? undefined);
+    const needsProject = bp && bp.decision.template === 'python-script' ? bp.python?.custom?.projectExtension ?? null : null;
     const ver = await this.store.verifications(id);
     const commands: BuilderCommandView[] = (bp?.commands ?? []).map((c) => ({
       id: c.id, label: c.label, description: c.description, permissions: [...c.permissions], destructive: !!c.destructive,
@@ -360,6 +361,7 @@ export class BuilderService {
     const declared = bp?.application.versions.length ? bp.application.versions.map((r) => `${r.min ?? ''}–${r.max ?? ''}`).join(', ') : 'not declared';
     return {
       ...base,
+      needsProject,
       request: { appName: rec.request.appName, fromInstalled: rec.request.fromInstalled, exePath: rec.request.exePath ?? null, documentation: rec.docNames },
       research: rec.research, decision: rec.decision, commands, reports: rec.reports, files,
       versions: rec.versions.map((v) => ({ version: v.version, createdAt: v.createdAt, reason: v.reason, sha256: v.sha256, current: v.version === rec.version, installed: v.version === rec.installedVersion, verifiedCommands: ver.filter((x) => x.state === 'verified').length })),
@@ -392,7 +394,7 @@ export class BuilderService {
   // ------------------------------------------------------------------ live verification (stage 4)
 
   /** Runs the blueprint's live tests against the real, installed program through the same manager Claude uses. */
-  async verifyLive(id: string, opts: { independent?: (commandId: string, result: import('@shared/integrations').CommandResult) => Promise<string[]> } = {}): Promise<PipelineReport> {
+  async verifyLive(id: string, opts: { independent?: (commandId: string, result: import('@shared/integrations').CommandResult) => Promise<string[]>; project?: string } = {}): Promise<PipelineReport> {
     const rec = await this.must(id);
     const bp = await this.store.readBlueprint(id, rec.version ?? undefined);
     if (!bp || !rec.adapterId) throw new Error('This integration has not been built yet.');
@@ -425,7 +427,13 @@ export class BuilderService {
     const record = async (commandId: string, state: CommandVerification['state'], evidence: string[], detail: string) => {
       await this.store.recordVerification(id, { commandId, appVersion, state, at: new Date().toISOString(), evidence, detail });
     };
-    const exec = async (commandId: string, params: Record<string, unknown>) => this.d.manager.execute(app.key, commandId, params);
+    // A program that works with project files is tested on the project the user names (never one made up).
+    const projectExt = bp.decision.template === 'python-script' ? bp.python?.custom?.projectExtension ?? null : null;
+    if (projectExt && !opts.project?.trim()) {
+      add('failed', 'project', 'Project file for the test', `${rec.request.appName} works with project files. Enter the full path of a ${projectExt} file in "Project for the live test", then test again. Use a copy or a test project: the commands may change it.`);
+      return this.finishLive(rec, bp, checks, appVersion);
+    }
+    const exec = async (commandId: string, params: Record<string, unknown>) => this.d.manager.execute(app.key, commandId, projectExt ? { ...params, project: opts.project!.trim() } : params);
 
     const health = await exec('app.health', {});
     if (health.ok && health.verified) { add('passed', 'health', 'Connection check command', health.message); await record('app.health', 'verified', health.evidence, health.message); }

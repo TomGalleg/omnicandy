@@ -11,8 +11,14 @@ export interface PythonHost {
   versionArgs: string[];
   /** First capture group = version. */
   versionRegex: string;
-  /** Arguments that run the job script; `{run}` is replaced by the launcher file name inside the work folder. */
+  /** Arguments that run the job script; `{run}` is replaced by the launcher file name inside the work folder (a full path when absolutePaths). */
   launchArgs: string[];
+  /** "file": the program has no version option; the version found when the program was detected is used. */
+  versionFrom: 'command' | 'file';
+  /** A project file extension (".uproject") when the program must be started with a project; commands then take a `project` setting placed at {project}. */
+  projectExtension: string | null;
+  /** The program may change its working folder, so the job gets full paths (launcher, job file and work folder). */
+  absolutePaths: boolean;
   /** Modules the host program provides (imports the generated code may use besides the safe standard library). */
   hostModules: string[];
   /** The program's core modules: a class or function defined anywhere in its documentation counts for a symbol written Core.Name. */
@@ -49,7 +55,7 @@ export const PYTHON_HOSTS: Record<'freecad' | 'blender', PythonHost> = {
   freecad: {
     id: 'freecad', label: 'FreeCAD', exeNames: ['FreeCADCmd.exe'], displayNames: ['FreeCAD'],
     versionArgs: ['--version'], versionRegex: 'FreeCAD\\s+(\\d+(?:\\.\\d+){1,2})',
-    launchArgs: ['{run}'],
+    launchArgs: ['{run}'], versionFrom: 'command', projectExtension: null, absolutePaths: false,
     hostModules: ['FreeCAD', 'App', 'Part', 'Mesh', 'MeshPart', 'Import', 'Spreadsheet', 'Draft', 'Sketcher', 'PartDesign'],
     coreModules: ['FreeCAD', 'App'],
     launcher: 'exec-stub', knownSymbols: FREECAD_SYMBOLS,
@@ -59,7 +65,7 @@ export const PYTHON_HOSTS: Record<'freecad' | 'blender', PythonHost> = {
   blender: {
     id: 'blender', label: 'Blender', exeNames: ['blender.exe'], displayNames: ['Blender'],
     versionArgs: ['--version'], versionRegex: 'Blender\\s+(\\d+(?:\\.\\d+){1,2})',
-    launchArgs: ['-b', '--factory-startup', '--python', '{run}'],
+    launchArgs: ['-b', '--factory-startup', '--python', '{run}'], versionFrom: 'command', projectExtension: null, absolutePaths: false,
     hostModules: ['bpy', 'bmesh', 'mathutils'],
     coreModules: ['bpy'],
     launcher: 'direct', knownSymbols: BLENDER_SYMBOLS,

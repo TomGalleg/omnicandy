@@ -7,7 +7,7 @@
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import type { ApprovalRequest, Permission } from '@shared/integrations';
+import type { ApprovalRequest, CommandResult, Permission } from '@shared/integrations';
 import type { CheckResult, PipelineReport } from '@shared/builder';
 import { AdapterPackages, createIntegrationManager, type IntegrationManager } from '../index';
 import type { DiscoveryEnv } from '../discovery';
@@ -24,6 +24,21 @@ const warn = (id: string, title: string, detail: string): CheckResult => ({ id, 
 const skip = (id: string, title: string, detail: string): CheckResult => ({ id, title, state: 'skipped', detail });
 
 const MOCK_VERSION = '99.0.0';
+
+/**
+ * A command marked long-running is started as a background job and the manager answers at once with "started". The simulated run
+ * needs the real outcome, so it waits for the job to finish (the job keeps its own time limit).
+ */
+async function settled(mgr: IntegrationManager, r: CommandResult): Promise<CommandResult> {
+  const jobId = r.ok ? (r.data as { jobId?: string } | undefined)?.jobId : undefined;
+  if (!jobId) return r;
+  for (let i = 0; i < 600; i++) {
+    const j = mgr.job(jobId);
+    if (j && j.status !== 'running') return j.result ?? r;
+    await new Promise((res) => setTimeout(res, 150));
+  }
+  return r;
+}
 const errText = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 function versionLine(bp: Blueprint, a: Assembled): string {
@@ -129,11 +144,13 @@ export async function simulate(bp: Blueprint, a: Assembled): Promise<SimulationO
       const info = await rig.mgr.connect(app.key);
       const v = await rig.mgr.verify(app.key);
       const version = info.version ?? '';
-      checks.push(v.ok && (a.host || bp.cli) ? (version === MOCK_VERSION || bp.decision.template === 'file-exchange' ? ok('connect', 'Connect and health check', `Connected to the mock (reported version ${version || 'none'}); the health check passed.`) : bad('connect', 'Connect and health check', `The version regular expression read "${version}" from the mock's version output instead of ${MOCK_VERSION}.`)) : v.ok ? ok('connect', 'Connect and health check', 'Connected.') : bad('connect', 'Connect and health check', v.detail));
+      checks.push(v.ok && (a.host || bp.cli) ? (version === MOCK_VERSION || bp.decision.template === 'file-exchange' || a.host?.versionFrom === 'file' ? ok('connect', 'Connect and health check', `Connected to the mock (reported version ${version || 'none'}); the health check passed.`) : bad('connect', 'Connect and health check', `The version regular expression read "${version}" from the mock's version output instead of ${MOCK_VERSION}.`)) : v.ok ? ok('connect', 'Connect and health check', 'Connected.') : bad('connect', 'Connect and health check', v.detail));
     } catch (e) { checks.push(bad('connect', 'Connect and health check', errText(e))); throw new Error('stop'); }
 
     // commands, in a fixed order: health first
-    const run = async (command: string, params: Record<string, unknown>) => rig.mgr.execute(app.key, command, params);
+    // A program that works with project files gets a made-up project path (the mock program never opens it).
+    const sample = (p: Record<string, unknown>) => (a.host?.projectExtension && p.project === undefined ? { ...p, project: `C:\\Mock\\Project${a.host.projectExtension}` } : p);
+    const run = async (command: string, params: Record<string, unknown>) => settled(rig.mgr, await rig.mgr.execute(app.key, command, sample(params)));
     const health = await run('app.health', {});
     checks.push(health.ok ? ok('health-command', 'Connection check command', health.message) : bad('health-command', 'Connection check command', health.error?.message ?? health.message));
     let mockLimited = false;
@@ -188,10 +205,10 @@ export async function simulate(bp: Blueprint, a: Assembled): Promise<SimulationO
       const app2 = (await rig2.mgr.scan()).apps.find((x) => x.adapterId === id)!;
       await writeScenario(rig2, (s) => { s.slow = bp.decision.template === 'python-script' ? { command: first.id, phase: 'run', ms: 30_000 } : { command: '.', ms: 30_000 }; });
       const t0 = Date.now();
-      const slow = await rig2.mgr.execute(app2.key, first.id, first.mock.params);
+      const slow = await settled(rig2.mgr, await rig2.mgr.execute(app2.key, first.id, sample(first.mock.params)));
       checks.push(!slow.ok && slow.error?.kind === 'timeout' && Date.now() - t0 < 20_000 ? ok('timeout', 'Timeout', `A program that never answered was stopped after its ${(first.timeoutMs ?? 0) ? '' : 'declared '}time limit and reported as a timeout.`) : bad('timeout', 'Timeout', `Expected a timeout, got ${slow.ok ? 'success' : slow.error?.kind}.`));
       // cancel: start as a job and cancel it right away
-      const job = await rig2.mgr.execute(app2.key, first.id, first.mock.params, { background: true });
+      const job = await rig2.mgr.execute(app2.key, first.id, sample(first.mock.params), { background: true });
       const jobId = String((job.data as { jobId?: string } | undefined)?.jobId ?? '');
       await new Promise((r) => setTimeout(r, 600));
       const cancelled = rig2.mgr.cancelJob(jobId);

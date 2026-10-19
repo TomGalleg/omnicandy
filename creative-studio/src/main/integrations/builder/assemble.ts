@@ -69,17 +69,24 @@ export function refusedPermissions(bp: Blueprint): Array<{ command: string; perm
   return [...fromCommands, ...fromPlugin];
 }
 
-function commandSpecs(bp: Blueprint, usesWork: Record<string, boolean>): CommandSpec[] {
+/** The setting every command of a program that works with project files takes: the full path of the project file. */
+export function projectParam(ext: string, appName: string): CommandSpec['params'][string] {
+  return { type: 'string', required: true, description: `Full path of the ${appName} project file (it ends in ${ext}), for example C:\\Projects\\MyProject\\MyProject${ext}.` } as CommandSpec['params'][string];
+}
+
+function commandSpecs(bp: Blueprint, usesWork: Record<string, boolean>, host: PythonHost | null): CommandSpec[] {
   const t = bp.decision.template;
+  const projExt = t === 'python-script' ? host?.projectExtension ?? null : null;
+  const withProject = (params: CommandSpec['params']): CommandSpec['params'] => (projExt ? { ...params, project: projectParam(projExt, bp.application.name) } : params);
   const health: CommandSpec = {
     id: HEALTH_ID, label: `Check that ${bp.application.name} works`, idempotent: true, timeoutMs: 120_000,
     description: t === 'python-script'
       ? `Starts ${bp.application.name} without a window and runs a tiny job to prove its scripting works. Saves nothing.`
       : t === 'cli' ? `Runs ${bp.application.name} with its version option to prove the command line works. Saves nothing.` : `Checks that this integration can write files for ${bp.application.name}. The program is not started.`,
-    params: {}, permissions: t === 'file-exchange' ? ['read-info'] : sortPerms(['read-info', ...REQUIRED_PERMISSIONS[t], ...(t === 'python-script' ? ['write-files' as Permission] : [])]),
+    params: withProject({}), permissions: t === 'file-exchange' ? ['read-info'] : sortPerms(['read-info', ...REQUIRED_PERMISSIONS[t], ...(t === 'python-script' ? ['write-files' as Permission] : [])]),
   };
   const specs = bp.commands.map((c): CommandSpec => ({
-    id: c.id, label: c.label, description: c.description, params: c.params as CommandSpec['params'],
+    id: c.id, label: c.label, description: c.description, params: withProject(c.params as CommandSpec['params']),
     permissions: commandPermissions(bp, c, usesWork[c.id] ? ['read-project'] : []),
     ...(c.destructive ? { destructive: true } : {}), ...(c.idempotent ? { idempotent: true } : {}),
     timeoutMs: c.timeoutMs ?? (t === 'python-script' ? 180_000 : 120_000), ...(c.longRunning ? { longRunning: true } : {}),
@@ -111,6 +118,8 @@ function requirements(bp: Blueprint, host: PythonHost | null): Array<{ kind: 'ap
     ...bp.research.requiredTools.slice(0, 6).map((t) => ({ kind: 'other' as const, text: t })),
     { kind: 'other', text: 'Written by an AI for this computer. Simulated tests passed; it is only called "tested" after commands succeed on the real program.' },
   ];
+  if (host?.projectExtension) reqs.push({ kind: 'other', text: `Each command needs the full path of a ${host.projectExtension} project file.` });
+  if (host?.versionFrom === 'file') reqs.push({ kind: 'other', text: `${bp.application.name} has no version option, so its version is taken from the program file and may be unknown.` });
   if (host?.testedNote) reqs.push({ kind: 'other', text: host.testedNote });
   return reqs;
 }
@@ -143,7 +152,7 @@ export async function assembleBlueprint(bp: Blueprint, o: AssembleOptions): Prom
     files.set('main.js', buf(renderFileMain(bp)));
     if (!methods.includes('file-exchange')) methods = ['file-exchange', ...methods].slice(0, 4) as typeof methods;
   }
-  const specs = commandSpecs(bp, usesWork);
+  const specs = commandSpecs(bp, usesWork, host);
   const displayNames = host?.displayNames?.length ? [...new Set([...bp.application.displayNames, ...host.displayNames])] : bp.application.displayNames;
   const manifest: Record<string, unknown> = {
     manifestVersion: PACKAGE_MANIFEST_VERSION,

@@ -131,6 +131,8 @@ export interface BuilderCommandView {
 }
 
 export interface BuilderProjectDetail extends BuilderProjectSummary {
+  /** The project file extension (".uproject") when the program works with project files: live tests then need the full path of one. */
+  needsProject: string | null;
   request: { appName: string; fromInstalled: boolean; exePath: string | null; documentation: string[] };
   research: ResearchReport | null;
   decision: { type: IntegrationType; template: TemplateId; methods: ControlMethod[]; rationale: string; feasible: boolean; notFeasibleReason: string | null } | null;
@@ -256,24 +258,30 @@ export function parseLinks(text: string): string[] {
 }
 
 /** Documentation pages known to describe how a program can be controlled. Offered as one click in Create Custom Integration; the user can still edit the list. */
-const SUGGESTED_DOC_LINKS: Array<{ match: RegExp; label: string; links: string[] }> = [
+const UE = 'https://dev.epicgames.com/documentation/en-us/unreal-engine/';
+const SUGGESTED_DOC_LINKS: Array<{ match: RegExp; label: string; links: string[]; /** Addresses of this program's documentation take ?application_version=<major.minor>. */ versioned?: RegExp }> = [
   {
-    match: /unreal/i, label: 'Unreal Engine',
+    match: /unreal/i, label: 'Unreal Engine', versioned: /^https:\/\/dev\.epicgames\.com\//,
     links: [
-      'https://dev.epicgames.com/documentation/en-us/unreal-engine/scripting-the-unreal-editor-using-python',
-      'https://dev.epicgames.com/documentation/en-us/unreal-engine/unreal-engine-command-line-arguments-reference',
-      'https://dev.epicgames.com/documentation/en-us/unreal-engine/remote-control-for-unreal-engine',
-      'https://dev.epicgames.com/documentation/en-us/unreal-engine/remote-control-quick-start-for-unreal-engine',
-      'https://dev.epicgames.com/documentation/en-us/unreal-engine/remote-control-api-http-reference-for-unreal-engine',
-      'https://dev.epicgames.com/documentation/en-us/unreal-engine/remote-control-api-websocket-reference-for-unreal-engine',
-      'https://dev.epicgames.com/documentation/en-us/unreal-engine/plugins-in-unreal-engine',
-      'https://dev.epicgames.com/documentation/en-us/unreal-engine/python-api/index',
+      `${UE}scripting-the-unreal-editor-using-python`,
+      `${UE}unreal-engine-command-line-arguments-reference`,
+      `${UE}python-api/class/EditorAssetLibrary`,
+      `${UE}python-api/class/EditorActorSubsystem`,
+      `${UE}python-api/class/LevelEditorSubsystem`,
+      `${UE}python-api/class/EditorLevelLibrary`,
+      `${UE}python-api/class/AssetRegistry`,
+      `${UE}python-api/class/AssetExportTask`,
+      `${UE}python-api/class/AutomationLibrary`,
+      `${UE}python-api/class/EditorLoadingAndSavingUtils`,
     ],
   },
 ];
 
-/** Suggested documentation links for a program name, or null when none are known. */
-export function suggestedLinksFor(programName: string): { label: string; links: string[] } | null {
-  const hit = SUGGESTED_DOC_LINKS.find((s) => s.match.test(programName));
-  return hit ? { label: hit.label, links: hit.links } : null;
+/** Suggested documentation links for a program name, or null when none are known. With the program's version, links are for that version. */
+export function suggestedLinksFor(programName: string, version?: string | null): { label: string; links: string[] } | null {
+  const hit = SUGGESTED_DOC_LINKS.find((x) => x.match.test(programName));
+  if (!hit) return null;
+  const v = /^(\d+)\.(\d+)/.exec(version ?? '');
+  const pin = (u: string) => (v && hit.versioned?.test(u) ? `${u}${u.includes('?') ? '&' : '?'}application_version=${v[1]}.${v[2]}` : u);
+  return { label: hit.label, links: hit.links.map(pin) };
 }

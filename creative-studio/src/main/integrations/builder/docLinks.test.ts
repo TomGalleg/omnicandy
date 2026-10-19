@@ -106,6 +106,10 @@ describe('suggested links', () => {
       expect(s.links.length).toBeLessThanOrEqual(10);
       expect(s.links.every((l) => l.startsWith('https://dev.epicgames.com/documentation/'))).toBe(true);
     }
+    // with the installed version, the links are for that version
+    const v = suggestedLinksFor('Unreal Editor', '5.4.4-12345')!;
+    expect(v.links.every((l) => l.endsWith('?application_version=5.4'))).toBe(true);
+    expect(suggestedLinksFor('Unreal Editor', null)!.links.some((l) => l.includes('application_version'))).toBe(false);
     expect(suggestedLinksFor('Inkscape')).toBeNull();
   });
 });

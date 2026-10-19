@@ -11,7 +11,10 @@ import re as _re
 import sys as _sys
 import traceback as _tb
 
-_START_DIR = _os.path.realpath(_os.getcwd())
+try:
+    _START_DIR = _os.path.realpath(WORKDIR)
+except NameError:
+    _START_DIR = _os.path.realpath(_os.getcwd())
 _STEM_RE = _re.compile(r'^[A-Za-z0-9][A-Za-z0-9 _-]{0,59}$')
 _NAME_RE = _re.compile(r'^[A-Za-z0-9][A-Za-z0-9 _.-]{0,80}$')
 _READ_EXTS = ('.fcstd', '.step', '.stp', '.stl', '.obj', '.png', '.jpg', '.jpeg', '.svg', '.dxf', '.json', '.txt', '.csv', '.blend', '.fbx', '.glb', '.gltf', '.gcode', '.3mf', '.iges', '.igs')

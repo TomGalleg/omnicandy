@@ -53,7 +53,7 @@ export function BuilderWizard({ onClose, openProjectId }: Props) {
 
   const targetName = source === 'installed' ? picked?.name ?? '' : name.trim();
   const claudeReady = overview?.claude.ready ?? true;
-  const suggested = suggestedLinksFor(targetName);
+  const suggested = suggestedLinksFor(targetName, source === 'installed' ? picked?.version : null);
   const addSuggested = () => { if (suggested) setLinkText((t) => [...new Set([...parseLinks(t), ...suggested.links])].join(String.fromCharCode(10))); };
 
   const browseProgram = async () => {
