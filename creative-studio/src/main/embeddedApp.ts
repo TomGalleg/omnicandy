@@ -27,6 +27,10 @@ export class EmbeddedApp {
   private unplaced = false;
   private viewport: Viewport | null = null;
   mode: EmbedMode = 'embedded';
+  /** Where the app window should be (physical pixels) while embedded and shown; used to correct a window that was slow to take its size. */
+  private want: { x: number; y: number; width: number; height: number } | null = null;
+  private fixes = 0;
+  private lastFix = 0;
   /** A tracker already compiled and waiting, so a new app window can be caught the instant it appears. */
   private spare: WindowTracker | null = null;
 
@@ -91,8 +95,23 @@ export class EmbeddedApp {
       if (this.tracker !== t) return;
       if (!s.alive) { this.release(false); this.onGone(); return; }
       if (s.found && !this.found) { this.found = true; this.apply(); }
+      this.correct(s);
     });
     t.on('exit', () => { if (this.tracker === t) { this.tracker = null; this.pid = null; } });
+  }
+
+  /**
+   * Some programs (Blender) ignore the first resize while they are still starting, or snap back to their own size. When the
+   * window reports a rectangle other than the wanted one, ask again (a few times, at most twice a second).
+   */
+  private correct(s: TrackedWindowState) {
+    const w = this.want, t = this.tracker;
+    if (!w || !t || !this.found || this.mode !== 'embedded' || s.minimized || s.x === undefined || s.y === undefined || s.w === undefined || s.h === undefined) return;
+    const off = Math.abs(s.x - Math.round(w.x)) > 6 || Math.abs(s.y - Math.round(w.y)) > 6 || Math.abs(s.w - Math.round(w.width)) > 6 || Math.abs(s.h - Math.round(w.height)) > 6;
+    if (!off || this.fixes >= 40 || Date.now() - this.lastFix < 500) return;
+    this.fixes++;
+    this.lastFix = Date.now();
+    t.move(w);
   }
 
   setViewport(v: Viewport | null) {
@@ -110,13 +129,17 @@ export class EmbeddedApp {
     if (!host || !hwnd) return;
     const v = this.viewport;
     if (!v || !v.visible || v.width < 40 || v.height < 40 || host.isMinimized()) {
+      this.want = null;
       if (!this.unplaced) t.hide();
       return;
     }
     if (!this.embeddedOnce) { t.embed(hwnd); this.embeddedOnce = true; this.unplaced = false; }
     const content = host.getContentBounds();
     const dip = { x: content.x + v.x, y: content.y + v.y, width: v.width, height: v.height };
-    t.move(screen.dipToScreenRect(host, dip));
+    const rect = screen.dipToScreenRect(host, dip);
+    if (!this.want || this.want.x !== rect.x || this.want.y !== rect.y || this.want.width !== rect.width || this.want.height !== rect.height) this.fixes = 0;
+    this.want = rect;
+    t.move(rect);
     t.uncloak();
     t.show();
   }

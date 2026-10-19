@@ -7,7 +7,8 @@ screens are one checkbox away (see below). How and why it was simplified, with t
 a plain-language description is in `docs/planner-explained.md`.
 
 Private and local: plans live in `<user data>/planner` (on Windows `%APPDATA%\creative-studio\planner`). There is no sharing,
-marketplace or publishing feature, and nothing is uploaded.
+marketplace or publishing feature, and nothing is uploaded. The one exception is the optional **Plan with an AI** chat (below): when you
+press a button in it, your message and a short summary of the plan go to the AI you chose.
 
 ## Plain view and Advanced
 
@@ -77,6 +78,25 @@ separate project system per template.
    (`contentKey`: plan, tasks, assets, objective, note and what the AI receives, not the package number). CreateCraft Claude gets its box
    filled (you press Send); nothing is started or paid for by the Planner.
 4. The result comes back by paste (or MCP), the task shows **Needs Review**, and you accept, ask for changes or reject.
+
+### Plan with an AI (the chat beside the brief)
+
+On the Plan area, next to **Project brief**, a chat sends your messages to an AI and shows its answers. It is only for planning: it can read
+a short summary of the plan (title, goal, description, scope, constraints, agreed rules, open questions, task titles; no file locations, no
+ideas, no task details) and **can write nothing**.
+
+* **Which AI:** a picker offers **Claude** (your Claude sign-in; Opus 5.5 or Sonnet 5.5), **OpenAI** and **Google Gemini** (your own API keys
+  from Settings > Integrations, the same keys used for images; each message is billed to that account). The model list for OpenAI and Gemini
+  is read live from the provider with your key, so no model name is built in. A provider without a key shows "needs a key". The choice is
+  remembered.
+* **Saving the brief** shows "Brief saved. Ask <AI> to help plan this". Nothing is sent until you press that button (or type and press
+  Send). One request per message; the history sent is the newest 24 messages (each cut at 6,000 characters) and replies are limited to
+  3,000 tokens, which bounds what a message can cost.
+* **What comes back** is read with the same reader as Paste back. Any rules, decisions, tasks, questions or ideas in an answer appear under it with
+  tick boxes, marked "changes the plan" or "adds to your list"; **Add selected to my plan** or **Save for later** work exactly as for a pasted
+  answer, so the owner still decides and the history names "Planning chat" as the proposer.
+* The chat itself is kept on that screen only; it is not saved with the plan. Keys are lent from the encrypted store for one call, are never sent
+  to the page, and are removed from any error text.
 
 ### What the AI receives (context builder)
 
@@ -201,7 +221,7 @@ referenced files.
 * No live Claude/Cowork/ChatGPT/Gemini session was run (spend is $0).
 * Tasks have no due dates; milestones have an optional due date.
 * Linking CreateCraft assets stores the project key and asset id; resolving a link into a file open is not wired.
-* Not run (they need paid calls or a sign-in): Home's Create with Claude into the Planner from the real screen, `planner_propose` from a live
+* Not run (they need paid calls or a sign-in): the planning chat against a real Claude, OpenAI or Gemini account (request shapes are tested with faked providers only), Home's Create with Claude into the Planner from the real screen, `planner_propose` from a live
   Claude session, "Put it in the Claude panel", any live ChatGPT/Gemini/Cowork session.
 * No stored per-rule "always include" pin (the owner can put left-out rules back for one send). The context builder's relevance is plain
   word overlap.

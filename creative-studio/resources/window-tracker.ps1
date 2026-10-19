@@ -45,17 +45,21 @@ public static class CsWindowTracker {
   [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW")] static extern IntPtr GetWindowLongPtr(IntPtr h, int idx);
   const long FRAME = 0x00C00000L | 0x00040000L | 0x00020000L | 0x00010000L; // CAPTION | THICKFRAME | MINIMIZEBOX | MAXIMIZEBOX
 
-  static IntPtr FindMain(int pid) {
+  // allowHidden: a window CreateCraft itself put away earlier (SW_HIDE when the app was handed back) is still the app's main window.
+  // A visible one always wins; a hidden one is only taken once the app has had time to show its real window.
+  static IntPtr FindMain(int pid, bool allowHidden) {
     IntPtr best = IntPtr.Zero; long bestArea = 0;
+    IntPtr hidden = IntPtr.Zero; long hiddenArea = 0;
     EnumWindows((h, l) => {
       uint p; GetWindowThreadProcessId(h, out p);
-      if (p != (uint)pid || !IsWindowVisible(h) || GetWindowTextLength(h) == 0) return true; // owned allowed: embedded windows are owned by CreateCraft
+      if (p != (uint)pid || GetWindowTextLength(h) == 0) return true; // owned allowed: embedded windows are owned by CreateCraft
       RECT r; GetWindowRect(h, out r);
       long area = (long)(r.R - r.L) * (r.B - r.T);
-      if (area > bestArea) { bestArea = area; best = h; }
+      if (IsWindowVisible(h)) { if (area > bestArea) { bestArea = area; best = h; } }
+      else if (area > hiddenArea) { hiddenArea = area; hidden = h; }
       return true;
     }, IntPtr.Zero);
-    return best;
+    return best != IntPtr.Zero ? best : (allowHidden ? hidden : IntPtr.Zero);
   }
 
   static bool IsCloaked(IntPtr h) { int v; return DwmGetInt(h, 14, out v, 4) == 0 && v != 0; } // DWMWA_CLOAKED
@@ -85,12 +89,13 @@ public static class CsWindowTracker {
 
     IntPtr target = IntPtr.Zero; string last = null; bool owned = false; bool embedded = false; long savedStyle = 0;
     bool cloaked = false; bool offscreen = false; RECT before = new RECT();
+    var started = Stopwatch.StartNew();
     while (true) {
       Process proc = null;
       try { proc = Process.GetProcessById(pid); } catch { }
       if (proc == null || proc.HasExited) { Console.WriteLine("{\"alive\":false}"); return; }
       if (target == IntPtr.Zero || !IsWindow(target)) {
-        target = FindMain(pid); owned = false;
+        target = FindMain(pid, started.ElapsedMilliseconds > 3000); owned = false;
         if (target != IntPtr.Zero && cloak && !cloaked && !offscreen) {
           int on = 1;
           if (DwmSetWindowAttribute(target, 13, ref on, 4) == 0) cloaked = true; // DWMWA_CLOAK

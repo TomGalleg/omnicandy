@@ -18,6 +18,8 @@ export interface PlannerConnectionInfo {
   http: string;
 }
 
+export interface ChatProviderInfo { id: 'claude' | 'openai' | 'gemini'; label: string; cost: string; ready: boolean; note: string }
+
 export interface PackageView { package: ExecPackage; markdown: string; json: string; drift: PlanDrift; tasks: Array<{ id: string; status: PlanTask['status']; claimedBy: string | null; blockedBy: string[] }> }
 
 export interface PlannerApi {
@@ -59,6 +61,10 @@ export interface PlannerApi {
   rawReport(id: string, reportId: string): Promise<string | null>;
   exportProject(id: string, mode: 'reference' | 'bundle'): Promise<string | null>;
   importProject(): Promise<PlannerProject | null>;
+  /** The planning chat beside the brief. Each call is one message the owner chose to send; nothing is written to the plan. */
+  chatProviders(): Promise<ChatProviderInfo[]>;
+  chatModels(provider: 'claude' | 'openai' | 'gemini'): Promise<string[]>;
+  chat(req: { projectId: string; provider: 'claude' | 'openai' | 'gemini'; model: string; messages: Array<{ role: 'user' | 'assistant'; text: string }> }): Promise<{ text: string }>;
   connectionInfo(): Promise<PlannerConnectionInfo>;
   openFolder(): Promise<void>;
 }

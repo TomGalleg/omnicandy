@@ -34,6 +34,8 @@ export interface LiveAppOptions {
 }
 
 abstract class LiveAppBase implements LiveDoc {
+  /** What the last engine command returned, so Claude can read it back (app_command shows it). */
+  lastResult: unknown = undefined;
   protected gui: ChildProcess | null = null;
   protected mcp: McpClient | null = null;
   private starting: Promise<void> | null = null;
@@ -91,6 +93,42 @@ abstract class LiveAppBase implements LiveDoc {
   /** Optional cheap save of the just-opened state (no preview), used to tell "nothing changed" semantically. */
   writeBaseline?(dir: string, base: string): Promise<string>;
 
+  /** Runs `<app>-cli <args>` and returns its output (used for command discovery). */
+  protected cliText(args: string[]): Promise<string> {
+    const exe = path.join(this.o.installDir, binName(`${this.exeName}-cli`));
+    return new Promise<string>((resolve, reject) => {
+      execFile(exe, args, { windowsHide: true, timeout: 30_000, maxBuffer: 32 * 1024 * 1024 }, (err, stdout) => (err && !stdout ? reject(new Error(`${this.appId} could not list its commands.`)) : resolve(stdout)));
+    });
+  }
+
+  /**
+   * Lists the engine commands through the app's own CLI (`commands`; JSON for most apps, plain lines for
+   * SoundCraft). Disabled commands stay listed (the CLI has no document open). A filter that is exactly one
+   * command id returns that command's full details (`describe`) when the app has it.
+   */
+  async listCommands(filter?: string): Promise<string> {
+    const f = filter?.trim() ?? '';
+    if (f && /^[A-Za-z0-9_.:-]+$/.test(f)) {
+      const d = await this.cliText(['describe', f]).catch(() => '');
+      if (d.trim() && !/unknown|no such|not found/i.test(d.slice(0, 120))) return d.trim().slice(0, 4000);
+    }
+    const out = await this.cliText(['commands']);
+    let rows: string[];
+    try {
+      const list = JSON.parse(out) as Array<Record<string, unknown>>;
+      if (!Array.isArray(list)) throw new Error('not a list');
+      rows = list.filter((c) => typeof c.id === 'string').map((c) => `${c.id}${c.params ? ` ${String(typeof c.params === 'string' ? c.params : JSON.stringify(c.params)).slice(0, 300)}` : ''}${c.label ? ` — ${String(c.label)}` : ''}`);
+    } catch {
+      rows = out.split(/\r?\n/).map((l) => l.trim()).filter(Boolean).map((l) => l.replace(/\s{2,}/g, ' — '));
+    }
+    if (!rows.length) throw new Error(`${this.appId} lists no engine commands; use its quick edits (get_status).`);
+    const q = f.toLowerCase();
+    const hit = q ? rows.filter((r) => r.toLowerCase().includes(q)) : rows;
+    if (!hit.length) return `No ${this.appId} commands match "${filter}". Try a shorter word such as layer, text, frame, page, select or export.`;
+    const shown = hit.slice(0, 80);
+    return `${shown.join('\n')}${hit.length > shown.length ? `\n… ${hit.length - shown.length} more; narrow with a filter word, or pass one exact id for its full parameters.` : ''}`;
+  }
+
   stop() { this.mcp?.close(); this.mcp = null; this.gui = null; }
   /** Closes the window this session started, discarding unsaved changes. Tests only. */
   killApp() { const g = this.gui; this.stop(); g?.kill(); }
@@ -123,7 +161,7 @@ export class LiveVectorCraft extends LiveAppBase {
     return { name: path.basename(absPath) };
   }
   async run(op: AppOperation) {
-    await this.client().callTool('run_command', { command: op.command, params: op.params });
+    this.lastResult = await this.client().callTool('run_command', { command: op.command, params: op.params });
   }
   async history() {
     const r = (await this.client().callTool('inspect_document', { depth: 0 })) as { history?: unknown };
@@ -196,7 +234,7 @@ export class LiveSoundCraft extends LiveAppBase {
     return { name: path.basename(absPath) };
   }
   async run(op: AppOperation) {
-    await this.client().callTool('execute', { command: op.command, params: op.params });
+    this.lastResult = await this.client().callTool('execute', { command: op.command, params: op.params });
     this.applied.push(op.command);
   }
   /** SoundCraft's own undo history (engine.history), so edits made by hand show up too. */
@@ -321,7 +359,7 @@ export class LiveFilmCraft extends LiveAppBase {
   async run(op: AppOperation) {
     if (op.command === 'createcraft.place') return this.place(op.params as { path: string; as: 'clip' | 'music'; still?: boolean });
     if (op.command === 'createcraft.fitMusic') return this.fitMusic();
-    await this.cmd(op.command, op.params);
+    this.lastResult = await this.cmd(op.command, op.params);
   }
   /**
    * Adds a library file to the open sequence (verified live): a clip goes at the end of V1 with its
@@ -485,7 +523,7 @@ export class LiveLightCraft extends LiveAppBase {
   }
   async run(op: AppOperation) {
     if (this.photo === null) throw new Error('No photo is open in LightCraft.');
-    await this.cmd(op.command, op.params);
+    this.lastResult = await this.cmd(op.command, op.params);
   }
   async history() {
     const h = (await this.cmd('history.list', this.photo === null ? {} : { id: this.photo })) as { history?: string[] };
@@ -545,12 +583,29 @@ export class LiveEffectCraft extends LiveAppBase {
     return { name: path.basename(absPath) };
   }
   async run(op: AppOperation) {
-    if (op.command.startsWith('tool:')) await this.client().callTool(op.command.slice(5), op.params);
-    else await this.exec(op.command, op.params);
+    if (op.command.startsWith('tool:')) this.lastResult = await this.client().callTool(op.command.slice(5), op.params);
+    else this.lastResult = await this.exec(op.command, op.params);
   }
   async history() {
     const p = (await this.client().callTool('get_project', {})) as { undo?: string[] };
     return ['Open', ...(p.undo ?? []).slice(2)]; // import + new comp are part of opening
+  }
+  /** EffectCraft's friendlier automation tools (set_property, add_keyframe, add_effect, get_comp...) plus the engine commands. */
+  async listCommands(filter?: string): Promise<string> {
+    const q = filter?.trim().toLowerCase() ?? '';
+    const skip = new Set(['execute_command', 'run_script', 'script_ui', 'open_project', 'save_project', 'list_commands', 'describe_command', 'command_list', 'command_run', 'command_batch', 'batch']);
+    const tools = ((await this.client().request('tools/list', {}).catch(() => ({ tools: [] }))) as { tools?: Array<{ name: string; description?: string; inputSchema?: { properties?: Record<string, unknown>; required?: string[] } }> }).tools ?? [];
+    const exact = tools.find((t) => !skip.has(t.name) && (t.name === q || `tool:${t.name}` === q));
+    if (exact) return `tool:${exact.name}
+${exact.description ?? ''}
+params: ${JSON.stringify(exact.inputSchema?.properties ?? {}).slice(0, 2500)}
+required: ${(exact.inputSchema?.required ?? []).join(', ') || 'none'}`;
+    const rows = tools.filter((t) => !skip.has(t.name) && (!q || `${t.name} ${t.description ?? ''}`.toLowerCase().includes(q)))
+      .map((t) => `tool:${t.name} {${Object.keys(t.inputSchema?.properties ?? {}).join(', ')}} — ${(t.description ?? '').split(/(?<=\.)\s/)[0]?.slice(0, 110) ?? ''}`);
+    const cmds = await super.listCommands(filter).catch(() => '');
+    return [rows.length ? `Tools (use as tool:<name>; set_property with "time" makes a keyframe, paths like transform/position or effects/#1/blurriness):
+${rows.join('\n')}` : '', cmds ? `Engine commands:
+${cmds}` : ''].filter(Boolean).join('\n\n') || `No EffectCraft commands match "${filter}".`;
   }
   async undo() {
     const p = (await this.client().callTool('get_project', {})) as { undo?: string[] };
@@ -623,6 +678,7 @@ export class LiveDesignCraft extends LiveAppBase {
       return;
     }
     const r = (await this.exec(op.command, op.params)) as { count?: number };
+    this.lastResult = r;
     if (op.command === 'find.change' && r?.count === 0) throw new Error(`"${String(op.params.find)}" was not found in the layout.`);
   }
   async quickEditSteps(opId: string, values: EditValues): Promise<AppOperation[]> {
@@ -694,6 +750,7 @@ export class LiveWordCraft extends LiveAppBase {
 
   async run(op: AppOperation) {
     const r = (await this.exec(op.command, op.params)) as { replaced?: number };
+    this.lastResult = r;
     if (op.command === 'edit.replaceAll' && r?.replaced === 0) throw new Error(`"${String(op.params.text)}" was not found in the document.`);
   }
   async quickEditSteps(opId: string, values: EditValues): Promise<AppOperation[]> {
@@ -738,7 +795,9 @@ const PDF_STEP_LABEL: Record<string, string> = {
   'pdf.replaceText': 'Replace text', 'pdf.addText': 'Add text', 'tool:page_rotate': 'Rotate pages', 'tool:page_delete': 'Delete pages',
   'tool:doc_watermark': 'Add watermark', 'tool:doc_set_info': 'Set title',
 };
-const PDF_TOOLS = ['page_rotate', 'page_delete', 'doc_watermark', 'doc_set_info'];
+/** Engine tools that manage documents, windows or the machine rather than edit the open PDF; CreateCraft runs those itself or never. */
+const PDF_BLOCKED_TOOLS = new Set(['doc_open', 'doc_close', 'doc_list', 'doc_batch', 'doc_save', 'doc_print', 'printers', 'printer_options', 'link_open', 'sign_windows_ids', 'sign_keychain_ids', 'sign_id_create', 'sign_trust', 'command_run', 'command_batch', 'command_list', 'js_enabled', 'ocr_recognize_files', 'doc_create_multiple', 'doc_split']);
+const isPdfEngineTool = (name: string) => /^[a-z][a-z0-9_]*$/.test(name) && !PDF_BLOCKED_TOOLS.has(name);
 
 /**
  * PdfCraft. Its window (`pdfcraft --control <file>`) only accepts GUI-level calls (open, commands without
@@ -824,6 +883,26 @@ export class LivePdfCraft extends LiveAppBase {
   }
 
   private tool(name: string, args: Record<string, unknown> = {}, timeoutMs?: number) { return this.client().callTool(name, args, timeoutMs); }
+  private toolInfo: Array<{ name: string; description?: string; read_only?: boolean; input_schema?: { properties?: Record<string, unknown>; required?: string[] } }> | null = null;
+  lastResult: unknown = null;
+  private async tools() {
+    if (!this.toolInfo) this.toolInfo = JSON.parse(await this.cliText(['tools'])) as NonNullable<LivePdfCraft['toolInfo']>;
+    return this.toolInfo;
+  }
+  private async isReadOnlyTool(name: string): Promise<boolean> { return (await this.tools().catch(() => [])).find((t) => t.name === name)?.read_only === true; }
+  /** PdfCraft's automation tools (`tool:<name>` ids for app_command) with their parameters. */
+  async listCommands(filter?: string): Promise<string> {
+    const q = filter?.trim().toLowerCase() ?? '';
+    const all = (await this.tools()).filter((t) => isPdfEngineTool(t.name));
+    const exact = all.find((t) => t.name === q || `tool:${t.name}` === q);
+    if (exact) return `tool:${exact.name}${exact.read_only ? ' (read only)' : ''}
+${exact.description ?? ''}
+params: ${JSON.stringify(exact.input_schema?.properties ?? {}).slice(0, 2500)}
+required: ${(exact.input_schema?.required ?? []).join(', ') || 'none'} ("doc" is filled in for you)`;
+    const rows = all.filter((t) => !q || `${t.name} ${t.description ?? ''}`.toLowerCase().includes(q)).map((t) => `tool:${t.name} {${Object.keys(t.input_schema?.properties ?? {}).filter((k) => k !== 'doc').join(', ')}} — ${(t.description ?? '').split(/(?<=\.)\s/)[0]?.slice(0, 110) ?? ''}`);
+    if (!rows.length) return `No PdfCraft tools match "${filter}". Try page, text, form, redact, bookmark, comment, watermark, ocr or accessibility.`;
+    return `${rows.slice(0, 70).join('\n')}${rows.length > 70 ? `\n… ${rows.length - 70} more; narrow with a filter word, or pass one exact tool name for its full parameters.` : ''}`;
+  }
 
   /** Opens `absPath` as a working copy in the work folder; the library file is only read. */
   async open(absPath: string) {
@@ -912,9 +991,11 @@ export class LivePdfCraft extends LiveAppBase {
     else if (op.command === 'pdf.addText') await this.addText(String(p.text), Number(p.page), String(p.position), Number(p.size));
     else if (op.command.startsWith('tool:')) {
       const name = op.command.slice(5);
-      if (!PDF_TOOLS.includes(name)) throw new Error(`PdfCraft step "${name}" is not allowed.`);
+      if (!isPdfEngineTool(name)) throw new Error(`PdfCraft tool "${name}" is not allowed.`);
       await this.checkPages(name, p.pages);
-      await this.tool(name, { doc: this.docId, ...p });
+      const res = await this.tool(name, { doc: this.docId, ...p });
+      this.lastResult = res;
+      if (await this.isReadOnlyTool(name)) return;
     } else throw new Error(`Unknown PdfCraft command "${op.command}".`);
     await this.commit(PDF_STEP_LABEL[op.command] ?? op.command);
   }
@@ -1035,7 +1116,7 @@ export class LiveGridCraft extends LiveAppBase {
   }
   private exec(command: string, params: Record<string, unknown> = {}) { return this.client().callTool('execute_command', { command, params }); }
 
-  async run(op: AppOperation) { await this.exec(op.command, op.params); }
+  async run(op: AppOperation) { this.lastResult = await this.exec(op.command, op.params); }
   async quickEditSteps(opId: string, values: EditValues): Promise<AppOperation[]> { return gridcraftSteps(opId, values); }
   /** Sheets, their used ranges and the top rows of the active sheet, so Claude knows what is there. */
   async describe() {

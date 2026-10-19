@@ -15,6 +15,8 @@ export interface ExternalStateData {
   remembered: string[];
   /** The guided setup has been finished at least once. */
   onboarded: boolean;
+  /** Applications the user connected and has not disconnected: reconnected automatically when CreateCraft starts. */
+  connected: string[];
 }
 
 const same = (a: string, b: string) => path.normalize(a).toLowerCase() === path.normalize(b).toLowerCase();
@@ -34,8 +36,8 @@ export class ExternalState {
   async read(): Promise<ExternalStateData> {
     try {
       const j = JSON.parse(await fs.readFile(this.file, 'utf8')) as Partial<ExternalStateData>;
-      return { grants: j.grants ?? {}, paths: j.paths ?? [], remembered: j.remembered ?? [], onboarded: j.onboarded === true };
-    } catch { return { grants: {}, paths: [], remembered: [], onboarded: false }; }
+      return { grants: j.grants ?? {}, paths: j.paths ?? [], remembered: j.remembered ?? [], onboarded: j.onboarded === true, connected: Array.isArray(j.connected) ? j.connected.filter((k): k is string => typeof k === 'string') : [] };
+    } catch { return { grants: {}, paths: [], remembered: [], onboarded: false, connected: [] }; }
   }
 
   /** Read-modify-write, one at a time. */

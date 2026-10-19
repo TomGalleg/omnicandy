@@ -69,7 +69,7 @@ export const manifestSchema = z.object({
   brief: z.string().max(2000).optional(),
   objective: z.string().max(600).optional(),
   view: z.object({
-    workspace: z.enum(['home', 'media', 'edit', 'generate', 'workflow', 'effects', 'color', 'audio', 'deliver', 'planner']),
+    workspace: z.enum(['home', 'media', 'edit', 'generate', 'workflow', 'effects', 'color', 'audio', 'deliver', 'planner', 'software']),
     assetId: id.optional(),
   }).optional(),
 });

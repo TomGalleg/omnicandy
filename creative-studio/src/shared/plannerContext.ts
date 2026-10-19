@@ -97,20 +97,28 @@ export function buildContext(p: PlannerProject, req: ContextRequest): BuiltConte
   };
 }
 
-/** A plain-words request for ideas: goal and accepted plan in short form, open questions and task titles. No file locations. */
-export function brainstormText(p: PlannerProject): string {
+/** The plan in short form for an AI: goal, scope, constraints, agreed rules, open questions, task titles. No file locations or task details. */
+export function planSummary(p: PlannerProject): string[] {
   const rules = p.items.filter((i) => (i.type === 'requirement' || i.type === 'decision') && i.status === 'accepted');
   const qs = p.items.filter((i) => i.type === 'question' && i.status === 'open');
   const live = p.tasks.filter((t) => t.status !== 'cancelled');
-  const lines = [
-    `I am planning a project called "${p.title}". Please suggest improvements to the plan. Do not do the work itself.`,
-    '', `Goal: ${p.goal || '(not written yet)'}`,
+  return [
+    `Project: "${p.title}"`, `Goal: ${p.goal || '(not written yet)'}`,
+    ...(p.description ? [`Description: ${p.description.slice(0, 1500)}`] : []),
     ...(p.scope ? [`Scope: ${p.scope}`] : []),
     ...(p.constraints.length ? ['Constraints:', ...p.constraints.map((c) => `- ${c}`)] : []),
     ...(p.deliverables.length ? ['Expected deliverables:', ...p.deliverables.map((c) => `- ${c}`)] : []),
     ...(rules.length ? ['', 'Rules and decisions already agreed:', ...rules.map((r) => `- ${r.title}${r.text ? `: ${r.text.slice(0, 300)}` : ''}${r.reason ? ` (why: ${r.reason.slice(0, 200)})` : ''}`)] : []),
     ...(qs.length ? ['', 'Questions still open:', ...qs.map((q) => `- ${q.title}`)] : []),
     ...(live.length ? ['', 'Tasks so far (titles only):', ...live.map((t) => `- ${t.title}`)] : []),
+  ];
+}
+
+/** A plain-words request for ideas: goal and accepted plan in short form, open questions and task titles. No file locations. */
+export function brainstormText(p: PlannerProject): string {
+  const lines = [
+    `I am planning a project called "${p.title}". Please suggest improvements to the plan. Do not do the work itself.`,
+    '', ...planSummary(p).slice(1),
     '', 'Answer with these headings and a short list under each (leave out any you have nothing for):',
     '## Requirements', '## Decisions', '## Tasks', '## Questions', '## Ideas',
     'Under a task you may add indented lines saying how to check that it is done. Everything you write is only a suggestion; I decide what joins the plan.',

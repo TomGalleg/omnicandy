@@ -394,6 +394,6 @@ describe('external state', () => {
     const f = path.join(tmp, 'state-c', 'x.json');
     await fs.mkdir(path.dirname(f), { recursive: true });
     await fs.writeFile(f, '{not json');
-    expect(await new ExternalState(f).read()).toEqual({ grants: {}, paths: [], remembered: [], onboarded: false });
+    expect(await new ExternalState(f).read()).toEqual({ grants: {}, paths: [], remembered: [], onboarded: false, connected: [] });
   });
 });

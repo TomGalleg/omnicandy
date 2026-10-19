@@ -6,7 +6,7 @@ A plain-language brief, written so another AI (or person) can understand the Pla
 
 The Planner is the project's single source of truth for *what we are building, who is doing what, and what the owner approved*. You think and brainstorm with one AI (ChatGPT, Gemini, Claude), keep the agreed result as one accepted plan, hand slices of it to a worker (Claude Code, Cowork, CreateCraft's own Claude), and review what comes back. **The human is the only one who changes the plan or accepts work.** AIs can only suggest, claim a task and report. It works with no AI connection at all (copy and paste) and runs entirely on the user's PC.
 
-Where: **More > Planner** in Simplified mode, **Planner** in Advanced mode. Data lives in `%APPDATA%\creative-studio\planner` (one folder per plan, `project.json` plus an append-only `history.jsonl`). Nothing is uploaded, shared or published.
+Where: **More > Planner** in Simplified mode, **Planner** in Advanced mode. Data lives in `%APPDATA%\creative-studio\planner` (one folder per plan, `project.json` plus an append-only `history.jsonl`). Nothing is uploaded, shared or published, except what you choose to send in the planning chat (below).
 
 ## 2. Two views of the same data
 
@@ -41,7 +41,8 @@ Stored task statuses are seven (todo, in_progress, blocked, reported, revision, 
 
 ## 5. The round trip (plain words, with the stored names in brackets)
 
-1. **Ask AI for ideas.** The AI area copies a short summary of your plan and asks for suggestions under headings (Requirements, Decisions, Tasks, Questions, Ideas).
+0. **Plan with an AI (optional, in the app).** Beside the Project brief is a chat. Pick Claude (your sign-in) or OpenAI or Google Gemini (your own keys, billed to you), save the brief, and press the offered button; nothing is sent by itself. Its suggestions appear with tick boxes exactly as in step 3, and the chat can change nothing.
+1. **Ask AI for ideas (any chat app).** The AI area copies a short summary of your plan and asks for suggestions under headings (Requirements, Decisions, Tasks, Questions, Ideas).
 2. **Paste back.** One box. The app works out whether you pasted suggestions or a task result and shows a preview. Nothing is stored by previewing.
 3. **Approve.** Suggestions (a *proposal*) are listed with tick boxes; each is marked "changes the plan" (rules, decisions) or "adds to your list". "Add selected to my plan" stores them pending and then accepts the ticked ones as you. "Save for later" leaves them under Needs you.
 4. **Send to AI.** Tick tasks, pick who it is for, press one button. The app prepares the brief (an *execution package*, an immutable hashed snapshot) and gives you one Copy button, or fills CreateCraft's Claude panel for you to send. An identical brief is reused rather than replaced. Nothing starts by itself.

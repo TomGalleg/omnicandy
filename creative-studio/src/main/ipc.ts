@@ -1,6 +1,8 @@
 // Narrow IPC surface. Every handler validates its arguments and checks the sender frame.
 
+import { spawn } from 'node:child_process';
 import fs from 'node:fs/promises';
+import os from 'node:os';
 import path from 'node:path';
 import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeTheme, safeStorage, shell, type IpcMainInvokeEvent } from 'electron';
 import { z } from 'zod';
@@ -17,12 +19,14 @@ import { exportPresetsOf, importAssetIds, WorkflowRunner, type RunnerDeps } from
 import { probeAllArtCraftApps } from './artcraftProbe';
 import { IMPORTABLE_EXTENSIONS, kindForExtension } from './media';
 import { AppEditors } from './appEditors';
+import { showApprovalCard } from './approvalWindow';
 import { randomUUID } from 'node:crypto';
 import { ClaudePartner, defaultClaudeCli, type PlanReference } from './claudePartner';
 import { LiveTaskController } from './liveTask';
 import { PhotoCraftCliAdapter } from './photocraftCli';
 import type { ProjectManager } from './projects';
-import { EDITOR_APPS, type EditorAppId } from '@shared/appEditors';
+import { setBlenderLiveHooks } from './integrations/adapters/blenderLive';
+import { BLANK_FILES, EDITOR_APPS, type EditorAppId } from '@shared/appEditors';
 import { DeliverQueue } from './deliver';
 import { WorkflowSteps } from './workflowSteps';
 import type { EmbeddedApp } from './embeddedApp';
@@ -59,7 +63,7 @@ import { bundledPaths, loadBundledPublishers } from './integrations/bundled';
 import { approvalDetail, INSTALL_CANCELLED_MESSAGE, integrationLines, type BrowseResult, type ConnectOutcome, type ConnectOverview, type ForgetResult } from '@shared/connect';
 import { ExternalState } from './integrations/state';
 import { PERMISSION_LABEL, type ApprovalAnswer, type ExternalAppInfo, type PackageApproval, type PackageListing, type Permission } from '@shared/integrations';
-import { craftInstallDir } from './platform/craftApps';
+import { craftBin, craftInstallDir } from './platform/craftApps';
 
 export interface IpcDeps {
   window: () => BrowserWindow | null;
@@ -82,7 +86,11 @@ const strip = (e: { id: string; app: string; assetId: string; assetName: string;
 export function registerIpc(d: IpcDeps): void {
   const planner = createPlanner(path.dirname(d.secretsDir));
   const plannerSession = new McpSession(planner.service, ['read', 'propose', 'execute'], { kind: 'createcraft', name: 'CreateCraft Claude' });
-  registerPlannerIpc({ service: planner.service, dir: planner.dir, isTrustedSender: d.isTrustedSender, window: d.window });
+  registerPlannerIpc({
+    service: planner.service, dir: planner.dir, isTrustedSender: d.isTrustedSender, window: d.window,
+    // Lazy: the key vault and Claude are created further down. Keys are lent per call and never returned to the page.
+    chat: { vault: { status: (id) => vault.status(id as never), withKey: (id, fn) => vault.withKey(id, fn) }, fetch: globalThis.fetch.bind(globalThis), claude: () => claude() },
+  });
   const handle = <A extends unknown[]>(channel: string, schema: z.ZodType<A>, fn: (...args: A) => unknown) => {
     ipcMain.handle(channel, (e, ...raw) => {
       if (!d.isTrustedSender(e)) throw new Error('Untrusted sender.');
@@ -381,6 +389,20 @@ export function registerIpc(d: IpcDeps): void {
       connect: async (app) => { const drv = driver(app); await drv.ensureStarted(); return drv; },
       store,
       emit: (s) => { for (const w of BrowserWindow.getAllWindows()) if (!w.isDestroyed()) w.webContents.send(IPC.liveEvent, s); },
+      approveCommand: async (r) => {
+        const win = d.window();
+        const text = JSON.stringify(r.params);
+        return showApprovalCard(win, {
+          title: `Approve ${r.appName} command`,
+          heading: `Claude wants to run "${r.command}" in ${r.appName}`,
+          tone: 'warn',
+          intro: 'This command reaches outside the open picture (a file, an action, a script or a plugin).',
+          code: text.length > 1200 ? `${text.slice(0, 1200)}…` : text,
+          rows: [],
+          footnote: `${r.appName} still refuses any file outside this project. Nothing runs unless you click Run.`,
+          confirmLabel: 'Run',
+        });
+      },
       writeDir: async (app) => { const dir = roots[app]; if (!dir) throw new Error('No write folder.'); await fs.mkdir(dir, { recursive: true }); return dir; },
     });
     d.panel.onClosed(() => {
@@ -447,28 +469,20 @@ export function registerIpc(d: IpcDeps): void {
     const isVideo = r.kind === 'video';
     const many = isVideo ? 'video' : r.count === 1 ? 'image' : 'images';
     const prompt = r.prompt.length > 300 ? `${r.prompt.slice(0, 300)}…` : r.prompt;
-    const options: Electron.MessageBoxOptions = {
-      type: 'question',
+    return showApprovalCard(win, {
       title: isVideo ? 'Approve paid video generation' : 'Approve paid image generation',
-      message: `${r.requestedBy === 'claude' ? 'Claude is asking to generate' : 'Generate'} ${isVideo ? 'a' : r.count} ${many} with ${r.provider} · ${r.model}?`,
-      detail: [
-        `Estimated cost: ${r.estimate.approximate ? 'about ' : ''}${formatUsd(r.estimate.amount)} USD, charged to your ${r.provider} account.`,
-        r.estimate.basis,
-        '',
-        `Prompt: "${prompt}"`,
-        `Settings: ${Object.entries(r.settings).map(([k, v]) => `${k} ${v}`).join(', ')}`,
-        r.references.length ? `Reference images sent to ${r.provider}: ${r.references.join(', ')}` : '',
-        '',
-        r.limitUsd != null ? `Project spending limit: $${r.limitUsd.toFixed(2)} (about $${(r.spentUsd ?? 0).toFixed(2)} estimated so far).` : '',
-        isVideo ? 'Nothing is sent until you click Make video. Video can take several minutes and cannot be cancelled once Google has it.' : 'Nothing is sent until you click Generate.',
-      ].filter((l, i, a) => l !== '' || a[i - 1] !== '').join('\n'),
-      buttons: ['Cancel', `${isVideo ? 'Make video' : 'Generate'} (${r.estimate.approximate ? '~' : ''}${formatUsd(r.estimate.amount)})`],
-      defaultId: 0,
-      cancelId: 0,
-      noLink: true,
-    };
-    const res = win && !win.isDestroyed() ? await dialog.showMessageBox(win, options) : await dialog.showMessageBox(options);
-    return res.response === 1;
+      heading: `${r.requestedBy === 'claude' ? 'Claude is asking to generate' : 'Generate'} ${isVideo ? 'a' : r.count} ${many} with ${r.provider} · ${r.model}?`,
+      cost: `${r.estimate.approximate ? '≈ ' : ''}${formatUsd(r.estimate.amount)} USD`,
+      costNote: `${r.estimate.basis} Charged to your ${r.provider} account.`,
+      rows: [
+        ['Prompt', prompt],
+        ['Settings', Object.entries(r.settings).map(([k, v]) => `${k} ${v}`).join(', ')],
+        ['References', r.references.length ? `Sent to ${r.provider}: ${r.references.join(', ')}` : ''],
+        ['Limit', r.limitUsd != null ? `Project spending limit $${r.limitUsd.toFixed(2)} (about $${(r.spentUsd ?? 0).toFixed(2)} estimated so far).` : ''],
+      ],
+      footnote: isVideo ? 'Nothing is sent until you click Make video. Video can take several minutes and cannot be cancelled once Google has it.' : 'Nothing is sent until you click Generate.',
+      confirmLabel: `${isVideo ? 'Make video' : 'Generate'} (${r.estimate.approximate ? '~' : ''}${formatUsd(r.estimate.amount)})`,
+    });
   };
   const generation = new GenerationService({ vault, store: d.project, approve: approveGeneration, fetch: globalThis.fetch.bind(globalThis) });
   const emitGenerated = (r: GenerateResultDto) => { for (const w of BrowserWindow.getAllWindows()) if (!w.isDestroyed()) w.webContents.send(IPC.genEvent, r); };
@@ -669,6 +683,7 @@ export function registerIpc(d: IpcDeps): void {
     workDir: async (id) => (await d.project()).workDir('external', id),
     permissions: { load: async () => (await extStore.read()).grants, save: async (grants) => { await extStore.update((st) => { st.grants = grants; }); } },
     userPaths: async () => (await extStore.read()).paths,
+    connected: { load: async () => (await extStore.read()).connected, save: async (connected) => { await extStore.update((st) => { st.connected = connected; }); } },
     extraTargets: async () => (await connect?.extraTargets()) ?? [],
     remembered: { load: async () => (await extStore.read()).remembered, save: async (remembered) => { await extStore.update((st) => { st.remembered = remembered; }); } },
     approve: async (r): Promise<ApprovalAnswer> => {
@@ -679,10 +694,43 @@ export function registerIpc(d: IpcDeps): void {
       return res.response === 1 ? 'once' : res.response === 2 ? 'always' : 'deny';
     },
   });
+  // A third-party program's own window (Blender) opened for Claude: it is docked into the Software tab like the ArtCraft apps.
+  let liveExternal: { name: string; pid: number | null } = { name: 'Blender', pid: null };
+  const emitLiveExternal = () => { for (const w of BrowserWindow.getAllWindows()) if (!w.isDestroyed()) w.webContents.send(IPC.extLive, liveExternal); };
+  setBlenderLiveHooks({
+    onSpawn: (pid) => { liveExternal = { name: 'Blender', pid }; d.embedded.prepare(pid); emitLiveExternal(); },
+    onExit: () => { liveExternal = { name: 'Blender', pid: null }; emitLiveExternal(); },
+  });
+  app.on('will-quit', () => setBlenderLiveHooks(null));
+  /**
+   * Pictures, video and audio that an external program wrote (a Blender render, an exported clip) are added to the
+   * library (Media tab) and the first picture or video opens in PhotoCraft / FilmCraft inside CreateCraft, ready to edit.
+   * Each file is added once, however often the result is read. Returns the names added.
+   */
+  const broughtIn = new Set<string>();
+  const bringIntoLibrary = async (appName: string, outputs: Array<{ path: string }> | undefined): Promise<string[] | null> => {
+    const fresh = (outputs ?? []).filter((o) => o?.path && !broughtIn.has(o.path.toLowerCase()) && kindForExtension(path.extname(o.path)));
+    if (!fresh.length) return null;
+    const store = await d.project();
+    const names: string[] = [];
+    let first: string | null = null;
+    for (const o of fresh) {
+      broughtIn.add(o.path.toLowerCase());
+      try {
+        const { asset } = await store.importFile(o.path, { origin: 'generated', source: `Made in ${appName}` });
+        names.push(asset.name);
+        if (!first && (asset.kind === 'image' || asset.kind === 'video')) first = asset.id;
+      } catch { /* a file that cannot be added is simply not listed */ }
+    }
+    if (first) { try { await openLive(first, undefined, 'claude'); } catch { /* it is in the library even if the app could not open it yet */ } }
+    return names.length ? names : null;
+  };
   // Installable adapter packages: verified on disk, run in their own restricted process (integrations/packageRunner.ts).
   const packages = new AdapterPackages(path.join(path.dirname(d.secretsDir), 'integrations'), external, undefined, { bundledPublishers: () => loadBundledPublishers(bundled.publishersFile) });
   app.on('will-quit', () => { void packages.shutdown(); void external.shutdown(); });
   const packagesReady = packages.load().catch(() => undefined);
+  // Applications connected last time are connected again now (quietly), so Software shows them as connected after a restart.
+  const restored = packagesReady.then(() => external.autoConnect()).catch(() => undefined);
   const connectSvc = new ConnectService({ manager: external, packages, state: extStore, catalogDirs });
   connect = connectSvc;
   /** Only paths the user picked or the inbox listed can be reviewed or installed: the renderer cannot name arbitrary files. */
@@ -720,8 +768,10 @@ export function registerIpc(d: IpcDeps): void {
   });
   handle(IPC.connectForget, z.tuple([z.string().min(1).max(600)]), async (k): Promise<ForgetResult> => { await packagesReady; return connectSvc.forget(k); });
   handle(IPC.connectDone, none, async () => { await connectSvc.markOnboarded(); });
-  handle(IPC.extScan, none, async () => { await packagesReady; return external.scan(); });
-  handle(IPC.extList, none, async () => { await packagesReady; return external.list(); });
+  handle(IPC.extScan, none, async () => { await restored; return external.scan(); });
+  handle(IPC.extLiveState, none, async () => liveExternal);
+  handle(IPC.extLiveShow, none, async () => { if (liveExternal.pid) d.embedded.attach(liveExternal.pid); });
+  handle(IPC.extList, none, async () => { await restored; return external.list(); });
   handle(IPC.extConnect, z.tuple([z.string().min(1).max(600)]), (k) => external.connect(k));
   handle(IPC.extDisconnect, z.tuple([z.string().min(1).max(600)]), (k) => external.disconnect(k));
   handle(IPC.extRepair, z.tuple([z.string().min(1).max(600)]), (k) => external.repair(k));
@@ -883,6 +933,19 @@ export function registerIpc(d: IpcDeps): void {
     live,
     store: d.project,
     openAsset: async (id, app) => { await openLive(id, app, 'claude'); },
+    newBlankFile: async (appId, name) => {
+      // These apps only edit library files, so start from a copy of the bundled blank file made by the app itself.
+      const ext = BLANK_FILES[appId];
+      if (!ext) throw new Error(`${EDITOR_APPS[appId].name} has no blank starter file; it works on media files already in the library.`);
+      const src = app.isPackaged ? path.join(process.resourcesPath, 'sample-project', 'blank', `blank.${ext}`) : path.join(app.getAppPath(), 'fixtures', 'sample-project', 'blank', `blank.${ext}`);
+      const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'cc-blank-'));
+      try {
+        const file = path.join(dir, `${(name || 'New document').replace(/[^\w\- ]/g, '').trim().slice(0, 60) || 'New document'}.${ext}`);
+        await fs.copyFile(src, file);
+        const { asset } = await (await d.project()).importFile(file, { origin: 'fixture', source: `Blank starter file made with ${EDITOR_APPS[appId].name}.` });
+        return { id: asset.id, name: asset.name };
+      } finally { await fs.rm(dir, { recursive: true, force: true }); }
+    },
     emit: (st) => { for (const w of BrowserWindow.getAllWindows()) if (!w.isDestroyed()) w.webContents.send(IPC.claudeEvent, st); },
     cliPath: defaultClaudeCli(),
     generate: (job) => runGeneration(job, 'claude'),
@@ -930,12 +993,14 @@ export function registerIpc(d: IpcDeps): void {
         const a = s.find((x) => x.key === app || x.adapterId === app || x.name.toLowerCase() === app.toLowerCase());
         if (!a) throw new Error(`No detected application "${app}". Use external_apps.`);
         const r = await external.execute(a.key, command, params, background === undefined ? {} : { background });
-        return JSON.stringify(r, null, 2);
+        const added = await bringIntoLibrary(a.name, (r as { outputs?: Array<{ path: string }> }).outputs);
+        return JSON.stringify(added ? { ...r, added_to_library: added } : r, null, 2);
       },
       job: async (id, cancel) => {
         if (cancel) external.cancelJob(id);
         const j = external.job(id);
         if (!j) return JSON.stringify({ error: 'No such job. Jobs: ' + external.jobs().map((x) => x.id).join(', ') });
+        if (j.status === 'succeeded') await bringIntoLibrary(j.appName, (j.result as { outputs?: Array<{ path: string }> } | null)?.outputs);
         return JSON.stringify({ job_id: j.id, app: j.appName, command: j.commandId, status: j.status, stage: j.stage, progress: j.fraction, started: j.startedAt, finished: j.finishedAt, result: j.result }, null, 2);
       },
     },
@@ -1131,7 +1196,7 @@ export function registerIpc(d: IpcDeps): void {
   handle(IPC.claudeSeed, z.tuple([z.string().max(4000), z.string().max(4000)]), (u, c) => claude().seed(u, c));
   handle(IPC.setProjectMeta, z.tuple([z.object({
     objective: z.string().max(600).optional(),
-    view: z.object({ workspace: z.enum(['home', 'media', 'edit', 'generate', 'workflow', 'effects', 'color', 'audio', 'deliver', 'planner']), assetId: z.string().max(128).optional() }).optional(),
+    view: z.object({ workspace: z.enum(['home', 'media', 'edit', 'generate', 'workflow', 'effects', 'color', 'audio', 'deliver', 'planner', 'software']), assetId: z.string().max(128).optional() }).optional(),
   })]), async (patch) => (await d.project()).setMeta(patch));
   handle(IPC.claudeStop, none, () => claude().stop());
   handle(IPC.claudeReset, none, () => { claude().reset(); return claude().state(); });
@@ -1249,6 +1314,15 @@ export function registerIpc(d: IpcDeps): void {
   });
 
   handle(IPC.probeApps, none, () => probeAllArtCraftApps());
+  /** Opens an installed ArtCraft app by itself. Only the known apps' own executables from their install folders can start. */
+  handle(IPC.launchApp, z.tuple([z.enum(Object.keys(EDITOR_APPS) as [EditorAppId, ...EditorAppId[]])]), async (appId) => {
+    const folder = EDITOR_APPS[appId].name;
+    const file = craftBin(craftInstallDir(folder), folder.toLowerCase());
+    try { await fs.access(file); } catch { throw new Error(`${folder} is not installed on this PC.`); }
+    const child = spawn(file, [], { detached: true, stdio: 'ignore' });
+    child.on('error', () => undefined);
+    child.unref();
+  });
   handle(IPC.integrationStatus, none, async (): Promise<IntegrationSnapshot> => ({
     appAdapters: Object.values((await runnerDeps()).apps).map((a) => ({ id: a.id, isMock: a.isMock })),
     realExport: !!(await runnerDeps()).exportAsset,

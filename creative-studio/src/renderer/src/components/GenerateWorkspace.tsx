@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { estimateCost, formatUsd, IMAGE_MODELS, PROVIDERS, type GenCapability, type ImageModel } from '@shared/generation';
 import type { ProviderStatusDto } from '@shared/ipc';
 import type { Asset, ProjectManifest, WorkspaceId } from '@shared/types';
+import { PROVIDERS_CHANGED } from './ProvidersCard';
 import { VideoPanel } from './VideoPanel';
 import { MotionPanel } from './MotionPanel';
 import { LocalAiPanel } from './LocalAiPanel';
@@ -15,7 +16,6 @@ interface Props {
 
 const errText = (e: unknown) => (e instanceof Error ? e.message : String(e)).replace(/^Error invoking remote method '[^']+': (Error: )?/, '');
 const REF_FORMATS = ['png', 'jpg', 'jpeg', 'webp'];
-const when = (iso: string) => new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
 
 /** AI Generate: bring-your-own-key providers, cost estimate, approval in main, results as new originals. */
 export function GenerateWorkspace({ manifest, selected, onGoto, log }: Props) {
@@ -42,7 +42,12 @@ export function GenerateWorkspace({ manifest, selected, onGoto, log }: Props) {
   const [busy, setBusy] = useState<string | null>(null);
   const [msg, setMsg] = useState<{ text: string; error?: boolean } | null>(null);
 
-  useEffect(() => { void window.studio.generate.providers().then(setProviders); }, []);
+  useEffect(() => {
+    const load = () => { void window.studio.generate.providers().then(setProviders); };
+    load();
+    window.addEventListener(PROVIDERS_CHANGED, load); // keys are managed in Settings
+    return () => window.removeEventListener(PROVIDERS_CHANGED, load);
+  }, []);
   const [spend, setSpend] = useState<{ limitUsd: number | null; spentUsd: number; count: number } | null>(null);
   const [limitText, setLimitText] = useState('');
   useEffect(() => { void window.studio.generate.spending().then((s) => { setSpend(s); setLimitText(s.limitUsd === null ? '' : String(s.limitUsd)); }); }, [manifest?.assets.length]);
@@ -73,11 +78,6 @@ export function GenerateWorkspace({ manifest, selected, onGoto, log }: Props) {
     try { return estimateCost({ ...job, prompt: job.prompt || 'x' }); } catch { return null; }
   }, [job?.modelId, job?.prompt, JSON.stringify(job?.settings), job?.count, job?.referenceAssetIds.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const provAct = async (label: string, fn: () => Promise<ProviderStatusDto[]>) => {
-    setBusy(label); setMsg(null);
-    try { setProviders(await fn()); } catch (e) { setMsg({ text: errText(e), error: true }); } finally { setBusy(null); }
-  };
-
   const generate = async () => {
     if (!job || !model) return;
     setBusy('generate'); setMsg(null);
@@ -100,29 +100,6 @@ export function GenerateWorkspace({ manifest, selected, onGoto, log }: Props) {
     <div className="generate">
       <div className="gen-side">
         <div className="panel-card">
-          <h3>Providers</h3>
-          <p className="asset-meta">Use your own OpenAI or Google account. Copy your API key, then click <strong>Paste key</strong>: CreateCraft reads it straight from the clipboard, encrypts it with Windows (only your Windows account can unlock it) and clears the clipboard. The key is never shown, logged, saved in projects or given to Claude.</p>
-          {providers?.find((p) => !p.encryptionAvailable) && <div className="wf-msg error">{providers.find((p) => !p.encryptionAvailable)?.encryptionProblem ?? "Protected storage is unavailable, so keys can't be saved."}</div>}
-          {providers?.filter((p) => p.billable).map((p) => (
-            <div key={p.id} className="provider-row" aria-label={`${p.label} provider`}>
-              <div className="provider-head">
-                <strong>{p.label}</strong>
-                <span className={`chip ${p.configured ? (p.lastTest?.ok === false ? 'warn' : 'ok') : 'off'}`}><span className="dot" />{p.configured ? (p.lastTest?.ok === false ? 'Key saved · test failed' : 'Key saved') : 'Not set up'}</span>
-              </div>
-              {p.configured && p.lastTest && <div className={`asset-meta${p.lastTest.ok ? '' : ' err'}`}>{p.lastTest.message} <span className="asset-meta">({when(p.lastTest.at)})</span></div>}
-              {!p.configured && <div className="asset-meta">{p.keyHint}</div>}
-              <div className="btn-row">
-                <button className="btn small" onClick={() => void window.studio.generate.openKeyPage(p.id)}>Get a key ↗</button>
-                <button className="btn small primary" disabled={!!busy || !p.encryptionAvailable} onClick={() => void provAct(`paste-${p.id}`, () => window.studio.generate.pasteKey(p.id))}>{busy === `paste-${p.id}` ? 'Saving…' : p.configured ? 'Replace key (paste)' : 'Paste key'}</button>
-                {p.configured && <button className="btn small" disabled={!!busy} onClick={() => void provAct(`test-${p.id}`, () => window.studio.generate.test(p.id))}>{busy === `test-${p.id}` ? 'Testing…' : 'Test connection'}</button>}
-                {p.configured && <button className="btn small danger" disabled={!!busy} onClick={() => { if (window.confirm(`Remove the saved ${p.label} key from this PC?`)) void provAct(`rm-${p.id}`, () => window.studio.generate.removeKey(p.id)); }}>Remove</button>}
-              </div>
-            </div>
-          ))}
-          <div className="asset-meta">Testing only lists models; it never generates and costs nothing.</div>
-        </div>
-
-        <div className="panel-card">
           <h3>Generate</h3>
           <div className="btn-row" role="radiogroup" aria-label="What to do">
             {(['text-to-image', 'image-edit'] as const).map((c) => (
@@ -140,7 +117,7 @@ export function GenerateWorkspace({ manifest, selected, onGoto, log }: Props) {
             </select>
           </label>
           {model && <div className="asset-meta">{model.note}{isMock ? '' : ` · ${model.id}`}</div>}
-          {!configuredReal && <div className="notice">Add an OpenAI or Gemini key above to generate real images. Until then only the free offline <strong>Mock</strong> model is available.</div>}
+          {!configuredReal && <div className="notice">Add an OpenAI or Gemini key in Settings → Integrations to generate real images. Until then only the free offline <strong>Mock</strong> model is available.</div>}
           {capability === 'image-edit' && (
             <div className="field">Reference picture
               {refAsset ? (

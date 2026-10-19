@@ -187,6 +187,13 @@ const api: StudioApi = {
   external: {
     scan: () => ipcRenderer.invoke(IPC.extScan),
     list: () => ipcRenderer.invoke(IPC.extList),
+    liveState: () => ipcRenderer.invoke(IPC.extLiveState),
+    liveShow: () => ipcRenderer.invoke(IPC.extLiveShow),
+    onLive: (cb) => {
+      const listener = (_e: IpcRendererEvent, s: { name: string; pid: number | null }) => cb(s);
+      ipcRenderer.on(IPC.extLive, listener);
+      return () => ipcRenderer.removeListener(IPC.extLive, listener);
+    },
     connect: (key) => ipcRenderer.invoke(IPC.extConnect, key),
     disconnect: (key) => ipcRenderer.invoke(IPC.extDisconnect, key),
     repair: (key) => ipcRenderer.invoke(IPC.extRepair, key),
@@ -231,8 +238,9 @@ const api: StudioApi = {
       return () => ipcRenderer.removeListener(IPC.builderProgress, h);
     },
   },
-  planner: Object.fromEntries(['list', 'get', 'activity', 'assetHealth', 'create', 'update', 'addItem', 'updateItem', 'setItemStatus', 'removeItem', 'addTask', 'updateTask', 'setTaskStatus', 'removeTask', 'releaseClaim', 'addAsset', 'pickAssets', 'removeAsset', 'addMilestone', 'removeMilestone', 'decideProposal', 'createPackage', 'prepareSend', 'importSuggestions', 'createFromHomePlan', 'cancelPackage', 'packageView', 'savePackage', 'importReport', 'reviewReport', 'rawReport', 'exportProject', 'importProject', 'connectionInfo', 'openFolder'].map((m) => [m, (...a: unknown[]) => ipcRenderer.invoke(IPC.plannerCall, m, a)])) as unknown as StudioApi['planner'],
+  planner: Object.fromEntries(['list', 'get', 'activity', 'assetHealth', 'create', 'update', 'addItem', 'updateItem', 'setItemStatus', 'removeItem', 'addTask', 'updateTask', 'setTaskStatus', 'removeTask', 'releaseClaim', 'addAsset', 'pickAssets', 'removeAsset', 'addMilestone', 'removeMilestone', 'decideProposal', 'createPackage', 'prepareSend', 'importSuggestions', 'createFromHomePlan', 'chatProviders', 'chatModels', 'chat', 'cancelPackage', 'packageView', 'savePackage', 'importReport', 'reviewReport', 'rawReport', 'exportProject', 'importProject', 'connectionInfo', 'openFolder'].map((m) => [m, (...a: unknown[]) => ipcRenderer.invoke(IPC.plannerCall, m, a)])) as unknown as StudioApi['planner'],
   probeApps: () => ipcRenderer.invoke(IPC.probeApps),
+  launchApp: (appId: string) => ipcRenderer.invoke(IPC.launchApp, appId),
   integrationStatus: () => ipcRenderer.invoke(IPC.integrationStatus),
   assetUrl: (assetId) => `${ASSET_SCHEME}://asset/${encodeURIComponent(assetId)}`,
 };

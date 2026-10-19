@@ -106,7 +106,8 @@ Needs: ${t.needs}` : ''}`, objective: t.description };
     const tpl = useRecommended && plan.template && !generateFirst ? plan.template : null;
     if (tpl) await window.studio.useWorkflowTemplate(tpl);
     // Start the new project's chat with the planning exchange (saved inside the project folder).
-    void window.studio.claude.seed(request.trim(), `${plan.finishedOutput}\n\n${plan.summary}\n\n${plan.steps.map((s, i) => `${i + 1}. ${s}`).join('\n')}`);
+    const startNote = answers.trim();
+    const seeded = window.studio.claude.seed(request.trim(),`${plan.finishedOutput}\n\n${plan.summary}\n\n${plan.steps.map((s, i) => `${i + 1}. ${s}`).join('\n')}`);
     setPlan(null); setRequest(''); setAnswers(''); setLocation(null);
     // Reference files are copied only now, after approval: into Assets/Originals, hashed, never modified.
     let imported = 0;
@@ -116,6 +117,10 @@ Needs: ${t.needs}` : ''}`, objective: t.description };
       setRefs([]);
       log('project', `Imported ${imported} reference file${imported === 1 ? '' : 's'}${r.errors.length ? `; ${r.errors.length} failed: ${r.errors.join('; ')}` : ''}.`);
     }
+    // Approving means "go": Claude starts on the plan now, so nobody has to type a message first.
+    void Promise.resolve(seeded)
+      .then(() => window.studio.claude.send(`Approved. Start working on this project now, following the plan above. Ask me only if you are truly blocked.${startNote ? ` My answers to your questions: ${startNote}` : ''}`))
+      .catch((e: unknown) => log('project', `Claude could not start on its own: ${e instanceof Error ? e.message : String(e)}`));
     if (generateFirst) {
       // The AI Generate tab opens with the picture described; nothing is paid until the user approves the price there.
       try { window.sessionStorage.setItem('cs-generate-prompt', `${plan.finishedOutput}. ${plan.summary}`.slice(0, 1000)); } catch { /* storage unavailable */ }

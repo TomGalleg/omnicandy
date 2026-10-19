@@ -1,6 +1,7 @@
 import { useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { planDrift, PLANNER_TEMPLATES, progressOf, unmetDependencies, type ActivityEntry, type PlanItem, type PlannerProject, type ProjectSummary } from '@shared/planner';
 import type { ProjectManifest } from '@shared/types';
+import { PlannerChat } from './PlannerChat';
 import { AssetsTab, HandoffsTab, ProposalCard, TasksTab } from './PlannerWork';
 import { needsYou } from '@shared/plannerView';
 import { ErrorLine, errMsg, lines, PlainWords, Section, StatusChip, useAction, when, type TabId, type TabProps } from './plannerUi';
@@ -85,7 +86,7 @@ export function PlannerWorkspace({ manifest, projectKey }: { manifest: ProjectMa
       )}
       <div className="pl-body" role="tabpanel">
         {tab === 'overview' && <Overview {...props} />}
-        {tab === 'plan' && (advanced ? <PlanTab {...props} /> : <><Overview {...props} /><PlanTab {...props} /></>)}
+        {tab === 'plan' && <PlanArea {...props} withOverview={!advanced} />}
         {tab === 'tasks' && <TasksTab {...props} />}
         {tab === 'assets' && <AssetsTab {...props} manifest={manifest} projectKey={projectKey} />}
         {tab === 'handoffs' && <HandoffsTab {...props} />}
@@ -276,7 +277,7 @@ function AddItem({ type, p, reload, label }: { type: PlanItem['type']; p: Planne
   );
 }
 
-function Brief({ p, reload }: { p: PlannerProject; reload: () => Promise<void> }) {
+function Brief({ p, reload, onSaved }: { p: PlannerProject; reload: () => Promise<void>; onSaved?: () => void }) {
   const [f, setF] = useState({ title: p.title, goal: p.goal, description: p.description, scope: p.scope, constraints: p.constraints.join('\n'), deliverables: p.deliverables.join('\n') });
   const base = useRef(p.metaRev);
   const dirty = f.title !== p.title || f.goal !== p.goal || f.description !== p.description || f.scope !== p.scope || f.constraints !== p.constraints.join('\n') || f.deliverables !== p.deliverables.join('\n');
@@ -297,7 +298,7 @@ function Brief({ p, reload }: { p: PlannerProject; reload: () => Promise<void> }
         <label>Expected deliverables (one per line)<textarea rows={3} value={f.deliverables} onChange={set('deliverables')} /></label>
       </div>
       <div>
-        <button className="btn primary" disabled={a.busy || !dirty || !f.title.trim()} onClick={() => void a.run(async () => { await api().update(p.id, { title: f.title, goal: f.goal, description: f.description, scope: f.scope, constraints: lines(f.constraints), deliverables: lines(f.deliverables) }, base.current); base.current = p.metaRev + 1; })}>Save changes</button>
+        <button className="btn primary" disabled={a.busy || !dirty || !f.title.trim()} onClick={() => void a.run(async () => { await api().update(p.id, { title: f.title, goal: f.goal, description: f.description, scope: f.scope, constraints: lines(f.constraints), deliverables: lines(f.deliverables) }, base.current); base.current = p.metaRev + 1; onSaved?.(); })}>Save changes</button>
         {dirty && <button className="btn" onClick={() => setF({ title: p.title, goal: p.goal, description: p.description, scope: p.scope, constraints: p.constraints.join('\n'), deliverables: p.deliverables.join('\n') })}>Discard</button>}
       </div>
       <ErrorLine error={a.error} />
@@ -305,7 +306,21 @@ function Brief({ p, reload }: { p: PlannerProject; reload: () => Promise<void> }
   );
 }
 
-function PlanTab({ p, reload }: TabProps) {
+/** The Plan screen: the whole plan on the left, the planning chat on the right. The chat stays in view while the left side scrolls. */
+function PlanArea(props: TabProps & { withOverview: boolean }) {
+  const [savedTick, setSavedTick] = useState(0);
+  return (
+    <div className="pl-split">
+      <div className="pl-left">
+        {props.withOverview && <Overview {...props} />}
+        <PlanTab {...props} onSaved={() => setSavedTick((n) => n + 1)} />
+      </div>
+      <PlannerChat key={props.p.id} p={props.p} reload={props.reload} savedTick={savedTick} />
+    </div>
+  );
+}
+
+function PlanTab({ p, reload, onSaved }: TabProps & { onSaved?: () => void }) {
   const plain = useContext(PlainWords);
   const open = (t: PlanItem['type']) => p.items.filter((i) => i.type === t && (i.status === 'open' || i.status === 'accepted' || i.status === 'answered'));
   const group = (t: PlanItem['type'], title: string, hint: string, label: string) => (
@@ -316,9 +331,9 @@ function PlanTab({ p, reload }: TabProps) {
     </Section>
   );
   return (
-    <div className="pl-stack">
+    <div className="pl-stack pl-wide">
       {!plain && <ProposalCard p={p} reload={reload} />}
-      <Section title="Project brief" hint="Everything except the title is optional."><Brief key={p.id} p={p} reload={reload} /></Section>
+      <Section title="Project brief" hint="Everything except the title is optional."><Brief key={p.id} p={p} reload={reload} onSaved={onSaved} /></Section>
       {group('requirement', 'Accepted requirements', 'What must be true of the result. Executors receive these.', 'Add a requirement')}
       {group('decision', 'Decisions', 'Choices already made, with the reason.', 'Add a decision')}
       {group('question', 'Open questions', 'Not part of the plan until answered.', 'Add a question')}

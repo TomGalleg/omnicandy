@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Group, Panel, Separator, useDefaultLayout, usePanelRef, type PanelSize } from 'react-resizable-panels';
-import { EDITOR_APPS } from '@shared/appEditors';
+import { EDITOR_APPS, type EditorAppId } from '@shared/appEditors';
 import type { IntegrationSnapshot } from '@shared/ipc';
 import { parseNavMode, type NavMode } from '@shared/navigation';
 import { shouldShowTimeline } from '@shared/timeline';
-import type { AppProbeResult, ProjectManifest, WorkspaceId } from '@shared/types';
+import type { AppProbeResult, Asset, ProjectManifest, WorkspaceId } from '@shared/types';
 import { AssetBrowser } from './components/AssetBrowser';
 import { BottomPanel, type LogEntry } from './components/BottomPanel';
 import { ClaudePanel } from './components/ClaudePanel';
@@ -168,6 +168,9 @@ export function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [claudeOpened]);
 
+  // A third-party program (Blender) opened its window for Claude: show it docked in the Software tab.
+  useEffect(() => window.studio.external.onLive((s) => { if (s.pid) setWorkspace('software'); }), []);
+
   // New AI images (from the Generate tab or Claude) appear in the library right away.
   useEffect(() => window.studio.generate.onResult((r) => {
     reloadProject();
@@ -181,6 +184,14 @@ export function App() {
     loadCurrent(true);
     void liveApi.resync();
   }, [loadCurrent, liveApi]);
+  // Media screen: open a file in a chosen ArtCraft app. `chosen` pins that app for that file in the app's tab.
+  const [chosen, setChosen] = useState<{ assetId: string; appId: EditorAppId } | null>(null);
+  const openIn = useCallback((asset: Asset, appId: EditorAppId) => {
+    setChosen({ assetId: asset.id, appId });
+    setSelectedId(asset.id);
+    setWorkspace(EDITOR_APPS[appId].tab);
+    addLog('open', `Opening ${asset.name} in ${EDITOR_APPS[appId].name}.`);
+  }, [addLog]);
   const goto = useCallback((w: WorkspaceId, assetId?: string) => { if (assetId) setSelectedId(assetId); setWorkspace(w); }, []);
 
   const selected = useMemo(() => manifest?.assets.find((a) => a.id === selectedId) ?? null, [manifest, selectedId]);
@@ -255,6 +266,8 @@ export function App() {
                     onProjectChanged={reloadProject}
                     liveApi={liveApi}
                     onSelectAsset={setSelectedId}
+                    onOpenIn={openIn}
+                    chosenApp={chosen && chosen.assetId === selectedId ? chosen.appId : null}
                   />
                 </div>
               </Panel>

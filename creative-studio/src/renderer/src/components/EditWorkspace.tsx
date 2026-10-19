@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef } from 'react';
-import { appForTab, type EditorApp } from '@shared/appEditors';
+import { appForTab, EDITOR_APPS, type EditorApp, type EditorAppId } from '@shared/appEditors';
 import type { Asset, ProjectManifest } from '@shared/types';
 import { useOverlayOpen } from '../overlay';
 import type { LiveApi } from '../useLive';
@@ -11,6 +11,8 @@ interface Props {
   liveApi: LiveApi;
   onProjectChanged: () => void;
   onSelectAsset: (id: string) => void;
+  /** App picked from the Media screen for the selected file; used when it fits this tab and the file type. */
+  chosenApp?: EditorAppId | null;
   log: (source: string, msg: string) => void;
 }
 
@@ -33,9 +35,12 @@ export function EditWorkspace(p: Props) {
  * right here in the big area, where you work with the app's own tools. "Open in its own window"
  * pops the app out. The library file itself is never changed; saving makes a new version.
  */
-export function AppWorkspace({ selected, liveApi, onProjectChanged, tab }: Props & { tab: Tab }) {
+export function AppWorkspace({ selected, liveApi, onProjectChanged, tab, chosenApp }: Props & { tab: Tab }) {
   const { live, busy, act } = liveApi;
-  const app = selected ? appForTab(tab, selected.sourceFormat) : null;
+  const picked = chosenApp ? EDITOR_APPS[chosenApp] : null;
+  const app = selected
+    ? (picked && picked.tab === tab && picked.formats.includes(selected.sourceFormat.toLowerCase()) ? picked : appForTab(tab, selected.sourceFormat))
+    : null;
   const canLive = app?.open === 'live';
   const isOpen = live?.status === 'ready' && !!live.asset;
   const showingThis = isOpen && live!.asset!.id === selected?.id && live!.appId === app?.id;

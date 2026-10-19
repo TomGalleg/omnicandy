@@ -22,6 +22,8 @@ export interface StorageDto {
   totalBytes: number | null;
 }
 
+export interface ExternalLiveState { name: string; pid: number | null }
+
 export const IPC = {
   getAppearance: 'appearance:get',
   setAppearance: 'appearance:set',
@@ -125,6 +127,9 @@ export const IPC = {
   motionRender: 'motion:render',
   extScan: 'ext:scan',
   extList: 'ext:list',
+  extLive: 'ext:live',
+  extLiveState: 'ext:live-state',
+  extLiveShow: 'ext:live-show',
   extConnect: 'ext:connect',
   extDisconnect: 'ext:disconnect',
   extRepair: 'ext:repair',
@@ -181,6 +186,7 @@ export const IPC = {
   deliverOpenFolder: 'deliver:open-folder',
   deliverEvent: 'deliver:event',
   probeApps: 'apps:probe',
+  launchApp: 'apps:launch',
   integrationStatus: 'integrations:status',
 } as const;
 
@@ -443,6 +449,11 @@ export interface StudioApi {
     scan(): Promise<ExternalScan>;
     /** Last scan result without scanning again. */
     list(): Promise<ExternalAppInfo[]>;
+    /** The third-party program whose window is open for Claude (docked into CreateCraft's Software tab), if any. */
+    liveState(): Promise<ExternalLiveState>;
+    /** Brings the open program's window back into the Software tab (after another app was shown). */
+    liveShow(): Promise<void>;
+    onLive(cb: (s: ExternalLiveState) => void): () => void;
     connect(key: string): Promise<ExternalAppInfo>;
     disconnect(key: string): Promise<ExternalAppInfo | null>;
     repair(key: string): Promise<ExternalAppInfo>;
@@ -504,6 +515,8 @@ export interface StudioApi {
   /** Project Planner: plans, execution packages, reports and the connection details for AI clients. */
   planner: PlannerApi;
   probeApps(): Promise<AppProbeResult[]>;
+  /** Starts an installed ArtCraft app on its own (no file). */
+  launchApp(appId: string): Promise<void>;
   integrationStatus(): Promise<IntegrationSnapshot>;
   /** URL the renderer can use in <img src>, served read-only by main from the project root. */
   assetUrl(assetId: string): string;

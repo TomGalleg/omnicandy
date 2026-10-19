@@ -47,6 +47,8 @@ export class WindowTracker extends EventEmitter<{ state: [TrackedWindowState]; e
         } catch { /* ignore partial/garbled line */ }
       }
     });
+    // The script exits by itself when the app closes; a write that races that exit must not crash the main process (EPIPE).
+    this.proc.stdin.on('error', () => { /* tracker already gone */ });
     this.proc.on('exit', () => this.emit('exit'));
     this.proc.on('error', () => this.emit('exit'));
   }
@@ -55,7 +57,7 @@ export class WindowTracker extends EventEmitter<{ state: [TrackedWindowState]; e
     const trace = process.env.CS_MCP_TRACE; // same opt-in wire trace as McpClient
     if (trace) { try { appendFileSync(trace, `${new Date().toISOString()} window-tracker#${this.seq} -> ${cmd}
 `); } catch { /* tracing never breaks a call */ } }
-    if (this.proc.exitCode === null && this.proc.stdin.writable) this.proc.stdin.write(cmd + '\n');
+    if (this.proc.exitCode === null && this.proc.stdin.writable) { try { this.proc.stdin.write(cmd + '\n'); } catch { /* tracker already gone */ } }
   }
 
   target(pid: number) { this.send(`target ${pid}`); }
@@ -75,7 +77,7 @@ export class WindowTracker extends EventEmitter<{ state: [TrackedWindowState]; e
 
   stop() {
     this.disown();
-    this.proc.stdin.end();
+    try { this.proc.stdin.end(); } catch { /* already closed */ }
     setTimeout(() => { if (this.proc.exitCode === null) this.proc.kill(); }, 1000);
   }
 }

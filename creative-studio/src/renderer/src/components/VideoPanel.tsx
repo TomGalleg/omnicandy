@@ -73,7 +73,7 @@ export function VideoPanel({ providers, selected, onGoto, log }: Props) {
   return (
     <div className="panel-card" aria-label="AI video">
       <h3>Video (Google Veo, Runway)</h3>
-      {!ready && <div className="notice">{model.provider === 'gemini' ? 'Veo uses your Gemini key.' : 'Runway needs its own API key and prepaid credits.'} Add it under Providers above to make videos.</div>}
+      {!ready && <div className="notice">{model.provider === 'gemini' ? 'Veo uses your Gemini key.' : 'Runway needs its own API key and prepaid credits.'} Add it in Settings → Integrations to make videos.</div>}
       <label className="field">Model
         <select value={modelId} onChange={(e) => setModelId(e.target.value)}>
           {VIDEO_MODELS.map((m) => <option key={m.id} value={m.id}>{m.label}{providers?.find((p) => p.id === m.provider)?.configured ? '' : ' (key needed)'}</option>)}

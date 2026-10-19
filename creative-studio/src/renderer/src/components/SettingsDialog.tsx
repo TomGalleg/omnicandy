@@ -1,7 +1,8 @@
 import { Fragment, useEffect, useRef, useState } from 'react';
 import { APP_THEME_SUPPORT } from '@shared/appTheme';
 import type { ClaudeState } from '@shared/claude';
-import type { IntegrationSnapshot, ProviderStatusDto, StorageDto } from '@shared/ipc';
+import type { IntegrationSnapshot, StorageDto } from '@shared/ipc';
+import { ProvidersCard } from './ProvidersCard';
 import { formatBytes } from '../format';
 import type { LiveSnapshot } from '@shared/live';
 import { ACCENT_PRESETS, THEME_OPTIONS } from '@shared/theme';
@@ -180,8 +181,6 @@ function StorageSettings() {
 }
 
 function IntegrationSettings({ apps }: { apps: AppProbeResult[] }) {
-  const [providers, setProviders] = useState<ProviderStatusDto[] | null>(null);
-  useEffect(() => { void window.studio.generate.providers().then(setProviders); }, []);
   const claude = useClaudeState();
   const installed = apps.filter((a) => a.installed).length;
   return (
@@ -207,19 +206,7 @@ function IntegrationSettings({ apps }: { apps: AppProbeResult[] }) {
         <p className="asset-meta">{claudeText(claude)}</p>
         <small>Chat, model choice and sign-in are in the Claude panel.</small>
       </div>
-      <div className="field">
-        <span className="menu-label">AI image providers</span>
-        <ul className="status-list">
-          {providers?.filter((p) => p.billable).map((p) => (
-            <li key={p.id}>
-              <span className={`chip ${p.configured ? 'ok' : 'off'}`}><span className="dot" />{p.configured ? 'Key saved' : 'Not set up'}</span>
-              <strong>{p.label}</strong>
-              <small>{p.lastTest ? `${p.lastTest.ok ? 'Last test passed' : 'Last test failed'} · ${new Date(p.lastTest.at).toLocaleDateString()}` : ''}</small>
-            </li>
-          ))}
-        </ul>
-        <small>Keys are added and tested in the AI Generate tab. Every paid request asks for your approval first.</small>
-      </div>
+      <ProvidersCard />
     </>
   );
 }

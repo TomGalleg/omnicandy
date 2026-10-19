@@ -510,3 +510,32 @@ Changed: `src/main/planner/{service,store,ipc}.ts`, `src/shared/{planner,planner
 | No sharing or marketplace | None added |
 
 **Not verified**: the first-run walkthrough with real users; Home's Create with Claude into the Planner from the real screen; `planner_propose` and "Put it in the Claude panel" in a live Claude session; any live ChatGPT, Gemini, Cowork or Claude Code connection.
+
+
+---
+
+## Part 20. Planning chat beside the brief (added after Phase 6)
+
+**Why:** a request to chat with an AI inside the Planner, next to the Project brief, and to choose which AI, using the OpenAI and Google keys already saved. This reverses the earlier "copy and paste only" stance for planning, so the safeguards below were chosen to keep the original rules.
+
+**Built**
+* `src/shared/plannerChat.ts`: the providers, limits (24 messages, 6,000 characters each, 3,000 reply tokens), the instructions the AI is given (suggest only; never say the plan changed), the starter message.
+* `src/main/planner/chat.ts`: `PlannerChat` with an injected `fetch` and key vault: OpenAI `chat/completions`, Gemini `generateContent`, and Claude through a new `ClaudePartner.planChat` (one request, no tools, no files, the existing sign-in). Model lists come from each provider's own models endpoint (no model id is guessed); only models that can chat are offered. Errors are plain and have the key removed even if the provider echoes it.
+* Three Planner calls (`chatProviders`, `chatModels`, `chat`) on the existing channel. The chat call builds the system prompt in the main process from the stored plan, so the page cannot add file paths or other data.
+* `PlannerChat.tsx` beside the brief: AI and model pickers, cost note, offer after Save, messages, and the same tick-box suggestions as Paste back (add or save for later).
+
+**Safeguards that keep the earlier rules**
+* No automatic call: Save only shows an offer; a request needs a button press. (Recommended default; say if you want it automatic.)
+* The chat code cannot write a plan: source scan in the tests, and the Planner calls it adds contain no edit, accept or review call. Suggestions go through the same `importSuggestions` and `decideProposal` as Paste back.
+* The AI sees only the short plan summary, never file locations, ideas or task details. Cost is bounded by the limits above.
+* The OpenAI and Google keys are used inside the main process only, as for images.
+
+**Verification (local; providers faked, no paid call):** `chat.test.ts` (12): what the AI is told and not told, suggestion reading, history and reply limits, OpenAI and Gemini request shapes (key only in the header, never in the URL or body), Claude model check and no HTTP, rejection of a model name that could alter the address, key redaction, live model-list filtering, ready states, and a source scan. Smoke: the chat sits beside the brief, offers Claude first, and saving the brief only offers help (no message sent). Whole repo 704 passed / 62 skipped; `tsc` and `eslint src scripts` clean; smoke ALL PASSED.
+
+**Not verified:** a real conversation with Claude, OpenAI or Gemini. The OpenAI and Gemini request formats follow the providers' standard text endpoints but were never called with a real key here (that would be a paid call). If a provider rejects a request, the chat shows its message. Models listed by a provider that cannot actually chat may appear; pick another.
+
+**Limits:** the chat is not saved with the plan; there is no streaming; the answer arrives whole. "Putting the plan into action" is unchanged: Tasks > Send to AI, then Paste back.
+
+**Layout follow-up:** the chat now takes the right half of the Plan area up to the window edge and matches the brief's height; the cost and privacy note is collapsed under "Cost and privacy" (a missing key stays visible because it needs action); the message box is a rounded box with Send inside at the bottom right, Enter sends and Shift+Enter adds a line (like the Claude panel). Checked with tsc, ESLint on the planner folder and the planner smoke (ALL PASSED); the full test suite was not re-run for this layout-only change.
+
+**Second layout follow-up:** the chat is only as tall as its content (the empty space above the message box is gone; messages scroll inside it once it reaches the window height), and it is pinned to the top right of the Plan screen while the plan on the left scrolls (the plan, including the overview, is the left column; the chat is the right column). Two new smoke checks measure both (gap 8 px; after scrolling 1,360 px the chat is still at the top of the scroll area). Screenshots `155` and `156`.

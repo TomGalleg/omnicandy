@@ -65,6 +65,23 @@ try {
   const plainTabs = await win.getByRole('tab').allTextContents();
   check('The plain view has four areas: Plan, Tasks, AI, Files', plainTabs.join('|') === 'Plan|Tasks|AI|Files', plainTabs.join('|'));
   check('The plain view hides revision numbers', (await win.locator('.pl-head .chip').count()) === 0);
+  check('The planning chat sits beside the project brief', (await win.locator('.pl-split h3', { hasText: 'Plan with an AI' }).count()) === 1 && (await win.locator('.pl-split h3', { hasText: 'Project brief' }).count()) === 1);
+  await win.locator('.pl-split select').first().waitFor();
+  check('The chat offers Claude, OpenAI and Gemini', (await win.locator('.pl-split select').first().locator('option').allTextContents()).join('|').startsWith('Claude'));
+  await win.locator('.pl-split label', { hasText: /^Goal/ }).locator('textarea').fill('A newsletter and poster for the garden club.');
+  await win.getByRole('button', { name: 'Save changes' }).click();
+  await win.locator('.pl-offer').waitFor({ timeout: 10000 });
+  check('Saving the brief only offers help; nothing is sent by itself', (await win.locator('.pl-msg').count()) === 0 && /Ask .* to help plan this/.test(await win.locator('.pl-offer').textContent()));
+  await win.screenshot({ path: path.join(shots, '155-planner-chat.png') });
+  const gap = await win.evaluate(() => { const c = document.querySelector('.pl-chat').getBoundingClientRect(); const m = document.querySelector('.pl-composer').getBoundingClientRect(); return Math.round(m.top - c.bottom); });
+  check('No empty space between the chat messages and the message box', gap < 30, `${gap}px`);
+  const before = await win.evaluate(() => Math.round(document.querySelector('.pl-chatwrap').getBoundingClientRect().top));
+  await win.evaluate(() => { const b = document.querySelector('.pl-body'); b.scrollTop = b.scrollHeight; });
+  await win.waitForTimeout(300);
+  const after = await win.evaluate(() => ({ top: Math.round(document.querySelector('.pl-chatwrap').getBoundingClientRect().top), bodyTop: Math.round(document.querySelector('.pl-body').getBoundingClientRect().top), scrolled: document.querySelector('.pl-body').scrollTop }));
+  check('The planning chat stays on screen while the plan scrolls', after.scrolled > 100 && Math.abs(after.top - after.bodyTop) < 20, `scrolled ${after.scrolled}px, chat top ${before} -> ${after.top}, scroll area top ${after.bodyTop}`);
+  await win.screenshot({ path: path.join(shots, '156-planner-chat-sticky.png') });
+  await win.evaluate(() => { document.querySelector('.pl-body').scrollTop = 0; });
   await win.screenshot({ path: path.join(shots, '150-planner-plain.png') });
   // The plain four-area view is the default; this script drives the original six tabs, which the Advanced switch keeps.
   await win.getByLabel('Advanced', { exact: true }).check();

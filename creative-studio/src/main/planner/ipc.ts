@@ -9,6 +9,8 @@ import { z } from 'zod';
 import type { PlanAsset } from '@shared/planner';
 import type { PackageView, PlannerConnectionInfo } from '@shared/plannerApi';
 import { defaultPlannerDir } from './dir';
+import { chatSystemPrompt, CHAT_PROVIDER_IDS, MAX_CHAT_MESSAGE_CHARS, MAX_CHAT_MESSAGES } from '@shared/plannerChat';
+import { type ChatDeps, PlannerChat } from './chat';
 import { PlannerService, userCtx } from './service';
 import { PlannerStore } from './store';
 
@@ -52,13 +54,20 @@ export function connectionInfo(dir: string): PlannerConnectionInfo {
   };
 }
 
-interface Deps { service: PlannerService; dir: string; isTrustedSender: (e: IpcMainInvokeEvent) => boolean; window: () => BrowserWindow | null }
+interface Deps { service: PlannerService; dir: string; isTrustedSender: (e: IpcMainInvokeEvent) => boolean; window: () => BrowserWindow | null; chat?: ChatDeps }
 
 export function registerPlannerIpc(d: Deps): void {
   const u = userCtx();
   const s = d.service;
   const sha = async (p: string) => createHash('sha256').update(await fs.readFile(p)).digest('hex');
   const win = () => d.window() ?? undefined;
+  const chat = d.chat ? new PlannerChat(d.chat) : null;
+  const needChat = () => { if (!chat) throw new Error('The planning chat is not available.'); return chat; };
+  const provider = z.enum(CHAT_PROVIDER_IDS);
+  const chatReq = z.object({
+    projectId: z.string().max(60), provider, model: z.string().min(1).max(80),
+    messages: z.array(z.object({ role: z.enum(['user', 'assistant']), text: z.string().min(1).max(MAX_CHAT_MESSAGE_CHARS) })).min(1).max(MAX_CHAT_MESSAGES),
+  });
   const methods: Record<string, (...a: any[]) => unknown> = { // eslint-disable-line @typescript-eslint/no-explicit-any
     list: () => s.listProjects(u),
     get: (id: string) => s.getProject(u, id),
@@ -115,6 +124,13 @@ export function registerPlannerIpc(d: Deps): void {
       const f = r.filePaths[0];
       if (r.canceled || !f) return null;
       return s.importProject(u, await fs.readFile(f));
+    },
+    // The planning chat: only when the owner presses a button. It reads the plan (a short summary goes to the chosen AI) and writes nothing.
+    chatProviders: () => needChat().providers(),
+    chatModels: (p: unknown) => needChat().models(provider.parse(p)),
+    chat: async (req: unknown) => {
+      const r = chatReq.parse(req);
+      return needChat().reply({ system: chatSystemPrompt(await s.getProject(u, r.projectId)), provider: r.provider, model: r.model, messages: r.messages });
     },
     connectionInfo: () => connectionInfo(d.dir),
     openFolder: async () => { await fs.mkdir(d.dir, { recursive: true }); await shell.openPath(d.dir); },

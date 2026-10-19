@@ -686,6 +686,24 @@ h1, h2, h3 { margin: 0; font-weight: 600; }
 .pl-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
 .pl-table th, .pl-table td { text-align: left; vertical-align: top; padding: 6px; border-top: 1px solid var(--border); overflow-wrap: anywhere; }
 .pl-preview { border: 1px dashed var(--border-strong); border-radius: var(--radius-sm); padding: 10px; }
+
+/* Media screen: every file as a picture card with the apps that can open it */
+.media-screen { display: flex; height: 100%; min-height: 0; }
+.media-list { width: 460px; flex: none; overflow-y: auto; padding: 12px; border-right: 1px solid var(--border); display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px; align-content: start; }
+.media-list h3 { grid-column: 1 / -1; margin: 0; }
+.media-list > .asset-meta { grid-column: 1 / -1; }
+.media-row { display: flex; flex-direction: column; gap: 6px; padding: 8px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); }
+.media-row.selected { border-color: var(--accent); background: var(--surface-2); }
+.media-row-pic { display: flex; flex-direction: column; gap: 4px; width: 100%; text-align: left; background: transparent; border: 0; color: var(--text); font: inherit; cursor: pointer; padding: 0; min-width: 0; }
+.media-row-pic .thumb { width: 100%; aspect-ratio: 4 / 3; height: auto; }
+.media-row-name { font-size: 12px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.media-row-apps { display: flex; flex-wrap: wrap; gap: 6px; }
+.media-preview { flex: 1; min-width: 0; min-height: 0; }
+
+/* Software screen */
+.software-screen { padding: 16px 20px; overflow-y: auto; height: 100%; }
+.software-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; margin-top: 8px; }
+.software-card { display: flex; flex-direction: column; gap: 4px; padding: 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); }
 .pl-needs { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 6px 14px; border-bottom: 1px solid var(--border); background: var(--surface); }
 .pl-head .pl-check { margin: 0; white-space: nowrap; }
 .pl-dests { border: 1px solid var(--border); border-radius: 6px; padding: 6px 10px; margin: 8px 0; }
@@ -695,3 +713,28 @@ h1, h2, h3 { margin: 0; font-weight: 600; }
 .pl-status-note { display: block; font-size: 12px; color: var(--text-2); white-space: normal; overflow-wrap: anywhere; margin: 2px 0; }
 .pl-status-note.bad { color: var(--danger, #c0392b); }
 .pl-task .pl-status { white-space: normal; height: auto; max-width: 100%; }
+
+.pl-split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(360px, 1fr); gap: 12px; align-items: start; }
+.pl-left { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+@media (max-width: 1000px) { .pl-split { grid-template-columns: minmax(0, 1fr); } }
+/* The chat stays in view while the plan scrolls; it is only as tall as its content, up to the window, then its messages scroll. */
+.pl-chatwrap { position: sticky; top: 0; align-self: start; max-height: calc(100vh - 250px); display: flex; flex-direction: column; }
+.pl-chatwrap > .pl-section { display: flex; flex-direction: column; min-height: 0; margin-bottom: 0; }
+.pl-chat { flex: 0 1 auto; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding: 6px 0; }
+.pl-composer { flex: none; }
+.pl-about { margin: 4px 0; font-size: 12px; color: var(--text-2); }
+.pl-about summary { cursor: pointer; }
+.pl-composer { position: relative; margin-top: 8px; }
+.pl-composer textarea { width: 100%; box-sizing: border-box; min-height: 84px; resize: none; padding: 10px 76px 10px 12px; border-radius: 12px; }
+.pl-composer .pl-send { position: absolute; right: 10px; bottom: 10px; border-radius: 8px; }
+.pl-msg { padding: 6px 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); }
+.pl-msg.user { background: var(--surface-2); }
+.pl-msg-text { white-space: pre-wrap; overflow-wrap: anywhere; margin: 4px 0; }
+.pl-offer { padding: 6px 10px; border: 1px solid var(--accent); border-radius: 8px; }
+.pl-stack.pl-wide { max-width: none; }
+
+/* A third-party program's live window docked into the Software tab */
+.ext-live { display: flex; flex-direction: column; height: 100%; }
+.ext-live-bar { display: flex; align-items: center; gap: 10px; padding: 6px 14px; border-bottom: 1px solid var(--border); background: var(--surface); }
+.ext-live-bar .btn { margin-left: auto; }
+.ext-live-stage { flex: 1; min-height: 0; background: var(--editor-bg); }

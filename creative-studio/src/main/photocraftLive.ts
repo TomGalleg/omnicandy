@@ -31,6 +31,8 @@ export interface LiveDoc {
   writeVersion(dir: string, base: string): Promise<{ main: string; preview?: string }>;
   writeBaseline?(dir: string, base: string): Promise<string>;
   undo?(): Promise<void>;
+  /** The app's engine command ids with their parameters (optionally filtered by text), so Claude can find what to run. */
+  listCommands?(filter?: string): Promise<string>;
   /** Engine commands for a quick edit from src/shared/appEditors.ts. */
   quickEditSteps?(opId: string, values: EditValues): AppOperation[] | Promise<AppOperation[]>;
   /** PNG of the live app window, from the app's own screenshot tool. */

@@ -336,6 +336,12 @@ export const EDITOR_APPS: Record<EditorAppId, EditorApp> = {
   },
 };
 
+/** Every ArtCraft app that can open a file of this type, in the order the apps are defined. */
+export function appsForFormat(format: string): EditorApp[] {
+  const f = format.toLowerCase();
+  return Object.values(EDITOR_APPS).filter((a) => a.open !== 'none' && a.formats.includes(f));
+}
+
 /** The Edit tab's app for a file type (Color and Effects pick their app explicitly). */
 export function editorFor(format: string): EditorApp | null {
   const f = format.toLowerCase();
@@ -650,3 +656,10 @@ export function effectcraftSteps(opId: string, v: EditValues, ctx: { layer: numb
     default: throw new Error(`Unknown EffectCraft edit "${opId}".`);
   }
 }
+
+/** Apps that edit one library file and can start from a bundled blank (fixtures/sample-project/blank/blank.<ext>), made by the app itself. */
+export const BLANK_FILES: Partial<Record<EditorAppId, string>> = {
+  photocraft: 'pcraft', vectorcraft: 'svg', designcraft: 'designcraft', wordcraft: 'docx', pdfcraft: 'pdf',
+  gridcraft: 'xlsx', deckcraft: 'deckcraft', figcraft: 'figcraft', cadcraft: 'dxf',
+  soundcraft: 'wav', lightcraft: 'png', effectcraft: 'png',
+};

@@ -32,6 +32,8 @@ export interface ManagerDeps {
   extraTargets?: () => Promise<DiscoveryTarget[]>;
   /** Program locations found through indirect signals (uninstall records, shortcuts), kept so they survive those records. */
   remembered?: { load: () => Promise<string[]>; save: (paths: string[]) => Promise<void> };
+  /** Applications the user has connected, kept across restarts so they are connected again at startup. */
+  connected?: { load: () => Promise<string[]>; save: (keys: string[]) => Promise<void> };
   onProgress?: (e: ProgressEvent) => void;
 }
 
@@ -227,6 +229,7 @@ export class IntegrationManager {
         this.broken.delete(key);
         this.blocked.delete(key);
         this.sessions.set(key, { app, adapter, factory: f, version: probe.version });
+        void this.remember(key, true);
       } catch (e) {
         // A blocked program is not "broken": keep the precise status, do not ask for repair.
         if (!(e instanceof BlockedError)) { this.broken.set(key, errMsg(e)); this.blocked.delete(key); }
@@ -253,7 +256,28 @@ export class IntegrationManager {
     }
   }
 
-  async disconnect(key: string): Promise<ExternalAppInfo | null> {
+  /** Keeps the list of connected applications on disk (best effort; a failed write never breaks a connection). */
+  private async remember(key: string, on: boolean): Promise<void> {
+    if (!this.d.connected) return;
+    try {
+      const cur = await this.d.connected.load();
+      const next = on ? (cur.includes(key) ? cur : [...cur, key]) : cur.filter((k) => k !== key);
+      if (next.length !== cur.length) await this.d.connected.save(next);
+    } catch { /* not remembered */ }
+  }
+
+  /** Connects again every application that was connected when CreateCraft last ran. Failures are quiet: the app just shows as available. */
+  async autoConnect(): Promise<void> {
+    if (!this.d.connected) return;
+    const keys = await this.d.connected.load().catch(() => [] as string[]);
+    if (!keys.length) return;
+    if (!this.apps.size) await this.scan().catch(() => undefined);
+    for (const key of keys) if (this.apps.has(key) && !this.sessions.has(key)) await this.connect(key).catch(() => undefined);
+  }
+
+  /** `forget: false` closes the session but keeps the app in the remembered list (CreateCraft quitting, repairs). */
+  async disconnect(key: string, opts: { forget?: boolean } = {}): Promise<ExternalAppInfo | null> {
+    if (opts.forget !== false) await this.remember(key, false);
     const s = this.sessions.get(key);
     this.sessions.delete(key);
     if (s) { await s.adapter.disconnect().catch(() => undefined); await s.adapter.dispose().catch(() => undefined); }
@@ -263,7 +287,7 @@ export class IntegrationManager {
 
   /** Drops the session and the remembered failure, then connects again. */
   async repair(key: string): Promise<ExternalAppInfo> {
-    await this.disconnect(key);
+    await this.disconnect(key, { forget: false });
     const app = this.apps.get(key);
     if (app) this.factoryFor(app)?.reset?.();
     this.broken.delete(key);
@@ -274,7 +298,7 @@ export class IntegrationManager {
 
   async shutdown(): Promise<void> {
     for (const c of this.ops.values()) c.abort();
-    await Promise.all([...this.sessions.keys()].map((k) => this.disconnect(k)));
+    await Promise.all([...this.sessions.keys()].map((k) => this.disconnect(k, { forget: false })));
   }
 
   async revoke(key: string): Promise<void> {

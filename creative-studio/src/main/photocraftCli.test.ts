@@ -73,7 +73,7 @@ describe.skipIf(!installed)('PhotoCraftCliAdapter (real photocraft-cli)', () => 
 
   it('refuses disallowed commands and unsupported inputs before spawning, and surfaces PhotoCraft errors', async () => {
     const { documentId } = await pc.open(`asset:${ids['photocraft-smoke.png']}`);
-    await expect(pc.execute(documentId, { command: 'file.saveAs', params: { path: 'C:\\x.png' } })).rejects.toThrow(/not on the allowed list/);
+    await expect(pc.execute(documentId, { command: 'file.saveAs', params: { path: 'C:\\x.png' } })).rejects.toThrow(/approval/);
     await expect(pc.open(`asset:${ids['tone-a440.wav']}`)).rejects.toThrow(/can't edit WAV/);
     await expect(pc.open('C:\\Windows\\win.ini')).rejects.toThrow(/needs an asset/);
     await expect(pc.execute(documentId, { command: 'filter.blur.gaussianBlur', params: { radius: 'lots' } })).rejects.toThrow(/radius/);
