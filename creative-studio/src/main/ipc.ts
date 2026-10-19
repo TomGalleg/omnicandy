@@ -1300,6 +1300,7 @@ export function registerIpc(d: IpcDeps): void {
   // ---- Projects ----
   const projectKey = z.string().regex(/^[A-Za-z0-9_-]{1,64}$/);
   handle(IPC.projectsList, none, () => d.projects.list());
+  handle(IPC.projectsSetOrder, z.tuple([z.array(projectKey).max(1000)]), (keys) => d.projects.setOrder(keys));
   handle(IPC.projectsCurrent, none, () => d.projects.currentKey());
   const folderPath = z.string().min(3).max(1024);
   const projectKeyRe = z.string().regex(/^[A-Za-z0-9_-]{1,64}$/);

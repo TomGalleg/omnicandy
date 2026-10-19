@@ -129,6 +129,7 @@ const api: StudioApi = {
   },
   projects: {
     list: () => ipcRenderer.invoke(IPC.projectsList),
+    setOrder: (keys) => ipcRenderer.invoke(IPC.projectsSetOrder, keys),
     current: () => ipcRenderer.invoke(IPC.projectsCurrent),
     create: (name, parentDir, meta) => ipcRenderer.invoke(IPC.projectsCreate, name, parentDir ?? null, meta ?? null),
     storage: () => ipcRenderer.invoke(IPC.projectsStorage),

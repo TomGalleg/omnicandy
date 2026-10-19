@@ -80,6 +80,8 @@ export interface ProjectSummary {
   thumbAssetId: string | null;
   isOpen: boolean;
   isSample: boolean;
+  /** True when the owner arranged the list by hand (then it is shown in that order instead of most recent first). */
+  arranged?: boolean;
   kind?: ProjectManifest['kind'];
   brief?: string;
 }

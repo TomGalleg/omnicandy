@@ -108,6 +108,7 @@ export const IPC = {
   projectsRename: 'projects:rename',
   projectsRemove: 'projects:remove',
   projectsReveal: 'projects:reveal',
+  projectsSetOrder: 'projects:set-order',
   projectsStorage: 'projects:storage',
   projectsAddExisting: 'projects:add-existing',
   projectsLocate: 'projects:locate',
@@ -391,6 +392,8 @@ export interface StudioApi {
   };
   projects: {
     list(): Promise<ProjectSummary[]>;
+    /** Saves the order the owner arranged the project list in. An empty list goes back to most recent first. */
+    setOrder(keys: string[]): Promise<void>;
     current(): Promise<string>;
     /** Creates an empty project (in `parentDir`, else the default project folder); returns its key (does not open it). */
     create(name: string, parentDir?: string, meta?: ProjectMeta): Promise<string>;

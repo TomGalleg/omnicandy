@@ -36,6 +36,9 @@ export function HomeWorkspace({ manifest, projectKey, onSwitched, onGoto, log }:
   const [newName, setNewName] = useState('');
   const [blankKind, setBlankKind] = useState<ProjectKind>('mixed');
   const [search, setSearch] = useState('');
+  /** Arranging the project list by hand: drag a card, or use the arrows. */
+  const [arrange, setArrange] = useState(false);
+  const [dragKey, setDragKey] = useState<string | null>(null);
   // Templates
   const [showTemplates, setShowTemplates] = useState(false);
   const [templates, setTemplates] = useState<WorkflowTemplate[]>([]);
@@ -140,6 +143,14 @@ Needs: ${t.needs}` : ''}`, objective: t.description };
   });
 
   const q = search.trim().toLowerCase();
+  /** Puts `key` where `target` is (or at the very top) and saves the whole order. */
+  const moveProject = (key: string, to: { before: string } | { index: number }) => {
+    if (!projects) return;
+    const keys = projects.map((p) => p.id).filter((k) => k !== key);
+    const at = 'before' in to ? Math.max(0, keys.indexOf(to.before)) : Math.max(0, Math.min(keys.length, to.index));
+    keys.splice(at, 0, key);
+    void run(async () => { await window.studio.projects.setOrder(keys); });
+  };
   const shown = projects?.filter((p) => !q || `${p.name} ${p.brief ?? ''} ${projectKindLabel(p.kind)}`.toLowerCase().includes(q));
   const folderLabel = location ? (location.split(/[\\/]/).filter(Boolean).at(-1) ?? location) : null;
 
@@ -257,15 +268,28 @@ Needs: ${t.needs}` : ''}`, objective: t.description };
       <section className="home-section">
         <div className="home-head">
           <h2>Recent projects</h2>
+          <button className="btn small" aria-pressed={arrange} disabled={!!q || !projects || projects.length < 2} title={q ? 'Clear the search to arrange your projects' : 'Put your projects in the order you want'} onClick={() => setArrange((v) => !v)}>{arrange ? 'Done' : 'Arrange'}</button>
+          {projects?.some((p) => p.arranged) && <button className="btn small ghost" disabled={busy} title="Go back to the open project first, then most recent" onClick={() => void run(async () => { await window.studio.projects.setOrder([]); })}>Most recent first</button>}
           <input className="search-input" type="search" aria-label="Search projects" placeholder="Search projects" value={search} onChange={(e) => setSearch(e.target.value)} />
         </div>
         <div className="project-grid">
           {shown?.map((p) => (
-            <article key={p.id} className={`project-card${p.isOpen ? ' open' : ''}`}>
+            <article key={p.id} className={`project-card${p.isOpen ? ' open' : ''}${arrange ? ' arranging' : ''}${dragKey === p.id ? ' dragging' : ''}`}
+              draggable={arrange} onDragStart={() => setDragKey(p.id)} onDragEnd={() => setDragKey(null)}
+              onDragOver={(e) => { if (arrange && dragKey && dragKey !== p.id) e.preventDefault(); }}
+              onDrop={(e) => { if (arrange && dragKey && dragKey !== p.id) { e.preventDefault(); moveProject(dragKey, { before: p.id }); setDragKey(null); } }}>
               <button className="project-thumb" onClick={() => (p.isOpen ? onGoto('media') : void open(p))} disabled={busy} aria-label={p.isOpen ? `Go to ${p.name}` : `Open ${p.name}`}>
                 {p.thumbAssetId ? <img src={window.studio.projects.assetUrl(p.id, p.thumbAssetId)} alt="" /> : <span>No files yet</span>}
               </button>
               <div className="project-body">
+                {arrange && (
+                  <div className="btn-row arrange-row" role="group" aria-label={`Move ${p.name}`}>
+                    <span className="drag-handle" aria-hidden title="Drag to move">⠿</span>
+                    <button className="btn small" disabled={busy || (projects?.[0]?.id === p.id)} onClick={() => moveProject(p.id, { index: 0 })}>To the top</button>
+                    <button className="btn small" aria-label={`Move ${p.name} up`} disabled={busy || (projects?.[0]?.id === p.id)} onClick={() => moveProject(p.id, { index: (projects?.findIndex((x) => x.id === p.id) ?? 1) - 1 })}>▲</button>
+                    <button className="btn small" aria-label={`Move ${p.name} down`} disabled={busy || (projects?.[projects.length - 1]?.id === p.id)} onClick={() => moveProject(p.id, { index: (projects?.findIndex((x) => x.id === p.id) ?? 0) + 1 })}>▼</button>
+                  </div>
+                )}
                 {renaming?.key === p.id ? (
                   <form onSubmit={(e) => { e.preventDefault(); void run(async () => { await window.studio.projects.rename(p.id, renaming.name); setRenaming(null); }); }}>
                     <input autoFocus aria-label="Project name" value={renaming.name} maxLength={80} onChange={(e) => setRenaming({ key: p.id, name: e.target.value })}

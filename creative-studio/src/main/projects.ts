@@ -15,7 +15,7 @@ import { ensureSampleProject } from './sampleProject';
 const KEY = /^[A-Za-z0-9_-]{1,64}$/;
 export const SAMPLE_KEY = 'sample-project';
 
-interface State { current: string; recent: string[]; defaultDir?: string; locations: Record<string, string> }
+interface State { current: string; recent: string[]; defaultDir?: string; locations: Record<string, string>; /** The order the owner arranged the list in (empty = most recent first). */ order?: string[] }
 
 export interface StorageInfo {
   /** Where new projects go unless a folder is chosen when creating one. */
@@ -107,6 +107,7 @@ export class ProjectManager {
         current: typeof s.current === 'string' && KEY.test(s.current) ? s.current : SAMPLE_KEY,
         recent: Array.isArray(s.recent) ? s.recent.filter((k) => typeof k === 'string' && KEY.test(k)) : [],
         defaultDir: typeof s.defaultDir === 'string' && path.isAbsolute(s.defaultDir) ? s.defaultDir : undefined,
+        order: Array.isArray(s.order) ? s.order.filter((k): k is string => typeof k === 'string' && KEY.test(k)).slice(0, 1000) : undefined,
         locations,
       };
     } catch {
@@ -187,8 +188,22 @@ export class ProjectManager {
         }
       }
     }
+    // Arranged by hand: that order, with projects added since at the top (newest first). Otherwise the open project first, then most recent.
+    if (st.order?.length) {
+      const pos = (k: string) => st.order!.indexOf(k);
+      const rankNew = (k: string) => { const i = st.recent.indexOf(k); return i < 0 ? 1e6 : i; };
+      return out.map((p) => ({ ...p, arranged: true })).sort((a, b) => (pos(a.id) < 0 ? -1 : pos(a.id)) - (pos(b.id) < 0 ? -1 : pos(b.id)) || rankNew(a.id) - rankNew(b.id) || b.updatedAt.localeCompare(a.updatedAt));
+    }
     const rank = (k: string) => { const i = st.recent.indexOf(k); return i < 0 ? 1e6 : i; };
     return out.sort((a, b) => Number(b.isOpen) - Number(a.isOpen) || rank(a.id) - rank(b.id) || b.updatedAt.localeCompare(a.updatedAt));
+  }
+
+  /** Remembers the order the owner arranged the list in. Only known projects count; an empty list returns to most recent first. */
+  async setOrder(keys: string[]): Promise<void> {
+    const st = await this.readState();
+    const known = new Set([...Object.keys(st.locations), ...(await fs.readdir(this.baseDir, { withFileTypes: true }).catch(() => [])).filter((e) => e.isDirectory() && KEY.test(e.name)).map((e) => e.name)]);
+    const order = [...new Set(keys.filter((k) => KEY.test(k) && known.has(k)))];
+    await this.writeState({ ...st, order: order.length ? order : undefined });
   }
 
   async open(key: string): Promise<ProjectStore> {
@@ -238,7 +253,7 @@ export class ProjectManager {
     const st = await this.readState();
     const locations = { ...st.locations };
     delete locations[key];
-    await this.writeState({ ...st, recent: st.recent.filter((k) => k !== key), locations });
+    await this.writeState({ ...st, recent: st.recent.filter((k) => k !== key), order: st.order?.filter((k) => k !== key), locations });
   }
 
   async folder(key: string): Promise<string> { return this.dirOf(key); }

@@ -192,3 +192,58 @@ describe('ProjectManager', { timeout: 30_000 }, () => {
     await expect(pm.move(key, path.join(tmp, 'Archive'))).rejects.toThrow(/already in that folder/);
   });
 });
+
+describe('arranging the project list', { timeout: 30_000 }, () => {
+  const ids = async (pm: ProjectManager) => (await pm.list()).map((p) => p.id);
+
+  it('is most recent first (open project first) until the owner arranges it', async () => {
+    const pm = make();
+    await pm.current();
+    const a = await pm.create('A'); const b = await pm.create('B');
+    await pm.open(a); await pm.open(b);
+    const list = await pm.list();
+    expect(list[0]!.id).toBe(b);
+    expect(list.some((p) => p.arranged)).toBe(false);
+  });
+
+  it('keeps the order the owner set, even when another project is opened, and remembers it after a restart', async () => {
+    const pm = make();
+    await pm.current();
+    const a = await pm.create('A'); const b = await pm.create('B'); const c = await pm.create('C');
+    const order = [c, SAMPLE_KEY, a, b];
+    await pm.setOrder(order);
+    expect(await ids(pm)).toEqual(order);
+    expect((await pm.list()).every((p) => p.arranged)).toBe(true);
+    await pm.open(b); // opening does not shuffle an arranged list
+    expect(await ids(pm)).toEqual(order);
+    expect(await ids(make())).toEqual(order); // a new run of the app reads the saved order
+  });
+
+  it('puts a project made after arranging at the top, and forgets a removed one', async () => {
+    const pm = make();
+    await pm.current();
+    const a = await pm.create('A'); const b = await pm.create('B');
+    await pm.setOrder([b, SAMPLE_KEY, a]);
+    const c = await pm.create('C');
+    expect((await ids(pm))[0]).toBe(c);
+    expect((await ids(pm)).slice(1)).toEqual([b, SAMPLE_KEY, a]);
+    await pm.remove(a);
+    expect(await ids(pm)).toEqual([c, b, SAMPLE_KEY]);
+    const state = JSON.parse(await fs.readFile(path.join(tmp, 'projects.json'), 'utf8')) as { order?: string[] };
+    expect(state.order).not.toContain(a);
+  });
+
+  it('ignores names that are not projects, and an empty list goes back to most recent first', async () => {
+    const pm = make();
+    await pm.current();
+    const a = await pm.create('A'); const b = await pm.create('B');
+    await pm.setOrder([a, 'not-a-project', '../../escape', b, a]);
+    const state = JSON.parse(await fs.readFile(path.join(tmp, 'projects.json'), 'utf8')) as { order?: string[] };
+    expect(state.order).toEqual([a, b]);
+    await pm.open(b);
+    await pm.setOrder([]);
+    const list = await pm.list();
+    expect(list.some((p) => p.arranged)).toBe(false);
+    expect(list[0]!.id).toBe(b);
+  });
+});
