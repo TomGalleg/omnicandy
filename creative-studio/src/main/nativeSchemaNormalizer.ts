@@ -1,7 +1,7 @@
 /** Conservative native command-schema normalization. Never grants execution permissions.
  * A prose hint is not a machine-readable constraint; unrecognized supplied parameters fail closed.
  */
-export type NativeRule = { type: 'number' | 'integer' | 'boolean' | 'string' | 'array' | 'object' | 'unknown'; min?: number; max?: number; enum?: Array<string | number>; required: boolean };
+export type NativeRule = { type: 'number' | 'integer' | 'boolean' | 'string' | 'array' | 'object' | 'unknown'; min?: number; max?: number; enum?: Array<string | number>; required: boolean; properties?: Record<string, NativeRule>; additionalProperties?: boolean };
 export type NativeSchema = { properties: Record<string, NativeRule>; complete: boolean };
 
 /** Split only at top-level separators: nested braces, parentheses and quoted delimiters are preserved. */
@@ -33,6 +33,14 @@ function parseRule(raw: unknown, required: boolean): NativeRule {
     if (typeof o.min === 'number' || typeof o.minimum === 'number') base.min = (o.min ?? o.minimum) as number;
     if (typeof o.max === 'number' || typeof o.maximum === 'number') base.max = (o.max ?? o.maximum) as number;
     if (Array.isArray(o.enum) && o.enum.every(x => typeof x === 'string' || typeof x === 'number')) base.enum = o.enum as Array<string | number>;
+    if (base.type === 'object' && o.properties && typeof o.properties === 'object' && !Array.isArray(o.properties)) {
+      const req = new Set(Array.isArray(o.required) ? o.required.filter((x): x is string => typeof x === 'string') : []);
+      base.properties = Object.create(null) as Record<string, NativeRule>;
+      for (const [key, spec] of Object.entries(o.properties as Record<string, unknown>)) {
+        base.properties[key] = parseRule(spec, req.has(key));
+      }
+      base.additionalProperties = o.additionalProperties === true;
+    }
     return base;
   }
   if (typeof raw !== 'string') return base;
@@ -57,7 +65,11 @@ function parseRule(raw: unknown, required: boolean): NativeRule {
     return { ...base, type: kind, enum: values };
   }
   if (s.startsWith('[') && s.endsWith(']')) return { ...base, type: 'array' };
-  if (s.startsWith('{') && s.endsWith('}')) return { ...base, type: 'object' };
+  if (s.startsWith('{') && s.endsWith('}')) {
+    const child = normalizeNativeParameters(s);
+    if (child?.complete) return { ...base, type: 'object', properties: child.properties, additionalProperties: false };
+    return { ...base, type: 'unknown' };
+  }
   return base;
 }
 
@@ -118,19 +130,36 @@ export function normalizeNativeParameters(raw: unknown): NativeSchema | null {
   return { properties, complete };
 }
 
+function checkNested(rule: NativeRule, value: unknown, path: string, command: string): string | undefined {
+  if (rule.type === 'unknown') return `Cannot validate ${command}: unsupported schema for "${path}". Do not execute.`;
+  if (rule.type === 'number' || rule.type === 'integer') {
+    if (typeof value !== 'number' || !Number.isFinite(value) || (rule.type === 'integer' && !Number.isInteger(value))) return `Parameter "${path}" must be a finite ${rule.type}.`;
+    if (rule.min !== undefined && value < rule.min) return `Parameter "${path}" must be at least ${rule.min}.`;
+    if (rule.max !== undefined && value > rule.max) return `Parameter "${path}" must be at most ${rule.max}.`;
+  } else if (rule.type === 'array' ? !Array.isArray(value) : rule.type === 'object' ? !value || typeof value !== 'object' || Array.isArray(value) : typeof value !== rule.type) return `Parameter "${path}" must be ${rule.type}.`;
+  if (rule.enum && !rule.enum.includes(value as string | number)) return `Parameter "${path}" must be one of ${rule.enum.join('|')}.`;
+  if (rule.type === 'object' && rule.properties) {
+    const obj = value as Record<string, unknown>;
+    for (const [key, child] of Object.entries(rule.properties)) {
+      if (obj[key] === undefined) { if (child.required) return `Missing required parameter "${path}.${key}".`; continue; }
+      const error = checkNested(child, obj[key], `${path}.${key}`, command);
+      if (error) return error;
+    }
+    if (rule.additionalProperties !== true) for (const key of Object.keys(obj)) {
+      if (!Object.hasOwn(rule.properties, key)) return `Unknown parameter "${path}.${key}" for ${command}.`;
+    }
+  }
+  return undefined;
+}
+
 export function validateNormalizedNative(schema: NativeSchema, params: Record<string, unknown>, command: string): string | undefined {
   if (!schema.complete) return `Cannot validate ${command}: incomplete parameter schema. Do not execute.`;
   for (const key of Object.keys(params)) if (!Object.hasOwn(schema.properties,key)) return `Unknown parameter "${key}" for ${command}. Inspect exact command ID.`;
   for (const [key, rule] of Object.entries(schema.properties)) {
     const value = params[key];
     if (value === undefined) { if (rule.required) return `Missing required parameter "${key}".`; continue; }
-    if (rule.type === 'unknown') return `Cannot validate ${command}: unsupported schema for "${key}". Do not execute.`;
-    if (rule.type === 'number' || rule.type === 'integer') {
-      if (typeof value !== 'number' || !Number.isFinite(value) || (rule.type === 'integer' && !Number.isInteger(value))) return `Parameter "${key}" must be a finite ${rule.type}.`;
-      if (rule.min !== undefined && value < rule.min) return `Parameter "${key}" must be at least ${rule.min}.`;
-      if (rule.max !== undefined && value > rule.max) return `Parameter "${key}" must be at most ${rule.max}.`;
-    } else if (rule.type === 'array' ? !Array.isArray(value) : rule.type === 'object' ? !value || typeof value !== 'object' || Array.isArray(value) : typeof value !== rule.type) return `Parameter "${key}" must be ${rule.type}.`;
-    if (rule.enum && !rule.enum.includes(value as string | number)) return `Parameter "${key}" must be one of ${rule.enum.join('|')}.`;
+    const error = checkNested(rule, value, key, command);
+    if (error) return error;
   }
   return undefined;
 }
