@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { AgentUiState } from '@shared/agentHarness';
+import type { AgentUiState, AgentPlanStep } from '@shared/agentHarness';
 import { presentUnifiedAgent, validateUnifiedAgentRequest } from '@shared/unifiedAgentPresentation';
 
 // The existing IPC agent endpoint currently supports OpenAI models only.
@@ -15,9 +15,12 @@ export function IndependentAgent() {
   const [goal, setGoal] = useState('');
   const [error, setError] = useState('');
   const [requestPending, setRequestPending] = useState(false);
+  const [draftSteps, setDraftSteps] = useState<AgentPlanStep[]>([]);
+  const [editingPlan, setEditingPlan] = useState(false);
   const presentation = useMemo(() => presentUnifiedAgent(state), [state]);
   const validationError = validateUnifiedAgentRequest(goal, model);
   const busy = presentation.busy || requestPending;
+  const canEditPlan = !busy && (state.status === 'paused' || state.status === 'limit');
 
   useEffect(() => {
     let active = true;
@@ -27,6 +30,15 @@ export function IndependentAgent() {
     return () => { active = false; unsubscribe(); };
   }, []);
 
+  const startPlanEdit = () => { setDraftSteps((state.plan?.steps ?? []).map(step => ({...step}))); setEditingPlan(true); setError(''); };
+  const updateStep = (index: number, patch: Partial<AgentPlanStep>) =>
+    setDraftSteps(current => current.map((step, i) => i === index ? { ...step, ...patch } : step));
+  const savePlan = () => {
+    if (!canEditPlan) return;
+    setRequestPending(true); setError('');
+    void window.studio.agent.updatePlan(draftSteps).then((next) => { setState(next); setEditingPlan(false); })
+      .catch((e) => setError(errorText(e))).finally(() => setRequestPending(false));
+  };
   const run = () => {
     if (busy || validationError) return;
     setError('');
@@ -57,8 +69,40 @@ export function IndependentAgent() {
     <div className="btn-row">
       <button className="btn primary" disabled={busy || !presentation.canRun || !!validationError} onClick={run}>Run with OpenAI</button>
       <button className="btn" disabled={!presentation.canStop} onClick={stop}>Stop</button>
-      <button className="btn" disabled={!presentation.canResume} onClick={resume}>Resume after manual edits</button>
+      <button className="btn" disabled={!presentation.canResume} onClick={resume}>Continue Task</button>
     </div>
+    {state.plan && <details open className="agent-task-plan">
+      <summary>Task plan ({state.plan.steps.filter(step => step.status === 'completed').length}/{state.plan.steps.length} completed)</summary>
+      <div className="asset-meta">{state.plan.goal}</div>
+      {!editingPlan && <>
+        {state.plan.steps.map(step => <div key={step.id} className="agent-plan-step">
+          <span className="chip">{step.status}</span> <span>{step.title}</span>
+          {step.evidence && <div className="asset-meta">Evidence: {step.evidence}</div>}
+        </div>)}
+        {canEditPlan && <button className="btn" onClick={startPlanEdit}>Edit plan</button>}
+      </>}
+      {editingPlan && <div className="agent-plan-editor">
+        {draftSteps.map((step, index) => <div className="agent-plan-step" key={step.id}>
+          <div className="claude-row">
+            <input aria-label={`Step ${index + 1} title`} maxLength={180} value={step.title} disabled={!canEditPlan} onChange={e => updateStep(index, {title:e.target.value})}/>
+            <select aria-label={`Step ${index + 1} status`} value={step.status} disabled={!canEditPlan} onChange={e => updateStep(index, {status:e.target.value as AgentPlanStep['status']})}>
+              {(['pending','active','completed','blocked'] as const).map(status => <option key={status} value={status}>{status}</option>)}
+            </select>
+          </div>
+          {step.status === 'completed' && <textarea aria-label={`Step ${index + 1} evidence`} placeholder="What verified this step?" maxLength={1000} value={step.evidence ?? ''} disabled={!canEditPlan} onChange={e => updateStep(index, {evidence:e.target.value})} rows={2}/>}
+          <div className="btn-row">
+            <button className="btn" disabled={!canEditPlan || index === 0} onClick={() => setDraftSteps(items => {const next=[...items];[next[index - 1],next[index]]=[next[index]!,next[index - 1]!];return next;})}>Up</button>
+            <button className="btn" disabled={!canEditPlan || index === draftSteps.length - 1} onClick={() => setDraftSteps(items => {const next=[...items];[next[index],next[index + 1]]=[next[index + 1]!,next[index]!];return next;})}>Down</button>
+            <button className="btn" disabled={!canEditPlan} onClick={() => setDraftSteps(items => items.filter((_, i) => i !== index))}>Remove</button>
+          </div>
+        </div>)}
+        <div className="btn-row">
+          <button className="btn" disabled={!canEditPlan || draftSteps.length >= 20} onClick={() => setDraftSteps(items => [...items, {id:`step_${Date.now()}_${items.length}`,title:'New step',status:'pending'}])}>Add step</button>
+          <button className="btn primary" disabled={!canEditPlan || draftSteps.some(step => !step.title.trim() || (step.status === 'completed' && !step.evidence?.trim()))} onClick={savePlan}>Save plan</button>
+          <button className="btn" onClick={() => setEditingPlan(false)}>Cancel</button>
+        </div>
+      </div>}
+    </details>}
     {!busy && goal.length > 0 && validationError && <div className="notice" role="alert">{validationError}</div>}
     {error && <div className="notice" role="alert">{error}</div>}
     {presentation.result && <div className="notice" role="status">{presentation.result}</div>}

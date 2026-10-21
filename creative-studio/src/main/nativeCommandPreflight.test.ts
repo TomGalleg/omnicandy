@@ -25,3 +25,16 @@ describe('native shared preflight (not wired to execution)', () => {
     expect(preflightNativeCommand(d, 'file.open', {path:'/tmp/file'}).status).toBe('unavailable');
   });
 });
+
+// Incomplete grammar must not let clearly invented property names through.
+describe('partial native schemas retain negative name checks', () => {
+  const detail = JSON.stringify({ id: 'layer.setProps', params: '{"layer":id?, "name":string?, "channels":[bool,bool]?, "opacity":0..100=100}' });
+  it('rejects unrelated positioning keys even when some field types are unsupported', () => {
+    const out = preflightNativeCommand(detail, 'layer.setProps', {x:700,y:540});
+    expect(out.status).toBe('rejected');
+    expect(out).toHaveProperty('reason', expect.stringContaining('Unknown parameter'));
+  });
+  it('does not claim unsupported but declared fields are validated', () => {
+    expect(preflightNativeCommand(detail, 'layer.setProps', {channels:[true,false]}).status).toBe('unavailable');
+  });
+});

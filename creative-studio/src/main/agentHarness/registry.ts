@@ -9,6 +9,8 @@ export class ToolRegistry {
     if (!/^[a-z][a-z0-9_]{0,63}$/.test(tool.name) || this.tools.has(tool.name)) throw new Error(`Invalid or duplicate tool: ${tool.name}`);
     this.tools.set(tool.name, tool);
   }
+  /** Lets a tool bound to per-run state (task_plan) be registered again when a registry is reused for a resumed run. */
+  remove(name: string) { this.tools.delete(name); }
   snapshot(): ToolDef[] { return [...this.tools.values()]; }
   async call(snapshot: readonly ToolDef[], name: string, args: unknown): Promise<ToolResult> {
     const advertised = snapshot.find((t) => t.name === name);

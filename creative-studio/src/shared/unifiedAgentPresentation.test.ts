@@ -12,6 +12,7 @@ describe('unified agent renderer presentation', () => {
   });
   it('offers resume only when paused', () => {
     expect(presentUnifiedAgent(state('paused'))).toMatchObject({canRun:true,canStop:false,canResume:true});
+    expect(presentUnifiedAgent(state('limit'))).toMatchObject({canRun:true,canStop:false,canResume:true});
     expect(presentUnifiedAgent(state('completed')).canResume).toBe(false);
   });
   it('never leaks event payloads or unsafe tool names into activity labels', () => {

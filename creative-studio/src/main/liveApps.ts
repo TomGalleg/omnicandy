@@ -109,21 +109,36 @@ abstract class LiveAppBase implements LiveDoc {
    */
   async listCommands(filter?: string): Promise<string> {
     const f = filter?.trim() ?? '';
-    if (f && /^[A-Za-z0-9_.:-]+$/.test(f)) {
-      const d = await this.cliText(['describe', f]).catch(() => '');
-      if (d.trim() && !/unknown|no such|not found/i.test(d.slice(0, 120))) return d.trim().slice(0, 4000);
-    }
-    let out: string;
-    try { out = await this.cliText(['commands']); }
-    catch {
-      // Discover ENGINE command ids, not arbitrary MCP tool names that app_command cannot execute.
-      const catalog = await this.client().callTool('command_list', {}).catch(() => null);
-      if (catalog == null) throw new Error(`${this.appId} cannot discover engine commands through CLI or MCP.`);
-      return formatDiscoveredCommands(catalog, filter, this.appId);
-    }
+    // Structured catalogs preserve parameter DSLs needed for preflight validation.
+    // Fall back for apps without --json support (notably SoundCraft and DeckCraft).
     let commands: unknown;
-    try { commands = JSON.parse(out); }
-    catch { commands = parsePlainCommandCatalog(out); }
+    const jsonOut = await this.cliText(['commands', '--json']).catch(() => '');
+    if (jsonOut.trim()) {
+      try {
+        const candidate: unknown = JSON.parse(jsonOut);
+        if (Array.isArray(candidate) || (candidate && typeof candidate === 'object' &&
+          ['commands', 'items', 'tools'].some(k => Array.isArray((candidate as Record<string, unknown>)[k])))) commands = candidate;
+      } catch { /* Unsupported JSON mode; use plain catalog. */ }
+    }
+    if (!commands) {
+      // SoundCraft/DeckCraft provide full schemas through per-command describe.
+      if (f && /^-?[A-Za-z0-9_][\w.:-]*$/.test(f)) {
+        const d = await this.cliText(['describe', f]).catch(() => '');
+        if (d.trim() && !/unknown|no such|not found/i.test(d.slice(0, 120))) {
+          if (d.length > 8000) return `${this.appId} command ${f}: schema inspection exceeds 8000 characters; do not guess missing parameters.`;
+          return d.trim();
+        }
+      }
+      let out: string;
+      try { out = await this.cliText(['commands']); }
+      catch {
+        const catalog = await this.client().callTool('command_list', {}).catch(() => null);
+        if (catalog == null) throw new Error(`${this.appId} cannot discover engine commands through CLI or MCP.`);
+        return formatDiscoveredCommands(catalog, filter, this.appId);
+      }
+      try { commands = JSON.parse(out); }
+      catch { commands = parsePlainCommandCatalog(out); }
+    }
     return formatDiscoveredCommands(commands, filter, this.appId);
   }
 

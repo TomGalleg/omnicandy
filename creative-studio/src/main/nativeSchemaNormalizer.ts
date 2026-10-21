@@ -33,6 +33,8 @@ function parseRule(raw: unknown, required: boolean): NativeRule {
     if (typeof o.min === 'number' || typeof o.minimum === 'number') base.min = (o.min ?? o.minimum) as number;
     if (typeof o.max === 'number' || typeof o.maximum === 'number') base.max = (o.max ?? o.maximum) as number;
     if (Array.isArray(o.enum) && o.enum.every(x => typeof x === 'string' || typeof x === 'number')) base.enum = o.enum as Array<string | number>;
+    // A schema with unsupported combinators or constraints must not be declared validated.
+    if (['oneOf', 'anyOf', 'allOf', 'not', '$ref', 'pattern', 'format', 'multipleOf', 'minLength', 'maxLength', 'minItems', 'maxItems', 'const'].some(k => k in o)) return { type: 'unknown', required };
     if (base.type === 'object' && o.properties && typeof o.properties === 'object' && !Array.isArray(o.properties)) {
       const req = new Set(Array.isArray(o.required) ? o.required.filter((x): x is string => typeof x === 'string') : []);
       base.properties = Object.create(null) as Record<string, NativeRule>;
@@ -80,10 +82,15 @@ export function normalizeNativeParameters(raw: unknown): NativeSchema | null {
     const required = new Set(Array.isArray(r.required) ? r.required.filter((x): x is string => typeof x === 'string') : []);
     const properties: Record<string, NativeRule> = Object.create(null);
     for (const [key, value] of Object.entries(props)) {
-      if (['required', 'additionalProperties', 'type', '$schema'].includes(key)) continue;
+      if (['required', 'additionalProperties', 'type', '$schema', 'title', 'description', 'oneOf', 'anyOf', 'allOf', 'not', '$ref', 'patternProperties'].includes(key)) continue;
       properties[key] = parseRule(value, required.has(key) || (typeof value === 'object' && value !== null && (value as Record<string,unknown>).required === true));
     }
-    return { properties, complete: true };
+    const unsupported = ['oneOf','anyOf','allOf','not','$ref','patternProperties','additionalProperties'].some(key =>
+      key in r && (key !== 'additionalProperties' || r[key] !== false));
+    const validRoot = !('type' in r) || r.type === 'object';
+    const declaredProperties = r.properties !== undefined;
+    const hasUsableProperties = !declaredProperties || (typeof r.properties === 'object' && r.properties !== null && !Array.isArray(r.properties));
+    return { properties, complete: !unsupported && validRoot && hasUsableProperties };
   }
   if (typeof raw !== 'string') return null;
   // e.g. '{"depth":8|16|32=8, "opacity":0..100=100} → {changed}'
@@ -105,6 +112,8 @@ export function normalizeNativeParameters(raw: unknown): NativeSchema | null {
   const fields = splitTopLevel(trimmed.slice(1,end), ',').filter(Boolean);
   const properties: Record<string, NativeRule> = Object.create(null);
   let complete = !unsupportedAlternative;
+  const unmarked: string[] = [];
+  let hasModeSelector = false;
   for (const field of fields) {
     const m = field.match(/^\s*(?:"([A-Za-z_][\w-]*)"|'([A-Za-z_][\w-]*)'|([A-Za-z_][\w-]*))(\?)?\s*(:)?\s*(.*)$/s);
     if (!m) { complete=false; continue; }
@@ -125,8 +134,15 @@ export function normalizeNativeParameters(raw: unknown): NativeSchema | null {
       properties[key] = { type: 'unknown', required: !m[4] };
       continue;
     }
-    properties[key] = parseRule(value, !m[4] && !value.includes('=') && !/\?$/.test(value));
+    const rule = parseRule(value, !m[4] && !value.includes('=') && !/\?$/.test(value));
+    properties[key] = rule;
+    if (rule.required) unmarked.push(key);
+    if (/^(kind|type)$/i.test(key) && value.includes('=') && (rule.enum?.length ?? 0) > 1) hasModeSelector = true;
   }
+  // A defaulted "kind"/"type" choice such as "kind":"rect|ellipse|line"="rect" selects which of the other
+  // unmarked fields apply (rect for a rectangle, from/to for a line), so none is required on its own.
+  // The engine still enforces what the chosen mode needs.
+  if (hasModeSelector) for (const key of unmarked) properties[key]!.required = false;
   return { properties, complete };
 }
 

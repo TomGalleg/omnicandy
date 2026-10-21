@@ -171,8 +171,11 @@ export class LivePhotoCraft implements LiveDoc {
     }
   }
 
+  /** The engine's result of the last command; LiveTaskController.claudeRun hands it to the model. */
+  lastResult: unknown = undefined;
+
   async run(op: AppOperation): Promise<void> {
-    await this.client().callTool('command_run', { id: op.command, params: op.params, wait: true }, 300_000);
+    this.lastResult = await this.client().callTool('command_run', { id: op.command, params: op.params, wait: true }, 300_000);
   }
 
   async history(): Promise<string[]> {

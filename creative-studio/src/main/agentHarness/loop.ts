@@ -2,13 +2,14 @@ import type { AgentEvent, AgentOutcome, Message, ModelProvider } from './types';
 import { ToolRegistry } from './registry';
 import { classifyCommandError } from './commandPreflight';
 import type { LiveTaskController } from '../liveTask';
+import { registerTaskPlan, type TaskPlan } from './taskPlan';
 
 const active = new WeakSet<LiveTaskController>();
-const baseSystem = `You operate ONLY connected CreateCraft applications through approved tools. Call get_status before editing, use app_commands to discover exact commands, and inspect results before continuing. Never invent success. Human denials, pauses and takeovers are final; stop. Save versions only when the user requests it. Do not request shell, code execution or unlisted tools.`;
+const baseSystem = `For newly completed task_plan steps, supply a passing evidence_verify ID; save steps can instead cite a save_version execution receipt with a confirmed new version ID. If you cannot verify a step, leave it pending/blocked and report why. Use evidence_verify to compare expected values with authoritative structured read-back receipts when possible; a failed or unavailable comparison is not verified completion. Use evidence_receipts to cite real successful tool results when updating completed steps. A receipt proves a successful tool response, NOT that the desired visual or document outcome was verified. Read back actual state and compare it to the goal. Use task_plan early in multi-step tasks to record concise steps and update it when verified progress changes. Completing a plan step requires concrete evidence from application read-back; the plan itself does not prove success. You operate ONLY connected CreateCraft applications through approved tools. Call get_status before editing, search app_commands by task noun, inspect exact command IDs for full parameters and inspect results before continuing. A discovered ID is not permission to execute it. When validation is unavailable, use only explicitly known parameters; request help rather than inventing values. If a schema is unavailable, do not guess missing arguments. Never invent success. For state-changing tasks, READ actual object IDs/properties first, EDIT with commands that explicitly support those properties, then VERIFY by reading back authoritative state (bounds, transforms, text, or other app-supported information). Use a visual preview for appearance when available. If verification disagrees, inspect the exact command schema and current state before a correction; never repeat an uncertain edit blindly. If no read-back capability exists, report that verification is unavailable, not success. A command returning applied does not prove the requested outcome. Before multi-step editing, form a short internal action plan and execute one verified step at a time. If the budget is running out, preserve the current state and explain what remains rather than guessing or repeating edits. Autonomous task completion is the default: pursue the full original user goal rather than stopping after an intermediate command succeeds. Make reasonable routine creative and technical choices (such as equal spacing, centering, or picking a supported command) without asking the user to decide every step; use explicit user constraints when supplied. For each substantive edit, distinguish command acceptance from changed application state: read back the relevant object/document properties and compare against the goal; inspect a preview when a registered visual tool is available and visual confirmation is material. If read-back is null, inconsistent, or uninformative, inspect another authoritative source or preview and state what could not be verified; never claim unverified visual success. If an attempted edit did not achieve its intended effect, re-inspect state and choose a different authorized method where the tool definitions support one. Do not blindly repeat state-changing calls, assume an earlier edit failed, or recreate objects already present. Only ask the user to intervene for a genuine blocker, missing permission, unsafe or consequential ambiguity, or an unavoidable choice; otherwise continue within the execution budget. If the task is unfinished when you must stop, explicitly summarize verified completed work, outstanding work, and blockers. Human denials, pauses and takeovers are final; stop. Save versions only when the user requests it. Do not request shell, code execution or unlisted tools.`;
 const nativeExtra = `\nUse new_document to start a blank document when available. Use look_at_document to inspect a visible preview when available and needed; it returns an image. Do not invent image contents.`;
 const externalSystem = `
 
-CreateCraft supports native Craft applications and external applications. get_status and app_commands describe only the native Craft applications. External applications (Blender, FreeCAD and any other non-Craft program) are found with external_apps, their supported commands with external_commands, and commands are run with external_command. When the user asks for Blender, FreeCAD or any other non-Craft application, call external_apps first, then external_commands for the chosen application, and execute only commands that external_commands returned, with the parameters it lists. Never invent external commands or parameters. Never assume an external application is unavailable because get_status does not list it; say it cannot be found only after external_apps has been checked.`;
+CreateCraft supports native Craft applications and external applications. get_status and app_commands describe only the native Craft applications. External applications (Blender, FreeCAD and any other non-Craft program) are found with external_apps, their supported commands with external_commands, and commands are run with external_command. When the user asks for Blender, FreeCAD or any other non-Craft application, call external_apps first, then external_commands for the chosen application, and inspect each external command with external_commands command_id to see parameter types, ranges and permissions before executing. Execute only commands that external_commands returned, with the parameters it lists. Never invent external commands or parameters. Never assume an external application is unavailable because get_status does not list it; say it cannot be found only after external_apps has been checked.`;
 /** The instructions for the tools that are really registered: external discovery is explained only when the external tools exist. */
 export const buildSystemPrompt = (toolNames: readonly string[]): string =>
   baseSystem + (toolNames.includes('new_document') || toolNames.includes('look_at_document') ? nativeExtra : '') + (toolNames.includes('external_apps') && toolNames.includes('external_commands') && toolNames.includes('external_command') ? externalSystem : '');
@@ -17,7 +18,7 @@ const paused = (ctl: LiveTaskController) => {
   return c.lockOwner === 'user' || ['manual','pausing','paused','awaiting_approval'].includes(c.phase);
 };
 const stopText = /stop and wait|do not retry|user declined|user paused|user cancelled|taken control|not available here|permission[- ]denied|user did not allow|not approved/i;
-export async function runAgent(args: { goal: string; provider: ModelProvider; registry: ToolRegistry; ctl: LiveTaskController; signal?: AbortSignal; maxTurns?: number; maxToolCalls?: number; onEvent?: (event: AgentEvent) => void; resumeMessages?: Message[] }): Promise<AgentOutcome> {
+export async function runAgent(args: { goal: string; provider: ModelProvider; registry: ToolRegistry; ctl: LiveTaskController; signal?: AbortSignal; maxTurns?: number; maxToolCalls?: number; onEvent?: (event: AgentEvent) => void; resumeMessages?: Message[]; resumePlan?: TaskPlan; onPlan?: (plan: TaskPlan) => void }): Promise<AgentOutcome> {
   const { provider, registry, ctl } = args;
   if (active.has(ctl) || ctl.snapshot().collab.activeOperation || ctl.snapshot().collab.phase === 'running') throw new Error('Another application task is already running.');
   if (paused(ctl)) throw new Error('User control or pause is active.');
@@ -26,15 +27,18 @@ export async function runAgent(args: { goal: string; provider: ModelProvider; re
     const fresh = registry.snapshot();
     const status = await registry.call(fresh, 'get_status', {});
     if (status.isError) throw new Error(`Cannot resume without current document status: ${status.text}`);
-    messages.push({role:'user',content:`The user has completed manual changes and explicitly requested continuation. Reconcile the CURRENT application state against previous work. Do not replay finished actions. Ask for clarification if needed. Current status: ${status.text.slice(0,8000)}`});
+    if (args.resumePlan) messages.push({role:'user',content:`Current project task plan (user edits take priority over earlier plan messages; verify steps before changing their status): ${JSON.stringify(args.resumePlan).slice(0,12000)}`});
+    messages.push({role:'user',content:`The user requested continuation after an interruption, takeover, or execution budget limit. Reconcile the CURRENT application state against previous work. Do not replay finished actions. Inspect what actually remains and continue only with authorized steps. Current status: ${status.text.slice(0,8000)}`});
   }
+  const planControl = registerTaskPlan(registry, args.goal, args.resumePlan, plan => args.onPlan?.(plan));
   active.add(ctl);
   const events: AgentEvent[] = [];
   const emit = (e: AgentEvent) => { events.push(e); args.onEvent?.(e); };
-  const result = (status: AgentOutcome['status'], text: string): AgentOutcome => ({ status, text, messages, events });
+  const result = (status: AgentOutcome['status'], text: string): AgentOutcome => ({ status, text, messages, events, plan: planControl.snapshot() });
   const maxTurns = Math.max(1, Math.min(args.maxTurns ?? 20, 100));
   const maxCalls = Math.max(1, Math.min(args.maxToolCalls ?? 50, 250));
   let calls = 0;
+  let completionReminderSent = false;
   // Guard against identical failed calls across model turns. Never retry or rewrite
   // commands locally: an error may follow a partially completed operation.
   const failedCalls = new Map<string, number>();
@@ -53,7 +57,24 @@ export async function runAgent(args: { goal: string; provider: ModelProvider; re
       }
       messages.push({ role: 'assistant', content: reply.text, ...(reply.toolCalls.length ? {toolCalls:reply.toolCalls} : {}) });
       emit({kind:'model',text:reply.text ?? ''});
-      if (!reply.toolCalls.length) return result('completed',reply.text ?? 'Model finished without a final message; verify the output.');
+      if (!reply.toolCalls.length) {
+        // Model prose is never enough to close a structured plan. Give the model
+        // one chance to reconcile the remaining steps, then retain continuation
+        // state rather than pretending that the project is finished.
+        const incomplete = planControl.snapshot().steps.filter(step => step.status !== 'completed');
+        if (incomplete.length) {
+          const remaining = incomplete.map(step => `${step.id} (${step.status}): ${step.title}`).join('; ').slice(0, 3500);
+          if (!completionReminderSent && turn + 1 < maxTurns) {
+            completionReminderSent = true;
+            messages.push({role:'user',content:`Your task plan still has unfinished steps: ${remaining}. Continue using available inspection and editing tools. Verify actual state before marking steps completed; never claim a saved version without a tool result confirming it. If blocked, state the blocker and preserve the task.`});
+            emit({kind:'model',text:'Final response deferred: structured plan still contains unfinished steps.'});
+            continue;
+          }
+          emit({kind:'stop',text:'Model stopped with unfinished plan steps; task remains resumable.'});
+          return result('limit',`Task is not yet verified complete. Remaining plan steps: ${remaining}. Use Continue Task to inspect current state and finish safely.`);
+        }
+        return result('completed',reply.text ?? 'Model finished without a final message; verify the output.');
+      }
       // Complete *every* tool call in the assistant message with a matching tool result, even on stop.
       let halt: 'cancelled' | 'paused' | 'limit' | undefined;
       for (const call of reply.toolCalls) {
@@ -71,6 +92,10 @@ export async function runAgent(args: { goal: string; provider: ModelProvider; re
             calls++;
             emit({kind:'tool',text:JSON.stringify(call.args).slice(0,2000),callId:call.id,tool:call.name});
             r = await registry.call(snapshot,call.name,call.args);
+            if (!r.isError) {
+              const receiptId = planControl.record(call.name, r.text, r.verified === true, call.args);
+              if (receiptId) r = {...r, text:`${r.text}\nExecution receipt: ${receiptId} (tool accepted; verify actual state before claiming outcome).`};
+            }
             if (r.isError && !stopText.test(r.text)) {
               failedCalls.set(signature, (failedCalls.get(signature) ?? 0) + 1);
               // Give the model a deterministic recovery hint, but never retry an edit automatically.
@@ -88,7 +113,8 @@ export async function runAgent(args: { goal: string; provider: ModelProvider; re
       }
       if (halt) { emit({kind:'stop',text:halt}); return result(halt,`Agent stopped: ${halt}.`); }
     }
-    return result('limit','Maximum model turns reached.');
+    emit({kind:'stop',text:'Model-turn budget reached. Current transcript can be resumed after state reconciliation.'});
+    return result('limit','Model-turn budget reached. Continue this task to inspect current document state and finish remaining work; completed edits must not be replayed.');
   } finally {
     ctl.claudeDone();
     active.delete(ctl);

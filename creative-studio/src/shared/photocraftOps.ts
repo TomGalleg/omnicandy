@@ -74,8 +74,18 @@ export type OpCheck = { ok: true; params: Record<string, unknown> } | { ok: fals
 /** Runs without asking (workflows, the node inspector and quick edits only ever use these). */
 export function isAllowedCommand(id: string): boolean { return commandTier(id) === 'free'; }
 
-function checkValue(v: unknown, key: string, depth: number, allowPaths: boolean): string | null {
-  if (depth > 4) return 'Parameters are nested too deeply.';
+/** A vector drawing path ({subpaths:[{knots:[...]}]}), as shape.create / path.set take it: an object, never a file name. */
+function isVectorPathObject(key: string, v: unknown): v is Record<string, unknown> {
+  return key.toLowerCase() === 'path' && typeof v === 'object' && v !== null && !Array.isArray(v);
+}
+
+function checkValue(v: unknown, key: string, depth: number, allowPaths: boolean, maxDepth = 4): string | null {
+  if (depth > maxDepth) return 'Parameters are nested too deeply.';
+  if (!allowPaths && isVectorPathObject(key, v)) {
+    // Only the object form is exempt, with its own depth budget (subpaths > knots > anchors). Every nested key and string is still checked, so {path:{file:...}} and path-like strings stay blocked.
+    for (const [k, item] of Object.entries(v)) { const e = checkValue(item, k, 0, false, 8); if (e) return e; }
+    return null;
+  }
   if (!allowPaths && PATHLIKE_KEYS.has(key.toLowerCase())) return `Parameter "${key}" is not allowed (could reference a file).`;
   if (typeof v === 'string') {
     if (v.length > 200) return `Parameter "${key}" is too long.`;
@@ -86,11 +96,11 @@ function checkValue(v: unknown, key: string, depth: number, allowPaths: boolean)
   if (typeof v === 'boolean' || v === null) return null;
   if (Array.isArray(v)) {
     if (v.length > 256) return `Parameter "${key}" has too many items.`;
-    for (const item of v) { const e = checkValue(item, key, depth + 1, allowPaths); if (e) return e; }
+    for (const item of v) { const e = checkValue(item, key, depth + 1, allowPaths, maxDepth); if (e) return e; }
     return null;
   }
   if (typeof v === 'object') {
-    for (const [k, item] of Object.entries(v as Record<string, unknown>)) { const e = checkValue(item, k, depth + 1, allowPaths); if (e) return e; }
+    for (const [k, item] of Object.entries(v as Record<string, unknown>)) { const e = checkValue(item, k, depth + 1, allowPaths, maxDepth); if (e) return e; }
     return null;
   }
   return `Parameter "${key}" has an unsupported type.`;

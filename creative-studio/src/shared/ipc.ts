@@ -82,6 +82,7 @@ export const IPC = {
   agentRun: 'agent:run',
   agentStop: 'agent:stop',
   agentResume: 'agent:resume',
+  agentPlanUpdate: 'agent:plan-update',
   agentEvent: 'agent:event',
   claudeState: 'claude:state',
   claudeSend: 'claude:send',
@@ -369,6 +370,7 @@ export interface StudioApi {
     run(goal: string, model: string): Promise<AgentUiState>;
     stop(): Promise<AgentUiState>;
     resume(): Promise<AgentUiState>;
+    updatePlan(steps: import('./agentHarness').AgentPlanStep[]): Promise<AgentUiState>;
     onChange(cb: (state: AgentUiState) => void): () => void;
   };
   claude: {

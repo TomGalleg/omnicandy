@@ -24,7 +24,7 @@ export function presentUnifiedAgent(state: AgentUiState): UnifiedAgentPresentati
     busy,
     canRun: !busy,
     canStop: busy,
-    canResume: state.status === 'paused',
+    canResume: state.status === 'paused' || state.status === 'limit',
     activities: state.events.filter((event) => event.kind !== 'model').slice(-50).map((event) => ({
       kind: event.kind as 'tool' | 'result' | 'error' | 'stop',
       label: event.kind === 'tool' ? `Running ${safeToolName(event.tool)}`

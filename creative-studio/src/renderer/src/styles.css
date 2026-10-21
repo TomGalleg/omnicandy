@@ -780,3 +780,10 @@ h1, h2, h3 { margin: 0; font-weight: 600; }
 .project-card.dragging { opacity: 0.45; }
 .arrange-row { align-items: center; margin-bottom: 6px; }
 .drag-handle { cursor: grab; font-size: 1.2em; opacity: 0.7; padding: 0 4px; }
+
+/* Independent AI project task-plan panel */
+.agent-task-plan { margin: 12px 0; padding: 12px; border: 1px solid var(--border, #7775); border-radius: 8px; }
+.agent-task-plan summary { cursor: pointer; font-weight: 600; }
+.agent-plan-step { padding: 8px 0; border-bottom: 1px solid var(--border, #7773); }
+.agent-plan-editor input { flex: 1; min-width: 0; }
+.agent-plan-editor textarea { width: 100%; }

@@ -40,6 +40,8 @@ describe('system prompt follows the registered tools', () => {
     expect(seen[0]!.system).not.toMatch(/external/i);
     expect(seen[0]!.system).toBe(buildSystemPrompt(['get_status', 'app_commands']));
     expect(seen[0]!.system).toMatch(/Call get_status before editing/);
+    expect(seen[0]!.system).toMatch(/VERIFY by reading back authoritative state/);
+    expect(seen[0]!.system).toMatch(/does not prove the requested outcome/);
   });
   it('needs all three external tools before it claims external support', () => {
     expect(buildSystemPrompt(['external_apps'])).not.toMatch(/external/i);
@@ -54,7 +56,7 @@ describe('tool advertisement diagnostics', () => {
     const ev = out.events.filter((e) => e.tool === 'tools');
     expect(ev).toHaveLength(1);
     expect(ev[0]!.kind).toBe('model');
-    expect(ev[0]!.text).toBe('Tools available to the model: get_status, app_commands, external_apps, external_commands, external_command');
+    expect(ev[0]!.text).toBe('Tools available to the model: get_status, app_commands, external_apps, external_commands, external_command, evidence_receipts, evidence_verify, task_plan');
     expect(out.events[0]).toBe(ev[0]);
     expect(JSON.stringify(out.events)).not.toContain('secret goal text');
   });
@@ -67,5 +69,27 @@ describe('tool advertisement diagnostics', () => {
     expect(seenEvents.filter((e) => e === 'model:tools')).toHaveLength(1);
     expect(seenEvents[0]).toBe('model:tools');
     expect(seenEvents).toContain('tool:get_status');
+  });
+});
+
+
+describe('autonomous completion defaults', () => {
+  it('plans and verifies outcomes without stopping for routine creative choices', () => {
+    const prompt = buildSystemPrompt(['get_status', 'app_commands', 'app_command', 'look_at_document']);
+    expect(prompt).toContain('Autonomous task completion is the default');
+    expect(prompt).toContain('without asking the user to decide every step');
+    expect(prompt).toContain('read back the relevant object/document properties');
+    expect(prompt).toContain('never claim unverified visual success');
+    expect(prompt).toContain('Do not blindly repeat state-changing calls');
+    expect(prompt).toContain('Only ask the user to intervene for a genuine blocker');
+    expect(prompt).toContain('outstanding work, and blockers');
+    expect(prompt).toContain('Human denials, pauses and takeovers are final');
+    expect(prompt).toContain('Save versions only when the user requests it');
+  });
+  it('applies the same autonomy instructions when external integrations are present', () => {
+    const prompt = buildSystemPrompt(['external_apps', 'external_commands', 'external_command']);
+    expect(prompt).toContain('Autonomous task completion is the default');
+    expect(prompt).toContain('external_apps first');
+    expect(prompt).not.toContain('Use look_at_document');
   });
 });

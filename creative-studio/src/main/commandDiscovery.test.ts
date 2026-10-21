@@ -82,3 +82,21 @@ describe('compact schema hints', () => {
     expect(compactParameterHints(params).length).toBeLessThanOrEqual(180);
   });
 });
+
+
+describe('universal command catalog regressions', () => {
+  it('retains CADCraft dash and numeric command IDs', () => {
+    const rows = parsePlainCommandCatalog('-vports Viewports\n3dpoly Create 3D polyline\n3dorbit Orbit');
+    expect(rows.map(row => row.id)).toEqual(['-vports', '3dpoly', '3dorbit']);
+    expect(formatDiscoveredCommands(rows, '-vports')).toContain('"id":"-vports"');
+  });
+  it('marks missing plain catalog schemas explicitly', () => {
+    expect(formatDiscoveredCommands(parsePlainCommandCatalog('shape.ellipse Draw ellipse'))).toContain('parameter schema unavailable');
+  });
+  it('searches ids and descriptions, not parameter prose', () => {
+    const commands = [{id:'blur.shapeBlur',label:'Blur an image',params:'shape ellipse'}, {id:'shape.ellipse',label:'Draw ellipse',params:'radius'}];
+    const result = formatDiscoveredCommands(commands,'ellipse');
+    expect(result).toContain('shape.ellipse');
+    expect(result).not.toContain('blur.shapeBlur');
+  });
+});

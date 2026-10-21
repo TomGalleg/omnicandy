@@ -6,6 +6,7 @@
 // PhotoCraft has its own, more precise table (photocraftOps.ts).
 
 import { checkParamValues, type OpCheck } from './photocraftOps';
+import type { EditorAppId } from './appEditors';
 
 const NEVER = /(^|\.)(prefs?|preferences|settings|options|createcraft)(\.|$)/i;
 // Legacy app CLIs sometimes use all-lowercase, concatenated verb names.
@@ -38,6 +39,14 @@ const SENSITIVE_APPROVAL = new Set([
   'refclose', 'session.revert', 'links.unembed', 'links.copyto',
   'fields.setcode',
 ]);
+// Catalog-verified legacy CADCraft commands with nonstandard identifiers.
+// This is an explicit exception list, not a relaxed identifier grammar.
+// Dash-prefixed commands require human approval; ordinary unknown dashed IDs remain denied.
+const LEGACY_CAD_APPROVAL = new Set([
+  '-vports', '-block', '-attedit', '-xref', '-group',
+  '-linetype', '-plottermanager',
+]);
+
 const SENSITIVE_NEVER = new Set([
   'plugin.run', 'plugins.runlast', 'home.addins',
   'view.macros', 'tools.macros', 'prop.setexpression',
@@ -56,10 +65,12 @@ const PROPERTY_PATH = /^(@\d+|#?[\w-]+(\/#?[\w-]+){0,8})$/;
 export type AppCommandTier = 'free' | 'approval' | 'never';
 
 /** `tool:name` ids (EffectCraft) are judged by the tool name. */
-export function appCommandTier(id: string): AppCommandTier {
+export function appCommandTier(id: string, appId?: EditorAppId): AppCommandTier {
   const name = id.startsWith('tool:') ? id.slice(5) : id;
-  if (!/^[A-Za-z0-9_]+([.:_-][A-Za-z0-9_]+)*$/.test(name) || name.length > 128) return 'never';
+  if (name.length > 128) return 'never';
   const canonical = name.toLowerCase();
+  if (name.startsWith('-')) return appId === 'cadcraft' && LEGACY_CAD_APPROVAL.has(canonical) && name === canonical ? 'approval' : 'never';
+  if (!/^[A-Za-z0-9_]+([.:_-][A-Za-z0-9_]+)*$/.test(name)) return 'never';
   if (SENSITIVE_NEVER.has(canonical) || canonical.startsWith('scriptui.')) return 'never';
   if (SENSITIVE_APPROVAL.has(canonical)) return 'approval';
   if (NEVER.test(name)) return 'never';
@@ -72,8 +83,8 @@ export function appCommandTier(id: string): AppCommandTier {
   return 'free';
 }
 
-export function checkAppCommand(command: string, params: Record<string, unknown> | undefined, opts: { approved?: boolean } = {}): OpCheck {
-  const tier = appCommandTier(command);
+export function checkAppCommand(command: string, params: Record<string, unknown> | undefined, opts: { approved?: boolean; appId?: EditorAppId } = {}): OpCheck {
+  const tier = appCommandTier(command, opts.appId);
   if (tier === 'never') return { ok: false, reason: `Command "${command}" is not allowed.` };
   if (tier === 'approval' && !opts.approved) return { ok: false, reason: `Command "${command}" needs the user's approval first.` };
   if (params !== undefined && (typeof params !== 'object' || params === null || Array.isArray(params))) return { ok: false, reason: 'Parameters must be an object.' };

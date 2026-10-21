@@ -1,6 +1,7 @@
 import { compactParameterHints } from '../commandDiscovery';
 import { preflightExternalParams, classifyCommandError } from './commandPreflight';
 import { z } from 'zod';
+import { inspectExternalCommand } from '@shared/commandCapabilityInspection';
 import type { IntegrationManager } from '../integrations/manager';
 import { tool, ToolRegistry } from './registry';
 
@@ -23,7 +24,7 @@ export function externalTools(backend: ExternalBackend) {
         if (command_id) {
           const spec = app.commands.find(c => c.id === command_id);
           if (!spec) throw new Error('Command is not advertised by this app. Search external_commands again.');
-          return JSON.stringify({ app: app.name, command: spec });
+          return JSON.stringify({ app: app.name, command: spec, capabilityInspection: inspectExternalCommand(spec) });
         }
         const q = (filter ?? '').trim().toLowerCase();
         const matches = app.commands.filter(c => c.id && (!q || `${c.id} ${c.label} ${c.description}`.toLowerCase().includes(q)));
@@ -32,7 +33,7 @@ export function externalTools(backend: ExternalBackend) {
             parameterHints: compactParameterHints(c.params), requiresInspection: true })),
           next: matches.length > 40 ? 'Refine filter to see other matching commands.' : undefined });
       }),
-    tool('external_command', 'Execute one command from external_commands in a connected external app. The integration manager enforces user approvals and all existing security policies.',
+    tool('external_command', 'Execute an inspected command in a connected external app. Inspect with external_commands command_id first. The integration manager enforces user approvals and all existing security policies.',
       z.object({ app_key: identifier, command: z.string().min(1).max(128), params: argsSchema.optional() }).strict(), async ({ app_key, command, params }) => {
         // Recheck on every call: connected status, adapter and command availability may have changed since advertisement.
         const app = (await list()).find(a => a.key === app_key);

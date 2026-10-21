@@ -25,6 +25,8 @@ import { ClaudePartner, defaultClaudeCli, type PlanReference } from './claudePar
 import { ANTHROPIC_VAULT_ID, ClaudeAuth } from './claudeAuth';
 import { LiveTaskController } from './liveTask';
 import { runAgent } from './agentHarness/loop';
+import { TaskCheckpointStore } from './agentHarness/taskCheckpoint';
+import { stepSchema as planStepSchema, validatePlanEdit, type TaskPlan } from './agentHarness/taskPlan';
 import { nativeToolRegistry } from './agentHarness/nativeTools';
 import { addExternalTools } from './agentHarness/externalTools';
 import { OpenAICompatibleProvider } from './agentHarness/providers/openaiCompatible';
@@ -1171,16 +1173,46 @@ export function registerIpc(d: IpcDeps): void {
   }));
   // Independent model harness. Project-scoped; existing Claude path remains unchanged.
   let agentAbort: AbortController | null = null;
-  let pausedAgent: { goal: string; model: string; messages: import('./agentHarness/types').Message[] } | null = null;
+  let pausedAgent: { goal: string; model: string; messages: import('./agentHarness/types').Message[]; plan?: TaskPlan } | null = null;
   let agentState: AgentUiState = { status: 'idle', model: 'gpt-4.1-mini', goal: '', result: '', events: [] };
+  const taskStore = async () => new TaskCheckpointStore((await d.project()).root, safeStorage);
+  const restoreAgent = async () => {
+    if (agentAbort || pausedAgent || agentState.status !== 'idle') return;
+    const task = await (await taskStore()).load().catch(() => null);
+    if (!task || agentState.status !== 'idle') return;
+    pausedAgent = {goal: task.goal, model: task.model, messages: task.messages, plan:task.plan};
+    agentState = {status:task.status,model:task.model,goal:task.goal,
+      result:'Task restored from this project. Continue Task will inspect current application state before editing.',events:[],plan:task.plan};
+    publishAgent();
+  };
+  const checkpoint = async () => {
+    const store = await taskStore();
+    if (pausedAgent && (agentState.status === 'limit' || agentState.status === 'paused')) {
+      const ok = await store.save({ ...pausedAgent, status: agentState.status });
+      if (!ok) agentState = {...agentState,result:agentState.result + ' Note: checkpoint not saved (encryption unavailable or task too large).'};
+    } else await store.clear();
+  };
   const publishAgent = () => { const w = d.window(); if (w && !w.isDestroyed()) w.webContents.send(IPC.agentEvent, agentState); };
   const endAgent = () => { pausedAgent = null; agentAbort?.abort(); agentAbort = null; agentState = { status: 'idle', model: 'gpt-4.1-mini', goal: '', result: '', events: [] }; publishAgent(); };
   resetters.push(endAgent);
-  handle(IPC.agentState, none, () => agentState);
-  handle(IPC.agentStop, none, () => { pausedAgent = null; agentAbort?.abort(); return agentState; });
+  handle(IPC.agentState, none, async () => { await restoreAgent(); return agentState; });
+  handle(IPC.agentPlanUpdate, z.tuple([z.array(planStepSchema).max(20)]), async (steps) => {
+    await restoreAgent();
+    if (agentAbort || !pausedAgent || !['paused', 'limit'].includes(agentState.status))
+      throw new Error('The plan can only be edited while a saved task is paused or turn-limited.');
+    const plan = validatePlanEdit(pausedAgent.goal, steps);
+    const saved = { ...pausedAgent, status:agentState.status as 'paused'|'limit', plan };
+    if (!await (await taskStore()).save(saved))
+      throw new Error('Could not securely save this plan. No changes were applied.');
+    pausedAgent = { goal:saved.goal, model:saved.model, messages:saved.messages, plan };
+    agentState = { ...agentState, plan }; publishAgent();
+    return agentState;
+  });
+  handle(IPC.agentStop, none, async () => { pausedAgent = null; agentAbort?.abort(); await (await taskStore()).clear(); return agentState; });
   handle(IPC.agentRun, z.tuple([z.string().min(1).max(4000), z.string().min(1).max(80)]), async (goal, model) => {
     if (agentAbort || agentState.status === 'working') throw new Error('The independent agent is already working.');
     pausedAgent = null;
+    await (await taskStore()).clear().catch(() => undefined);
     if (partner?.state().status === 'working') throw new Error('Stop Claude before starting the independent agent.');
     const ctl = await live();
     if (ctl.snapshot().collab.activeOperation || ctl.snapshot().collab.phase === 'running') throw new Error('An application task is already running.');
@@ -1192,10 +1224,12 @@ export function registerIpc(d: IpcDeps): void {
       const outcome = await vault.withKey('openai', async (key) => {
         const provider = new OpenAICompatibleProvider({ model, baseUrl: 'https://api.openai.com/v1', getKey: async () => key });
         return runAgent({ goal, provider, registry: addExternalTools(nativeToolRegistry(ctl, await d.project(), { supportsVision: provider.supportsVision, createBlank: createAgentBlank }), external), ctl, signal: abort.signal,
+          onPlan: (plan) => { agentState = { ...agentState, plan }; publishAgent(); },
           onEvent: (event) => { agentState = { ...agentState, events: [...agentState.events, event].slice(-100) }; publishAgent(); } });
       });
-      pausedAgent = outcome.status === 'paused' ? { goal, model, messages: outcome.messages } : null;
-      agentState = { ...agentState, status: outcome.status, result: outcome.text }; publishAgent();
+      pausedAgent = (outcome.status === 'paused' || outcome.status === 'limit') ? { goal, model, messages: outcome.messages, plan:outcome.plan } : null;
+      agentState = { ...agentState, status: outcome.status, result: outcome.text, plan: outcome.plan };
+      await checkpoint().catch(() => { agentState = {...agentState, result: agentState.result + ' Note: local checkpoint could not be saved.'}; }); publishAgent();
       return agentState;
     } catch (error) {
       const message = error instanceof Error ? error.message : 'The agent failed.';
@@ -1205,7 +1239,8 @@ export function registerIpc(d: IpcDeps): void {
   });
 
   handle(IPC.agentResume, none, async () => {
-    if (!pausedAgent || agentState.status !== 'paused') throw new Error('No paused task is available to resume.');
+    await restoreAgent();
+    if (!pausedAgent || !['paused', 'limit'].includes(agentState.status)) throw new Error('No paused or turn-limited task is available to resume.');
     if (agentAbort || partner?.state().status === 'working') throw new Error('Another AI task is running.');
     const ctl = await live();
     const c = ctl.snapshot().collab;
@@ -1222,15 +1257,18 @@ export function registerIpc(d: IpcDeps): void {
     try {
       const outcome = await vault.withKey('openai', async (key) => {
         const provider = new OpenAICompatibleProvider({ model: saved.model, baseUrl: 'https://api.openai.com/v1', getKey: async () => key });
-        return runAgent({ goal: saved.goal, resumeMessages: saved.messages, provider,
+        return runAgent({ goal: saved.goal, resumeMessages: saved.messages, resumePlan:saved.plan, provider,
           registry: addExternalTools(nativeToolRegistry(ctl, await d.project(), { supportsVision: provider.supportsVision, createBlank: createAgentBlank }), external), ctl, signal: abort.signal,
+          onPlan: (plan) => { agentState = { ...agentState, plan }; publishAgent(); },
           onEvent: (event) => { agentState = { ...agentState, events: [...agentState.events, event].slice(-100) }; publishAgent(); } });
       });
-      pausedAgent = outcome.status === 'paused' ? { ...saved, messages: outcome.messages } : null;
-      agentState = { ...agentState, status: outcome.status, result: outcome.text }; publishAgent();
+      pausedAgent = (outcome.status === 'paused' || outcome.status === 'limit') ? { ...saved, messages: outcome.messages, plan:outcome.plan } : null;
+      agentState = { ...agentState, status: outcome.status, result: outcome.text, plan: outcome.plan };
+      await checkpoint().catch(() => { agentState = {...agentState, result: agentState.result + ' Note: local checkpoint could not be saved.'}; }); publishAgent();
       return agentState;
     } catch (error) {
       pausedAgent = null;
+      await (await taskStore()).clear();
       agentState = { ...agentState, status: abort.signal.aborted ? 'cancelled' : 'failed', result: error instanceof Error ? error.message : 'Resume failed.' }; publishAgent();
       return agentState;
     } finally { if (agentAbort === abort) agentAbort = null; }

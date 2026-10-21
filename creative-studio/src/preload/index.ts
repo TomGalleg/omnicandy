@@ -105,6 +105,7 @@ const api: StudioApi = {
     run: (goal, model) => ipcRenderer.invoke(IPC.agentRun, goal, model),
     stop: () => ipcRenderer.invoke(IPC.agentStop),
     resume: () => ipcRenderer.invoke(IPC.agentResume),
+    updatePlan: (steps) => ipcRenderer.invoke(IPC.agentPlanUpdate, steps),
     onChange: (cb) => {
       const listener = (_e: IpcRendererEvent, state: import('@shared/agentHarness').AgentUiState) => cb(state);
       ipcRenderer.on(IPC.agentEvent, listener);

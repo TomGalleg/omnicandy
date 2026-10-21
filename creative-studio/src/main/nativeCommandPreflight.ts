@@ -24,7 +24,22 @@ export function preflightNativeCommand(
   if (record.id !== command) return { status: 'rejected', reason: 'Command ID mismatch.' };
   const raw = record.params ?? record.parameters ?? record.inputSchema;
   const schema = normalizeNativeParameters(raw);
-  if (!schema || !schema.complete) {
+  if (!schema) return { status: 'unavailable', reason: 'Command parameter schema is incomplete or unsupported.' };
+  if (!schema.complete) {
+    // Even when types or alternatives cannot be normalized, known parameter
+    // names are still useful. Only reject an absent name when it is definitely
+    // not declared anywhere in the original schema. Never grant execution here.
+    for (const key of Object.keys(params)) {
+      if (Object.hasOwn(schema.properties, key)) continue;
+      const escape = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const declaration = new RegExp(`(?:[\\{,|]\\s*|^)['"]?${escape}['"]?\\s*(?:[?:},(]|$)`);
+      if (typeof raw === 'string' && declaration.test(raw)) continue;
+      // Structured schemas have a trustworthy explicit property list unless
+      // their root uses unknown alternatives/refs (then fail advisory-only).
+      if (typeof raw === 'string' && !raw.trim().startsWith('{')) continue;
+      if (typeof raw === 'object' && raw !== null && ('oneOf' in raw || 'anyOf' in raw || '$ref' in raw)) continue;
+      return { status: 'rejected', reason: `Unknown parameter "${key}" for ${command}. Inspect exact command ID.` };
+    }
     return { status: 'unavailable', reason: 'Command parameter schema is incomplete or unsupported.' };
   }
   // An unknown type for an optional *omitted* field is not grounds to block

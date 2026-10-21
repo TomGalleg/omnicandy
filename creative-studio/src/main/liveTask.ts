@@ -13,7 +13,6 @@
 //  Works with every live ArtCraft app (see LIVE_APPS); multi-step automation is PhotoCraft-only.
 
 import { randomUUID } from 'node:crypto';
-import { validateNativeCommandDetail } from './nativeCommandValidation';
 import { preflightNativeCommand } from './nativeCommandPreflight';
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -483,9 +482,13 @@ Result: ${(typeof res === 'string' ? res : JSON.stringify(res)).slice(0, 6000)}`
     if (!c.ok) throw new Error(c.reason);
     // Re-read the authoritative native schema before execution; applies to Claude and every other provider.
     const detail = await this.appCommandList(command);
-    const error = validateNativeCommandDetail(detail, command, c.params);
-    if (error) throw new Error(`validation: ${error}`);
-    return this.claudeRun(`${presetLabel(command)} (PhotoCraft)`, [{ command, params: c.params }]);
+    // Same rule as every other app: a parameter the schema parser cannot interpret (fill, stroke, path objects)
+    // is reported to the model but does not block, while unknown names, bad values and ranges are rejected here.
+    // The policy check above (paths, files, approval) has already run and is unchanged.
+    const preflight = preflightNativeCommand(detail, command, c.params);
+    if (preflight.status === 'rejected') throw new Error(`validation: ${preflight.reason}`);
+    const result = await this.claudeRun(`${presetLabel(command)} (PhotoCraft)`, [{ command, params: c.params }]);
+    return preflight.status === 'unavailable' ? `${result}\nParameter validation unavailable: ${preflight.reason}` : result;
   }
 
   /** The open app's engine commands (ids and parameters), optionally filtered by a word. */
@@ -499,12 +502,12 @@ Result: ${(typeof res === 'string' ? res : JSON.stringify(res)).slice(0, 6000)}`
   async claudeAppCommand(command: string, params: Record<string, unknown>): Promise<string> {
     if (this.appId === 'photocraft') return this.claudePhotoCraftCommand(command, params);
     let approved = false;
-    if (appCommandTier(command) === 'approval') {
+    if (appCommandTier(command, this.appId) === 'approval') {
       if (!this.d.approveCommand) throw new Error(`"${command}" needs the user's approval, which is not available here.`);
       approved = await this.d.approveCommand({ app: this.appId, appName: EDITOR_APPS[this.appId].name, command, params });
       if (!approved) throw new Error(`The user declined "${command}". Nothing was run.`);
     }
-    const c = checkAppCommand(command, params, { approved });
+    const c = checkAppCommand(command, params, { approved, appId: this.appId });
     if (!c.ok) throw new Error(c.reason);
     // Advisory only when the native app cannot provide a reliable schema. The
     // existing command policy and approval gates remain authoritative.

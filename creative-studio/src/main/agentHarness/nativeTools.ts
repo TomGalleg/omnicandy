@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { appendNativeCapabilityInspection } from '@shared/commandInspectionProjection';
 import type { LiveTaskController } from '../liveTask';
 import type { ProjectStore } from '../projectStore';
 import { BLANK_FILES, EDITOR_APPS, type EditorAppId } from '@shared/appEditors';
@@ -23,13 +24,17 @@ export function nativeToolRegistry(ctl: LiveTaskController, store: ProjectStore,
       return JSON.stringify((await ctl.statusForClaude()).open);
     }),
     tool('apply_edit', 'Apply an edit listed in get_status to the open app.', z.object({ edit_id: z.string().min(1).max(64), settings: values.optional() }).strict(), async ({edit_id,settings}) => ctl.claudeQuickEdit(edit_id, settings ?? {})),
-    tool('app_commands', 'Discover exact commands and parameters of the open app; do not guess command identifiers.', z.object({ filter: z.string().max(64).optional() }).strict(), async ({filter}) => ctl.appCommandList(filter)),
-    tool('app_command', 'Execute one advertised command in the current app. Existing permissions and human approvals always apply.', z.object({ command: z.string().min(1).max(128), params: values.optional() }).strict(), async ({command,params}) => ctl.claudeAppCommand(command,params ?? {})),
+    tool('app_commands', 'Search the open app by task noun (e.g. ellipse), then inspect one exact command ID for full parameters and valid ranges before executing. Never guess identifiers or missing schemas.', z.object({ filter: z.string().max(64).optional() }).strict(), async ({filter}) => appendNativeCapabilityInspection(await ctl.appCommandList(filter), filter)),
+    tool('app_command', 'Execute one command from an exact-ID app_commands inspection. Discovery does not grant permission: existing policy, validation and human approval gates always apply.', z.object({ command: z.string().min(1).max(128), params: values.optional() }).strict(), async ({command,params}) => ctl.claudeAppCommand(command,params ?? {})),
     tool('undo', 'Undo the last change to the active document.', empty, async () => ctl.claudeUndo()),
     tool('save_version', 'Save changes as a new library version only if the user requested a save.', empty, async () => {
       const s = ctl.snapshot();
       if (s.collab.lockOwner === 'user' || ['manual','pausing','paused'].includes(s.collab.phase)) throw new Error('User controls or paused document; stop and wait.');
-      return (await ctl.saveVersion()).message ?? 'Save operation completed.';
+      const before = new Set(s.savedVersionIds);
+      const saved = await ctl.saveVersion();
+      const versionId = saved.savedVersionIds.find(id => !before.has(id));
+      if (!versionId) throw new Error(saved.message ?? 'No new version was created; save not confirmed.');
+      return JSON.stringify({saved:true,versionId,message:saved.message ?? 'New library version created.'});
     }),
   ];
   const createBlank = opts.createBlank;

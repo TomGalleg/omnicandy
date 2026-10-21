@@ -96,3 +96,62 @@ describe('error recovery guidance', () => {
     expect(outcome.status).toBe('paused'); expect(calls).toBe(1);
   });
 });
+
+
+describe('turn-budget continuation', () => {
+  it('resumes a limited task after inspecting current state without replaying an edit', async () => {
+    const f = fakeController(); let edits = 0;
+    const registry = new ToolRegistry([
+      tool('get_status','Current document state',z.object({}).strict(),async () => `edits:${edits}`),
+      tool('edit','Make edit',z.object({}).strict(),async () => { edits++; return 'edit applied'; }),
+    ]);
+    const first = await runAgent({goal:'make one edit',provider:new ScriptedProvider([reply('edit')]),registry,ctl:f.ctl,maxTurns:1});
+    expect(first.status).toBe('limit');
+    expect(edits).toBe(1);
+    const second = await runAgent({goal:'make one edit',resumeMessages:first.messages,provider:new ScriptedProvider([final]),registry,ctl:f.ctl});
+    expect(second.status).toBe('completed');
+    expect(edits).toBe(1);
+    expect(second.messages.some(m=>m.role==='user' && m.content.includes('edits:1'))).toBe(true);
+    expect(second.messages.some(m=>m.role==='user' && m.content.includes('Do not replay finished actions'))).toBe(true);
+  });
+});
+
+
+describe('structured completion gate', () => {
+  it('does not report success while plan contains unfinished steps and allows safe continuation', async () => {
+    const f=fakeController();
+    const registry=new ToolRegistry();
+    const initial={goal:'Landscape',steps:[{id:'save',title:'Verify and save',status:'active' as const}]};
+    const outcome=await runAgent({goal:'Landscape',ctl:f.ctl,registry,provider:new ScriptedProvider([final, final]),resumePlan:initial,maxTurns:3});
+    expect(outcome.status).toBe('limit');
+    expect(outcome.text).toContain('save (active)');
+    expect(outcome.plan?.steps[0]?.status).toBe('active');
+    expect(outcome.messages.some(m=>m.role==='user' && m.content.includes('still has unfinished steps'))).toBe(true);
+  });
+  it('allows completing a plan after the model reconciles steps', async () => {
+    const f=fakeController();
+    // Completing a step now needs machine evidence: a confirmed new-version save receipt (or a passing evidence_verify).
+    const registry=new ToolRegistry([tool('save_version','Save',z.object({}).strict(),async ()=>'{"saved":true,"versionId":"asset-9","message":"Saved"}')]);
+    const initial={goal:'Landscape',steps:[{id:'save',title:'Verify and save',status:'active' as const}]};
+    const planReply={text:null,toolCalls:[{id:'plan-1',name:'task_plan',args:{steps:[{id:'save',title:'Verify and save',status:'completed',evidence:'Version asset-9 saved',receiptIds:['r1']}]}}]};
+    const outcome=await runAgent({goal:'Landscape',ctl:f.ctl,registry,provider:new ScriptedProvider([final,reply('save_version'),planReply,final]),resumePlan:initial,maxTurns:6});
+    expect(outcome.status).toBe('completed');
+    expect(outcome.plan?.steps[0]?.status).toBe('completed');
+  });
+  it('does not change the status of an empty-plan short task',async () => {
+    const f=fakeController();
+    const outcome=await runAgent({goal:'Read only',ctl:f.ctl,registry:new ToolRegistry(),provider:new ScriptedProvider([final])});
+    expect(outcome.status).toBe('completed');
+  });
+});
+
+describe('application execution receipts',()=>{
+  it('returns a receipt for successful application operations but none for failed ones',async()=>{
+    const f=fakeController();
+    const reg=new ToolRegistry([tool('app_command','Edit document',z.object({ok:z.boolean()}).strict(),async ({ok})=>ok?'accepted':{text:'not accepted',isError:true})]);
+    const outcome=await runAgent({goal:'edit',ctl:f.ctl,registry:reg,provider:new ScriptedProvider([reply('app_command',{ok:true}),reply('app_command',{ok:false}),final])});
+    const results=outcome.messages.filter(m=>m.role==='tool');
+    expect(results[0]?.content).toContain('Execution receipt: r1');
+    expect(results[1]?.content).not.toContain('Execution receipt:');
+  });
+});

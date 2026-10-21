@@ -35,7 +35,7 @@ export function parsePlainCommandCatalog(output: string): DiscoveredCommand[] {
     const last = commands[commands.length - 1];
     // Indented lines (descriptions, params) always continue the current command, never start one.
     // A trailing `*` is FigCraft's undoable marker (`commands --json` lists the id without it), not part of the id.
-    const match = /^\s/.test(original) ? null : line.match(/^([A-Za-z_][\w.:-]*)\*?(?:\s+(.*))?$/);
+    const match = /^\s/.test(original) ? null : line.match(/^(-?[A-Za-z0-9_][\w.:-]*)\*?(?:\s+(.*))?$/);
     const id = match?.[1];
     if (match && id) {
       commands.push({ id, label: match[2] || undefined });
@@ -70,7 +70,7 @@ export function formatDiscoveredCommands(data: unknown, filter?: string, app = '
   }
   const rows = entries.map((c) => {
     const summary = `${c.id}${c.label ? ` — ${c.label.slice(0, 150)}` : ''}`;
-    if (c.params === undefined) return summary;
+    if (c.params === undefined) return `${summary} [parameter schema unavailable in catalog; inspect exact id]`;
     const hints = compactParameterHints(c.params);
     return `${summary}${hints ? ` [${hints}]` : ''} [inspect exact id for full schema]`;
   });
@@ -81,7 +81,7 @@ export function formatDiscoveredCommands(data: unknown, filter?: string, app = '
   const page = lastToken ? Number(lastToken[1] ?? '') : 1;
   if (!Number.isSafeInteger(page) || page < 1) return 'Invalid page; use page:1, page:2, etc.';
   const q = requested.replace(/(?:^|\s)page:\d+(?=\s|$)/gi, ' ').trim().toLowerCase();
-  const matches = q ? rows.filter((row) => row.toLowerCase().includes(q)) : rows;
+  const matches = q ? rows.filter((_row, i) => `${entries[i]?.id ?? ''} ${entries[i]?.label ?? ''}`.toLowerCase().includes(q)) : rows;
   if (!matches.length) return `No ${app} commands match "${q}". Try a shorter filter.`;
   const pages = Math.ceil(matches.length / PAGE_SIZE);
   if (page > pages) return `${app} has ${matches.length} matching commands (${pages} pages). Page ${page} does not exist.`;
