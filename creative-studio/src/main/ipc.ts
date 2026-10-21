@@ -24,6 +24,11 @@ import { randomUUID } from 'node:crypto';
 import { ClaudePartner, defaultClaudeCli, type PlanReference } from './claudePartner';
 import { ANTHROPIC_VAULT_ID, ClaudeAuth } from './claudeAuth';
 import { LiveTaskController } from './liveTask';
+import { runAgent } from './agentHarness/loop';
+import { nativeToolRegistry } from './agentHarness/nativeTools';
+import { addExternalTools } from './agentHarness/externalTools';
+import { OpenAICompatibleProvider } from './agentHarness/providers/openaiCompatible';
+import type { AgentUiState } from '@shared/agentHarness';
 import { PhotoCraftCliAdapter } from './photocraftCli';
 import type { ProjectManager } from './projects';
 import { setBlenderLiveHooks } from './integrations/adapters/blenderLive';
@@ -950,25 +955,26 @@ export function registerIpc(d: IpcDeps): void {
   handle(IPC.builderCompat, z.tuple([projectId]), async (id) => builder.compatibility(id));
   handle(IPC.builderRefreshDocs, z.tuple([projectId]), async (id) => builder.refreshDocs(id));
 
+  // Shared blank-file implementation for both Claude and the independent agent.
+  const createAgentBlank = async (appId: EditorAppId, name?: string): Promise<{id:string;name:string}> => {
+    const ext = BLANK_FILES[appId];
+    if (!ext) throw new Error(`${EDITOR_APPS[appId].name} has no blank starter file.`);
+    const src = app.isPackaged ? path.join(process.resourcesPath, 'sample-project', 'blank', `blank.${ext}`) : path.join(app.getAppPath(), 'fixtures', 'sample-project', 'blank', `blank.${ext}`);
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'cc-blank-'));
+    try {
+      const file = path.join(dir, `${(name || 'New document').replace(/[^\w\- ]/g, '').trim().slice(0, 60) || 'New document'}.${ext}`);
+      await fs.copyFile(src, file);
+      const {asset} = await (await d.project()).importFile(file,{origin:'fixture',source:`Blank starter file made with ${EDITOR_APPS[appId].name}.`});
+      return {id:asset.id,name:asset.name};
+    } finally {await fs.rm(dir,{recursive:true,force:true});}
+  };
   let partner: ClaudePartner | null = null;
   resetters.push(() => { partner = null; });
   const claude = (): ClaudePartner => (partner ??= new ClaudePartner({
     live,
     store: d.project,
     openAsset: async (id, app) => { await openLive(id, app, 'claude'); },
-    newBlankFile: async (appId, name) => {
-      // These apps only edit library files, so start from a copy of the bundled blank file made by the app itself.
-      const ext = BLANK_FILES[appId];
-      if (!ext) throw new Error(`${EDITOR_APPS[appId].name} has no blank starter file; it works on media files already in the library.`);
-      const src = app.isPackaged ? path.join(process.resourcesPath, 'sample-project', 'blank', `blank.${ext}`) : path.join(app.getAppPath(), 'fixtures', 'sample-project', 'blank', `blank.${ext}`);
-      const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'cc-blank-'));
-      try {
-        const file = path.join(dir, `${(name || 'New document').replace(/[^\w\- ]/g, '').trim().slice(0, 60) || 'New document'}.${ext}`);
-        await fs.copyFile(src, file);
-        const { asset } = await (await d.project()).importFile(file, { origin: 'fixture', source: `Blank starter file made with ${EDITOR_APPS[appId].name}.` });
-        return { id: asset.id, name: asset.name };
-      } finally { await fs.rm(dir, { recursive: true, force: true }); }
-    },
+    newBlankFile: createAgentBlank,
     emit: (st) => { for (const w of BrowserWindow.getAllWindows()) if (!w.isDestroyed()) w.webContents.send(IPC.claudeEvent, st); },
     cliPath: defaultClaudeCli(),
     auth: claudeAuth,
@@ -1163,8 +1169,78 @@ export function registerIpc(d: IpcDeps): void {
       return { load: async () => (await s).readClaudeHistory(), save: async (items) => (await s).writeClaudeHistory(items) };
     })(),
   }));
+  // Independent model harness. Project-scoped; existing Claude path remains unchanged.
+  let agentAbort: AbortController | null = null;
+  let pausedAgent: { goal: string; model: string; messages: import('./agentHarness/types').Message[] } | null = null;
+  let agentState: AgentUiState = { status: 'idle', model: 'gpt-4.1-mini', goal: '', result: '', events: [] };
+  const publishAgent = () => { const w = d.window(); if (w && !w.isDestroyed()) w.webContents.send(IPC.agentEvent, agentState); };
+  const endAgent = () => { pausedAgent = null; agentAbort?.abort(); agentAbort = null; agentState = { status: 'idle', model: 'gpt-4.1-mini', goal: '', result: '', events: [] }; publishAgent(); };
+  resetters.push(endAgent);
+  handle(IPC.agentState, none, () => agentState);
+  handle(IPC.agentStop, none, () => { pausedAgent = null; agentAbort?.abort(); return agentState; });
+  handle(IPC.agentRun, z.tuple([z.string().min(1).max(4000), z.string().min(1).max(80)]), async (goal, model) => {
+    if (agentAbort || agentState.status === 'working') throw new Error('The independent agent is already working.');
+    pausedAgent = null;
+    if (partner?.state().status === 'working') throw new Error('Stop Claude before starting the independent agent.');
+    const ctl = await live();
+    if (ctl.snapshot().collab.activeOperation || ctl.snapshot().collab.phase === 'running') throw new Error('An application task is already running.');
+    const abort = new AbortController();
+    agentAbort = abort;
+    agentState = { status: 'working', model, goal, result: '', events: [] }; publishAgent();
+    try {
+      // Borrow the key only for this request. It never enters renderer state.
+      const outcome = await vault.withKey('openai', async (key) => {
+        const provider = new OpenAICompatibleProvider({ model, baseUrl: 'https://api.openai.com/v1', getKey: async () => key });
+        return runAgent({ goal, provider, registry: addExternalTools(nativeToolRegistry(ctl, await d.project(), { supportsVision: provider.supportsVision, createBlank: createAgentBlank }), external), ctl, signal: abort.signal,
+          onEvent: (event) => { agentState = { ...agentState, events: [...agentState.events, event].slice(-100) }; publishAgent(); } });
+      });
+      pausedAgent = outcome.status === 'paused' ? { goal, model, messages: outcome.messages } : null;
+      agentState = { ...agentState, status: outcome.status, result: outcome.text }; publishAgent();
+      return agentState;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'The agent failed.';
+      agentState = { ...agentState, status: abort.signal.aborted ? 'cancelled' : 'failed', result: message }; publishAgent();
+      return agentState;
+    } finally { if (agentAbort === abort) agentAbort = null; }
+  });
+
+  handle(IPC.agentResume, none, async () => {
+    if (!pausedAgent || agentState.status !== 'paused') throw new Error('No paused task is available to resume.');
+    if (agentAbort || partner?.state().status === 'working') throw new Error('Another AI task is running.');
+    const ctl = await live();
+    const c = ctl.snapshot().collab;
+    if (c.lockOwner === 'user' || ['manual','pausing','awaiting_approval','running'].includes(c.phase) || c.activeOperation)
+      throw new Error('Release manual control and finish any active operation before resuming.');
+    // releaseControl() moves manual ownership to 'paused'. Clear only that dormant
+    // collaboration state, never an active task, so claudeGate can acquire a new
+    // lock against the document's current version on the next edit.
+    if (c.phase === 'paused') ctl.cancel();
+    const saved = pausedAgent;
+    const abort = new AbortController();
+    agentAbort = abort;
+    agentState = { ...agentState, status: 'working', result: '' }; publishAgent();
+    try {
+      const outcome = await vault.withKey('openai', async (key) => {
+        const provider = new OpenAICompatibleProvider({ model: saved.model, baseUrl: 'https://api.openai.com/v1', getKey: async () => key });
+        return runAgent({ goal: saved.goal, resumeMessages: saved.messages, provider,
+          registry: addExternalTools(nativeToolRegistry(ctl, await d.project(), { supportsVision: provider.supportsVision, createBlank: createAgentBlank }), external), ctl, signal: abort.signal,
+          onEvent: (event) => { agentState = { ...agentState, events: [...agentState.events, event].slice(-100) }; publishAgent(); } });
+      });
+      pausedAgent = outcome.status === 'paused' ? { ...saved, messages: outcome.messages } : null;
+      agentState = { ...agentState, status: outcome.status, result: outcome.text }; publishAgent();
+      return agentState;
+    } catch (error) {
+      pausedAgent = null;
+      agentState = { ...agentState, status: abort.signal.aborted ? 'cancelled' : 'failed', result: error instanceof Error ? error.message : 'Resume failed.' }; publishAgent();
+      return agentState;
+    } finally { if (agentAbort === abort) agentAbort = null; }
+  });
+
   handle(IPC.claudeState, none, async () => { await claude().ready(); return claude().state(); });
-  handle(IPC.claudeSend, z.tuple([z.string().min(1).max(4000)]), (msg) => claude().send(msg));
+  handle(IPC.claudeSend, z.tuple([z.string().min(1).max(4000)]), (msg) => {
+    if (agentAbort) throw new Error('Stop the independent agent before starting Claude.');
+    return claude().send(msg);
+  });
 
   // ---- Reference files chosen on Home: held as paths in main, copied only after the plan is approved ----
   const pendingRefs = new Map<string, { path: string; name: string; kind: string; bytes: number }>();
@@ -1348,6 +1424,7 @@ export function registerIpc(d: IpcDeps): void {
       if (st.activeOperation || ['running', 'pausing', 'manual'].includes(st.phase)) throw new Error('Finish or cancel the current editing task before switching projects.');
     }
     if (partner?.state().status === 'working') throw new Error('Claude is still working. Stop it before switching projects.');
+    if (agentAbort) throw new Error('The independent AI is still working. Stop it before switching projects.');
     if (generation.isBusy) throw new Error('An image is being generated. Wait for it to finish before switching projects.');
     d.panel.close();
     d.embedded.release(true);

@@ -7,7 +7,7 @@
 //     any automated open/save outside the project (read) and its work/live folder (write).
 // Then talks to it through `photocraft-cli mcp --bridge 127.0.0.1:<port> --control-token-file …`.
 
-import { spawn, type ChildProcess } from 'node:child_process';
+import { execFile, spawn, type ChildProcess } from 'node:child_process';
 import { createHash, randomBytes } from 'node:crypto';
 import fs from 'node:fs/promises';
 import net from 'node:net';
@@ -17,6 +17,7 @@ import type { AppOperation } from '@shared/contracts';
 import type { TimelineDto, TimelineEdit } from '@shared/live';
 import { McpClient } from './mcpClient';
 import { binName } from '@shared/platform';
+import { formatDiscoveredCommands, parsePlainCommandCatalog } from './commandDiscovery';
 
 /** What the live task controller needs from an open document. Implemented for real below; faked in tests. */
 export interface LiveDoc {
@@ -153,6 +154,21 @@ export class LivePhotoCraft implements LiveDoc {
   async open(absPath: string): Promise<{ name: string }> {
     const r = (await this.client().callTool('doc_open', { path: absPath })) as { name?: string };
     return { name: r?.name ?? path.basename(absPath) };
+  }
+
+  /** PhotoCraft has no LiveAppBase listCommands implementation; use its official read-only CLI catalog. */
+  async listCommands(filter?: string): Promise<string> {
+    const exe = path.join(this.o.installDir, binName('photocraft-cli'));
+    const read = (args: string[]) => new Promise<string>((resolve, reject) => {
+      execFile(exe, args, { windowsHide: true, timeout: 30_000, maxBuffer: 16 * 1024 * 1024 },
+        (err, stdout) => err && !stdout ? reject(new Error('PhotoCraft command discovery failed.')) : resolve(stdout));
+    });
+    const catalog = await read(['commands', '--json']).catch(() => read(['commands']));
+    try { return formatDiscoveredCommands(JSON.parse(catalog), filter, 'PhotoCraft'); }
+    catch (e) {
+      if (catalog.trim().startsWith('[') || catalog.trim().startsWith('{')) throw e;
+      return formatDiscoveredCommands(parsePlainCommandCatalog(catalog), filter, 'PhotoCraft');
+    }
   }
 
   async run(op: AppOperation): Promise<void> {

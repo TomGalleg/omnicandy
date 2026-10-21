@@ -3,6 +3,7 @@
 import type { AppearanceSettings, AppProbeResult, Asset, ProjectManifest, ProjectSummary } from './types';
 import type { InstalledProgram } from './builder';
 import type { ClaudeAuthMode, ClaudeBilling, ClaudeState } from './claude';
+import type { AgentUiState } from './agentHarness';
 import type { ProjectPlan } from './projectPlan';
 
 export type ProjectMeta = Pick<ProjectManifest, 'kind' | 'brief' | 'objective'>;
@@ -77,6 +78,11 @@ export const IPC = {
   livePlayhead: 'live:playhead',
   liveSelectClip: 'live:select-clip',
   liveTimelineEdit: 'live:timeline-edit',
+  agentState: 'agent:state',
+  agentRun: 'agent:run',
+  agentStop: 'agent:stop',
+  agentResume: 'agent:resume',
+  agentEvent: 'agent:event',
   claudeState: 'claude:state',
   claudeSend: 'claude:send',
   claudePlanProject: 'claude:plan-project',
@@ -357,6 +363,13 @@ export interface StudioApi {
     /** Adds a library file as a clip or music, or moves/removes a clip (FilmCraft). */
     editTimeline(edit: TimelineEdit): Promise<LiveSnapshot>;
     onChange(cb: (s: LiveSnapshot) => void): () => void;
+  };
+  agent: {
+    state(): Promise<AgentUiState>;
+    run(goal: string, model: string): Promise<AgentUiState>;
+    stop(): Promise<AgentUiState>;
+    resume(): Promise<AgentUiState>;
+    onChange(cb: (state: AgentUiState) => void): () => void;
   };
   claude: {
     state(): Promise<ClaudeState>;

@@ -17,6 +17,7 @@ import type { AppOperation } from '@shared/contracts';
 import { McpClient } from './mcpClient';
 import { freePort, waitForPort, type LiveDoc } from './photocraftLive';
 import { binName } from '@shared/platform';
+import { formatDiscoveredCommands, parsePlainCommandCatalog } from './commandDiscovery';
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -112,21 +113,18 @@ abstract class LiveAppBase implements LiveDoc {
       const d = await this.cliText(['describe', f]).catch(() => '');
       if (d.trim() && !/unknown|no such|not found/i.test(d.slice(0, 120))) return d.trim().slice(0, 4000);
     }
-    const out = await this.cliText(['commands']);
-    let rows: string[];
-    try {
-      const list = JSON.parse(out) as Array<Record<string, unknown>>;
-      if (!Array.isArray(list)) throw new Error('not a list');
-      rows = list.filter((c) => typeof c.id === 'string').map((c) => `${c.id}${c.params ? ` ${String(typeof c.params === 'string' ? c.params : JSON.stringify(c.params)).slice(0, 300)}` : ''}${c.label ? ` — ${String(c.label)}` : ''}`);
-    } catch {
-      rows = out.split(/\r?\n/).map((l) => l.trim()).filter(Boolean).map((l) => l.replace(/\s{2,}/g, ' — '));
+    let out: string;
+    try { out = await this.cliText(['commands']); }
+    catch {
+      // Discover ENGINE command ids, not arbitrary MCP tool names that app_command cannot execute.
+      const catalog = await this.client().callTool('command_list', {}).catch(() => null);
+      if (catalog == null) throw new Error(`${this.appId} cannot discover engine commands through CLI or MCP.`);
+      return formatDiscoveredCommands(catalog, filter, this.appId);
     }
-    if (!rows.length) throw new Error(`${this.appId} lists no engine commands; use its quick edits (get_status).`);
-    const q = f.toLowerCase();
-    const hit = q ? rows.filter((r) => r.toLowerCase().includes(q)) : rows;
-    if (!hit.length) return `No ${this.appId} commands match "${filter}". Try a shorter word such as layer, text, frame, page, select or export.`;
-    const shown = hit.slice(0, 80);
-    return `${shown.join('\n')}${hit.length > shown.length ? `\n… ${hit.length - shown.length} more; narrow with a filter word, or pass one exact id for its full parameters.` : ''}`;
+    let commands: unknown;
+    try { commands = JSON.parse(out); }
+    catch { commands = parsePlainCommandCatalog(out); }
+    return formatDiscoveredCommands(commands, filter, this.appId);
   }
 
   stop() { this.mcp?.close(); this.mcp = null; this.gui = null; }

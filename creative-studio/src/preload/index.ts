@@ -100,6 +100,17 @@ const api: StudioApi = {
     },
   },
   setProjectMeta: (patch) => ipcRenderer.invoke(IPC.setProjectMeta, patch),
+  agent: {
+    state: () => ipcRenderer.invoke(IPC.agentState),
+    run: (goal, model) => ipcRenderer.invoke(IPC.agentRun, goal, model),
+    stop: () => ipcRenderer.invoke(IPC.agentStop),
+    resume: () => ipcRenderer.invoke(IPC.agentResume),
+    onChange: (cb) => {
+      const listener = (_e: IpcRendererEvent, state: import('@shared/agentHarness').AgentUiState) => cb(state);
+      ipcRenderer.on(IPC.agentEvent, listener);
+      return () => ipcRenderer.removeListener(IPC.agentEvent, listener);
+    },
+  },
   claude: {
     state: () => ipcRenderer.invoke(IPC.claudeState),
     send: (message) => ipcRenderer.invoke(IPC.claudeSend, message),
