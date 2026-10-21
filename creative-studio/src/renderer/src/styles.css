@@ -787,3 +787,8 @@ h1, h2, h3 { margin: 0; font-weight: 600; }
 .agent-plan-step { padding: 8px 0; border-bottom: 1px solid var(--border, #7773); }
 .agent-plan-editor input { flex: 1; min-width: 0; }
 .agent-plan-editor textarea { width: 100%; }
+
+/* Independent AI recovery status: disclosure only; no override or retry action. */
+.agent-recovery-panel { border: 1px solid var(--border, #7776); border-left: 3px solid #c58a3b; padding: 12px; margin: 10px 0; border-radius: 5px; }
+.agent-recovery-panel p { margin: 8px 0; }
+.agent-recovery-expected { margin: 8px 0; padding: 8px; background: var(--surface-raised, transparent); }

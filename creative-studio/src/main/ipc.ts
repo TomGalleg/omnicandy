@@ -26,6 +26,9 @@ import { ANTHROPIC_VAULT_ID, ClaudeAuth } from './claudeAuth';
 import { LiveTaskController } from './liveTask';
 import { runAgent } from './agentHarness/loop';
 import { TaskCheckpointStore } from './agentHarness/taskCheckpoint';
+import { EditIntentJournal } from './agentHarness/editIntentJournal';
+import { restoreRecoveryState, resumeFailureNotice } from './agentHarness/crashRecovery';
+import { recoveryPresentation } from './agentHarness/recoveryPresentation';
 import { stepSchema as planStepSchema, validatePlanEdit, type TaskPlan } from './agentHarness/taskPlan';
 import { nativeToolRegistry } from './agentHarness/nativeTools';
 import { addExternalTools } from './agentHarness/externalTools';
@@ -1173,17 +1176,36 @@ export function registerIpc(d: IpcDeps): void {
   }));
   // Independent model harness. Project-scoped; existing Claude path remains unchanged.
   let agentAbort: AbortController | null = null;
-  let pausedAgent: { goal: string; model: string; messages: import('./agentHarness/types').Message[]; plan?: TaskPlan } | null = null;
+  let pausedAgent: { goal: string; model: string; messages: import('./agentHarness/types').Message[]; plan?: TaskPlan; uncertainEdit?: string } | null = null;
   let agentState: AgentUiState = { status: 'idle', model: 'gpt-4.1-mini', goal: '', result: '', events: [] };
   const taskStore = async () => new TaskCheckpointStore((await d.project()).root, safeStorage);
+  const editJournal = async () => new EditIntentJournal((await d.project()).root, safeStorage);
+  const journalHooks = {
+    onEditBegin: async (tool:'app_command'|'external_command', command:string, args:unknown) => {
+      await (await editJournal()).begin(agentState.goal,tool,command,args);
+    },
+    onEditSettled: async (safe:boolean) => { if(safe)await (await editJournal()).clear(); },
+    onRecoveryResolved: async () => {await (await editJournal()).clear();},
+  };
   const restoreAgent = async () => {
     if (agentAbort || pausedAgent || agentState.status !== 'idle') return;
-    const task = await (await taskStore()).load().catch(() => null);
-    if (!task || agentState.status !== 'idle') return;
-    pausedAgent = {goal: task.goal, model: task.model, messages: task.messages, plan:task.plan};
-    agentState = {status:task.status,model:task.model,goal:task.goal,
-      result:'Task restored from this project. Continue Task will inspect current application state before editing.',events:[],plan:task.plan};
+    const restored = await restoreRecoveryState(await taskStore(), await editJournal());
+    if (restored.kind === 'empty') return;
+    if (restored.kind === 'orphan') {
+      agentState = { ...agentState, status: 'failed', result: restored.notice, recovery: recoveryPresentation(null, true) };
+      publishAgent();
+      return;
+    }
+    const { task } = restored;
+    pausedAgent = {goal: task.goal, model: task.model, messages: task.messages,
+      plan: task.plan, uncertainEdit: restored.uncertainEdit};
+    agentState = {status: task.status, model: task.model, goal: task.goal,
+      result: restored.notice, events: [], plan: task.plan, recovery: recoveryPresentation(restored.intent)};
     publishAgent();
+  };
+  const refreshRecoveryPresentation = async () => {
+    try { agentState = {...agentState, recovery: recoveryPresentation(await (await editJournal()).load())}; }
+    catch { agentState = {...agentState, recovery: recoveryPresentation(null, true)}; }
   };
   const checkpoint = async () => {
     const store = await taskStore();
@@ -1208,9 +1230,11 @@ export function registerIpc(d: IpcDeps): void {
     agentState = { ...agentState, plan }; publishAgent();
     return agentState;
   });
-  handle(IPC.agentStop, none, async () => { pausedAgent = null; agentAbort?.abort(); await (await taskStore()).clear(); return agentState; });
+  handle(IPC.agentStop, none, async () => { if (await (await editJournal()).load()) throw new Error('An unresolved edit journal exists. Continue Task to resolve it before discarding the session.'); pausedAgent = null; agentAbort?.abort(); await (await taskStore()).clear(); return agentState; });
   handle(IPC.agentRun, z.tuple([z.string().min(1).max(4000), z.string().min(1).max(80)]), async (goal, model) => {
     if (agentAbort || agentState.status === 'working') throw new Error('The independent agent is already working.');
+    const unresolved = await (await editJournal()).load();
+    if (unresolved) throw new Error('Unresolved edit journal found. Restore and resolve the previous task before starting a new one.');
     pausedAgent = null;
     await (await taskStore()).clear().catch(() => undefined);
     if (partner?.state().status === 'working') throw new Error('Stop Claude before starting the independent agent.');
@@ -1220,16 +1244,21 @@ export function registerIpc(d: IpcDeps): void {
     agentAbort = abort;
     agentState = { status: 'working', model, goal, result: '', events: [] }; publishAgent();
     try {
+      // Persist a minimal resumable seed before model/tool execution begins. A
+      // crash in the first run must not strand the write-ahead journal alone.
+      const seedSaved = await (await taskStore()).save({goal,model,status:'limit',messages:[{role:'user',content:goal}]});
+      if (!seedSaved) throw new Error('Secure task checkpoint unavailable. Editing was not started.');
       // Borrow the key only for this request. It never enters renderer state.
       const outcome = await vault.withKey('openai', async (key) => {
         const provider = new OpenAICompatibleProvider({ model, baseUrl: 'https://api.openai.com/v1', getKey: async () => key });
         return runAgent({ goal, provider, registry: addExternalTools(nativeToolRegistry(ctl, await d.project(), { supportsVision: provider.supportsVision, createBlank: createAgentBlank }), external), ctl, signal: abort.signal,
+          ...journalHooks,
           onPlan: (plan) => { agentState = { ...agentState, plan }; publishAgent(); },
           onEvent: (event) => { agentState = { ...agentState, events: [...agentState.events, event].slice(-100) }; publishAgent(); } });
       });
-      pausedAgent = (outcome.status === 'paused' || outcome.status === 'limit') ? { goal, model, messages: outcome.messages, plan:outcome.plan } : null;
+      pausedAgent = (outcome.status === 'paused' || outcome.status === 'limit') ? { goal, model, messages: outcome.messages, plan:outcome.plan, uncertainEdit:outcome.uncertainEdit } : null;
       agentState = { ...agentState, status: outcome.status, result: outcome.text, plan: outcome.plan };
-      await checkpoint().catch(() => { agentState = {...agentState, result: agentState.result + ' Note: local checkpoint could not be saved.'}; }); publishAgent();
+      await checkpoint().catch(() => { agentState = {...agentState, result: agentState.result + ' Note: local checkpoint could not be saved.'}; }); await refreshRecoveryPresentation(); publishAgent();
       return agentState;
     } catch (error) {
       const message = error instanceof Error ? error.message : 'The agent failed.';
@@ -1241,6 +1270,10 @@ export function registerIpc(d: IpcDeps): void {
   handle(IPC.agentResume, none, async () => {
     await restoreAgent();
     if (!pausedAgent || !['paused', 'limit'].includes(agentState.status)) throw new Error('No paused or turn-limited task is available to resume.');
+    // Check journal again even if the task was already restored in memory.
+    const unresolvedJournal = await (await editJournal()).load();
+    if (unresolvedJournal) pausedAgent = {...pausedAgent, uncertainEdit:`${unresolvedJournal.tool} (${unresolvedJournal.command})`};
+    agentState = { ...agentState, recovery: recoveryPresentation(unresolvedJournal) };
     if (agentAbort || partner?.state().status === 'working') throw new Error('Another AI task is running.');
     const ctl = await live();
     const c = ctl.snapshot().collab;
@@ -1257,19 +1290,31 @@ export function registerIpc(d: IpcDeps): void {
     try {
       const outcome = await vault.withKey('openai', async (key) => {
         const provider = new OpenAICompatibleProvider({ model: saved.model, baseUrl: 'https://api.openai.com/v1', getKey: async () => key });
-        return runAgent({ goal: saved.goal, resumeMessages: saved.messages, resumePlan:saved.plan, provider,
+        return runAgent({ goal: saved.goal, resumeMessages: saved.messages, resumePlan:saved.plan, resumeUncertainEdit:saved.uncertainEdit, resumeExpectedEdit:unresolvedJournal?.expected, provider,
           registry: addExternalTools(nativeToolRegistry(ctl, await d.project(), { supportsVision: provider.supportsVision, createBlank: createAgentBlank }), external), ctl, signal: abort.signal,
+          ...journalHooks,
           onPlan: (plan) => { agentState = { ...agentState, plan }; publishAgent(); },
           onEvent: (event) => { agentState = { ...agentState, events: [...agentState.events, event].slice(-100) }; publishAgent(); } });
       });
-      pausedAgent = (outcome.status === 'paused' || outcome.status === 'limit') ? { ...saved, messages: outcome.messages, plan:outcome.plan } : null;
+      pausedAgent = (outcome.status === 'paused' || outcome.status === 'limit') ? { ...saved, messages: outcome.messages, plan:outcome.plan, uncertainEdit:outcome.uncertainEdit } : null;
       agentState = { ...agentState, status: outcome.status, result: outcome.text, plan: outcome.plan };
-      await checkpoint().catch(() => { agentState = {...agentState, result: agentState.result + ' Note: local checkpoint could not be saved.'}; }); publishAgent();
+      await checkpoint().catch(() => { agentState = {...agentState, result: agentState.result + ' Note: local checkpoint could not be saved.'}; }); await refreshRecoveryPresentation(); publishAgent();
       return agentState;
     } catch (error) {
-      pausedAgent = null;
-      await (await taskStore()).clear();
-      agentState = { ...agentState, status: abort.signal.aborted ? 'cancelled' : 'failed', result: error instanceof Error ? error.message : 'Resume failed.' }; publishAgent();
+      // A resume can fail after an application edit was dispatched. Never
+      // discard the last good checkpoint or the write-ahead edit journal.
+      // The old transcript may lag behind the edit; state must be inspected.
+      let journalPresent = Boolean(unresolvedJournal);
+      try { journalPresent = Boolean(await (await editJournal()).load()); }
+      catch { journalPresent = true; } // unreadable journal must fail closed
+      pausedAgent = { ...saved, uncertainEdit: journalPresent
+        ? (saved.uncertainEdit ?? 'Unresolved edit journal') : saved.uncertainEdit };
+      agentState = { ...agentState, status: 'limit',
+        result: resumeFailureNotice(error instanceof Error ? error.message : 'Resume failed', journalPresent) };
+      // Existing encrypted checkpoint stays on disk. Refresh only if safe.
+      await checkpoint().catch(() => undefined);
+      await refreshRecoveryPresentation();
+      publishAgent();
       return agentState;
     } finally { if (agentAbort === abort) agentAbort = null; }
   });

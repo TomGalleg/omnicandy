@@ -117,7 +117,17 @@ export function registerTaskPlan(registry: ToolRegistry, initialGoal: string, in
       publish();
       return {text:`Task plan recorded (${steps.length} steps). A plan is not evidence of application changes.`,verified:false};
     }));
-  return {snapshot:()=>clonePlan(plan),record};
+  return {snapshot:()=>clonePlan(plan),record,
+    isReadbackReceipt: (id: string) => readbacks.has(id),
+    latestPassingCheck: () => [...checks].reverse().find(c => c.passed),
+    matchesRecordedRect: (receiptId: string, layer: number, rect: readonly number[]): boolean => {
+      const doc = readbacks.get(receiptId);
+      if (!doc || !receipts.some(r => r.id === receiptId && r.command === 'shape.info')) return false;
+      const reportedLayer = field(doc, 'layer');
+      if (!reportedLayer.exists || reportedLayer.value !== layer) return false;
+      return rect.length === 4 && rect.every((n,i) => field(doc, `live.rect.${i}`).value === n && field(doc,`live.rect.${i}`).exists);
+    },
+  };
 }
 
 /** Validate human plan edits before encrypted persistence. */

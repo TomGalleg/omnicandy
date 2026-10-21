@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { AgentUiState, AgentPlanStep } from '@shared/agentHarness';
 import { presentUnifiedAgent, validateUnifiedAgentRequest } from '@shared/unifiedAgentPresentation';
+import { recoveryUiFixture, type RecoveryFixture } from './recoveryUiFixture';
 
 // The existing IPC agent endpoint currently supports OpenAI models only.
 // Do not advertise other providers until their backend routes are wired.
@@ -17,6 +18,10 @@ export function IndependentAgent() {
   const [requestPending, setRequestPending] = useState(false);
   const [draftSteps, setDraftSteps] = useState<AgentPlanStep[]>([]);
   const [editingPlan, setEditingPlan] = useState(false);
+  const [recoveryFixture, setRecoveryFixture] = useState<RecoveryFixture>('off');
+  const fixture = recoveryUiFixture(recoveryFixture);
+  const previewActive = import.meta.env.DEV && !state.recovery && recoveryFixture !== 'off';
+  const recoveryToDisplay = state.recovery ?? (previewActive ? fixture.info : undefined);
   const presentation = useMemo(() => presentUnifiedAgent(state), [state]);
   const validationError = validateUnifiedAgentRequest(goal, model);
   const busy = presentation.busy || requestPending;
@@ -71,6 +76,31 @@ export function IndependentAgent() {
       <button className="btn" disabled={!presentation.canStop} onClick={stop}>Stop</button>
       <button className="btn" disabled={!presentation.canResume} onClick={resume}>Continue Task</button>
     </div>
+    {import.meta.env.DEV && <details className="agent-recovery-preview-controls">
+      <summary>Developer recovery UI preview (no commands executed)</summary>
+      <label>Simulated scenario: <select aria-label="Simulated recovery scenario" disabled={!!state.recovery} value={recoveryFixture} onChange={e => setRecoveryFixture(e.target.value as RecoveryFixture)}>
+        <option value="off">Off — live agent only</option>
+        <option value="unresolved">Unresolved edit — no read-back</option>
+        <option value="matching">Matching mock read-back</option>
+        <option value="mismatch">Mismatching mock read-back</option>
+        <option value="unreadable">Unreadable journal</option>
+      </select></label>
+      {previewActive && <p className="asset-meta">TEST DISPLAY ONLY — real agent and edit guards are unchanged. Do not use this preview to approve recovery.</p>}
+    </details>}
+    {recoveryToDisplay && <section className="agent-recovery-panel" role="status" aria-label="Unresolved edit recovery">
+      <strong>{previewActive ? 'SIMULATED recovery — UI TEST ONLY' : 'Unresolved edit — recovery required'}</strong>
+      <p>{recoveryToDisplay.message}</p>
+      {recoveryToDisplay.tool && <div className="asset-meta">Tool: {recoveryToDisplay.tool}</div>}
+      {recoveryToDisplay.command && <div className="asset-meta">Command: {recoveryToDisplay.command}</div>}
+      {recoveryToDisplay.startedAt && <div className="asset-meta">Recorded: {recoveryToDisplay.startedAt}</div>}
+      {recoveryToDisplay.expected && <div className="agent-recovery-expected">
+        <strong>Recorded expected outcome</strong>
+        <div>Layer {recoveryToDisplay.expected.layer}: rectangle [{recoveryToDisplay.expected.rect.join(', ')}]</div>
+      </div>}
+      <div className="asset-meta">{!previewActive ? 'Actual outcome: not independently verified. Editing stays guarded until reconciliation succeeds.' : fixture.actual}</div>
+      {previewActive && <div className="asset-meta">{fixture.explanation}</div>}
+      {!previewActive && presentation.canResume && <div className="asset-meta">Use Continue Task to inspect current application state. Do not repeat the uncertain edit.</div>}
+    </section>}
     {state.plan && <details open className="agent-task-plan">
       <summary>Task plan ({state.plan.steps.filter(step => step.status === 'completed').length}/{state.plan.steps.length} completed)</summary>
       <div className="asset-meta">{state.plan.goal}</div>

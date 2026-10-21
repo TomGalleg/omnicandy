@@ -28,6 +28,11 @@ describe('encrypted project task checkpoint',()=>{
     expect(raw.toString()).not.toContain('Edit shape');
     await s.clear();expect(await s.load()).toBeNull();
   });
+  it('retains the uncertain edit guard through an encrypted restart checkpoint',async()=>{
+    const {store:s}=await store();
+    expect(await s.save({...task,uncertainEdit:'app_command (shape.edit)'})).toBe(true);
+    expect((await s.load())?.uncertainEdit).toBe('app_command (shape.edit)');
+  });
   it('never writes plaintext when encryption is unavailable',async()=>{
     const {dir,store:s}=await store(fakeCrypto(false));expect(await s.save(task)).toBe(false);
     expect(await fs.readdir(dir)).toEqual([]);

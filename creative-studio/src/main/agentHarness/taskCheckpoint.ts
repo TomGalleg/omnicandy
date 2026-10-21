@@ -16,7 +16,7 @@ const messageSchema = z.discriminatedUnion('role', [
 const checkpointSchema = z.object({
   version: z.literal(1), goal: z.string().min(1).max(4000), model: z.string().min(1).max(80),
   status: z.enum(['paused','limit']), messages: z.array(messageSchema).min(1), plan: planSchema.optional(),
-  savedAt: z.string(),
+  savedAt: z.string(), uncertainEdit: z.string().min(1).max(240).optional(),
 });
 export type TaskCheckpoint = Omit<z.infer<typeof checkpointSchema>, 'version'|'savedAt'>;
 export interface CheckpointCrypto {
@@ -61,7 +61,7 @@ export class TaskCheckpointStore {
     catch (e) { if ((e as NodeJS.ErrnoException).code === 'ENOENT') return null; throw e; }
     try {
       const parsed=checkpointSchema.parse(JSON.parse(this.crypto.decryptString(bytes)));
-      return {goal:parsed.goal,model:parsed.model,status:parsed.status,messages:parsed.messages as Message[],...(parsed.plan?{plan:parsed.plan}:{})};
+      return {goal:parsed.goal,model:parsed.model,status:parsed.status,messages:parsed.messages as Message[],...(parsed.plan?{plan:parsed.plan}:{}),...(parsed.uncertainEdit?{uncertainEdit:parsed.uncertainEdit}:{})};
     } catch { return null; } // Corrupt / outdated / undecryptable checkpoint: never execute it.
   }
   async clear(): Promise<void> { await fs.rm(this.file(),{force:true}); }
