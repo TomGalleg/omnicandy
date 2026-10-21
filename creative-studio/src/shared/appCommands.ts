@@ -28,6 +28,22 @@ const NEVER_EXECUTION = new Set([
   'runscript', 'runfile', 'python', 'javascript', 'js', 'macroexecute',
 ]);
 
+// Verified against the read-only Patch 8E native command catalog audit.
+// These explicit legacy names supplement (but do not replace) semantic capabilities.
+// Keep context-sensitive commands scoped to their full IDs to avoid blocking ordinary edits.
+const SENSITIVE_APPROVAL = new Set([
+  'photo.converttodng', 'photo.editexternal',
+  'library.xmppreferences', 'library.toggleautowritexmp',
+  'library.smartpreviewslocation', 'folder.synchronize',
+  'refclose', 'session.revert', 'links.unembed', 'links.copyto',
+  'fields.setcode',
+]);
+const SENSITIVE_NEVER = new Set([
+  'plugin.run', 'plugins.runlast', 'home.addins',
+  'view.macros', 'tools.macros', 'prop.setexpression',
+  'widget.insert', 'widget.click',
+]);
+
 function commandParts(name: string): string[] {
   return name.replace(/([a-z0-9])([A-Z])/g, '$1.$2')
     .split(/[.:_-]/).filter(Boolean).map((part) => part.toLowerCase());
@@ -43,6 +59,9 @@ export type AppCommandTier = 'free' | 'approval' | 'never';
 export function appCommandTier(id: string): AppCommandTier {
   const name = id.startsWith('tool:') ? id.slice(5) : id;
   if (!/^[A-Za-z0-9_]+([.:_-][A-Za-z0-9_]+)*$/.test(name) || name.length > 128) return 'never';
+  const canonical = name.toLowerCase();
+  if (SENSITIVE_NEVER.has(canonical) || canonical.startsWith('scriptui.')) return 'never';
+  if (SENSITIVE_APPROVAL.has(canonical)) return 'approval';
   if (NEVER.test(name)) return 'never';
   const parts = commandParts(name);
   const lower = name.toLowerCase();
