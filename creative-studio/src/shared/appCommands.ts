@@ -8,7 +8,31 @@
 import { checkParamValues, type OpCheck } from './photocraftOps';
 
 const NEVER = /(^|\.)(prefs?|preferences|settings|options|createcraft)(\.|$)/i;
-const APPROVAL = /(^|\.)(file|files|open|save|saveAs|export|import|place|embed|link|script|scripts|action|actions|plugin|plugins|macro|macros|batch|automate|run|exec|shell|eval|download|upload|print|package|publish|recent)([A-Z.]|$)/;
+// Legacy app CLIs sometimes use all-lowercase, concatenated verb names.
+// This list is deliberately explicit: avoid treating arbitrary editing commands as file I/O.
+const APPROVAL_WORDS = new Set([
+  'file', 'files', 'open', 'save', 'saveas', 'export', 'import', 'embed',
+  'action', 'actions', 'plugin', 'plugins', 'macro', 'macros', 'batch', 'automate',
+  'download', 'upload', 'print', 'package', 'publish', 'recent',
+]);
+const APPROVAL_ALIASES = new Set([
+  'qsave', 'wblock', 'bsave', 'bsaveas', 'tableexport', 'plot', 'exportpdf',
+  'pdfbook', 'stylesmanager', 'plottermanager', 'new', 'recover', 'drawingrecovery',
+  'insert', 'xattach', 'compare', 'datalink', 'aliasedit', 'reinit',
+  'hatch.patterns', 'linetype', 'place', 'link', 'run',
+]);
+// Never hand arbitrary executable input to the native command bridge, even with approval.
+// A future script feature needs its own isolated, explicitly permissioned interface.
+const NEVER_EXECUTION = new Set([
+  'lisp', 'appload', 'eval', 'exec', 'execute', 'shell', 'script', 'scripts',
+  'runscript', 'runfile', 'python', 'javascript', 'js', 'macroexecute',
+]);
+
+function commandParts(name: string): string[] {
+  return name.replace(/([a-z0-9])([A-Z])/g, '$1.$2')
+    .split(/[.:_-]/).filter(Boolean).map((part) => part.toLowerCase());
+}
+
 
 const PROPERTY_TOOLS = /^(get|set)_property$|^add_keyframe$|^(get|set|remove|delete)_keyframes?$|^get_layer$/;
 const PROPERTY_PATH = /^(@\d+|#?[\w-]+(\/#?[\w-]+){0,8})$/;
@@ -20,9 +44,12 @@ export function appCommandTier(id: string): AppCommandTier {
   const name = id.startsWith('tool:') ? id.slice(5) : id;
   if (!/^[A-Za-z0-9_]+([.:_-][A-Za-z0-9_]+)*$/.test(name) || name.length > 128) return 'never';
   if (NEVER.test(name)) return 'never';
-  // Words inside snake_case or camelCase names count too (open_file, saveAs, exportPdf).
-  const words = name.replace(/_/g, '.').replace(/([a-z])([A-Z])/g, '$1.$2');
-  if (APPROVAL.test(name) || APPROVAL.test(words)) return 'approval';
+  const parts = commandParts(name);
+  const lower = name.toLowerCase();
+  // Match complete command names AND subcommands, without substring matching (e.g. "plotterColor").
+  if (parts.some((part) => NEVER_EXECUTION.has(part)) || NEVER_EXECUTION.has(lower)) return 'never';
+  if (APPROVAL_ALIASES.has(lower)) return 'approval';
+  if (parts.some((part) => APPROVAL_WORDS.has(part))) return 'approval';
   return 'free';
 }
 
