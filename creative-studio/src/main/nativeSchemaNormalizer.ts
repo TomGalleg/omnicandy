@@ -86,17 +86,34 @@ export function normalizeNativeParameters(raw: unknown): NativeSchema | null {
     if (ch==='}') { depth--; if (depth===0) { end=i; break; } }
   }
   if (end<0) return null;
+  // Multiple alternative top-level input objects cannot be safely reduced to
+  // the first branch. A result description after → / — is not an input branch.
+  const suffix = trimmed.slice(end + 1).trim();
+  const unsupportedAlternative = suffix.startsWith('|');
   const fields = splitTopLevel(trimmed.slice(1,end), ',').filter(Boolean);
   const properties: Record<string, NativeRule> = Object.create(null);
-  let complete = true;
+  let complete = !unsupportedAlternative;
   for (const field of fields) {
     const m = field.match(/^\s*(?:"([A-Za-z_][\w-]*)"|'([A-Za-z_][\w-]*)'|([A-Za-z_][\w-]*))(\?)?\s*(:)?\s*(.*)$/s);
     if (!m) { complete=false; continue; }
     const key = m[1] ?? m[2] ?? m[3]; const colon = !!m[5]; const value = m[6]?.trim() ?? '';
-    // A name without a parameter separator is not a trustworthy schema field.
-    if (!colon) { complete = false; continue; }
     if (!key || Object.hasOwn(properties,key)) { complete=false; continue; }
-    properties[key] = parseRule(colon ? value : '', !m[4] && !value.includes('=') && !/\?$/.test(value));
+    // Real Craft CLIs use {index?}, {path}, and {angle (degrees)}.
+    // Their *names* are trustworthy but their types often are not. Unknown
+    // values still fail closed in validateNormalizedNative; omitted optional
+    // parameters do not turn the entire command into an invalid schema.
+    if (!colon) {
+      const bare = value.trim();
+      // Bare field names must follow the lowercase CLI identifier convention.
+      // An uppercase placeholder such as BOGUS is not a trustworthy field schema.
+      if (!/^[a-z_][a-z0-9_-]*$/.test(key) || (bare && !/^\([^()]*\)$/.test(bare))) {
+        complete = false;
+        continue;
+      }
+      properties[key] = { type: 'unknown', required: !m[4] };
+      continue;
+    }
+    properties[key] = parseRule(value, !m[4] && !value.includes('=') && !/\?$/.test(value));
   }
   return { properties, complete };
 }
