@@ -13,6 +13,7 @@
 //  Works with every live ArtCraft app (see LIVE_APPS); multi-step automation is PhotoCraft-only.
 
 import { randomUUID } from 'node:crypto';
+import { validateNativeCommandDetail } from './nativeCommandValidation';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { collabReducer, initialCollabState, type CollabEvent, type CollabState } from '@shared/collaboration';
@@ -479,6 +480,10 @@ Result: ${(typeof res === 'string' ? res : JSON.stringify(res)).slice(0, 6000)}`
     }
     const c = checkPhotoCraftOp(command, params, { approved });
     if (!c.ok) throw new Error(c.reason);
+    // Re-read the authoritative native schema before execution; applies to Claude and every other provider.
+    const detail = await this.appCommandList(command);
+    const error = validateNativeCommandDetail(detail, command, c.params);
+    if (error) throw new Error(`validation: ${error}`);
     return this.claudeRun(`${presetLabel(command)} (PhotoCraft)`, [{ command, params: c.params }]);
   }
 

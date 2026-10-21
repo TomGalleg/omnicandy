@@ -22,7 +22,7 @@ describe('external application tools', () => {
     const commands = await registry.call(snap, 'external_commands', { app_key: 'fake-app' });
     expect(commands.text).toContain('create_cube');
     const result = await registry.call(snap, 'external_command', { app_key: 'fake-app', command: 'create_cube', params: {} });
-    expect(result.isError).toBeFalsy(); expect(result.text).toContain('verified');
+    expect(result.isError).toBeFalsy(); expect(result.text).toContain('verified'); expect(result.verified).toBe(true);
     expect(calls).toEqual([['fake-app', 'create_cube', {}, { background: false }]]);
   });
   it('blocks disconnected apps, unknown commands and invalid arguments', async () => {

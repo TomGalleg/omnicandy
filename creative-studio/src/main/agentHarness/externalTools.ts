@@ -51,7 +51,7 @@ export function externalTools(backend: ExternalBackend) {
           const category = classifyCommandError(`${result.error?.kind ?? ''} ${result.message} ${detail}`);
           throw new Error(`${category} (${result.error?.kind ?? 'app-error'}): ${result.message}${detail}`);
         }
-        return JSON.stringify(payload);
+        return { text: JSON.stringify(payload), verified: result.verified === true };
       }),
   ];
 }

@@ -24,13 +24,14 @@ export class ToolRegistry {
     } catch (e) { return { text: `Error: ${e instanceof Error ? e.message : String(e)}`.slice(0, 8000), isError: true }; }
   }
 }
-export function validated<T extends z.ZodTypeAny>(schema: T, fn: (args: z.infer<T>) => Promise<string>): ToolDef['execute'] {
+export function validated<T extends z.ZodTypeAny>(schema: T, fn: (args: z.infer<T>) => Promise<string | ToolResult>): ToolDef['execute'] {
   return async (args) => {
     const parsed = schema.safeParse(args);
     if (!parsed.success) return { text: `Error: Invalid tool arguments: ${z.prettifyError(parsed.error)}`.slice(0, 2000), isError: true };
-    return { text: await fn(parsed.data), verified: false };
+    const value = await fn(parsed.data);
+    return typeof value === 'string' ? { text: value, verified: false } : value;
   };
 }
-export function tool<T extends z.ZodTypeAny>(name: string, description: string, schema: T, fn: (args: z.infer<T>) => Promise<string>): ToolDef {
+export function tool<T extends z.ZodTypeAny>(name: string, description: string, schema: T, fn: (args: z.infer<T>) => Promise<string | ToolResult>): ToolDef {
   return { name, description, parameters: z.toJSONSchema(schema) as Record<string, unknown>, execute: validated(schema, fn) };
 }
