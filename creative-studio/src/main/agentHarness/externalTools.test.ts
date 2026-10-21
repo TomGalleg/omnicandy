@@ -56,3 +56,16 @@ describe('external command detail without catalog token waste', () => {
     expect(detail.text).toContain('"max":200');
   });
 });
+
+describe('preflight prevents invalid external execution', () => {
+  it('rejects wrong ranges without calling the manager', async () => {
+    let executed = 0;
+    const ranged = { ...spec, params: { radius: { type:'number', description:'', required:true, min:5, max:50 } } };
+    const backend = { list: async () => [{ ...app(), commands:[ranged] }], execute: async () => { executed++; return success; } } as unknown as IntegrationManager;
+    const registry = addExternalTools(new ToolRegistry(), backend);
+    const result = await registry.call(registry.snapshot(), 'external_command', { app_key:'fake-app', command:'create_cube', params:{radius:1} });
+    expect(result.isError).toBe(true);
+    expect(result.text).toContain('at least 5');
+    expect(executed).toBe(0);
+  });
+});

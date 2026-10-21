@@ -1,4 +1,5 @@
 import { compactParameterHints } from '../commandDiscovery';
+import { preflightExternalParams, classifyCommandError } from './commandPreflight';
 import { z } from 'zod';
 import type { IntegrationManager } from '../integrations/manager';
 import { tool, ToolRegistry } from './registry';
@@ -40,10 +41,16 @@ export function externalTools(backend: ExternalBackend) {
         if (!spec) throw new Error('Command is not advertised by this connected app. Run external_commands again.');
         // A long-running operation can outlive the model turn; job tracking is a separate milestone.
         if (spec.longRunning) throw new Error('Long-running external commands are not supported in this prototype.');
+        const problem = preflightExternalParams(spec, params ?? {});
+        if (problem) throw new Error(`validation: ${problem}`);
         const result = await backend.execute(app_key, command, params ?? {}, { background: false });
         const payload = { ok: result.ok, verified: result.verified, message: result.message,
           evidence: result.evidence, outputs: result.outputs, error: result.error };
-        if (!result.ok) throw new Error(`${result.error?.kind ?? 'app-error'}: ${result.message}`);
+        if (!result.ok) {
+          const detail = result.error?.message && result.error.message !== result.message ? ` ${result.error.message}` : '';
+          const category = classifyCommandError(`${result.error?.kind ?? ''} ${result.message} ${detail}`);
+          throw new Error(`${category} (${result.error?.kind ?? 'app-error'}): ${result.message}${detail}`);
+        }
         return JSON.stringify(payload);
       }),
   ];

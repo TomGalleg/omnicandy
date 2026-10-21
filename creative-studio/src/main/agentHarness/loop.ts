@@ -1,5 +1,6 @@
 import type { AgentEvent, AgentOutcome, Message, ModelProvider } from './types';
 import { ToolRegistry } from './registry';
+import { classifyCommandError } from './commandPreflight';
 import type { LiveTaskController } from '../liveTask';
 
 const active = new WeakSet<LiveTaskController>();
@@ -15,7 +16,7 @@ const paused = (ctl: LiveTaskController) => {
   const c = ctl.snapshot().collab;
   return c.lockOwner === 'user' || ['manual','pausing','paused','awaiting_approval'].includes(c.phase);
 };
-const stopText = /stop and wait|do not retry|user declined|user paused|user cancelled|taken control|not available here/i;
+const stopText = /stop and wait|do not retry|user declined|user paused|user cancelled|taken control|not available here|permission[- ]denied|user did not allow|not approved/i;
 export async function runAgent(args: { goal: string; provider: ModelProvider; registry: ToolRegistry; ctl: LiveTaskController; signal?: AbortSignal; maxTurns?: number; maxToolCalls?: number; onEvent?: (event: AgentEvent) => void; resumeMessages?: Message[] }): Promise<AgentOutcome> {
   const { provider, registry, ctl } = args;
   if (active.has(ctl) || ctl.snapshot().collab.activeOperation || ctl.snapshot().collab.phase === 'running') throw new Error('Another application task is already running.');
@@ -70,7 +71,14 @@ export async function runAgent(args: { goal: string; provider: ModelProvider; re
             calls++;
             emit({kind:'tool',text:JSON.stringify(call.args).slice(0,2000),callId:call.id,tool:call.name});
             r = await registry.call(snapshot,call.name,call.args);
-            if (r.isError && !stopText.test(r.text)) failedCalls.set(signature, (failedCalls.get(signature) ?? 0) + 1);
+            if (r.isError && !stopText.test(r.text)) {
+              failedCalls.set(signature, (failedCalls.get(signature) ?? 0) + 1);
+              // Give the model a deterministic recovery hint, but never retry an edit automatically.
+              const category = classifyCommandError(r.text);
+              if (category === 'validation') r = { ...r, text: `${r.text}\nRecovery: Inspect the exact command schema and submit corrected parameters; do not repeat identical arguments.` };
+              else if (category === 'unavailable') r = { ...r, text: `${r.text}\nRecovery: Refresh application/command discovery; do not assume the previous command remains available.` };
+              else r = { ...r, text: `${r.text}\nRecovery: Outcome may be partial or unknown. Inspect current state before any new execution.` };
+            }
             if (paused(ctl) || (r.isError && stopText.test(r.text))) halt='paused';
           }
         }

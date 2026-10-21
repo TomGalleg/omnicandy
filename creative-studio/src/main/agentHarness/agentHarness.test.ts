@@ -80,3 +80,19 @@ describe('repeated tool failure guard', () => {
     expect(f.done).toBe(1);
   });
 });
+
+describe('error recovery guidance', () => {
+  it('suggests schema inspection after invalid arguments without retrying automatically', async () => {
+    const f = fakeController(); let calls = 0;
+    const registry = new ToolRegistry([tool('edit', 'Edit', z.object({n:z.number().min(5)}).strict(), async () => {calls++;return 'done';})]);
+    const outcome = await runAgent({goal:'edit',ctl:f.ctl,registry,provider:new ScriptedProvider([reply('edit',{n:1}),final])});
+    expect(outcome.messages.find(m=>m.role==='tool')?.content).toContain('Inspect the exact command schema');
+    expect(calls).toBe(0);
+  });
+  it('stops after permission-denied without a second model call', async () => {
+    const f = fakeController(); let calls = 0;
+    const registry = new ToolRegistry([tool('permission', 'Forbidden action', z.object({}).strict(), async () => {calls++;throw new Error('permission-denied: user did not allow');})]);
+    const outcome = await runAgent({goal:'edit',ctl:f.ctl,registry,provider:new ScriptedProvider([reply('permission'),final])});
+    expect(outcome.status).toBe('paused'); expect(calls).toBe(1);
+  });
+});
