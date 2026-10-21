@@ -14,6 +14,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { validateNativeCommandDetail } from './nativeCommandValidation';
+import { preflightNativeCommand } from './nativeCommandPreflight';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { collabReducer, initialCollabState, type CollabEvent, type CollabState } from '@shared/collaboration';
@@ -505,7 +506,17 @@ Result: ${(typeof res === 'string' ? res : JSON.stringify(res)).slice(0, 6000)}`
     }
     const c = checkAppCommand(command, params, { approved });
     if (!c.ok) throw new Error(c.reason);
-    return this.claudeRun(`${command} (${EDITOR_APPS[this.appId].name})`, [{ command, params: c.params }]);
+    // Advisory only when the native app cannot provide a reliable schema. The
+    // existing command policy and approval gates remain authoritative.
+    let detail: string | undefined;
+    try { detail = await this.appCommandList(command); }
+    catch { /* Some native drivers cannot describe commands. Retain legacy execution. */ }
+    const preflight = preflightNativeCommand(detail, command, c.params);
+    if (preflight.status === 'rejected') throw new Error(`validation: ${preflight.reason}`);
+    const result = await this.claudeRun(`${command} (${EDITOR_APPS[this.appId].name})`, [{ command, params: c.params }]);
+    return preflight.status === 'unavailable'
+      ? `${result}\nParameter validation unavailable: ${preflight.reason}`
+      : result;
   }
 
   async claudeUndo(): Promise<string> {
