@@ -35,12 +35,15 @@ describe('the agent and a seeded plan', () => {
   const final = { text: 'All done!', toolCalls: [] };
   it('shows the plan at once and cannot finish while its steps are unfinished: the task stays resumable with the plan kept', async () => {
     const seen: TaskPlan[] = [];
-    const r = await runAgent({ goal: goal(['Create the project', 'Model four towers', 'Add roofs']), ctl: idle(), registry: new ToolRegistry(), provider: new ScriptedProvider([final, final, final]), onPlan: (p) => seen.push(p) });
+    const r = await runAgent({ goal: goal(['Create the project', 'Model four towers', 'Add roofs']), ctl: idle(), registry: new ToolRegistry(), provider: new ScriptedProvider([final, final, final, final]), onPlan: (p) => seen.push(p) });
     expect(seen[0]!.steps.length).toBe(3); // visible before any work
     expect(r.status).toBe('limit'); // not "completed": Continue Task is enabled
     expect(r.text).toMatch(/Remaining plan steps: step1 \(active\): Create the project; step2 \(pending\)/);
     expect(r.plan?.steps.map((s) => s.title)).toEqual(['Create the project', 'Model four towers', 'Add roofs']); // what the checkpoint saves
     expect(r.messages.some((m) => m.role === 'user' && m.content.includes('recorded as 3 task steps'))).toBe(true);
+    const nudges = r.messages.filter((m) => m.role === 'user' && m.content.includes('still has unfinished steps'));
+    expect(nudges.length).toBe(3); // three nudges to act, then it stops resumable
+    expect(nudges[1]!.content).toMatch(/answered with text again.*next reply must be a tool call for step1/);
   });
   it('leaves tasks without a plan, and resumed tasks with their own saved plan, alone', async () => {
     const plain = await runAgent({ goal: 'say hello', ctl: idle(), registry: new ToolRegistry(), provider: new ScriptedProvider([final]) });

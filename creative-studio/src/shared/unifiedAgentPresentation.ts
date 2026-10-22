@@ -15,6 +15,8 @@ export interface UnifiedAgentPresentation {
   latestProblem?: string;
   /** The newest activity label, for a one-line "now" display while the full list is collapsed. */
   now?: string;
+  /** What the AI itself last said to the user (its own words, not tool output), so a stop is never unexplained. */
+  lastModelText?: string;
 }
 
 /**
@@ -62,6 +64,7 @@ export function presentUnifiedAgent(state: AgentUiState): UnifiedAgentPresentati
     activities,
     latestProblem: [...activities].reverse().find((a) => a.reason)?.reason,
     now: activities.at(-1)?.label,
+    lastModelText: [...state.events].reverse().find((e) => e.kind === 'model' && e.text.trim() && !/^(Final response deferred|Fresh read-back recorded|A fresh trusted read-back)/.test(e.text))?.text.trim().slice(0, 1500),
   };
 }
 

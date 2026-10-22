@@ -163,6 +163,7 @@ export function IndependentAgent({ provider }: { provider: AgentProviderId }) {
       ? <details className="notice" role="status"><summary>{presentation.result.slice(0, presentation.result.indexOf('. ') + 1 || 120)}</summary>{presentation.result}</details>
       : <div className="notice" role="status">{presentation.result}</div>)}
     {!busy && presentation.latestProblem && presentation.canResume && <div className="notice" role="status" aria-label="Why the task stopped"><strong>What went wrong:</strong> {presentation.latestProblem}</div>}
+    {!busy && presentation.canResume && presentation.lastModelText && <details className="notice" aria-label="What the AI said last"><summary>What the AI said last</summary><div style={{ whiteSpace: 'pre-wrap' }}>{presentation.lastModelText}</div></details>}
     {busy && presentation.now && <div className="asset-meta" role="status" aria-label="Current step">Now: {presentation.now}</div>}
     {presentation.activities.length > 0 && <details className="agent-activity">
       <summary>Activity ({presentation.activities.length} steps{presentation.activities.some((a) => a.failed) ? `, ${presentation.activities.filter((a) => a.failed).length} failed` : ''})</summary>

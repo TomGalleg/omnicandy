@@ -106,7 +106,7 @@ export async function runAgent(args: { goal: string; provider: ModelProvider; re
   const readbackSeq = new Map<string, number>();
   let verificationReminderSent = false;
   let calls = 0;
-  let completionReminderSent = false;
+  let completionReminders = 0; // a model that answers with prose while steps remain is pushed (up to 3 times) to act instead of asking
   // A failed write may have partially changed the document. Require an actual
   // read-only inspection before attempting another write. No automatic replay.
   let uncertainEdit: string | undefined = args.resumeUncertainEdit;
@@ -145,9 +145,10 @@ export async function runAgent(args: { goal: string; provider: ModelProvider; re
         const incomplete = planControl.snapshot().steps.filter(step => step.status !== 'completed');
         if (incomplete.length) {
           const remaining = incomplete.map(step => `${step.id} (${step.status}): ${step.title}`).join('; ').slice(0, 3500);
-          if (!completionReminderSent && turn + 1 < maxTurns) {
-            completionReminderSent = true;
-            messages.push({role:'user',content:`Your task plan still has unfinished steps: ${remaining}. Continue using available inspection and editing tools. Verify actual state before marking steps completed; never claim a saved version without a tool result confirming it. If blocked, state the blocker and preserve the task.`});
+          if (completionReminders < 3 && turn + 1 < maxTurns) {
+            completionReminders++;
+            const next = incomplete[0]!;
+            messages.push({role:'user',content:`Your task plan still has unfinished steps: ${remaining}.${completionReminders > 1 ? ` You answered with text again. Do not ask the user for preferences or describe what you will do: your next reply must be a tool call for ${next.id} (${next.title.slice(0, 120)}).` : ''} Continue using available inspection and editing tools. Verify actual state before marking steps completed; never claim a saved version without a tool result confirming it. If blocked, state the blocker and preserve the task.`});
             emit({kind:'model',text:'Final response deferred: structured plan still contains unfinished steps.'});
             continue;
           }

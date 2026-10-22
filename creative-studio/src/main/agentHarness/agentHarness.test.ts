@@ -122,7 +122,7 @@ describe('structured completion gate', () => {
     const f=fakeController();
     const registry=new ToolRegistry();
     const initial={goal:'Landscape',steps:[{id:'save',title:'Verify and save',status:'active' as const}]};
-    const outcome=await runAgent({goal:'Landscape',ctl:f.ctl,registry,provider:new ScriptedProvider([final, final]),resumePlan:initial,maxTurns:3});
+    const outcome=await runAgent({goal:'Landscape',ctl:f.ctl,registry,provider:new ScriptedProvider([final, final, final]),resumePlan:initial,maxTurns:3});
     expect(outcome.status).toBe('limit');
     expect(outcome.text).toContain('save (active)');
     expect(outcome.plan?.steps[0]?.status).toBe('active');

@@ -43,6 +43,14 @@ describe('unified agent renderer presentation', () => {
     expect(explainFailure('Error: Identical tool call already failed twice. Stop retrying')).toMatch(/repeated a failing call/);
     expect(explainFailure('Error: Previous external_command (scene.build) returned an uncertain result. Further edits remain blocked')).toMatch(/recovery lock/);
   });
+  it('keeps the AI own last words so a stop is explained, but not its internal deferral notes', () => {
+    const view = presentUnifiedAgent(state('limit', [
+      {kind:'model',text:'I will add the roofs next. Shall I use blue tiles?'},
+      {kind:'model',text:'Final response deferred: structured plan still contains unfinished steps.'},
+    ]));
+    expect(view.lastModelText).toBe('I will add the roofs next. Shall I use blue tiles?');
+    expect(presentUnifiedAgent(state('limit', [])).lastModelText).toBeUndefined();
+  });
   it('caps the activity timeline at fifty entries', () => {
     const events = Array.from({length:75}, () => ({kind:'stop' as const,text:'stopped'}));
     expect(presentUnifiedAgent(state('completed', events)).activities).toHaveLength(50);
