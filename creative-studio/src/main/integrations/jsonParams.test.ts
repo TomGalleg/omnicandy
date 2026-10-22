@@ -114,7 +114,12 @@ describe('JSON parameters', () => {
   it('are validated up front by the agent harness too, without weakening other parameters', () => {
     const build = BLENDER_MANIFEST.commands.find((c) => c.id === 'scene.build')!;
     expect(build.params.spec).toMatchObject({ type: 'json', required: true });
-    expect(preflightExternalParams(build, { file_name: 'a.blend', spec: '{bad' })).toMatch(/valid JSON/);
+    expect(preflightExternalParams(build, { file_name: 'a.blend', spec: '{bad' })).toMatch(/valid JSON.*Expected: .*batch_id/);
+    const script = BLENDER_MANIFEST.commands.find((c) => c.id === 'script.run')!;
+    const bare = preflightExternalParams(script, { file_name: 'a.blend', script: 'import bpy' });
+    expect(bare).toMatch(/valid JSON/);
+    expect(bare).toMatch(/JSON OBJECT with two text fields, never a bare string of code.*"purpose".*"code"/);
+    expect(script.description).toMatch(/Do NOT use it for towers, walls, roofs/);
     expect(preflightExternalParams(build, { file_name: 'a.blend' })).toMatch(/Missing required parameter "spec"/);
     expect(preflightExternalParams(build, { file_name: 'a.blend', spec: { batch_id: 'a', objects: [] }, nope: 1 })).toMatch(/Unknown parameter "nope"/);
     expect(preflightExternalParams(build, { file_name: 'a.blend', spec: { batch_id: 'a', objects: [{ id: 'x', kind: 'box' }] } })).toBeUndefined();

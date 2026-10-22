@@ -45,7 +45,7 @@ export const BATCH_COMMANDS: CommandSpec[] = [
     description: `Creates or updates up to ${MAX_BATCH_OBJECTS} objects in one saved step from a strict spec (see discover.search name "spec"). Every object has a stable id (cc_id); repeating the same batch_id + chunk with the same spec does nothing, with a different spec it is refused. Larger scenes: several calls with the same batch_id and chunk {index,total}. The spec is checked before anything changes and the project file is replaced atomically.`,
     params: {
       file_name: FILE,
-      spec: { type: 'json', description: 'The scene spec: {batch_id, chunk?, objects:[{id, kind, name?, collection?, parent_id?, loc?, rot_deg?, scale?, shape?, origin?, smooth?, material?, modifiers?, light?, camera?}], scene?}.', required: true, maxChars: BUILD_SPEC_MAX_CHARS, maxDepth: BUILD_SPEC_MAX_DEPTH },
+      spec: { type: 'json', description: 'The scene spec: {batch_id, chunk?, objects:[{id, kind, name?, collection?, parent_id?, loc?, rot_deg?, scale?, shape?, origin?, smooth?, material?, modifiers?, light?, camera?}], scene?}. Example (a tower with a roof): {"batch_id":"castle-1","objects":[{"id":"tower-a","kind":"cylinder","loc":[4,4,0],"origin":"base","shape":{"radius":1.2,"depth":6}},{"id":"roof-a","kind":"cone","parent_id":"tower-a","loc":[0,0,6],"origin":"base","shape":{"radius":1.5,"depth":2}}]}. Pass it as an object.', required: true, maxChars: BUILD_SPEC_MAX_CHARS, maxDepth: BUILD_SPEC_MAX_DEPTH },
     },
   },
 ];

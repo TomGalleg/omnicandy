@@ -513,7 +513,7 @@ export function validateParams(cmd: CommandSpec, raw: Record<string, unknown>): 
     } else if (spec.type === 'json') {
       // Size, depth and syntax are checked here; the adapter factory checks the schema (validateJson) before anything is dispatched.
       const j = normalizeJsonParam(v, k, { maxChars: spec.maxChars, maxDepth: spec.maxDepth });
-      if (!j.ok) return j.error;
+      if (!j.ok) return `${j.error} Expected: ${spec.description}`;
       v = j.text;
     } else if (typeof v !== 'string' || v.length > 512) return `"${k}" must be text (up to 512 characters).`;
     out[k] = v as string | number | boolean;

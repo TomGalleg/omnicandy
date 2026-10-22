@@ -23,7 +23,7 @@ export function preflightExternalParams(cmd: CommandSpec, raw: Record<string, un
       if (typeof value !== 'boolean') return `Parameter "${key}" must be true or false.`;
     } else if (spec.type === 'json') {
       const j = normalizeJsonParam(value, key, { maxChars: spec.maxChars, maxDepth: spec.maxDepth });
-      if (!j.ok) return j.error;
+      if (!j.ok) return `${j.error} Expected: ${spec.description}`;
     } else if (typeof value !== 'string' || value.length > 512) {
       return `Parameter "${key}" must be text (up to 512 characters).`;
     }
