@@ -47,10 +47,11 @@ describe('offline command intelligence end-to-end', () => {
         invoke('2', 'external_commands', { app_key: 'cad-1', filter: 'cube' }),
         invoke('3', 'external_commands', { app_key: 'cad-1', command_id: 'create_cube' }),
         invoke('4', 'external_command', { app_key: 'cad-1', command: 'create_cube', params: { size: 4 } }),
-        final,
+        final, final,
       ]),
     });
-    expect(outcome.status).toBe('completed');
+    // The completion gate requires a passing evidence_verify after a state change.
+    expect(outcome.status).toBe('limit');
     const toolMessages = outcome.messages.filter(m => m.role === 'tool');
     expect(toolMessages).toHaveLength(4);
     expect(toolMessages[1]!.content).toContain('size?:number(2..10)');
@@ -117,10 +118,10 @@ describe('offline command intelligence end-to-end', () => {
     const outcome = await runAgent({ goal:'Draw a circle', ctl:ctl.ctl,registry,
       provider:new ScriptedProvider([
         invoke('discover','app_commands',{filter:'circle'}),
-        invoke('execute','app_command',{command:'shape.circle',params:{radius:10}}),final,
+        invoke('execute','app_command',{command:'shape.circle',params:{radius:10}}),final,final,
       ]),
     });
-    expect(outcome.status).toBe('completed');
+    expect(outcome.status).toBe('limit');
     expect(executions).toBe(1);
     expect(ctl.released).toBe(1);
   });

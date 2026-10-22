@@ -30,6 +30,7 @@ import { EditIntentJournal } from './agentHarness/editIntentJournal';
 import { restoreRecoveryState, resumeFailureNotice } from './agentHarness/crashRecovery';
 import { recoveryPresentation } from './agentHarness/recoveryPresentation';
 import { recoveryIpcState } from './agentHarness/recoveryIpcState';
+import { agentBudgetSchema } from './agentHarness/executionBudget';
 import { stepSchema as planStepSchema, validatePlanEdit, type TaskPlan } from './agentHarness/taskPlan';
 import { nativeToolRegistry } from './agentHarness/nativeTools';
 import { addExternalTools } from './agentHarness/externalTools';
@@ -1177,6 +1178,8 @@ export function registerIpc(d: IpcDeps): void {
   }));
   // Independent model harness. Project-scoped; existing Claude path remains unchanged.
   let agentAbort: AbortController | null = null;
+  // Validated by agentBudgetSchema. Reused by Continue Task; after an app restart the conservative defaults apply.
+  let agentBudget: { maxTurns?: number; maxToolCalls?: number } = {};
   let pausedAgent: { goal: string; model: string; messages: import('./agentHarness/types').Message[]; plan?: TaskPlan; uncertainEdit?: string } | null = null;
   let agentState: AgentUiState = { status: 'idle', model: 'gpt-4.1-mini', goal: '', result: '', events: [] };
   const taskStore = async () => new TaskCheckpointStore((await d.project()).root, safeStorage);
@@ -1225,11 +1228,12 @@ export function registerIpc(d: IpcDeps): void {
     return agentState;
   });
   handle(IPC.agentStop, none, async () => { if (await (await editJournal()).load()) throw new Error('An unresolved edit journal exists. Continue Task to resolve it before discarding the session.'); pausedAgent = null; agentAbort?.abort(); await (await taskStore()).clear(); return agentState; });
-  handle(IPC.agentRun, z.tuple([z.string().min(1).max(4000), z.string().min(1).max(80)]), async (goal, model) => {
+  handle(IPC.agentRun, z.tuple([z.string().min(1).max(4000), z.string().min(1).max(80), agentBudgetSchema.default({})]), async (goal, model, budget) => {
     if (agentAbort || agentState.status === 'working') throw new Error('The independent agent is already working.');
     const unresolved = await (await editJournal()).load();
     if (unresolved) throw new Error('Unresolved edit journal found. Restore and resolve the previous task before starting a new one.');
     pausedAgent = null;
+    agentBudget = budget;
     await (await taskStore()).clear().catch(() => undefined);
     if (partner?.state().status === 'working') throw new Error('Stop Claude before starting the independent agent.');
     const ctl = await live();
@@ -1245,7 +1249,7 @@ export function registerIpc(d: IpcDeps): void {
       // Borrow the key only for this request. It never enters renderer state.
       const outcome = await vault.withKey('openai', async (key) => {
         const provider = new OpenAICompatibleProvider({ model, baseUrl: 'https://api.openai.com/v1', getKey: async () => key });
-        return runAgent({ goal, provider, registry: addExternalTools(nativeToolRegistry(ctl, await d.project(), { supportsVision: provider.supportsVision, createBlank: createAgentBlank }), external), ctl, signal: abort.signal,
+        return runAgent({ goal, provider, registry: addExternalTools(nativeToolRegistry(ctl, await d.project(), { supportsVision: provider.supportsVision, createBlank: createAgentBlank }), external), ctl, signal: abort.signal, ...agentBudget,
           ...journalHooks,
           onPlan: (plan) => { agentState = { ...agentState, plan }; publishAgent(); },
           onEvent: (event) => { agentState = { ...agentState, events: [...agentState.events, event].slice(-100) }; publishAgent(); } });
@@ -1285,7 +1289,7 @@ export function registerIpc(d: IpcDeps): void {
       const outcome = await vault.withKey('openai', async (key) => {
         const provider = new OpenAICompatibleProvider({ model: saved.model, baseUrl: 'https://api.openai.com/v1', getKey: async () => key });
         return runAgent({ goal: saved.goal, resumeMessages: saved.messages, resumePlan:saved.plan, resumeUncertainEdit:saved.uncertainEdit, resumeExpectedEdit:unresolvedJournal?.expected, provider,
-          registry: addExternalTools(nativeToolRegistry(ctl, await d.project(), { supportsVision: provider.supportsVision, createBlank: createAgentBlank }), external), ctl, signal: abort.signal,
+          registry: addExternalTools(nativeToolRegistry(ctl, await d.project(), { supportsVision: provider.supportsVision, createBlank: createAgentBlank }), external), ctl, signal: abort.signal, ...agentBudget,
           ...journalHooks,
           onPlan: (plan) => { agentState = { ...agentState, plan }; publishAgent(); },
           onEvent: (event) => { agentState = { ...agentState, events: [...agentState.events, event].slice(-100) }; publishAgent(); } });

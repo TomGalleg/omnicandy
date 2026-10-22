@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { AgentUiState, AgentPlanStep } from '@shared/agentHarness';
 import { presentUnifiedAgent, validateUnifiedAgentRequest } from '@shared/unifiedAgentPresentation';
+import { AGENT_BUDGET_LIMITS, validateAgentBudget } from '@shared/agentBudget';
 import { recoveryUiFixture, type RecoveryFixture } from './recoveryUiFixture';
 
 // The existing IPC agent endpoint currently supports OpenAI models only.
@@ -14,6 +15,8 @@ export function IndependentAgent() {
   const [state, setState] = useState<AgentUiState>(initial);
   const [model, setModel] = useState(models[0]!);
   const [goal, setGoal] = useState('');
+  const [maxTurns, setMaxTurns] = useState<number>(AGENT_BUDGET_LIMITS.maxTurns.default);
+  const [maxToolCalls, setMaxToolCalls] = useState<number>(AGENT_BUDGET_LIMITS.maxToolCalls.default);
   const [error, setError] = useState('');
   const [requestPending, setRequestPending] = useState(false);
   const [draftSteps, setDraftSteps] = useState<AgentPlanStep[]>([]);
@@ -23,7 +26,8 @@ export function IndependentAgent() {
   const previewActive = import.meta.env.DEV && !state.recovery && recoveryFixture !== 'off';
   const recoveryToDisplay = state.recovery ?? (previewActive ? fixture.info : undefined);
   const presentation = useMemo(() => presentUnifiedAgent(state), [state]);
-  const validationError = validateUnifiedAgentRequest(goal, model);
+  const budgetError = validateAgentBudget({ maxTurns, maxToolCalls });
+  const validationError = validateUnifiedAgentRequest(goal, model) ?? budgetError;
   const busy = presentation.busy || requestPending;
   const canEditPlan = !busy && (state.status === 'paused' || state.status === 'limit');
 
@@ -48,7 +52,7 @@ export function IndependentAgent() {
     if (busy || validationError) return;
     setError('');
     setRequestPending(true);
-    void window.studio.agent.run(goal.trim(), model)
+    void window.studio.agent.run(goal.trim(), model, { maxTurns, maxToolCalls })
       .then(setState).catch((e) => setError(errorText(e)))
       .finally(() => setRequestPending(false));
   };
@@ -69,6 +73,15 @@ export function IndependentAgent() {
       </select>
       <span className="chip" role="status">{presentation.status}</span>
     </div>
+    <div className="claude-row">
+      <label>Max model turns <input type="number" aria-label="Independent AI maximum model turns" value={maxTurns} disabled={busy}
+        min={AGENT_BUDGET_LIMITS.maxTurns.min} max={AGENT_BUDGET_LIMITS.maxTurns.max} step={1}
+        onChange={(e) => setMaxTurns(e.target.valueAsNumber)} /></label>
+      <label>Max tool calls <input type="number" aria-label="Independent AI maximum tool calls" value={maxToolCalls} disabled={busy}
+        min={AGENT_BUDGET_LIMITS.maxToolCalls.min} max={AGENT_BUDGET_LIMITS.maxToolCalls.max} step={1}
+        onChange={(e) => setMaxToolCalls(e.target.valueAsNumber)} /></label>
+    </div>
+    {budgetError && <div className="asset-meta" role="alert">{budgetError}</div>}
     <textarea aria-label="Independent AI instruction" value={goal} disabled={busy}
       onChange={(e) => setGoal(e.target.value)} placeholder="Describe what you want to do in a connected app" rows={5} maxLength={4000} />
     <div className="btn-row">

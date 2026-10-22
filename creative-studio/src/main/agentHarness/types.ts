@@ -10,4 +10,4 @@ export interface ProviderReply { text: string | null; toolCalls: ToolCall[]; usa
 export interface ModelProvider { readonly id: string; readonly supportsVision: boolean; complete(input: { system: string; messages: Message[]; tools: Pick<ToolDef, 'name' | 'description' | 'parameters'>[]; signal: AbortSignal }): Promise<ProviderReply> }
 export interface AgentEvent { kind: 'model' | 'tool' | 'result' | 'error' | 'stop'; text: string; callId?: string; tool?: string; isError?: boolean }
 import type { TaskPlan } from './taskPlan';
-export interface AgentOutcome { status: 'completed' | 'cancelled' | 'paused' | 'limit' | 'failed'; text: string; messages: Message[]; events: AgentEvent[]; plan?: TaskPlan; uncertainEdit?: string }
+export interface AgentOutcome { status: 'completed' | 'cancelled' | 'paused' | 'limit' | 'failed'; text: string; messages: Message[]; events: AgentEvent[]; plan?: TaskPlan; uncertainEdit?: string; usage?: { input: number; output: number } }

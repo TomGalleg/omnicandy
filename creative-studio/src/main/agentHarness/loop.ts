@@ -4,6 +4,8 @@ import { classifyCommandError } from './commandPreflight';
 import type { LiveTaskController } from '../liveTask';
 import { registerTaskPlan, type TaskPlan } from './taskPlan';
 import { expectedEditIntent, type ExpectedRect } from './editIntentJournal';
+import { compactAgentHistory, boundToolOutput } from './contextBudget';
+import { clampAgentBudgets } from './executionBudget';
 
 const active = new WeakSet<LiveTaskController>();
 const baseSystem = `For newly completed task_plan steps, supply a passing evidence_verify ID; save steps can instead cite a save_version execution receipt with a confirmed new version ID. If you cannot verify a step, leave it pending/blocked and report why. Use evidence_verify to compare expected values with authoritative structured read-back receipts when possible; a failed or unavailable comparison is not verified completion. Use evidence_receipts to cite real successful tool results when updating completed steps. A receipt proves a successful tool response, NOT that the desired visual or document outcome was verified. Read back actual state and compare it to the goal. Use task_plan early in multi-step tasks to record concise steps and update it when verified progress changes. Completing a plan step requires concrete evidence from application read-back; the plan itself does not prove success. You operate ONLY connected CreateCraft applications through approved tools. Call get_status before editing, search app_commands by task noun, inspect exact command IDs for full parameters and inspect results before continuing. A discovered ID is not permission to execute it. When validation is unavailable, use only explicitly known parameters; request help rather than inventing values. If a schema is unavailable, do not guess missing arguments. Never invent success. For state-changing tasks, READ actual object IDs/properties first, EDIT with commands that explicitly support those properties, then VERIFY by reading back authoritative state (bounds, transforms, text, or other app-supported information). Use a visual preview for appearance when available. If verification disagrees, inspect the exact command schema and current state before a correction; never repeat an uncertain edit blindly. If no read-back capability exists, report that verification is unavailable, not success. A command returning applied does not prove the requested outcome. Before multi-step editing, form a short internal action plan and execute one verified step at a time. If the budget is running out, preserve the current state and explain what remains rather than guessing or repeating edits. Autonomous task completion is the default: pursue the full original user goal rather than stopping after an intermediate command succeeds. Make reasonable routine creative and technical choices (such as equal spacing, centering, or picking a supported command) without asking the user to decide every step; use explicit user constraints when supplied. For each substantive edit, distinguish command acceptance from changed application state: read back the relevant object/document properties and compare against the goal; inspect a preview when a registered visual tool is available and visual confirmation is material. If read-back is null, inconsistent, or uninformative, inspect another authoritative source or preview and state what could not be verified; never claim unverified visual success. If an attempted edit did not achieve its intended effect, re-inspect state and choose a different authorized method where the tool definitions support one. Do not blindly repeat state-changing calls, assume an earlier edit failed, or recreate objects already present. Only ask the user to intervene for a genuine blocker, missing permission, unsafe or consequential ambiguity, or an unavoidable choice; otherwise continue within the execution budget. If the task is unfinished when you must stop, explicitly summarize verified completed work, outstanding work, and blockers. Human denials, pauses and takeovers are final; stop. Save versions only when the user requests it. Do not request shell, code execution or unlisted tools.`;
@@ -23,6 +25,23 @@ const readbackCommands = new Set(['shape.info', 'layer.list', 'document.inspect'
 const nativeCommandId = (args: unknown): string | undefined => args && typeof args === 'object' && !Array.isArray(args) && typeof (args as Record<string, unknown>).command === 'string' ? (args as Record<string, string>).command : undefined;
 const isNativeReadback = (name: string, args: unknown): boolean => name === 'app_command' && readbackCommands.has(nativeCommandId(args) ?? '');
 const isMutation = (name: string, args: unknown): boolean => name === 'external_command' || (name === 'app_command' && !isNativeReadback(name,args));
+// Anything that can change document content. save_version only persists a version and has its own confirmed receipt.
+const requiresCompletionEvidence = (name: string, args: unknown): boolean => isMutation(name,args) || name === 'new_document' || name === 'apply_edit';
+/** Conservative reconstruction for resumed transcripts: unverified unless a passing evidence_verify follows the latest successful change. */
+export function hasUnverifiedChanges(messages: Message[]): boolean {
+  const calls = new Map<string, { name: string; args: unknown }>();
+  let unverified = false;
+  for (const m of messages) {
+    if (m.role === 'assistant') for (const c of m.toolCalls ?? []) calls.set(c.id, c);
+    else if (m.role === 'tool' && !m.content.startsWith('Error:')) {
+      const c = calls.get(m.toolCallId);
+      if (!c) continue;
+      if (requiresCompletionEvidence(c.name, c.args)) unverified = true;
+      else if (c.name === 'evidence_verify' && m.content.includes('"passed":true')) unverified = false;
+    }
+  }
+  return unverified;
+}
 export async function runAgent(args: { goal: string; provider: ModelProvider; registry: ToolRegistry; ctl: LiveTaskController; signal?: AbortSignal; maxTurns?: number; maxToolCalls?: number; onEvent?: (event: AgentEvent) => void; resumeMessages?: Message[]; resumePlan?: TaskPlan; resumeUncertainEdit?: string; resumeExpectedEdit?: ExpectedRect; onEditBegin?: (tool:'app_command'|'external_command', command:string,callArgs:unknown)=>Promise<void>; onEditSettled?: (safe:boolean)=>Promise<void>; onRecoveryResolved?: ()=>Promise<void>; onPlan?: (plan: TaskPlan) => void }): Promise<AgentOutcome> {
   const { provider, registry, ctl } = args;
   if (active.has(ctl) || ctl.snapshot().collab.activeOperation || ctl.snapshot().collab.phase === 'running') throw new Error('Another application task is already running.');
@@ -40,9 +59,17 @@ export async function runAgent(args: { goal: string; provider: ModelProvider; re
   active.add(ctl);
   const events: AgentEvent[] = [];
   const emit = (e: AgentEvent) => { events.push(e); args.onEvent?.(e); };
-  const result = (status: AgentOutcome['status'], text: string): AgentOutcome => ({ status, text, messages, events, plan: planControl.snapshot(), ...(uncertainEdit ? { uncertainEdit } : {}) });
-  const maxTurns = Math.max(1, Math.min(args.maxTurns ?? 20, 100));
-  const maxCalls = Math.max(1, Math.min(args.maxToolCalls ?? 50, 250));
+  // Provider-reported only: never estimate or invent token counts.
+  const usage = { input: 0, output: 0 };
+  let usageReported = false;
+  const result = (status: AgentOutcome['status'], text: string): AgentOutcome => ({ status, text, messages, events, plan: planControl.snapshot(), ...(uncertainEdit ? { uncertainEdit } : {}), ...(usageReported ? { usage: { ...usage } } : {}) });
+  const { maxTurns, maxToolCalls: maxCalls } = clampAgentBudgets(args.maxTurns, args.maxToolCalls);
+  // Completion needs a passing evidence_verify whose read-back was taken after the latest successful change.
+  // Adapter `verified:true` flags and plan status are claims, not evidence, and never clear this.
+  let mutationSeq = args.resumeMessages && hasUnverifiedChanges(args.resumeMessages) ? 1 : 0;
+  let verifiedSeq = 0;
+  const readbackSeq = new Map<string, number>();
+  let verificationReminderSent = false;
   let calls = 0;
   let completionReminderSent = false;
   // A failed write may have partially changed the document. Require an actual
@@ -59,6 +86,7 @@ export async function runAgent(args: { goal: string; provider: ModelProvider; re
     for (let turn = 0; turn < maxTurns; turn++) {
       if (args.signal?.aborted) return result('cancelled', 'Cancelled.');
       if (paused(ctl)) return result('paused', 'User intervention is required.');
+      compactAgentHistory(messages);
       const snapshot = registry.snapshot();
       if (turn === 0) emit({ kind: 'model', tool: 'tools', text: `Tools available to the model: ${snapshot.map((t) => t.name).join(', ') || '(none)'}` }); // names only
       let reply;
@@ -68,6 +96,7 @@ export async function runAgent(args: { goal: string; provider: ModelProvider; re
         const msg = e instanceof Error ? e.message : String(e);
         emit({kind:'error',text:msg}); return result('failed',msg);
       }
+      if (reply.usage) { usageReported = true; usage.input += reply.usage.input; usage.output += reply.usage.output; }
       messages.push({ role: 'assistant', content: reply.text, ...(reply.toolCalls.length ? {toolCalls:reply.toolCalls} : {}) });
       emit({kind:'model',text:reply.text ?? ''});
       if (!reply.toolCalls.length) {
@@ -89,6 +118,16 @@ export async function runAgent(args: { goal: string; provider: ModelProvider; re
           }
           emit({kind:'stop',text:'Model stopped with unfinished plan steps; task remains resumable.'});
           return result('limit',`Task is not yet verified complete. Remaining plan steps: ${remaining}. Use Continue Task to inspect current state and finish safely.`);
+        }
+        if (mutationSeq > verifiedSeq) {
+          const reminder = 'The task changed application state but no passing evidence_verify compared a fresh read-back taken after the latest change. Inspect authoritative current state, then verify before declaring completion. If verification is unavailable, explain that the task remains unverified.';
+          if (!verificationReminderSent && turn + 1 < maxTurns) {
+            verificationReminderSent = true; messages.push({ role:'user', content:reminder });
+            emit({kind:'model',text:'Final response deferred: latest application change has no passing verification.'});
+            continue;
+          }
+          emit({kind:'stop',text:'Application changes are unverified; task remains resumable.'});
+          return result('limit', 'Application changes were made but not verified by a passing read-back comparison. Use Continue Task to inspect current state and verify; no edits will be replayed.');
         }
         return result('completed',reply.text ?? 'Model finished without a final message; verify the output.');
       }
@@ -120,6 +159,7 @@ export async function runAgent(args: { goal: string; provider: ModelProvider; re
               }
               dispatched = true;
               r = await registry.call(snapshot,call.name,call.args);
+              if (!r.isError && requiresCompletionEvidence(call.name,call.args)) mutationSeq++;
               if (isMutation(call.name,call.args)) {
                 const safe = !r.isError || classifyCommandError(r.text) !== 'execution' || stopText.test(r.text);
                 await args.onEditSettled?.(safe);
@@ -135,11 +175,16 @@ export async function runAgent(args: { goal: string; provider: ModelProvider; re
             if (!r.isError) {
               const receiptId = planControl.record(call.name, r.text, r.verified === true, call.args);
               if (receiptId) {
+                if (isNativeReadback(call.name, call.args) && planControl.isReadbackReceipt(receiptId)) readbackSeq.set(receiptId, mutationSeq);
                 if (uncertainEdit && isNativeReadback(call.name, call.args) && planControl.isReadbackReceipt(receiptId)) {
                   recoveryReadbacks.add(receiptId);
                   emit({kind:'model',text:'Fresh read-back recorded. Compare actual fields with the intended result using evidence_verify. Editing remains locked until a passing comparison.'});
                 }
                 r = {...r, text:`${r.text}\nExecution receipt: ${receiptId} (tool accepted; verify actual state before claiming outcome).`};
+              }
+              if (call.name === 'evidence_verify' && r.verified === true) {
+                const check = planControl.latestPassingCheck();
+                if (check && readbackSeq.get(check.sourceReceiptId) === mutationSeq) verifiedSeq = mutationSeq;
               }
               if (uncertainEdit && call.name === 'evidence_verify' && r.verified === true) {
                 const data = planControl.latestPassingCheck();
@@ -168,7 +213,7 @@ export async function runAgent(args: { goal: string; provider: ModelProvider; re
             if (paused(ctl) || (r.isError && stopText.test(r.text))) halt='paused';
           }
         }
-        messages.push({role:'tool',toolCallId:call.id,content:r.text});
+        messages.push({role:'tool',toolCallId:call.id,content:boundToolOutput(r.text)});
         if (r.imageDataUrl && !r.isError) messages.push({role:'user',content:'Visual preview for the preceding tool result:',imageDataUrl:r.imageDataUrl});
         emit({kind:'result',text:r.text,callId:call.id,tool:call.name,isError:!!r.isError});
       }

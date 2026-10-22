@@ -27,8 +27,8 @@ describe('uncertain application-edit recovery',()=>{
   });
   it('does not block corrections of schema-validation failures',async()=>{
     const hits={writes:0,reads:0};const registry=new ToolRegistry([tool('app_command','command',z.object({command:z.string(),x:z.number().min(5)}).strict(),async()=>{hits.writes++;return 'ok';})]);
-    const result=await runAgent({goal:'edit',registry,ctl:controller(),provider:new ScriptedProvider([call('1','app_command',{command:'shape.edit',x:1}),call('2','app_command',{command:'shape.edit',x:5}),end])});
-    expect(result.status).toBe('completed');expect(hits.writes).toBe(1);
+    const result=await runAgent({goal:'edit',registry,ctl:controller(),provider:new ScriptedProvider([call('1','app_command',{command:'shape.edit',x:1}),call('2','app_command',{command:'shape.edit',x:5}),end,end])});
+    expect(result.status).toBe('limit');expect(hits.writes).toBe(1);
   });
   it('retains an uncertain edit across turn-limited continuation and blocks replay',async()=>{
     const hits={writes:0,reads:0};
