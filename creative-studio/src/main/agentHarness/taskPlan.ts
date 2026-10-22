@@ -215,3 +215,17 @@ export function validatePlanEdit(goal: string, steps: TaskPlan['steps']): TaskPl
     throw new Error('Completed steps require verification evidence.');
   return clonePlan(plan);
 }
+
+/**
+ * The plan a user approved on Home is part of the goal text ("Plan the user approved:" followed by numbered lines). Record its steps as
+ * the task plan up front, so the agent cannot finish while they are unfinished and the plan survives a pause or limit with the task.
+ * Returns undefined when the goal carries no numbered plan (then the plan is whatever the model records with task_plan).
+ */
+export function seedPlanFromGoal(goal: string): TaskPlan | undefined {
+  const m = /Plan the user approved:\n([\s\S]*?)(?:\n\nThe user's answers to the open questions:|\n\nApproved\.|$)/.exec(goal);
+  if (!m) return undefined;
+  const titles = [...m[1]!.matchAll(/^[ \t]*\d{1,2}[.)][ \t]+(\S.*?)[ \t]*$/gm)].map((x) => x[1]!.slice(0, 180)).slice(0, 20);
+  if (!titles.length) return undefined;
+  const parsed = planSchema.safeParse({ goal: goal.slice(0, 4000), steps: titles.map((title, i) => ({ id: `step${i + 1}`, title, status: i === 0 ? 'active' : 'pending' })) });
+  return parsed.success ? parsed.data : undefined;
+}

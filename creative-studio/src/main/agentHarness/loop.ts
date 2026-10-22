@@ -2,7 +2,7 @@ import type { AgentEvent, AgentOutcome, Message, ModelProvider } from './types';
 import { ToolRegistry } from './registry';
 import { classifyCommandError } from './commandPreflight';
 import type { LiveTaskController } from '../liveTask';
-import { registerTaskPlan, type TaskPlan } from './taskPlan';
+import { registerTaskPlan, seedPlanFromGoal, type TaskPlan } from './taskPlan';
 import { NATIVE_READBACK_COMMANDS } from './nativeReadback';
 import { expectedEditIntent, type ExpectedEdit, type JournaledTool } from './editIntentJournal';
 import { compactAgentHistory, boundToolOutput, compactToolSchema, VERIFIED_MARKER } from './contextBudget';
@@ -79,7 +79,13 @@ export async function runAgent(args: { goal: string; provider: ModelProvider; re
     resumedUnverified = await hasUnverifiedChanges(messages, (name, callArgs) => registry.isReadOnly(fresh, name, callArgs));
     messages.push({role:'user',content:`The user requested continuation after an interruption, takeover, or execution budget limit. Reconcile the CURRENT application state against previous work. Do not replay finished actions. Inspect what actually remains and continue only with authorized steps. Current status: ${status.text.slice(0,8000)}`});
   }
-  const planControl = registerTaskPlan(registry, args.goal, args.resumePlan, plan => args.onPlan?.(plan));
+  // A plan the user approved is recorded as the task plan from the start (a fresh task only; a resumed one keeps its saved plan).
+  const seededPlan = !args.resumeMessages && !args.resumePlan ? seedPlanFromGoal(args.goal) : undefined;
+  const planControl = registerTaskPlan(registry, args.goal, args.resumePlan ?? seededPlan, plan => args.onPlan?.(plan));
+  if (seededPlan) {
+    messages.push({role:'user',content:`The plan the user approved is recorded as ${seededPlan.steps.length} task steps (${seededPlan.steps.map(s => s.id).join(', ')}). Work through them in order and keep them current with task_plan. A step is completed only with a passing evidence_verify ID from a fresh read-back; the task is not finished while any step is unfinished.`});
+    args.onPlan?.(planControl.snapshot());
+  }
   active.add(ctl);
   const events: AgentEvent[] = [];
   const emit = (e: AgentEvent) => { events.push(e); args.onEvent?.(e); };
