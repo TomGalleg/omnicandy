@@ -139,17 +139,17 @@ export function registerTaskPlan(registry: ToolRegistry, initialGoal: string, in
           if (saveStep && !confirmedVersion)
             return {text:`Error: Save step ${step.id} requires a confirmed new-version save_version receipt; a read-back comparison alone cannot confirm saving.`,isError:true};
           if (!validVerification && !confirmedVersion)
-            return {text:`Error: Newly completed step ${step.id} requires a passing evidence_verify ID or a confirmed save_version receipt. Model prose or edit receipts are not independent evidence.`,isError:true};
+            return {text:`Error: Newly completed step ${step.id} requires a passing evidence_verify ID or a confirmed save_version receipt from THIS run. Receipt and verification IDs from before a Continue Task are no longer valid: take a fresh read-only inspection now, run evidence_verify on it, and cite that new ID (verificationIds). Model prose or edit receipts are not independent evidence.`,isError:true};
         }
         for (const id of step.verificationIds ?? []) {
           const existed = plan.steps.find(s => s.id === step.id)?.verificationIds?.includes(id);
           if (!existed && !checks.some(c => c.id === id && c.passed))
-            return {text:`Error: Verification ${id} is missing, failed, or not from an approved read-back.`,isError:true};
+            return {text:`Error: Verification ${id} is missing, failed, or not from an approved read-back in this run. IDs from before a Continue Task have expired: inspect again, run evidence_verify, and use the new ID.`,isError:true};
         }
         for (const id of step.receiptIds ?? []) {
           const existed = plan.steps.find(s => s.id === step.id)?.receiptIds?.includes(id);
           if (!existed && !receipts.some(r => r.id === id))
-            return {text:`Error: Unknown or unsuccessful tool receipt ${id}.`,isError:true};
+            return {text:`Error: Unknown or unsuccessful tool receipt ${id} in this run (receipt IDs from before a Continue Task have expired; use a new one).`,isError:true};
         }
       }
       plan={goal:initialGoal,steps:structuredClone(steps)};
