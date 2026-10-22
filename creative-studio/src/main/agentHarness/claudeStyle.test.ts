@@ -44,6 +44,14 @@ describe('Claude-style discovery', () => {
     expect(text.length).toBeLessThan(11_500); // fits the model-visible tool output limit, so nothing is cut off
     await expect(textOf(tools, 'external_apps', { app_key: 'maya' })).rejects.toThrow(/no connected application matches "maya"/);
   });
+  it('lists the typed, recoverable commands first, so a model reading from the top reaches for scene.build before object.add', async () => {
+    const text = asText(await textOf(externalTools(backend().b, { claudeStyle: true }), 'external_apps', { app_key: 'Blender' }));
+    const at = (id: string) => text.indexOf(String.fromCharCode(10) + id + ' ');
+    expect(at('scene.create_basic')).toBeLessThan(at('scene.build'));
+    expect(at('scene.build')).toBeLessThan(at('scene.inspect_detail'));
+    expect(at('scene.inspect_detail')).toBeLessThan(at('object.add'));
+    expect(at('script.run')).toBeLessThan(at('object.add'));
+  });
   it('runs commands exactly as before (the same preflight, approval path and journal-relevant tool name)', async () => {
     const r = backend();
     const out = await runAgent({ goal: 'x', ctl: idle(), registry: addExternalTools(new ToolRegistry(), r.b, { claudeStyle: true }), relaxed: true,

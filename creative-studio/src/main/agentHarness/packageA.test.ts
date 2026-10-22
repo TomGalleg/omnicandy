@@ -12,10 +12,10 @@ const ctl = () => ({ snapshot: () => ({ collab: {phase:'idle',lockOwner:null,act
 const call = (name: string, args: unknown = {}) => ({text:null,toolCalls:[{id:'c1',name,args}]});
 const finish = {text:'finished',toolCalls:[]};
 describe('Package A limits', () => {
-  it('clamps finite configured budgets without raising defaults', () => {
-    expect(clampAgentBudgets()).toEqual({maxTurns:20,maxToolCalls:50});
+  it('clamps finite configured budgets to the documented limits (defaults sized for a chat that builds a scene step by step)', () => {
+    expect(clampAgentBudgets()).toEqual({maxTurns:60,maxToolCalls:150});
     expect(clampAgentBudgets(900,900)).toEqual({maxTurns:100,maxToolCalls:250});
-    expect(clampAgentBudgets(0,Number.NaN)).toEqual({maxTurns:1,maxToolCalls:50});
+    expect(clampAgentBudgets(0,Number.NaN)).toEqual({maxTurns:1,maxToolCalls:150});
   });
   it('bounds tool results and keeps old tool-call IDs paired with results', () => {
     expect(boundToolOutput('x'.repeat(200000)).length).toBeLessThan(13000);

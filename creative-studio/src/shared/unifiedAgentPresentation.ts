@@ -29,7 +29,11 @@ export function explainFailure(text: string): string | undefined {
   if (/permission|did not allow|declined|not approved/i.test(text)) return 'A permission request was declined or is waiting for you.';
   if (/identical tool call already failed twice/i.test(text)) return 'The AI repeated a failing call and stopped to avoid a loop.';
   if (/edits remain blocked|uncertain|recovery lock|may have partially succeeded/i.test(text)) return 'An earlier edit is waiting to be verified (recovery lock); the AI must read the state back before editing.';
-  if (/invalid parameter|unknown parameter|unknown setting|missing required|validation|must be|is required for|invalid-params|not advertised/i.test(text)) return 'A command was refused because its settings were not valid.';
+  if (/invalid parameter|unknown parameter|unknown setting|missing required|validation|must be|is required for|invalid-params|not advertised/i.test(text)) {
+    // Our own validation messages name only a setting (an identifier), never a value: that much is safe to show so the user can see what the AI got wrong.
+    const detail = /(?:Unknown (?:parameter|setting) "[A-Za-z0-9_]{1,40}"|Missing required parameter "[A-Za-z0-9_]{1,40}"|(?:Parameter )?"[A-Za-z0-9_]{1,40}" (?:must be (?:a (?:whole )?number(?: from -?\d+ to -?\d+)?|true or false|text(?: \(up to \d+ characters\))?|at (?:least|most) -?[\d.]+)|is required)|Invalid parameter "[A-Za-z0-9_]{1,40}")/.exec(text)?.[0];
+    return `A command was refused because its settings were not valid${detail ? ` (${detail})` : ''}.`;
+  }
   if (/cannot see images|picture limit|one every few seconds/i.test(text)) return 'A viewport picture was not taken (this model cannot see images, or the picture limit was reached).';
   if (/script_refused|script_syntax|script_error/i.test(text)) return 'A Blender script was refused or failed; the project was not changed.';
   if (/timeout|timed out|did not answer/i.test(text)) return 'The application did not answer in time.';

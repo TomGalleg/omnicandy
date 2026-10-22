@@ -51,6 +51,11 @@ describe('unified agent renderer presentation', () => {
     expect(view.lastModelText).toBe('I will add the roofs next. Shall I use blue tiles?');
     expect(presentUnifiedAgent(state('limit', [])).lastModelText).toBeUndefined();
   });
+  it('names the setting a refused command got wrong (an identifier only, never a value)', () => {
+    expect(explainFailure('Error: validation: Unknown parameter "radius" for object.add. Allowed: file_name, type, size')).toBe('A command was refused because its settings were not valid (Unknown parameter "radius").');
+    expect(explainFailure('Error: validation: Missing required parameter "file_name" for scene.build.')).toMatch(/(Missing required parameter "file_name")/);
+    expect(explainFailure('Error: invalid-params: "size" must be a number. secret-value-123')).toBe('A command was refused because its settings were not valid ("size" must be a number).'); // the value that follows is never echoed
+  });
   it('caps the activity timeline at fifty entries', () => {
     const events = Array.from({length:75}, () => ({kind:'stop' as const,text:'stopped'}));
     expect(presentUnifiedAgent(state('completed', events)).activities).toHaveLength(50);

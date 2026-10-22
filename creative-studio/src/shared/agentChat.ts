@@ -35,6 +35,7 @@ function stopNote(text: string): string | null {
   if (/^paused$/i.test(text)) return 'Paused. Send a message to carry on.';
   if (/^cancelled$/i.test(text)) return 'Stopped.';
   if (/^limit$/i.test(text)) return 'Reached its limit for this turn. Send a message to carry on.';
+  if (/budget reached/i.test(text)) return 'Reached its step limit for this message. Send "continue" to carry on (the limits are under Limits and usage).';
   if (/uncertain edit/i.test(text)) return 'An earlier edit is waiting to be checked. Send a message to carry on; it will read the state back first.';
   return null;
 }

@@ -1,7 +1,7 @@
 /** Bounds for the independent agent's execution budget. Defaults stay conservative for paid APIs; the main process re-validates every value. */
 export const AGENT_BUDGET_LIMITS = {
-  maxTurns: { default: 20, min: 1, max: 100 },
-  maxToolCalls: { default: 50, min: 1, max: 250 },
+  maxTurns: { default: 60, min: 1, max: 100 },
+  maxToolCalls: { default: 150, min: 1, max: 250 },
 } as const;
 /** strictVerification: keep the long verification rulebook (every plan step needs an evidence_verify, completion is gated). Off by default: the AI works the way Claude's panel does. */
 export interface AgentBudget { maxTurns?: number; maxToolCalls?: number; strictVerification?: boolean }

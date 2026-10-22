@@ -32,6 +32,7 @@ describe('chat view of an Independent AI task', () => {
     expect(chatItemFromEvent({ kind: 'result', tool: 'external_command', text: 'ok', isError: false })).toBeNull();
     expect(chatItemFromEvent({ kind: 'stop', text: 'Model stopped with unfinished plan steps; task remains resumable.' })).toEqual({ role: 'system', text: expect.stringMatching(/Send a message to carry on/) });
     expect(chatItemFromEvent({ kind: 'stop', text: 'paused' })).toMatchObject({ role: 'system' });
+    expect(chatItemFromEvent({ kind: 'stop', text: 'Model-turn budget reached. Current transcript can be resumed after state reconciliation.' })).toEqual({ role: 'system', text: expect.stringMatching(/step limit.*Send "continue"/) });
     expect(chatItemFromEvent({ kind: 'stop', text: 'cancelled' })).toEqual({ role: 'system', text: 'Stopped.' });
     expect(chatItemFromEvent({ kind: 'stop', text: 'something internal' })).toBeNull();
     expect(chatItemFromEvent({ kind: 'error', text: 'Provider HTTP 429 (rate limit: too many tokens or requests per minute; wait a minute, then press Continue Task)' })).toEqual({ role: 'error', text: expect.stringContaining('Provider HTTP 429') });

@@ -195,7 +195,10 @@ export function externalTools(backend: ExternalBackend, options: ExternalToolOpt
       const a = found.app;
       // Plain lines, not JSON: no quoting overhead, so every command fits in one model-visible answer.
       const nl = String.fromCharCode(10);
-      return `${a.name} (app_key ${JSON.stringify(a.key)}), status ${a.status}. ${a.commands.length} commands; run one with external_command {app_key, command, params}.${nl}${nl}${a.commands.map(describeCommand).join(nl + nl)}`;
+      // The commands to reach for first come first; a model reads a list from the top.
+      const rank = (id: string) => { const i = PREFERRED_COMMANDS.indexOf(id); return i < 0 ? PREFERRED_COMMANDS.length : i; };
+      const ordered = [...a.commands].sort((x, y) => rank(x.id) - rank(y.id));
+      return `${a.name} (app_key ${JSON.stringify(a.key)}), status ${a.status}. ${a.commands.length} commands; run one with external_command {app_key, command, params}.${nl}${nl}${ordered.map(describeCommand).join(nl + nl)}`;
     });
   const keep = tools.filter(t => t.name !== 'external_apps' && t.name !== 'external_commands')
     .map(t => t.name === 'external_command' ? { ...t, description: 'Runs one command from external_apps in a connected external application. The user is asked to allow it first; if they decline, accept it. The result states what was verified (for example that the saved file was re-opened and checked); report only that, never claim more. Long-running commands start a background job: follow it with external_job.' } : t);
@@ -208,6 +211,8 @@ function describeParam(p: CommandSpec['params'][string]): string {
   const dflt = p.default !== undefined ? ` default ${String(p.default)}` : '';
   return `${p.type}${p.required ? ' (required)' : ''}${range}${dflt}: ${p.description.slice(0, p.type === 'json' ? 1250 : 90)}`;
 }
+/** Listed first in Claude-style discovery: the typed, recoverable ways to do most things. */
+const PREFERRED_COMMANDS = ['scene.create_basic', 'scene.build', 'scene.inspect_detail', 'scene.viewport', 'discover.search', 'script.run'];
 export function describeCommand(c: CommandSpec): string {
   const structured = Object.values(c.params).some((p) => p.type === 'json');
   const flags = `${c.destructive ? ' [asks you every time]' : ''}${c.longRunning ? ' [long-running: returns a job]' : ''}`;
