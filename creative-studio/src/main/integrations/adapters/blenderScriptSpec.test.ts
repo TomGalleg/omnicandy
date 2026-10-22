@@ -56,7 +56,7 @@ describe('the pre-approval screen (the AST walk inside Blender is authoritative)
 describe('the user is shown the exact code', () => {
   it('prints the purpose and the whole code in the approval text, not a JSON blob', () => {
     const script = JSON.stringify({ purpose: 'Add a two-bone rig', code: 'import bpy\narm = bpy.data.armatures.new("Rig")\n# line 3' });
-    const t = approvalDetail({ command: { description: 'Runs a script.' }, params: { file_name: 'a.blend', script }, needed: [], destructive: true });
+    const t = approvalDetail({ command: { description: 'Runs a script.', confirmEveryTime: SCRIPT_COMMAND.confirmEveryTime }, params: { file_name: 'a.blend', script }, needed: [], destructive: true });
     expect(t).toContain('Purpose: Add a two-bone rig');
     expect(t).toContain('Code that will run (read it before you allow it)');
     expect(t).toContain('import bpy\narm = bpy.data.armatures.new("Rig")\n# line 3');
