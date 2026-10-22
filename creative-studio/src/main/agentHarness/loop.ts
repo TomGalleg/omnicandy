@@ -130,7 +130,10 @@ export async function runAgent(args: { goal: string; provider: ModelProvider; re
       catch (e) {
         if (args.signal?.aborted) return result('cancelled', 'Cancelled.');
         const msg = e instanceof Error ? e.message : String(e);
-        emit({kind:'error',text:msg}); return result('failed',msg);
+        emit({kind:'error',text:msg});
+        // Rate limits, quota and temporary provider outages say nothing about the work: keep the task resumable instead of failing it.
+        if (/^(Provider|Gemini) HTTP (429|5\d\d)\b/.test(msg)) return result('limit', `${msg}. Nothing was lost: the task and its plan are saved. Wait a moment, then press Continue Task.`);
+        return result('failed',msg);
       }
       if (reply.usage) { usageReported = true; usage.input += reply.usage.input; usage.output += reply.usage.output; }
       messages.push({ role: 'assistant', content: reply.text, ...(reply.toolCalls.length ? {toolCalls:reply.toolCalls} : {}) });

@@ -1,4 +1,5 @@
 import type { ModelProvider, ProviderReply } from '../types';
+import { explainHttp, fetchWithRetry, providerErrorCode } from './retry';
 
 export interface OpenAICompatibleOptions {
   model: string; baseUrl: string; getKey?: () => Promise<string>;
@@ -23,8 +24,8 @@ export class OpenAICompatibleProvider implements ModelProvider {
     try {
       const key = this.options.getKey ? await this.options.getKey() : undefined;
       if (signal.aborted) throw new Error('Aborted');
-      const res = await (this.options.fetchImpl ?? fetch)(url,{method:'POST',headers:{'content-type':'application/json',...(key ? {authorization:`Bearer ${key}`} : {})},body:JSON.stringify(payload),signal:abort.signal});
-      if (!res.ok) throw new Error(`Provider HTTP ${res.status}`);
+      const res = await fetchWithRetry(() => (this.options.fetchImpl ?? fetch)(url,{method:'POST',headers:{'content-type':'application/json',...(key ? {authorization:`Bearer ${key}`} : {})},body:JSON.stringify(payload),signal:abort.signal}), abort.signal);
+      if (!res.ok) throw new Error(`Provider HTTP ${res.status}${explainHttp(res.status, await providerErrorCode(res))}`);
       const data:unknown = await res.json();
       return parseResponse(data);
     } catch(e) {

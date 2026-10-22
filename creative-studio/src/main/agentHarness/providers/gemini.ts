@@ -1,4 +1,5 @@
 import type { Message, ModelProvider, ProviderReply, ToolDef } from '../types';
+import { explainHttp, fetchWithRetry } from './retry';
 
 export interface GeminiProviderOptions {
   model: string;
@@ -71,14 +72,14 @@ export class GeminiProvider implements ModelProvider {
         contents: toGeminiContents(input.messages),
         ...(input.tools.length ? { tools: [{ functionDeclarations: input.tools.map((t: Pick<ToolDef, 'name' | 'description' | 'parameters'>) => ({ name: t.name, description: t.description, parametersJsonSchema: t.parameters })) }] } : {}),
       };
-      const res = await (this.options.fetchImpl ?? fetch)(`https://generativelanguage.googleapis.com/v1beta/models/${this.options.model}:generateContent`, {
+      const res = await fetchWithRetry(() => (this.options.fetchImpl ?? fetch)(`https://generativelanguage.googleapis.com/v1beta/models/${this.options.model}:generateContent`, {
         method: 'POST', headers: { 'content-type': 'application/json', 'x-goog-api-key': key }, body: JSON.stringify(body), signal: abort.signal,
-      });
-      if (!res.ok) throw new Error(`Gemini HTTP ${res.status}`);
+      }), abort.signal);
+      if (!res.ok) throw new Error(`Gemini HTTP ${res.status}${explainHttp(res.status)}`);
       return parseGeminiResponse(await res.json());
     } catch (e) {
       if (input.signal.aborted) throw new Error('Aborted');
-      if (e instanceof Error && /^Gemini HTTP \d+$/.test(e.message)) throw e;
+      if (e instanceof Error && /^Gemini HTTP \d+/.test(e.message)) throw e;
       throw new Error('Gemini request failed or returned invalid data.');
     } finally { clearTimeout(timeout); input.signal.removeEventListener('abort', onAbort); }
   }
