@@ -21,6 +21,35 @@ const empty = z.object({}).strict();
 const identifier = z.string().min(1).max(1024);
 const argsSchema = z.record(z.string().min(1).max(128), z.unknown());
 const usable = (status: string) => status === 'connected' || status === 'limited';
+const normKey = (s: string) => s.trim().toLowerCase().replace(/[\\/]+/g, '\\');
+type AppRef = { key: string; name: string; adapterId?: string | null; status: string; statusDetail?: string };
+/**
+ * Finds the application a model meant. A key is a long Windows path that models routinely mangle (case, slashes, JSON
+ * escaping), so besides the exact key a unique match on the normalized key, the adapter id or the name is accepted.
+ * A failure says what is really wrong: an unknown reference lists the connected applications; only an application that
+ * really is not connected is reported as disconnected (and asks the agent to stop, since nothing can run until the user acts).
+ */
+export function resolveApplication<T extends AppRef>(all: readonly T[], ref: string): { app: T } | { error: string } {
+  const live = all.filter((a) => usable(a.status) && !!a.adapterId);
+  const want = normKey(ref);
+  const pick = (pool: readonly T[]) => {
+    const exact = pool.filter((a) => a.key === ref);
+    if (exact.length === 1) return exact;
+    for (const test of [(a: T) => normKey(a.key) === want, (a: T) => (a.adapterId ?? '').toLowerCase() === want, (a: T) => a.name.toLowerCase() === want]) {
+      const hit = pool.filter(test);
+      if (hit.length) return hit;
+    }
+    return [];
+  };
+  const hit = pick(live);
+  if (hit.length === 1) return { app: hit[0]! };
+  if (hit.length > 1) return { error: `"${ref}" matches several connected applications. Use one key exactly as external_apps lists it: ${hit.map((a) => JSON.stringify(a.key)).join(', ')}.` };
+  const down = pick(all);
+  if (down.length === 1) return { error: `${down[0]!.name} is not connected (status: ${down[0]!.status}${down[0]!.statusDetail ? `; ${down[0]!.statusDetail}` : ''}). Stop and wait for the user to reconnect it.` };
+  return { error: live.length
+    ? `No connected application matches "${ref}". Connected: ${live.map((a) => `${a.name} (key ${JSON.stringify(a.key)})`).join('; ')}. Use a key exactly as external_apps lists it, or the application name. This is not a lost connection.`
+    : 'No external application is connected. Stop and wait for the user to connect one.' };
+}
 /** Host trust decision lives in integrations/readback.ts: built-in adapters and explicitly listed read-only commands only. */
 export const isTrustedExternalReadback = isTrustedReadbackCommand;
 
@@ -37,14 +66,16 @@ const summary = (j: JobInfo) => ({ job_id: j.id, app: j.appName, command: j.comm
 
 export function externalTools(backend: ExternalBackend, options: ExternalToolOptions = {}) {
   const list = async () => (await backend.list()).filter(app => usable(app.status) && !!app.adapterId);
+  const resolve = async (ref: string) => resolveApplication(await backend.list(), ref);
   const trusted = (adapterId: string | null | undefined, spec: CommandSpec) => isTrustedExternalReadback(backend.isBuiltin?.bind(backend), adapterId, spec);
   const tools = [
     tool('external_apps', 'List already-connected external applications and their names. Only connected applications may be controlled.', empty, async () =>
       JSON.stringify((await list()).map(app => ({ key: app.key, name: app.name, status: app.status, adapter: app.adapterName })))),
     tool('external_commands', 'Search command identifiers for a connected external application, or inspect complete parameter and permission details by exact command_id before executing.',
       z.object({ app_key: identifier, filter: z.string().max(100).optional(), command_id: z.string().max(128).optional() }).strict(), async ({ app_key, filter, command_id }) => {
-        const app = (await list()).find(a => a.key === app_key);
-        if (!app) throw new Error('Application is not connected or is no longer available. Run external_apps again.');
+        const found = await resolve(app_key);
+        if ('error' in found) throw new Error(found.error);
+        const app = found.app;
         if (command_id) {
           const spec = app.commands.find(c => c.id === command_id);
           if (!spec) throw new Error('Command is not advertised by this app. Search external_commands again.');
@@ -61,8 +92,10 @@ export function externalTools(backend: ExternalBackend, options: ExternalToolOpt
       ...tool('external_command', 'Execute an inspected command in a connected external app. Inspect with external_commands command_id first. Long-running commands start a background job: follow it with external_job. The integration manager enforces user approvals and all existing security policies. A command marked trustedReadback in its inspection returns state that evidence_verify can compare.',
         z.object({ app_key: identifier, command: z.string().min(1).max(128), params: argsSchema.optional() }).strict(), async ({ app_key, command, params }) => {
           // Recheck on every call: connected status, adapter and command availability may have changed since advertisement.
-          const app = (await list()).find(a => a.key === app_key);
-          if (!app) throw new Error('Application disconnected or unavailable. Stop and ask the user to reconnect.');
+          const found = await resolve(app_key);
+          if ('error' in found) throw new Error(found.error);
+          const app = found.app;
+          app_key = app.key; // whatever the model called it, the backend, the job ledger and the guards see the real key
           const spec = app.commands.find(c => c.id === command);
           if (!spec) throw new Error('Command is not advertised by this connected app. Run external_commands again.');
           if (spec.longRunning) {
@@ -97,7 +130,8 @@ export function externalTools(backend: ExternalBackend, options: ExternalToolOpt
       readOnly: async (raw: unknown) => {
         const parsed = z.object({ app_key: identifier, command: z.string().min(1).max(128) }).passthrough().safeParse(raw);
         if (!parsed.success) return false;
-        const app = (await list()).find(a => a.key === parsed.data.app_key);
+        const found = await resolve(parsed.data.app_key);
+        const app = 'app' in found ? found.app : undefined;
         const spec = app?.commands.find(c => c.id === parsed.data.command);
         return !!app && !!spec && trusted(app.adapterId, spec);
       },
