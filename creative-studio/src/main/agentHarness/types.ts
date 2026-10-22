@@ -1,7 +1,8 @@
 export type JsonSchema = Record<string, unknown>;
 export interface ToolCall { id: string; name: string; args: unknown }
-export interface ToolResult { text: string; isError?: boolean; verified?: boolean; imageDataUrl?: string }
-export interface ToolDef { name: string; description: string; parameters: JsonSchema; execute: (args: unknown) => Promise<ToolResult> }
+/** `trustedReadback` is set only by tools that fetched state through a command whose trust the host established (see externalTools); it is never taken from model output or an adapter's own `verified` flag. */
+export interface ToolResult { text: string; isError?: boolean; verified?: boolean; imageDataUrl?: string; trustedReadback?: boolean }
+export interface ToolDef { name: string; description: string; parameters: JsonSchema; execute: (args: unknown) => Promise<ToolResult>; /** Host-side classification for this call: true when it cannot change application state. */ readOnly?: (args: unknown) => Promise<boolean> }
 export type Message =
   | { role: 'user'; content: string; imageDataUrl?: string }
   | { role: 'assistant'; content: string | null; toolCalls?: ToolCall[] }

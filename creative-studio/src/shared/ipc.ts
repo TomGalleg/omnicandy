@@ -367,7 +367,7 @@ export interface StudioApi {
   };
   agent: {
     state(): Promise<AgentUiState>;
-    run(goal: string, model: string, budget?: import('./agentBudget').AgentBudget): Promise<AgentUiState>;
+    run(goal: string, model: string, budget?: import('./agentBudget').AgentBudget, provider?: import('./agentProvider').AgentProviderSelection): Promise<AgentUiState>;
     stop(): Promise<AgentUiState>;
     resume(): Promise<AgentUiState>;
     updatePlan(steps: import('./agentHarness').AgentPlanStep[]): Promise<AgentUiState>;

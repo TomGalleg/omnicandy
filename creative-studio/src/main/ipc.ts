@@ -31,10 +31,13 @@ import { restoreRecoveryState, resumeFailureNotice } from './agentHarness/crashR
 import { recoveryPresentation } from './agentHarness/recoveryPresentation';
 import { recoveryIpcState } from './agentHarness/recoveryIpcState';
 import { agentBudgetSchema } from './agentHarness/executionBudget';
-import { stepSchema as planStepSchema, validatePlanEdit, type TaskPlan } from './agentHarness/taskPlan';
+import { agentProviderSchema, sumUsage, withAgentProvider } from './agentHarness/providerFactory';
+import { addExportTools } from './agentHarness/exportTools';
+import { DEFAULT_AGENT_PROVIDER } from '@shared/agentProvider';
+import type { PausedAgent } from './agentHarness/recoveryIpcState';
+import { stepSchema as planStepSchema, validatePlanEdit } from './agentHarness/taskPlan';
 import { nativeToolRegistry } from './agentHarness/nativeTools';
 import { addExternalTools } from './agentHarness/externalTools';
-import { OpenAICompatibleProvider } from './agentHarness/providers/openaiCompatible';
 import type { AgentUiState } from '@shared/agentHarness';
 import { PhotoCraftCliAdapter } from './photocraftCli';
 import type { ProjectManager } from './projects';
@@ -743,6 +746,14 @@ export function registerIpc(d: IpcDeps): void {
     if (first) { try { await openLive(first, undefined, 'claude'); } catch { /* it is in the library even if the app could not open it yet */ } }
     return names.length ? names : null;
   };
+  /** Status, progress, result and cancellation of a background external job; one implementation for Claude and Independent AI. */
+  const externalJobReport = async (id: string, cancel: boolean): Promise<string> => {
+    if (cancel) external.cancelJob(id);
+    const j = external.job(id);
+    if (!j) return JSON.stringify({ error: 'No such job (jobs do not survive an application restart). Jobs: ' + external.jobs().map((x) => x.id).join(', ') });
+    if (j.status === 'succeeded') await bringIntoLibrary(j.appName, (j.result as { outputs?: Array<{ path: string }> } | null)?.outputs);
+    return JSON.stringify({ job_id: j.id, app: j.appName, command: j.commandId, status: j.status, stage: j.stage, progress: j.fraction, started: j.startedAt, finished: j.finishedAt, result: j.result }, null, 2);
+  };
   // Installable adapter packages: verified on disk, run in their own restricted process (integrations/packageRunner.ts).
   const packages = new AdapterPackages(path.join(path.dirname(d.secretsDir), 'integrations'), external, undefined, { bundledPublishers: () => loadBundledPublishers(bundled.publishersFile) });
   // Quit waits (at most 4 s) for the adapters and the plugin bridge to close, so no helper process is left behind.
@@ -1033,13 +1044,7 @@ export function registerIpc(d: IpcDeps): void {
         const added = await bringIntoLibrary(a.name, (r as { outputs?: Array<{ path: string }> }).outputs);
         return JSON.stringify(added ? { ...r, added_to_library: added } : r, null, 2);
       },
-      job: async (id, cancel) => {
-        if (cancel) external.cancelJob(id);
-        const j = external.job(id);
-        if (!j) return JSON.stringify({ error: 'No such job. Jobs: ' + external.jobs().map((x) => x.id).join(', ') });
-        if (j.status === 'succeeded') await bringIntoLibrary(j.appName, (j.result as { outputs?: Array<{ path: string }> } | null)?.outputs);
-        return JSON.stringify({ job_id: j.id, app: j.appName, command: j.commandId, status: j.status, stage: j.stage, progress: j.fraction, started: j.startedAt, finished: j.finishedAt, result: j.result }, null, 2);
-      },
+      job: externalJobReport,
     },
     planner: {
       call: async (tool, args) => {
@@ -1178,9 +1183,18 @@ export function registerIpc(d: IpcDeps): void {
   }));
   // Independent model harness. Project-scoped; existing Claude path remains unchanged.
   let agentAbort: AbortController | null = null;
-  // Validated by agentBudgetSchema. Reused by Continue Task; after an app restart the conservative defaults apply.
-  let agentBudget: { maxTurns?: number; maxToolCalls?: number } = {};
-  let pausedAgent: { goal: string; model: string; messages: import('./agentHarness/types').Message[]; plan?: TaskPlan; uncertainEdit?: string } | null = null;
+  // Budget, provider selection (non-secret) and usage ride in pausedAgent and the encrypted checkpoint, so Continue Task
+  // keeps them, also after an app restart. Credentials never do: keys are lent by the vault per request.
+  let pausedAgent: PausedAgent | null = null;
+  // Background jobs this task started: cancelled when the user stops the task.
+  const agentJobs = new Set<string>();
+  const cancelAgentJobs = () => { for (const id of agentJobs) { try { external.cancelJob(id); } catch { /* already finished */ } } agentJobs.clear(); };
+  const buildAgentRegistry = async (ctl: Awaited<ReturnType<typeof live>>, provider: { supportsVision: boolean }) => {
+    const store = await d.project();
+    const registry = addExternalTools(nativeToolRegistry(ctl, store, { supportsVision: provider.supportsVision, createBlank: createAgentBlank }), external,
+      { onJobStarted: (id) => { agentJobs.add(id); }, describeJob: externalJobReport });
+    return addExportTools(registry, { ctl, store, deliver });
+  };
   let agentState: AgentUiState = { status: 'idle', model: 'gpt-4.1-mini', goal: '', result: '', events: [] };
   const taskStore = async () => new TaskCheckpointStore((await d.project()).root, safeStorage);
   const editJournal = async () => new EditIntentJournal((await d.project()).root, safeStorage);
@@ -1212,7 +1226,7 @@ export function registerIpc(d: IpcDeps): void {
     } else await store.clear();
   };
   const publishAgent = () => { const w = d.window(); if (w && !w.isDestroyed()) w.webContents.send(IPC.agentEvent, agentState); };
-  const endAgent = () => { pausedAgent = null; agentAbort?.abort(); agentAbort = null; agentState = { status: 'idle', model: 'gpt-4.1-mini', goal: '', result: '', events: [] }; publishAgent(); };
+  const endAgent = () => { pausedAgent = null; cancelAgentJobs(); agentAbort?.abort(); agentAbort = null; agentState = { status: 'idle', model: 'gpt-4.1-mini', goal: '', result: '', events: [] }; publishAgent(); };
   resetters.push(endAgent);
   handle(IPC.agentState, none, async () => { await restoreAgent(); return agentState; });
   handle(IPC.agentPlanUpdate, z.tuple([z.array(planStepSchema).max(20)]), async (steps) => {
@@ -1223,43 +1237,47 @@ export function registerIpc(d: IpcDeps): void {
     const saved = { ...pausedAgent, status:agentState.status as 'paused'|'limit', plan };
     if (!await (await taskStore()).save(saved))
       throw new Error('Could not securely save this plan. No changes were applied.');
-    pausedAgent = { goal:saved.goal, model:saved.model, messages:saved.messages, plan };
+    pausedAgent = { ...pausedAgent, plan };
     agentState = { ...agentState, plan }; publishAgent();
     return agentState;
   });
-  handle(IPC.agentStop, none, async () => { if (await (await editJournal()).load()) throw new Error('An unresolved edit journal exists. Continue Task to resolve it before discarding the session.'); pausedAgent = null; agentAbort?.abort(); await (await taskStore()).clear(); return agentState; });
-  handle(IPC.agentRun, z.tuple([z.string().min(1).max(4000), z.string().min(1).max(80), agentBudgetSchema.default({})]), async (goal, model, budget) => {
+  handle(IPC.agentStop, none, async () => { if (await (await editJournal()).load()) throw new Error('An unresolved edit journal exists. Continue Task to resolve it before discarding the session.'); pausedAgent = null; cancelAgentJobs(); agentAbort?.abort(); await (await taskStore()).clear(); return agentState; });
+  handle(IPC.agentRun, z.tuple([z.string().min(1).max(4000), z.string().min(1).max(80), agentBudgetSchema.default({}), agentProviderSchema.default(DEFAULT_AGENT_PROVIDER)]), async (goal, model, budget, selection) => {
     if (agentAbort || agentState.status === 'working') throw new Error('The independent agent is already working.');
     const unresolved = await (await editJournal()).load();
     if (unresolved) throw new Error('Unresolved edit journal found. Restore and resolve the previous task before starting a new one.');
     pausedAgent = null;
-    agentBudget = budget;
     await (await taskStore()).clear().catch(() => undefined);
     if (partner?.state().status === 'working') throw new Error('Stop Claude before starting the independent agent.');
     const ctl = await live();
     if (ctl.snapshot().collab.activeOperation || ctl.snapshot().collab.phase === 'running') throw new Error('An application task is already running.');
     const abort = new AbortController();
     agentAbort = abort;
-    agentState = { status: 'working', model, goal, result: '', events: [] }; publishAgent();
+    agentState = { status: 'working', model, goal, result: '', events: [], provider: selection, budget };
+    publishAgent();
+    let started = false;
     try {
-      // Persist a minimal resumable seed before model/tool execution begins. A
-      // crash in the first run must not strand the write-ahead journal alone.
-      const seedSaved = await (await taskStore()).save({goal,model,status:'limit',messages:[{role:'user',content:goal}]});
-      if (!seedSaved) throw new Error('Secure task checkpoint unavailable. Editing was not started.');
-      // Borrow the key only for this request. It never enters renderer state.
-      const outcome = await vault.withKey('openai', async (key) => {
-        const provider = new OpenAICompatibleProvider({ model, baseUrl: 'https://api.openai.com/v1', getKey: async () => key });
-        return runAgent({ goal, provider, registry: addExternalTools(nativeToolRegistry(ctl, await d.project(), { supportsVision: provider.supportsVision, createBlank: createAgentBlank }), external), ctl, signal: abort.signal, ...agentBudget,
+      // Borrow the key only for this request. It never enters renderer state or the checkpoint.
+      const outcome = await withAgentProvider(selection, model, vault, async (provider) => {
+        started = true;
+        // Persist a minimal resumable seed before model/tool execution begins. A
+        // crash in the first run must not strand the write-ahead journal alone.
+        const seedSaved = await (await taskStore()).save({goal,model,status:'limit',messages:[{role:'user',content:goal}],provider:selection,budget});
+        if (!seedSaved) throw new Error('Secure task checkpoint unavailable. Editing was not started.');
+        return runAgent({ goal, provider, registry: await buildAgentRegistry(ctl, provider), ctl, signal: abort.signal, ...budget,
           ...journalHooks,
           onPlan: (plan) => { agentState = { ...agentState, plan }; publishAgent(); },
           onEvent: (event) => { agentState = { ...agentState, events: [...agentState.events, event].slice(-100) }; publishAgent(); } });
       });
-      pausedAgent = (outcome.status === 'paused' || outcome.status === 'limit') ? { goal, model, messages: outcome.messages, plan:outcome.plan, uncertainEdit:outcome.uncertainEdit } : null;
-      agentState = { ...agentState, status: outcome.status, result: outcome.text, plan: outcome.plan };
+      const usage = sumUsage(undefined, outcome.usage);
+      pausedAgent = (outcome.status === 'paused' || outcome.status === 'limit') ? { goal, model, messages: outcome.messages, plan:outcome.plan, uncertainEdit:outcome.uncertainEdit, provider:selection, budget, ...(usage ? { usage } : {}) } : null;
+      agentState = { ...agentState, status: outcome.status, result: outcome.text, plan: outcome.plan, ...(usage ? { usage } : {}) };
       await checkpoint().catch(() => { agentState = {...agentState, result: agentState.result + ' Note: local checkpoint could not be saved.'}; }); await refreshRecoveryPresentation(); publishAgent();
       return agentState;
     } catch (error) {
       const message = error instanceof Error ? error.message : 'The agent failed.';
+      // Nothing ran (for example no API key): do not leave a resumable seed behind.
+      if (!started) await (await taskStore()).clear().catch(() => undefined);
       agentState = { ...agentState, status: abort.signal.aborted ? 'cancelled' : 'failed', result: message }; publishAgent();
       return agentState;
     } finally { if (agentAbort === abort) agentAbort = null; }
@@ -1282,20 +1300,22 @@ export function registerIpc(d: IpcDeps): void {
     // lock against the document's current version on the next edit.
     if (c.phase === 'paused') ctl.cancel();
     const saved = pausedAgent;
+    // A checkpoint written before Package B has no provider: it ran on OpenAI with the default budget.
+    const selection = saved.provider ?? DEFAULT_AGENT_PROVIDER;
+    const budget = saved.budget ?? {};
     const abort = new AbortController();
     agentAbort = abort;
-    agentState = { ...agentState, status: 'working', result: '' }; publishAgent();
+    agentState = { ...agentState, status: 'working', result: '', provider: selection, budget }; publishAgent();
     try {
-      const outcome = await vault.withKey('openai', async (key) => {
-        const provider = new OpenAICompatibleProvider({ model: saved.model, baseUrl: 'https://api.openai.com/v1', getKey: async () => key });
-        return runAgent({ goal: saved.goal, resumeMessages: saved.messages, resumePlan:saved.plan, resumeUncertainEdit:saved.uncertainEdit, resumeExpectedEdit:unresolvedJournal?.expected, provider,
-          registry: addExternalTools(nativeToolRegistry(ctl, await d.project(), { supportsVision: provider.supportsVision, createBlank: createAgentBlank }), external), ctl, signal: abort.signal, ...agentBudget,
+      const outcome = await withAgentProvider(selection, saved.model, vault, (provider) =>
+        buildAgentRegistry(ctl, provider).then((registry) => runAgent({ goal: saved.goal, resumeMessages: saved.messages, resumePlan:saved.plan, resumeUncertainEdit:saved.uncertainEdit, resumeExpectedEdit:unresolvedJournal?.expected, provider,
+          registry, ctl, signal: abort.signal, ...budget,
           ...journalHooks,
           onPlan: (plan) => { agentState = { ...agentState, plan }; publishAgent(); },
-          onEvent: (event) => { agentState = { ...agentState, events: [...agentState.events, event].slice(-100) }; publishAgent(); } });
-      });
-      pausedAgent = (outcome.status === 'paused' || outcome.status === 'limit') ? { ...saved, messages: outcome.messages, plan:outcome.plan, uncertainEdit:outcome.uncertainEdit } : null;
-      agentState = { ...agentState, status: outcome.status, result: outcome.text, plan: outcome.plan };
+          onEvent: (event) => { agentState = { ...agentState, events: [...agentState.events, event].slice(-100) }; publishAgent(); } })));
+      const usage = sumUsage(saved.usage, outcome.usage);
+      pausedAgent = (outcome.status === 'paused' || outcome.status === 'limit') ? { ...saved, messages: outcome.messages, plan:outcome.plan, uncertainEdit:outcome.uncertainEdit, ...(usage ? { usage } : {}) } : null;
+      agentState = { ...agentState, status: outcome.status, result: outcome.text, plan: outcome.plan, ...(usage ? { usage } : {}) };
       await checkpoint().catch(() => { agentState = {...agentState, result: agentState.result + ' Note: local checkpoint could not be saved.'}; }); await refreshRecoveryPresentation(); publishAgent();
       return agentState;
     } catch (error) {

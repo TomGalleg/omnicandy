@@ -17,10 +17,10 @@ import { estimateCost, formatUsd, IMAGE_MODELS, modelById, providerById, type Im
 import type { GenerateResultDto, ProviderStatusDto } from '@shared/ipc';
 import { estimateVideoCost, VIDEO_MODELS, videoModelById, type VideoJob, type VideoJobRecord } from '@shared/video';
 import { EDITOR_APPS, type EditorAppId } from '@shared/appEditors';
-import { presetsFor } from '@shared/deliver';
 import { buildWorkflowPlan, workflowCatalog, type PlanContext, type StepChange, type WorkflowPlan } from '@shared/workflowPlan';
 import type { RunSnapshot } from '@shared/workflowControl';
 import type { DeliverQueue } from './deliver';
+import { exportFileText, listExportFormatsText } from './exportOps';
 import { buildResumeContext } from '@shared/claudeHistory';
 import { builtinTemplates, templateCatalogForClaude } from '@shared/templates';
 import { signInEnv, type ClaudeAuth } from './claudeAuth';
@@ -385,11 +385,7 @@ export class ClaudePartner {
           name: z.string().max(512),
         }, async ({ name }) => {
           try {
-            const a = (await (await this.d.store()).loadManifest()).assets.find((x) => x.name === name);
-            if (!a) throw new Error(`No file named "${name}". Use list_files.`);
-            const ps = presetsFor(a.sourceFormat);
-            if (!ps.length) return text(`${a.sourceFormat.toUpperCase()} files can't be exported yet.`);
-            return text(JSON.stringify(ps.map((p) => ({ preset_id: p.id, label: p.label, note: p.note, file_type: p.ext, made_by: EDITOR_APPS[p.app].name })), null, 2));
+            return text(await listExportFormatsText(await this.d.store(), name));
           } catch (e) { return fail(e); }
         }),
         tool('export_file', 'Exports a library file (exact name from list_files) with one or more Deliver presets (see list_export_formats) into the project\'s exports folder, and waits until done. Exports use the SAVED library file: if the user wants changes in the open app included, save_version first and export the new version. Never changes the library.', {
@@ -398,25 +394,7 @@ export class ClaudePartner {
           add_to_library: z.boolean().optional().describe('Also copy each finished file into the library as a new file, so it can be opened with open_file in another app (for example a .docx exported as PDF, then opened in PdfCraft).'),
         }, async ({ name, preset_ids, add_to_library }) => {
           try {
-            const a = (await (await this.d.store()).loadManifest()).assets.find((x) => x.name === name);
-            if (!a) throw new Error(`No file named "${name}". Use list_files.`);
-            const q = await this.d.deliver();
-            const jobs = await q.enqueue(a.id, preset_ids, 'claude');
-            activity(`Exporting ${a.name}: ${jobs.map((j) => j.presetLabel).join(', ')}`);
-            const done = await q.wait(jobs.map((j) => j.id));
-            const lines: string[] = [];
-            for (const j of done) {
-              if (j.status !== 'done') { lines.push(`${j.presetLabel}: ${j.status}${j.error ? ` (${j.error})` : ''}`); continue; }
-              let kept = '';
-              if (add_to_library) {
-                try { kept = ` · in the library as ${(await q.addToLibrary(j.id)).name}`; } catch (e) { kept = ` · not added to the library (${e instanceof Error ? e.message : String(e)})`; }
-              }
-              lines.push(`${j.presetLabel}: exports/${j.output}${j.note ? ` (${j.note})` : ''}${kept}`);
-            }
-            activity(`Export finished: ${lines.join('; ')}`);
-            const s = ctl.snapshot();
-            const unsaved = s.asset?.id === a.id && s.history.length > 1 && !s.savedVersionIds.length;
-            return text(lines.join('\n') + (unsaved ? '\nNote: the open document has edits that are not saved, so they are not in these exports.' : ''));
+            return text(await exportFileText(await this.d.store(), await this.d.deliver(), ctl, { name, presetIds: preset_ids, addToLibrary: add_to_library }, activity));
           } catch (e) { return fail(e); }
         }),
         tool('list_files', 'Lists the files in the project library (name, kind, size).', {}, async () => {

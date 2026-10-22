@@ -137,9 +137,11 @@ export async function runAgent(args: { goal: string; provider: ModelProvider; re
         if (!halt && args.signal?.aborted) halt='cancelled';
         if (!halt && paused(ctl)) halt='paused';
         if (!halt && calls >= maxCalls) halt='limit';
+        // Host classification: a trusted read-only external command is an inspection, not an edit.
+        const mutating = !halt && isMutation(call.name,call.args) && !(call.name === 'external_command' && await registry.isReadOnly(snapshot,call.name,call.args));
         let r;
         if (halt) r = {text:`Error: Not executed; agent ${halt}.`,isError:true};
-        else if (uncertainEdit && isMutation(call.name,call.args)) {
+        else if (uncertainEdit && mutating) {
           r = {text:`Error: Previous ${uncertainEdit} returned an uncertain result. Further edits remain blocked until a FRESH read-back and a passing evidence_verify comparison resolve the result. A successful inspection alone does not unlock editing. No edit was executed.`,isError:true};
         } else {
           const signature = JSON.stringify([call.name, call.args]);
@@ -153,29 +155,29 @@ export async function runAgent(args: { goal: string; provider: ModelProvider; re
             // If persistence fails, do not dispatch the command.
             let dispatched = false;
             try {
-              if (isMutation(call.name,call.args)) {
+              if (mutating) {
                 await args.onEditBegin?.(call.name as 'app_command'|'external_command', nativeCommandId(call.args) ?? call.name,call.args);
                 expectedIntent = expectedEditIntent(call.name,call.args);
               }
               dispatched = true;
               r = await registry.call(snapshot,call.name,call.args);
-              if (!r.isError && requiresCompletionEvidence(call.name,call.args)) mutationSeq++;
-              if (isMutation(call.name,call.args)) {
+              if (!r.isError && (mutating || call.name === 'new_document' || call.name === 'apply_edit')) mutationSeq++;
+              if (mutating) {
                 const safe = !r.isError || classifyCommandError(r.text) !== 'execution' || stopText.test(r.text);
                 await args.onEditSettled?.(safe);
               }
             } catch(e) {
               // A callback failure after dispatch is uncertain, even if the tool returned OK.
               r = {text:`Error: Execution/journal state uncertain: ${e instanceof Error ? e.message : String(e)}`,isError:true};
-              if (dispatched && isMutation(call.name,call.args)) {
+              if (dispatched && mutating) {
                 uncertainEdit = `${call.name}${nativeCommandId(call.args) ? ` (${nativeCommandId(call.args)})` : ''}`;
                 recoveryReadbacks.clear();
               }
             }
             if (!r.isError) {
-              const receiptId = planControl.record(call.name, r.text, r.verified === true, call.args);
+              const receiptId = planControl.record(call.name, r.text, r.verified === true, call.args, r.trustedReadback === true && call.name === 'external_command' && !mutating);
               if (receiptId) {
-                if (isNativeReadback(call.name, call.args) && planControl.isReadbackReceipt(receiptId)) readbackSeq.set(receiptId, mutationSeq);
+                if (planControl.isReadbackReceipt(receiptId)) readbackSeq.set(receiptId, mutationSeq);
                 if (uncertainEdit && isNativeReadback(call.name, call.args) && planControl.isReadbackReceipt(receiptId)) {
                   recoveryReadbacks.add(receiptId);
                   emit({kind:'model',text:'Fresh read-back recorded. Compare actual fields with the intended result using evidence_verify. Editing remains locked until a passing comparison.'});
@@ -199,7 +201,7 @@ export async function runAgent(args: { goal: string; provider: ModelProvider; re
               }
             }
             if (r.isError && !stopText.test(r.text)) {
-              if (isMutation(call.name,call.args) && classifyCommandError(r.text) === 'execution') {
+              if (mutating && classifyCommandError(r.text) === 'execution') {
                 uncertainEdit = `${call.name}${nativeCommandId(call.args) ? ` (${nativeCommandId(call.args)})` : ''}`;
                 recoveryReadbacks.clear();
               }

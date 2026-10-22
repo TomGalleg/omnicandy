@@ -2,19 +2,41 @@ import { compactParameterHints } from '../commandDiscovery';
 import { preflightExternalParams, classifyCommandError } from './commandPreflight';
 import { z } from 'zod';
 import { inspectExternalCommand } from '@shared/commandCapabilityInspection';
+import type { CommandSpec, JobInfo } from '@shared/integrations';
 import type { IntegrationManager } from '../integrations/manager';
 import { tool, ToolRegistry } from './registry';
 
 /** The only external execution backend is IntegrationManager: never bypass its approval and policy checks. */
-type ExternalBackend = Pick<IntegrationManager, 'list' | 'execute'>;
+type ExternalBackend = Pick<IntegrationManager, 'list' | 'execute'> & Partial<Pick<IntegrationManager, 'job' | 'jobs' | 'cancelJob' | 'isBuiltin'>>;
+export interface ExternalToolOptions {
+  /** Reports a job launched by the agent so the host can cancel it when the task is stopped. */
+  onJobStarted?: (jobId: string) => void;
+  /** Formats a job for the model (the host may also bring finished outputs into the library). Defaults to a plain summary. */
+  describeJob?: (jobId: string, cancel: boolean) => Promise<string>;
+}
 const empty = z.object({}).strict();
 const identifier = z.string().min(1).max(1024);
 const argsSchema = z.record(z.string().min(1).max(128), z.unknown());
 const usable = (status: string) => status === 'connected' || status === 'limited';
+/** Declared permissions that can only look. Anything that writes, runs scripts or drives the UI is never a read-back. */
+const READ_ONLY_PERMISSIONS = new Set<string>(['read-info', 'read-project']);
 
-export function externalTools(backend: ExternalBackend) {
+/**
+ * A command's result may stand in as independent read-back evidence only when the HOST trusts it: the adapter is
+ * built in (not a package or private connector that could claim anything), the command is idempotent and declares
+ * nothing beyond read permissions. The command's own `verified` flag plays no part. Unknown means not trusted.
+ */
+export function isTrustedExternalReadback(isBuiltin: ((adapterId: string) => boolean) | undefined, adapterId: string | null | undefined, spec: CommandSpec): boolean {
+  return !!isBuiltin && !!adapterId && isBuiltin(adapterId) && spec.idempotent === true && !spec.destructive && !spec.longRunning &&
+    spec.permissions.length > 0 && spec.permissions.every((p) => READ_ONLY_PERMISSIONS.has(p));
+}
+
+const summary = (j: JobInfo) => ({ job_id: j.id, app: j.appName, command: j.commandId, status: j.status, stage: j.stage, progress: j.fraction, started: j.startedAt, finished: j.finishedAt });
+
+export function externalTools(backend: ExternalBackend, options: ExternalToolOptions = {}) {
   const list = async () => (await backend.list()).filter(app => usable(app.status) && !!app.adapterId);
-  return [
+  const trusted = (adapterId: string | null | undefined, spec: CommandSpec) => isTrustedExternalReadback(backend.isBuiltin?.bind(backend), adapterId, spec);
+  const tools = [
     tool('external_apps', 'List already-connected external applications and their names. Only connected applications may be controlled.', empty, async () =>
       JSON.stringify((await list()).map(app => ({ key: app.key, name: app.name, status: app.status, adapter: app.adapterName })))),
     tool('external_commands', 'Search command identifiers for a connected external application, or inspect complete parameter and permission details by exact command_id before executing.',
@@ -24,7 +46,7 @@ export function externalTools(backend: ExternalBackend) {
         if (command_id) {
           const spec = app.commands.find(c => c.id === command_id);
           if (!spec) throw new Error('Command is not advertised by this app. Search external_commands again.');
-          return JSON.stringify({ app: app.name, command: spec, capabilityInspection: inspectExternalCommand(spec) });
+          return JSON.stringify({ app: app.name, command: spec, capabilityInspection: inspectExternalCommand(spec), trustedReadback: trusted(app.adapterId, spec) });
         }
         const q = (filter ?? '').trim().toLowerCase();
         const matches = app.commands.filter(c => c.id && (!q || `${c.id} ${c.label} ${c.description}`.toLowerCase().includes(q)));
@@ -33,32 +55,62 @@ export function externalTools(backend: ExternalBackend) {
             parameterHints: compactParameterHints(c.params), requiresInspection: true })),
           next: matches.length > 40 ? 'Refine filter to see other matching commands.' : undefined });
       }),
-    tool('external_command', 'Execute an inspected command in a connected external app. Inspect with external_commands command_id first. The integration manager enforces user approvals and all existing security policies.',
-      z.object({ app_key: identifier, command: z.string().min(1).max(128), params: argsSchema.optional() }).strict(), async ({ app_key, command, params }) => {
-        // Recheck on every call: connected status, adapter and command availability may have changed since advertisement.
-        const app = (await list()).find(a => a.key === app_key);
-        if (!app) throw new Error('Application disconnected or unavailable. Stop and ask the user to reconnect.');
-        const spec = app.commands.find(c => c.id === command);
-        if (!spec) throw new Error('Command is not advertised by this connected app. Run external_commands again.');
-        // A long-running operation can outlive the model turn; job tracking is a separate milestone.
-        if (spec.longRunning) throw new Error('Long-running external commands are not supported in this prototype.');
-        const problem = preflightExternalParams(spec, params ?? {});
-        if (problem) throw new Error(`validation: ${problem}`);
-        const result = await backend.execute(app_key, command, params ?? {}, { background: false });
-        const payload = { ok: result.ok, verified: result.verified, message: result.message,
-          evidence: result.evidence, outputs: result.outputs, error: result.error };
-        if (!result.ok) {
-          const detail = result.error?.message && result.error.message !== result.message ? ` ${result.error.message}` : '';
-          const category = classifyCommandError(`${result.error?.kind ?? ''} ${result.message} ${detail}`);
-          throw new Error(`${category} (${result.error?.kind ?? 'app-error'}): ${result.message}${detail}`);
-        }
-        return { text: JSON.stringify(payload), verified: result.verified === true };
-      }),
+    {
+      ...tool('external_command', 'Execute an inspected command in a connected external app. Inspect with external_commands command_id first. Long-running commands start a background job: follow it with external_job. The integration manager enforces user approvals and all existing security policies. A command marked trustedReadback in its inspection returns state that evidence_verify can compare.',
+        z.object({ app_key: identifier, command: z.string().min(1).max(128), params: argsSchema.optional() }).strict(), async ({ app_key, command, params }) => {
+          // Recheck on every call: connected status, adapter and command availability may have changed since advertisement.
+          const app = (await list()).find(a => a.key === app_key);
+          if (!app) throw new Error('Application disconnected or unavailable. Stop and ask the user to reconnect.');
+          const spec = app.commands.find(c => c.id === command);
+          if (!spec) throw new Error('Command is not advertised by this connected app. Run external_commands again.');
+          if (spec.longRunning) {
+            // A job that is still running (also one started before an interruption or by an earlier attempt) is never launched twice.
+            const running = (backend.jobs?.() ?? []).find(j => j.status === 'running' && j.appKey === app_key && j.commandId === command);
+            if (running) throw new Error(`Job ${running.id} for this command is already running; it must be followed with external_job instead of being launched again.`);
+          }
+          const problem = preflightExternalParams(spec, params ?? {});
+          if (problem) throw new Error(`validation: ${problem}`);
+          const result = await backend.execute(app_key, command, params ?? {}, { background: spec.longRunning === true });
+          const payload = { ok: result.ok, verified: result.verified, message: result.message,
+            evidence: result.evidence, outputs: result.outputs, data: result.data, error: result.error };
+          if (!result.ok) {
+            const detail = result.error?.message && result.error.message !== result.message ? ` ${result.error.message}` : '';
+            const category = classifyCommandError(`${result.error?.kind ?? ''} ${result.message} ${detail}`);
+            throw new Error(`${category} (${result.error?.kind ?? 'app-error'}): ${result.message}${detail}`);
+          }
+          const jobId = typeof result.data?.jobId === 'string' ? result.data.jobId : undefined;
+          if (spec.longRunning && jobId) options.onJobStarted?.(jobId);
+          // `verified` is the command's own claim. Only a host-trusted read-only command yields a read-back receipt.
+          return { text: JSON.stringify(payload), verified: result.verified === true, ...(trusted(app.adapterId, spec) ? { trustedReadback: true } : {}) };
+        }),
+      readOnly: async (raw: unknown) => {
+        const parsed = z.object({ app_key: identifier, command: z.string().min(1).max(128) }).passthrough().safeParse(raw);
+        if (!parsed.success) return false;
+        const app = (await list()).find(a => a.key === parsed.data.app_key);
+        const spec = app?.commands.find(c => c.id === parsed.data.command);
+        return !!app && !!spec && trusted(app.adapterId, spec);
+      },
+    },
   ];
+  // Offered only when the backend can really track jobs, so the model is never told about a tool that cannot work.
+  const getJob = backend.job?.bind(backend);
+  const getJobs = backend.jobs?.bind(backend);
+  if (getJob && getJobs) tools.push(
+    tool('external_job', 'Status, progress and result of a background external job, or cancel it. With no job_id it lists the jobs. A job is finished only when status is succeeded, failed or cancelled; report its result exactly. A finished job does not prove the goal: read the resulting state back before claiming success.',
+      z.object({ job_id: z.string().min(1).max(100).optional(), cancel: z.boolean().optional() }).strict(), async ({ job_id, cancel }) => {
+        if (!job_id) return JSON.stringify(getJobs().slice(0, 20).map(summary));
+        if (options.describeJob) return options.describeJob(job_id, cancel === true);
+        if (cancel) backend.cancelJob?.(job_id);
+        const j = getJob(job_id);
+        if (!j) return JSON.stringify({ error: 'No such job (jobs do not survive an application restart). Check the application state before starting it again.', jobs: getJobs().slice(0, 20).map(summary) });
+        return JSON.stringify({ ...summary(j), result: j.result });
+      })
+  );
+  return tools;
 }
 
 /** Extend an existing native registry without replacing native tools or weakening adapter policy. */
-export function addExternalTools(registry: ToolRegistry, backend: ExternalBackend): ToolRegistry {
-  for (const entry of externalTools(backend)) registry.add(entry);
+export function addExternalTools(registry: ToolRegistry, backend: ExternalBackend, options: ExternalToolOptions = {}): ToolRegistry {
+  for (const entry of externalTools(backend, options)) registry.add(entry);
   return registry;
 }

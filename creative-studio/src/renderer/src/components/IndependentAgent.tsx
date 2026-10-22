@@ -2,18 +2,18 @@ import { useEffect, useMemo, useState } from 'react';
 import type { AgentUiState, AgentPlanStep } from '@shared/agentHarness';
 import { presentUnifiedAgent, validateUnifiedAgentRequest } from '@shared/unifiedAgentPresentation';
 import { AGENT_BUDGET_LIMITS, validateAgentBudget } from '@shared/agentBudget';
+import { AGENT_PROVIDER_IDS, AGENT_PROVIDERS, DEFAULT_LOCAL_ENDPOINT, validateProviderSelection, type AgentProviderId, type AgentProviderSelection } from '@shared/agentProvider';
 import { recoveryUiFixture, type RecoveryFixture } from './recoveryUiFixture';
 
-// The existing IPC agent endpoint currently supports OpenAI models only.
-// Do not advertise other providers until their backend routes are wired.
-const models = ['gpt-4.1-mini', 'gpt-4.1', 'gpt-4o-mini'];
-const initial: AgentUiState = { status: 'idle', model: models[0]!, goal: '', result: '', events: [] };
+const initial: AgentUiState = { status: 'idle', model: AGENT_PROVIDERS.openai.models[0]!, goal: '', result: '', events: [] };
 const errorText = (e: unknown) => e instanceof Error ? e.message : String(e);
 
 /** Existing independent agent controls, using the shared renderer presentation contract. */
 export function IndependentAgent() {
   const [state, setState] = useState<AgentUiState>(initial);
-  const [model, setModel] = useState(models[0]!);
+  const [provider, setProvider] = useState<AgentProviderId>('openai');
+  const [model, setModel] = useState<string>(AGENT_PROVIDERS.openai.models[0]!);
+  const [endpoint, setEndpoint] = useState(DEFAULT_LOCAL_ENDPOINT);
   const [goal, setGoal] = useState('');
   const [maxTurns, setMaxTurns] = useState<number>(AGENT_BUDGET_LIMITS.maxTurns.default);
   const [maxToolCalls, setMaxToolCalls] = useState<number>(AGENT_BUDGET_LIMITS.maxToolCalls.default);
@@ -27,7 +27,10 @@ export function IndependentAgent() {
   const recoveryToDisplay = state.recovery ?? (previewActive ? fixture.info : undefined);
   const presentation = useMemo(() => presentUnifiedAgent(state), [state]);
   const budgetError = validateAgentBudget({ maxTurns, maxToolCalls });
-  const validationError = validateUnifiedAgentRequest(goal, model) ?? budgetError;
+  const selection: AgentProviderSelection = provider === 'local' ? { provider, endpoint } : { provider };
+  const validationError = validateUnifiedAgentRequest(goal, model) ?? validateProviderSelection(selection, model) ?? budgetError;
+  const changeProvider = (next: AgentProviderId) => { setProvider(next); setModel(AGENT_PROVIDERS[next].models[0] ?? ''); };
+  const providerLabel = AGENT_PROVIDERS[provider].label;
   const busy = presentation.busy || requestPending;
   const canEditPlan = !busy && (state.status === 'paused' || state.status === 'limit');
 
@@ -52,7 +55,7 @@ export function IndependentAgent() {
     if (busy || validationError) return;
     setError('');
     setRequestPending(true);
-    void window.studio.agent.run(goal.trim(), model, { maxTurns, maxToolCalls })
+    void window.studio.agent.run(goal.trim(), model, { maxTurns, maxToolCalls }, selection)
       .then(setState).catch((e) => setError(errorText(e)))
       .finally(() => setRequestPending(false));
   };
@@ -66,13 +69,21 @@ export function IndependentAgent() {
   };
 
   return <div className="claude-section">
-    <div className="asset-meta">Uses the existing CreateCraft agent and your OpenAI API key. Model calls may incur charges. Other AI providers are not yet connected to this panel.</div>
+    <div className="asset-meta">Uses the existing CreateCraft agent with the AI provider you choose. OpenAI and Gemini use the API key saved in Settings (it never leaves the app's secure storage) and calls may incur charges. A local model runs on this PC through a localhost endpoint. Continue Task keeps the provider the task started with.</div>
     <div className="claude-row">
-      <select aria-label="Independent AI model" value={model} disabled={busy} onChange={(e) => setModel(e.target.value)}>
-        {models.map((m) => <option key={m} value={m}>{m}</option>)}
+      <select aria-label="Independent AI provider" value={provider} disabled={busy} onChange={(e) => changeProvider(e.target.value as AgentProviderId)}>
+        {AGENT_PROVIDER_IDS.map((id) => <option key={id} value={id}>{AGENT_PROVIDERS[id].label}</option>)}
       </select>
+      {provider === 'local'
+        ? <input aria-label="Independent AI local model name" placeholder="Model name" value={model} disabled={busy} maxLength={80} onChange={(e) => setModel(e.target.value)} />
+        : <select aria-label="Independent AI model" value={model} disabled={busy} onChange={(e) => setModel(e.target.value)}>
+            {AGENT_PROVIDERS[provider].models.map((m) => <option key={m} value={m}>{m}</option>)}
+          </select>}
       <span className="chip" role="status">{presentation.status}</span>
     </div>
+    {provider === 'local' && <div className="claude-row">
+      <label>Local endpoint <input aria-label="Independent AI local endpoint" value={endpoint} disabled={busy} maxLength={200} onChange={(e) => setEndpoint(e.target.value)} /></label>
+    </div>}
     <div className="claude-row">
       <label>Max model turns <input type="number" aria-label="Independent AI maximum model turns" value={maxTurns} disabled={busy}
         min={AGENT_BUDGET_LIMITS.maxTurns.min} max={AGENT_BUDGET_LIMITS.maxTurns.max} step={1}
@@ -84,8 +95,9 @@ export function IndependentAgent() {
     {budgetError && <div className="asset-meta" role="alert">{budgetError}</div>}
     <textarea aria-label="Independent AI instruction" value={goal} disabled={busy}
       onChange={(e) => setGoal(e.target.value)} placeholder="Describe what you want to do in a connected app" rows={5} maxLength={4000} />
+    {state.usage && <div className="asset-meta" role="status" aria-label="Independent AI token usage">Tokens reported by the provider: {state.usage.input.toLocaleString()} in, {state.usage.output.toLocaleString()} out{state.provider ? ` (${AGENT_PROVIDERS[state.provider.provider].label})` : ''}</div>}
     <div className="btn-row">
-      <button className="btn primary" disabled={busy || !presentation.canRun || !!validationError} onClick={run}>Run with OpenAI</button>
+      <button className="btn primary" disabled={busy || !presentation.canRun || !!validationError} onClick={run}>Run with {providerLabel}</button>
       <button className="btn" disabled={!presentation.canStop} onClick={stop}>Stop</button>
       <button className="btn" disabled={!presentation.canResume} onClick={resume}>Continue Task</button>
     </div>

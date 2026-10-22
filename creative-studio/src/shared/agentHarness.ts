@@ -10,6 +10,7 @@ export interface AgentRecoveryInfo {
   expected?: { kind: 'photocraft.shape.edit.rect'; layer: number; rect: [number,number,number,number] };
   message: string;
 }
+export interface AgentUsage { input: number; output: number }
 export interface AgentUiState {
   status: 'idle' | 'working' | 'completed' | 'paused' | 'cancelled' | 'limit' | 'failed';
   model: string;
@@ -18,4 +19,10 @@ export interface AgentUiState {
   events: AgentUiEvent[];
   plan?: AgentTaskPlan;
   recovery?: AgentRecoveryInfo;
+  /** Provider the task runs on (Continue Task keeps it). Never contains credentials. */
+  provider?: import('./agentProvider').AgentProviderSelection;
+  /** Execution budget in force for this task. */
+  budget?: import('./agentBudget').AgentBudget;
+  /** Provider-reported tokens only, summed across runs of this task; absent when the provider reported none. */
+  usage?: AgentUsage;
 }

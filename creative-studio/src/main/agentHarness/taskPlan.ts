@@ -53,7 +53,8 @@ export function registerTaskPlan(registry: ToolRegistry, initialGoal: string, in
   let nextCheck = 1;
   registry.remove('evidence_receipts');
   registry.add(tool('evidence_receipts', 'List recent successful application-tool results. Receipt IDs attest only to execution, not verified visual or document outcomes.', z.object({}).strict(), async () => ({text:JSON.stringify(receipts.slice(-30)),verified:false})));
-  const record = (toolName: string, text: string, verified: boolean, args?: unknown): string | undefined => {
+  // `trustedReadback` comes from the host (a built-in adapter's read-only command), never from model output or a command's own `verified` claim.
+  const record = (toolName: string, text: string, verified: boolean, args?: unknown, trustedReadback = false): string | undefined => {
     if (!['app_command','external_command','look_at_document','new_document','save_version'].includes(toolName)) return;
     // Save receipts are accepted only with a structured new-version confirmation.
     const saveVersionId = toolName === 'save_version' ? confirmedSave(text) : undefined;
@@ -62,7 +63,7 @@ export function registerTaskPlan(registry: ToolRegistry, initialGoal: string, in
     const cmd = toolName === 'app_command' && args && typeof args === 'object' && !Array.isArray(args)
       ? (args as Record<string, unknown>).command : undefined;
     const command = typeof cmd === 'string' ? cmd : undefined;
-    const parsed = command && readOnlyNativeCommands.has(command) ? parseReadback(text) : undefined;
+    const parsed = (command && readOnlyNativeCommands.has(command)) || (toolName === 'external_command' && trustedReadback) ? parseReadback(text) : undefined;
     if (parsed !== undefined) readbacks.set(id, parsed);
     receipts.push({id,tool:toolName,summary:text.slice(0,240),verified,command,readback:parsed !== undefined,...(saveVersionId ? {saveVersionId} : {})});
     if (receipts.length > 100) { const removed=receipts.shift(); if (removed) readbacks.delete(removed.id); }
@@ -73,6 +74,9 @@ export function registerTaskPlan(registry: ToolRegistry, initialGoal: string, in
     z.object({receipt_id:z.string().regex(/^r[1-9][0-9]*$/),path:z.string().regex(/^[a-zA-Z_][a-zA-Z0-9_]*(\.(?:[a-zA-Z_][a-zA-Z0-9_]*|[0-9]+))*$/).max(160),expected:z.union([z.string().max(500),z.number().finite(),z.boolean(),z.null()]),tolerance:z.number().min(0).max(1000000).optional()}).strict(),
     async ({receipt_id,path,expected,tolerance}) => {
       if (!readbacks.has(receipt_id)) return {text:'Error: Receipt has no eligible structured read-back; use an approved read-only inspection command.',isError:true};
+      // An external result envelope carries the command's own claims (verified, message, evidence); only its returned state may be compared.
+      if (receipts.find(r => r.id === receipt_id)?.tool === 'external_command' && !path.startsWith('data.'))
+        return {text:'Error: For external read-backs compare fields under data.* only; the command\'s own verified/message/evidence fields are claims, not state.',isError:true};
       const found=field(readbacks.get(receipt_id),path);
       if (!found.exists) return {text:`Verification unavailable: ${path} not present in read-back ${receipt_id}.`,verified:false};
       const observed=found.value;

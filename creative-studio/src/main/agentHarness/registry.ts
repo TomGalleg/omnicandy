@@ -12,6 +12,12 @@ export class ToolRegistry {
   /** Lets a tool bound to per-run state (task_plan) be registered again when a registry is reused for a resumed run. */
   remove(name: string) { this.tools.delete(name); }
   snapshot(): ToolDef[] { return [...this.tools.values()]; }
+  /** True only when the advertised tool classifies this exact call as read-only; any failure means "not read-only". */
+  async isReadOnly(snapshot: readonly ToolDef[], name: string, args: unknown): Promise<boolean> {
+    const advertised = snapshot.find((t) => t.name === name);
+    if (!advertised?.readOnly || this.tools.get(name) !== advertised) return false;
+    try { return (await advertised.readOnly(args)) === true; } catch { return false; }
+  }
   async call(snapshot: readonly ToolDef[], name: string, args: unknown): Promise<ToolResult> {
     const advertised = snapshot.find((t) => t.name === name);
     const current = this.tools.get(name);
@@ -22,7 +28,7 @@ export class ToolRegistry {
       if (typeof result?.text !== 'string' || (result.imageDataUrl !== undefined && (!/^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(result.imageDataUrl) || result.imageDataUrl.length > 4_000_000)) || (result.isError !== undefined && typeof result.isError !== 'boolean')) {
         return { text: 'Error: Tool returned an invalid result.', isError: true };
       }
-      return { ...result, text: result.text.slice(0, 8000) };
+      return { ...result, text: result.text.slice(0, 8000), ...(result.trustedReadback === true && !result.isError ? { trustedReadback: true } : { trustedReadback: undefined }) };
     } catch (e) { return { text: `Error: ${e instanceof Error ? e.message : String(e)}`.slice(0, 8000), isError: true }; }
   }
 }
