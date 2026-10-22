@@ -29,6 +29,7 @@ import { TaskCheckpointStore } from './agentHarness/taskCheckpoint';
 import { EditIntentJournal } from './agentHarness/editIntentJournal';
 import { restoreRecoveryState, resumeFailureNotice } from './agentHarness/crashRecovery';
 import { recoveryPresentation } from './agentHarness/recoveryPresentation';
+import { recoveryIpcState } from './agentHarness/recoveryIpcState';
 import { stepSchema as planStepSchema, validatePlanEdit, type TaskPlan } from './agentHarness/taskPlan';
 import { nativeToolRegistry } from './agentHarness/nativeTools';
 import { addExternalTools } from './agentHarness/externalTools';
@@ -1191,16 +1192,9 @@ export function registerIpc(d: IpcDeps): void {
     if (agentAbort || pausedAgent || agentState.status !== 'idle') return;
     const restored = await restoreRecoveryState(await taskStore(), await editJournal());
     if (restored.kind === 'empty') return;
-    if (restored.kind === 'orphan') {
-      agentState = { ...agentState, status: 'failed', result: restored.notice, recovery: recoveryPresentation(null, true) };
-      publishAgent();
-      return;
-    }
-    const { task } = restored;
-    pausedAgent = {goal: task.goal, model: task.model, messages: task.messages,
-      plan: task.plan, uncertainEdit: restored.uncertainEdit};
-    agentState = {status: task.status, model: task.model, goal: task.goal,
-      result: restored.notice, events: [], plan: task.plan, recovery: recoveryPresentation(restored.intent)};
+    const result = recoveryIpcState(restored, agentState);
+    pausedAgent = result.paused;
+    agentState = result.state;
     publishAgent();
   };
   const refreshRecoveryPresentation = async () => {
