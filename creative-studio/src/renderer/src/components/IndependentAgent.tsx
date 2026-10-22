@@ -159,12 +159,19 @@ export function IndependentAgent({ provider }: { provider: AgentProviderId }) {
     </details>}
     {!busy && goal.length > 0 && validationError && <div className="notice" role="alert">{validationError}</div>}
     {error && <div className="notice" role="alert">{error}</div>}
-    {presentation.result && <div className="notice" role="status">{presentation.result}</div>}
-    <div role="log" aria-label="AI activity" aria-live="polite">
-      {presentation.activities.map((activity, index) => <div className="asset-meta" key={index}>
-        <span className={activity.failed ? 'warn' : ''}>{activity.label}</span>
-      </div>)}
-    </div>
+    {presentation.result && (presentation.result.length > 160
+      ? <details className="notice" role="status"><summary>{presentation.result.slice(0, presentation.result.indexOf('. ') + 1 || 120)}</summary>{presentation.result}</details>
+      : <div className="notice" role="status">{presentation.result}</div>)}
+    {!busy && presentation.latestProblem && presentation.canResume && <div className="notice" role="status" aria-label="Why the task stopped"><strong>What went wrong:</strong> {presentation.latestProblem}</div>}
+    {busy && presentation.now && <div className="asset-meta" role="status" aria-label="Current step">Now: {presentation.now}</div>}
+    {presentation.activities.length > 0 && <details className="agent-activity">
+      <summary>Activity ({presentation.activities.length} steps{presentation.activities.some((a) => a.failed) ? `, ${presentation.activities.filter((a) => a.failed).length} failed` : ''})</summary>
+      <div role="log" aria-label="AI activity" aria-live="polite">
+        {presentation.activities.map((activity, index) => <div className="asset-meta" key={index}>
+          <span className={activity.failed ? 'warn' : ''}>{activity.label}</span>{activity.reason ? <span> — {activity.reason}</span> : null}
+        </div>)}
+      </div>
+    </details>}
   </div>
   <div className="agent-compose">
     <textarea aria-label="Independent AI instruction" value={goal} disabled={busy}

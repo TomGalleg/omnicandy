@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { AgentUiState } from './agentHarness';
-import { presentUnifiedAgent, validateUnifiedAgentRequest } from './unifiedAgentPresentation';
+import { explainFailure, presentUnifiedAgent, validateUnifiedAgentRequest } from './unifiedAgentPresentation';
 
 const state = (status: AgentUiState['status'], events: AgentUiState['events'] = []): AgentUiState => ({
   status, model: 'test-model', goal: 'Create a drawing', result: '', events,
@@ -26,6 +26,22 @@ describe('unified agent renderer presentation', () => {
       {kind:'result',label:'tool: failed',failed:true},
     ]);
     expect(JSON.stringify(view.activities)).not.toMatch(/SECRET|private|\.\.\//);
+  });
+  it('explains failures in fixed plain words, never with the raw tool output', () => {
+    const view = presentUnifiedAgent(state('limit', [
+      {kind:'tool',tool:'external_commands',text:'{}'},
+      {kind:'result',tool:'external_commands',text:'Error: Blender is not connected (status: available; Ready to connect.). Stop and wait for the user to reconnect it.',isError:true},
+      {kind:'result',tool:'external_command',text:'Error: validation (invalid-params): C:/Users/me/secret-plan.blend is not in the Blender folder',isError:true},
+      {kind:'stop',text:'paused'},
+    ]));
+    expect(view.activities[1]).toMatchObject({failed:true,reason:expect.stringMatching(/not connected.*Software list/)});
+    expect(view.activities[2]).toMatchObject({reason:'A command was refused because its settings were not valid.'});
+    expect(view.latestProblem).toBe('A command was refused because its settings were not valid.');
+    expect(view.now).toBe('Agent stopped');
+    expect(JSON.stringify(view)).not.toMatch(/secret-plan|Users[\\/]me/);
+    expect(explainFailure('raw private file content')).toBeUndefined();
+    expect(explainFailure('Error: Identical tool call already failed twice. Stop retrying')).toMatch(/repeated a failing call/);
+    expect(explainFailure('Error: Previous external_command (scene.build) returned an uncertain result. Further edits remain blocked')).toMatch(/recovery lock/);
   });
   it('caps the activity timeline at fifty entries', () => {
     const events = Array.from({length:75}, () => ({kind:'stop' as const,text:'stopped'}));
