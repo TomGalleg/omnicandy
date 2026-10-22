@@ -43,7 +43,8 @@ import type { JournaledTool } from './agentHarness/editIntentJournal';
 import { stepSchema as planStepSchema, validatePlanEdit } from './agentHarness/taskPlan';
 import { nativeToolRegistry } from './agentHarness/nativeTools';
 import { addExternalTools } from './agentHarness/externalTools';
-import type { AgentUiState } from '@shared/agentHarness';
+import type { AgentUiEvent, AgentUiState } from '@shared/agentHarness';
+import { appendChat, chatItemFromEvent, userChatItem } from '@shared/agentChat';
 import { PhotoCraftCliAdapter } from './photocraftCli';
 import type { ProjectManager } from './projects';
 import { setBlenderLiveHooks } from './integrations/adapters/blenderLive';
@@ -1191,6 +1192,8 @@ export function registerIpc(d: IpcDeps): void {
   // Budget, provider selection (non-secret) and usage ride in pausedAgent and the encrypted checkpoint, so Continue Task
   // keeps them, also after an app restart. Credentials never do: keys are lent by the vault per request.
   let pausedAgent: PausedAgent | null = null;
+  // The conversation of the last task, kept in memory so a chat message after it finished (or was stopped) continues it with its context.
+  let conversation: PausedAgent | null = null;
   // Background jobs this task started. Cancelled on stop or takeover; a job that is missing after a restart stays blocked from relaunch.
   const jobLedger = new AgentJobLedger(external, async (jobs) => {
     const store = await taskStore();
@@ -1248,7 +1251,7 @@ export function registerIpc(d: IpcDeps): void {
     } else await store.clear();
   };
   const publishAgent = () => { const w = d.window(); if (w && !w.isDestroyed()) w.webContents.send(IPC.agentEvent, agentState); };
-  const endAgent = () => { pausedAgent = null; cancelAgentJobs(); jobLedger.clear(); agentAbort?.abort(); agentAbort = null; agentState = { status: 'idle', model: 'gpt-4.1-mini', goal: '', result: '', events: [] }; publishAgent(); };
+  const endAgent = () => { pausedAgent = null; conversation = null; cancelAgentJobs(); jobLedger.clear(); agentAbort?.abort(); agentAbort = null; agentState = { status: 'idle', model: 'gpt-4.1-mini', goal: '', result: '', events: [] }; publishAgent(); };
   resetters.push(endAgent);
   handle(IPC.agentState, none, async () => { await restoreAgent(); return agentState; });
   handle(IPC.agentPlanUpdate, z.tuple([z.array(planStepSchema).max(20)]), async (steps) => {
@@ -1263,8 +1266,13 @@ export function registerIpc(d: IpcDeps): void {
     agentState = { ...agentState, plan }; publishAgent();
     return agentState;
   });
-  handle(IPC.agentStop, none, async () => { if (await (await editJournal()).load()) throw new Error('An unresolved edit journal exists. Continue Task to resolve it before discarding the session.'); pausedAgent = null; cancelAgentJobs(); jobLedger.clear(); agentAbort?.abort(); await (await taskStore()).clear(); return agentState; });
-  handle(IPC.agentRun, z.tuple([z.string().min(1).max(4000), z.string().min(1).max(80), agentBudgetSchema.default({}), agentProviderSchema.default(DEFAULT_AGENT_PROVIDER)]), async (goal, model, budget, selection) => {
+  handle(IPC.agentStop, none, async () => { if (await (await editJournal()).load()) throw new Error('An unresolved edit journal exists. Continue Task to resolve it before discarding the session.'); pausedAgent = null; cancelAgentJobs(); jobLedger.clear(); agentAbort?.abort(); await (await taskStore()).clear(); conversation = null; agentState = { status: 'idle', model: agentState.model, goal: '', result: '', events: [], chat: [] }; publishAgent(); return agentState; });
+  handle(IPC.agentInterrupt, none, async () => { agentAbort?.abort(); return agentState; });
+  // Every event updates both the raw event list and the chat view the panel shows.
+  const onAgentEvent = (event: AgentUiEvent) => { agentState = { ...agentState, events: [...agentState.events, event].slice(-100), chat: appendChat(agentState.chat, chatItemFromEvent(event)) }; publishAgent(); };
+  type AgentBudgetIn = z.infer<typeof agentBudgetSchema>;
+  type AgentProviderIn = z.infer<typeof agentProviderSchema>;
+  const runAgentTask = async (goal: string, model: string, budget: AgentBudgetIn, selection: AgentProviderIn): Promise<AgentUiState> => {
     const ctl = await live();
     // Every rejection happens BEFORE anything is reset: a refused Run must never delete or replace the saved task or its checkpoint.
     await prepareNewTask({
@@ -1272,11 +1280,11 @@ export function registerIpc(d: IpcDeps): void {
       loadJournal: async () => (await editJournal()).load(),
       claudeWorking: partner?.state().status === 'working',
       ctl, hasPausedTask: !!pausedAgent,
-      reset: async () => { pausedAgent = null; jobLedger.resetForNewTask(); await (await taskStore()).clear().catch(() => undefined); },
+      reset: async () => { pausedAgent = null; conversation = null; jobLedger.resetForNewTask(); await (await taskStore()).clear().catch(() => undefined); },
     });
     const abort = new AbortController();
     agentAbort = abort;
-    agentState = { status: 'working', model, goal, result: '', events: [], provider: selection, budget };
+    agentState = { status: 'working', model, goal, result: '', events: [], chat: appendChat([], userChatItem(goal)), provider: selection, budget };
     publishAgent();
     let started = false;
     try {
@@ -1290,10 +1298,11 @@ export function registerIpc(d: IpcDeps): void {
         return runAgent({ goal, provider, registry: await buildAgentRegistry(ctl, provider), ctl, signal: abort.signal, ...budget, onInterrupted: () => { cancelAgentJobs(); },
           ...journalHooks,
           onPlan: (plan) => { agentState = { ...agentState, plan }; publishAgent(); },
-          onEvent: (event) => { agentState = { ...agentState, events: [...agentState.events, event].slice(-100) }; publishAgent(); } });
+          onEvent: onAgentEvent });
       });
       const usage = sumUsage(undefined, outcome.usage);
       pausedAgent = (outcome.status === 'paused' || outcome.status === 'limit') ? { goal, model, messages: outcome.messages, plan:outcome.plan, uncertainEdit:outcome.uncertainEdit, provider:selection, budget, ...(usage ? { usage } : {}) } : null;
+      conversation = { goal, model, messages: outcome.messages, plan: outcome.plan, provider: selection, budget, ...(usage ? { usage } : {}) };
       agentState = { ...agentState, status: outcome.status, result: outcome.text + takeInterruptNote(), plan: outcome.plan, ...(usage ? { usage } : {}) };
       await checkpoint().catch(() => { agentState = {...agentState, result: agentState.result + ' Note: local checkpoint could not be saved.'}; }); await refreshRecoveryPresentation(); publishAgent();
       return agentState;
@@ -1304,14 +1313,20 @@ export function registerIpc(d: IpcDeps): void {
       agentState = { ...agentState, status: abort.signal.aborted ? 'cancelled' : 'failed', result: message }; publishAgent();
       return agentState;
     } finally { if (agentAbort === abort) agentAbort = null; }
-  });
+  };
+  handle(IPC.agentRun, z.tuple([z.string().min(1).max(4000), z.string().min(1).max(80), agentBudgetSchema.default({}), agentProviderSchema.default(DEFAULT_AGENT_PROVIDER)]), runAgentTask);
 
-  handle(IPC.agentResume, none, async () => {
+  /** Continue Task (no text) or a chat follow-up (text): the same conversation, the same safety checks, the same journal. */
+  const resumeAgentTask = async (followUp?: string): Promise<AgentUiState> => {
     await restoreAgent();
-    if (!pausedAgent || !['paused', 'limit'].includes(agentState.status)) throw new Error('No paused or turn-limited task is available to resume.');
+    const resumable = !!pausedAgent && ['paused', 'limit'].includes(agentState.status);
+    if (!resumable && !(followUp && conversation)) throw new Error(followUp ? 'Nothing to continue yet: describe what you want.' : 'No paused or turn-limited task is available to resume.');
+    // A chat message after the AI finished continues that conversation.
+    let saved: PausedAgent = resumable ? (pausedAgent as PausedAgent) : (conversation as PausedAgent);
+    pausedAgent = saved;
     // Check journal again even if the task was already restored in memory.
     const unresolvedJournal = await (await editJournal()).load();
-    if (unresolvedJournal) pausedAgent = {...pausedAgent, uncertainEdit:`${unresolvedJournal.tool} (${unresolvedJournal.command})`};
+    if (unresolvedJournal) { saved = {...saved, uncertainEdit:`${unresolvedJournal.tool} (${unresolvedJournal.command})`}; pausedAgent = saved; }
     agentState = { ...agentState, recovery: recoveryPresentation(unresolvedJournal) };
     if (agentAbort || partner?.state().status === 'working') throw new Error('Another AI task is running.');
     const ctl = await live();
@@ -1322,22 +1337,22 @@ export function registerIpc(d: IpcDeps): void {
     // collaboration state, never an active task, so claudeGate can acquire a new
     // lock against the document's current version on the next edit.
     if (c.phase === 'paused') ctl.cancel();
-    const saved = pausedAgent;
     // A checkpoint written before Package B has no provider: it ran on OpenAI with the default budget.
     const selection = saved.provider ?? DEFAULT_AGENT_PROVIDER;
     const budget = saved.budget ?? {};
     const abort = new AbortController();
     agentAbort = abort;
-    agentState = { ...agentState, status: 'working', result: '', provider: selection, budget }; publishAgent();
+    agentState = { ...agentState, status: 'working', result: '', provider: selection, budget, ...(followUp ? { chat: appendChat(agentState.chat, userChatItem(followUp)) } : {}) }; publishAgent();
     try {
       const outcome = await withAgentProvider(selection, saved.model, vault, (provider) =>
-        buildAgentRegistry(ctl, provider, saved.messages).then((registry) => runAgent({ goal: saved.goal, resumeMessages: saved.messages, resumePlan:saved.plan, resumeUncertainEdit:saved.uncertainEdit, resumeExpectedEdit:unresolvedJournal?.expected, provider,
+        buildAgentRegistry(ctl, provider, saved.messages).then((registry) => runAgent({ goal: saved.goal, resumeMessages: saved.messages, resumePlan:saved.plan, resumeUncertainEdit:saved.uncertainEdit, resumeExpectedEdit:unresolvedJournal?.expected, ...(followUp ? { followUp } : {}), provider,
           registry, ctl, signal: abort.signal, ...budget, onInterrupted: () => { cancelAgentJobs(); },
           ...journalHooks,
           onPlan: (plan) => { agentState = { ...agentState, plan }; publishAgent(); },
-          onEvent: (event) => { agentState = { ...agentState, events: [...agentState.events, event].slice(-100) }; publishAgent(); } })));
+          onEvent: onAgentEvent })));
       const usage = sumUsage(saved.usage, outcome.usage);
       pausedAgent = (outcome.status === 'paused' || outcome.status === 'limit') ? { ...saved, messages: outcome.messages, plan:outcome.plan, uncertainEdit:outcome.uncertainEdit, ...(usage ? { usage } : {}) } : null;
+      conversation = { ...saved, messages: outcome.messages, plan: outcome.plan, uncertainEdit: outcome.uncertainEdit, ...(usage ? { usage } : {}) };
       agentState = { ...agentState, status: outcome.status, result: outcome.text + takeInterruptNote(), plan: outcome.plan, ...(usage ? { usage } : {}) };
       await checkpoint().catch(() => { agentState = {...agentState, result: agentState.result + ' Note: local checkpoint could not be saved.'}; }); await refreshRecoveryPresentation(); publishAgent();
       return agentState;
@@ -1358,6 +1373,14 @@ export function registerIpc(d: IpcDeps): void {
       publishAgent();
       return agentState;
     } finally { if (agentAbort === abort) agentAbort = null; }
+  };
+  handle(IPC.agentResume, none, () => resumeAgentTask());
+  // Chat: the user's words continue the conversation if there is one (paused, limited or finished), otherwise they start a task.
+  handle(IPC.agentSend, z.tuple([z.string().min(1).max(4000), z.string().min(1).max(80), agentBudgetSchema.default({}), agentProviderSchema.default(DEFAULT_AGENT_PROVIDER)]), async (text, model, budget, selection) => {
+    await restoreAgent();
+    if (agentAbort || agentState.status === 'working') throw new Error('The AI is still working. Wait for it, or press Stop.');
+    if ((pausedAgent && ['paused', 'limit'].includes(agentState.status)) || conversation) return resumeAgentTask(text);
+    return runAgentTask(text, model, budget, selection);
   });
 
   handle(IPC.claudeState, none, async () => { await claude().ready(); return claude().state(); });

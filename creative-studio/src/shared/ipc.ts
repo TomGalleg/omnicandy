@@ -82,6 +82,8 @@ export const IPC = {
   agentRun: 'agent:run',
   agentStop: 'agent:stop',
   agentResume: 'agent:resume',
+  agentSend: 'agent:send',
+  agentInterrupt: 'agent:interrupt',
   agentPlanUpdate: 'agent:plan-update',
   agentEvent: 'agent:event',
   claudeState: 'claude:state',
@@ -370,6 +372,10 @@ export interface StudioApi {
     run(goal: string, model: string, budget?: import('./agentBudget').AgentBudget, provider?: import('./agentProvider').AgentProviderSelection): Promise<AgentUiState>;
     stop(): Promise<AgentUiState>;
     resume(): Promise<AgentUiState>;
+    /** Chat: continues the conversation (or starts one) with what the user typed. Resolves when the AI has finished its turn. */
+    send(text: string, model: string, budget?: import('./agentBudget').AgentBudget, provider?: import('./agentProvider').AgentProviderSelection): Promise<AgentUiState>;
+    /** Stops the AI's current work; the conversation stays. */
+    interrupt(): Promise<AgentUiState>;
     updatePlan(steps: import('./agentHarness').AgentPlanStep[]): Promise<AgentUiState>;
     onChange(cb: (state: AgentUiState) => void): () => void;
   };
