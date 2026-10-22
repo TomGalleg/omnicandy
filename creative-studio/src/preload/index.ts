@@ -115,7 +115,7 @@ const api: StudioApi = {
   claude: {
     state: () => ipcRenderer.invoke(IPC.claudeState),
     send: (message) => ipcRenderer.invoke(IPC.claudeSend, message),
-    planProject: (request) => ipcRenderer.invoke(IPC.claudePlanProject, request),
+    planProject: (request, via) => ipcRenderer.invoke(IPC.claudePlanProject, request, via),
     seed: (user, claude) => ipcRenderer.invoke(IPC.claudeSeed, user, claude),
     stop: () => ipcRenderer.invoke(IPC.claudeStop),
     reset: () => ipcRenderer.invoke(IPC.claudeReset),

@@ -34,7 +34,7 @@ import { recoveryIpcState } from './agentHarness/recoveryIpcState';
 import { agentBudgetSchema } from './agentHarness/executionBudget';
 import { agentProviderSchema, sumUsage, withAgentProvider } from './agentHarness/providerFactory';
 import { addExportTools } from './agentHarness/exportTools';
-import { DEFAULT_AGENT_PROVIDER } from '@shared/agentProvider';
+import { DEFAULT_AGENT_PROVIDER, validateProviderSelection } from '@shared/agentProvider';
 import type { PausedAgent } from './agentHarness/recoveryIpcState';
 import { AgentJobLedger } from './agentHarness/jobLedger';
 import { SHARED_CLAUDE_TOOL_NAMES } from './agentHarness/sharedClaudeTools';
@@ -1401,7 +1401,7 @@ export function registerIpc(d: IpcDeps): void {
     pendingRefs.clear();
     return result;
   });
-  handle(IPC.claudePlanProject, z.tuple([z.string().trim().min(3).max(4000)]), async (req) => {
+  handle(IPC.claudePlanProject, z.tuple([z.string().trim().min(3).max(4000), z.object({ selection: agentProviderSchema, model: z.string().min(1).max(80) }).strict().nullable().default(null)]), async (req, via) => {
     const refs: PlanReference[] = [];
     let shown = 0;
     for (const r of pendingRefs.values()) {
@@ -1412,7 +1412,17 @@ export function registerIpc(d: IpcDeps): void {
       }
       refs.push(ref);
     }
-    return claude().planProject(req, refs);
+    if (!via) return claude().planProject(req, refs);
+    const problem = validateProviderSelection(via.selection, via.model);
+    if (problem) throw new Error(problem);
+    // Same planning prompt and parser as Claude; the key is lent by the vault for this one request only.
+    return claude().planProject(req, refs, (input) => withAgentProvider(via.selection, via.model, vault, async (provider) => {
+      const messages: import('./agentHarness/types').Message[] = [{ role: 'user', content: input.intro }];
+      for (const img of input.images) messages.push({ role: 'user', content: `Reference picture: ${img.name}`, imageDataUrl: img.dataUrl });
+      const reply = await provider.complete({ system: input.system, messages, tools: [], signal: input.signal });
+      if (!reply.text?.trim()) throw new Error('The AI returned no plan. Try again or pick another AI.');
+      return reply.text;
+    }));
   });
   handle(IPC.claudeSeed, z.tuple([z.string().max(4000), z.string().max(4000)]), (u, c) => claude().seed(u, c));
   handle(IPC.setProjectMeta, z.tuple([z.object({

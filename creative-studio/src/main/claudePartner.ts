@@ -52,7 +52,7 @@ When the user wants a repeatable multi-step process (for example edit many photo
 
 Once the user has applied a workflow, you can run and look after it with the workflow tools. workflow_status shows the steps, who has control, progress, problems and what is waiting for the user (use wait_seconds to watch a running workflow). run_workflow and rerun_workflow only start after the user approves in a dialog. rerun_workflow runs again only the steps a change affects. change_workflow_step changes one step (the rest keeps its results). pause_workflow stops between steps. You never approve or reject results: that is the user's decision in the Workflow tab; tell them what is waiting. If the user takes manual control, do not try to change or start anything until they give it back. Approved results are protected: a rerun never asks about them again and never replaces them. Previous workflow versions are listed with list_workflow_versions and restored with restore_workflow_version. After a successful run you can save the workflow as a reusable template with save_workflow_template if the user wants that. A paid AI Generate step in a workflow asks the user to approve the price in a dialog when it is reached, and respects the project's spending limit; if they decline the step stops and nothing is charged.`;
 
-const PLAN_PROMPT = `You are Claude, the Creative Partner inside OmniCandy. The user describes a creative project in their own words. Answer with ONE JSON object and nothing else (no code fence, no commentary) with these keys:
+export const PLAN_PROMPT = `You are Claude, the Creative Partner inside OmniCandy. The user describes a creative project in their own words. Answer with ONE JSON object and nothing else (no code fence, no commentary) with these keys:
 "name": a short project name (max 60 characters);
 "kind": one of ${PROJECT_KINDS.map((k) => `"${k.id}" (${k.label})`).join(', ')};
 "finishedOutput": one sentence naming the finished result the user wants;
@@ -137,6 +137,9 @@ export interface ClaudePartnerDeps {
 }
 
 /** A reference picture or file the user attached while planning (read only; nothing is copied). */
+/** Runs the planning prompt on another AI and returns its text answer. */
+export type PlanRunner = (input: { system: string; intro: string; images: Array<{ name: string; dataUrl: string }>; signal: AbortSignal }) => Promise<string>;
+
 export interface PlanReference { name: string; kind: string; bytes: number; image?: { mediaType: 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp'; data: string } }
 
 export class ClaudePartner {
@@ -715,7 +718,7 @@ New files: ${names.join(', ') || '(none)'}`);
    * One real Claude call that turns a described project into a creative plan. No tools, no project
    * files, no generation: it only returns text. Needs the Claude Code sign-in like the chat does.
    */
-  async planProject(request: string, refs: PlanReference[] = []): Promise<ProjectPlan> {
+  async planProject(request: string, refs: PlanReference[] = [], via?: PlanRunner): Promise<ProjectPlan> {
     if (this.status === 'working') throw new Error('Claude is busy with another request. Wait for it to finish or stop it.');
     this.status = 'working';
     this.publish();
@@ -725,12 +728,18 @@ New files: ${names.join(', ') || '(none)'}`);
       const ready = await this.d.imageModels().catch(() => []);
       const models = IMAGE_MODELS.filter((m) => ready.some((p) => p.id === m.provider && p.billable))
         .map((m) => `${m.label} (${m.id}, ${m.note})`);
-      const { query } = await import('@anthropic-ai/claude-agent-sdk');
       const intro = `Templates you may recommend:
 ${templateCatalogForClaude()}
 
 Available AI image models: ${models.length ? models.join('; ') : 'none set up'}.\n\nThe user wants to create:\n${request}`
         + (refs.length ? `\n\nThe user attached ${refs.length} reference file${refs.length === 1 ? '' : 's'} (kept on their PC; they are imported only after they approve your plan): ${refs.map((r) => `${r.name} (${r.kind}, ${Math.round(r.bytes / 1024)} KB${r.image ? ', shown below' : ''})`).join('; ')}. Take them into account in your plan.` : '');
+      let said = '';
+      if (via) {
+        // Another AI (OpenAI, Gemini, local) plans with the very same prompt, intro and parsing. It only returns text.
+        said = await via({ system: PLAN_PROMPT.replace('You are Claude,', 'You are the AI Creative Partner,'), intro,
+          images: refs.filter((r) => r.image).map((r) => ({ name: r.name, dataUrl: `data:${r.image!.mediaType};base64,${r.image!.data}` })), signal: abort.signal });
+      } else {
+      const { query } = await import('@anthropic-ai/claude-agent-sdk');
       const images = refs.filter((r) => r.image);
       const prompt = images.length
         ? (async function* () {
@@ -751,7 +760,6 @@ Available AI image models: ${models.length ? models.join('; ') : 'none set up'}.
           env: await this.d.auth.env(),
         },
       });
-      let said = '';
       for await (const m of q) {
         if (m.type === 'assistant') said += m.message.content.filter((b) => b.type === 'text').map((b) => (b as { text: string }).text).join('\n');
         else if (m.type === 'result') {
@@ -760,6 +768,7 @@ Available AI image models: ${models.length ? models.join('; ') : 'none set up'}.
           if (/not logged in|\/login|invalid api key/i.test(resultText)) throw await this.authFailure();
           if (m.is_error) throw new Error('Claude could not make a plan right now. Try again in a moment.');
         }
+      }
       }
       const parsed = parseProjectPlan(said);
       if (parsed.template && !builtinTemplates().some((t) => t.id === parsed.template)) parsed.template = null;

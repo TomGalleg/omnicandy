@@ -51,13 +51,13 @@ function trimToLimits(raw: unknown): unknown {
 export function parseProjectPlan(reply: string): ProjectPlan {
   const start = reply.indexOf('{');
   const end = reply.lastIndexOf('}');
-  if (start < 0 || end <= start) throw new Error('Claude did not return a plan. Try describing the project again.');
+  if (start < 0 || end <= start) throw new Error('The AI did not return a plan. Try describing the project again.');
   let raw: unknown;
   try { raw = JSON.parse(reply.slice(start, end + 1)); } catch { throw new Error('Claude\'s plan could not be read. Try again.'); }
   const r = projectPlanSchema.safeParse(trimToLimits(raw));
   if (!r.success) {
     const why = r.error.issues.slice(0, 3).map((i) => `${i.path.join('.') || 'plan'}: ${i.message}`).join('; ');
-    throw new Error(`Claude's plan was incomplete (${why}). Try again with a little more detail.`);
+    throw new Error(`The plan was incomplete (${why}). Try again with a little more detail.`);
   }
   return r.data;
 }

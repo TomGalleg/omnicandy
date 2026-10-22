@@ -5,6 +5,7 @@ import type { WorkflowGraph } from '@shared/workflow';
 import type { PendingReference } from '@shared/ipc';
 import type { WorkflowTemplate } from '@shared/workflowControl';
 import { formatBytes } from '../format';
+import { AGENT_PROVIDER_IDS, AGENT_PROVIDERS, DEFAULT_LOCAL_ENDPOINT, type AgentProviderId } from '@shared/agentProvider';
 
 interface Props {
   manifest: ProjectManifest | null;
@@ -90,12 +91,17 @@ Needs: ${t.needs}` : ''}`, objective: t.description };
     onSwitched(key);
     onGoto('workflow');
   });
-  /** One real Claude call. Nothing is created and nothing paid starts until the plan is approved. */
+  const [ai, setAi] = useState<'claude' | AgentProviderId>('claude');
+  const [aiModel, setAiModel] = useState('');
+  const [aiEndpoint, setAiEndpoint] = useState(DEFAULT_LOCAL_ENDPOINT);
+  const aiName = ai === 'claude' ? 'Claude' : AGENT_PROVIDERS[ai].label;
+  const changeAi = (next: 'claude' | AgentProviderId) => { setAi(next); setAiModel(next === 'claude' ? '' : (AGENT_PROVIDERS[next].models[0] ?? '')); };
+  /** One real AI call (Claude or the chosen provider). Nothing is created and nothing paid starts until the plan is approved. */
   const makePlan = async () => {
     const text = [request.trim(), answers.trim() && `My answers to your questions: ${answers.trim()}`].filter(Boolean).join('\n\n');
     if (text.length < 3) return;
     setPlanning(true); setError(null);
-    try { setPlan(await window.studio.claude.planProject(text)); } catch (e) { setError(errText(e)); } finally { setPlanning(false); }
+    try { setPlan(await window.studio.claude.planProject(text, ai === 'claude' ? undefined : { selection: ai === 'local' ? { provider: ai, endpoint: aiEndpoint } : { provider: ai }, model: aiModel })); } catch (e) { setError(errText(e)); } finally { setPlanning(false); }
   };
   /** A recommended template starts from a picture. With none supplied, Claude asks whether to make one with AI first. */
   const needsPicture = !!plan?.template && useRecommended && refs.length === 0;
@@ -164,8 +170,18 @@ Needs: ${t.needs}` : ''}`, objective: t.description };
           onKeyDown={(e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) void makePlan(); }} />
         <div className="btn-row">
           <button className="btn primary" disabled={planning || busy || !!plan || request.trim().length < 3} onClick={() => void makePlan()}>
-            {planning ? 'Claude is thinking…' : 'Create with Claude'}
+            {planning ? `${aiName} is thinking…` : `Create with ${aiName}`}
           </button>
+          <select aria-label="AI that makes the plan" value={ai} disabled={planning || busy || !!plan} onChange={(e) => changeAi(e.target.value as 'claude' | AgentProviderId)}>
+            <option value="claude">Claude</option>
+            {AGENT_PROVIDER_IDS.map((id) => <option key={id} value={id}>{AGENT_PROVIDERS[id].label}</option>)}
+          </select>
+          {ai !== 'claude' && (ai === 'local'
+            ? <><input aria-label="Local model name" placeholder="Model name" maxLength={80} value={aiModel} disabled={planning || busy || !!plan} onChange={(e) => setAiModel(e.target.value)} />
+              <input aria-label="Local model endpoint" maxLength={200} value={aiEndpoint} disabled={planning || busy || !!plan} onChange={(e) => setAiEndpoint(e.target.value)} /></>
+            : <select aria-label="Model" value={aiModel} disabled={planning || busy || !!plan} onChange={(e) => setAiModel(e.target.value)}>
+              {AGENT_PROVIDERS[ai].models.map((m) => <option key={m} value={m}>{m}</option>)}
+            </select>)}
           <button className="btn" disabled={busy} onClick={() => setBlank((v) => !v)}>New blank project</button>
           <button className="btn" disabled={busy}
             onClick={() => void run(async () => { const key = await window.studio.projects.openExisting(); if (key) { await window.studio.projects.open(key); onSwitched(key); } })}>Open existing project…</button>
@@ -187,7 +203,7 @@ Needs: ${t.needs}` : ''}`, objective: t.description };
             </span>
           ))}
         </div>
-        <div className="asset-meta">Claude only plans first. Nothing is created, copied or paid until you approve{refs.length ? `; your ${refs.length} reference file${refs.length === 1 ? '' : 's'} stay where they are until then` : ''}.</div>
+        <div className="asset-meta">{aiName} only plans first. Nothing is created, copied or paid until you approve{refs.length ? `; your ${refs.length} reference file${refs.length === 1 ? '' : 's'} stay where they are until then` : ''}.</div>
         {blank && (
           <form className="new-project" onSubmit={(e) => { e.preventDefault(); void createBlank('create'); }}>
             <input aria-label="New project name" placeholder="Project name" value={newName} maxLength={80} onChange={(e) => setNewName(e.target.value)} />
@@ -219,7 +235,7 @@ Needs: ${t.needs}` : ''}`, objective: t.description };
         )}
         {plan && (
           <div className="plan-card panel-card" role="region" aria-label="Claude's plan">
-            <h3>Claude's plan</h3>
+            <h3>{aiName}'s plan</h3>
             <div className="plan-fields">
               <label className="plan-field">Project name
                 <input value={plan.name} maxLength={80} onChange={(e) => setPlan({ ...plan, name: e.target.value })} />
