@@ -284,7 +284,7 @@ export function App() {
                 <ClaudePanel key={projectKey ?? 'none'} selected={selected} integrations={integrations} liveApi={liveApi} />
               </div>
               {/* The tab stays on the far right edge of the window, like the Media tab stays on the far left. */}
-              <SideTab side="right" label="Claude, your Creative Partner" text="Claude" open={claude.open} onToggle={claude.toggle} controls="dock-claude" shortcut="Ctrl + Shift + C" />
+              <SideTab side="right" label="your Creative Partner (Claude and other AIs)" text="Creative Partner" open={claude.open} onToggle={claude.toggle} controls="dock-claude" shortcut="Ctrl + Shift + C" />
             </div>
           </Panel>
         </Group>

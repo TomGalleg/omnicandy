@@ -2,17 +2,16 @@ import { useEffect, useMemo, useState } from 'react';
 import type { AgentUiState, AgentPlanStep } from '@shared/agentHarness';
 import { presentUnifiedAgent, validateUnifiedAgentRequest } from '@shared/unifiedAgentPresentation';
 import { AGENT_BUDGET_LIMITS, validateAgentBudget } from '@shared/agentBudget';
-import { AGENT_PROVIDER_IDS, AGENT_PROVIDERS, DEFAULT_LOCAL_ENDPOINT, validateProviderSelection, type AgentProviderId, type AgentProviderSelection } from '@shared/agentProvider';
+import { AGENT_PROVIDERS, DEFAULT_LOCAL_ENDPOINT, validateProviderSelection, type AgentProviderId, type AgentProviderSelection } from '@shared/agentProvider';
 import { recoveryUiFixture, type RecoveryFixture } from './recoveryUiFixture';
 
 const initial: AgentUiState = { status: 'idle', model: AGENT_PROVIDERS.openai.models[0]!, goal: '', result: '', events: [] };
 const errorText = (e: unknown) => e instanceof Error ? e.message : String(e);
 
 /** Existing independent agent controls, using the shared renderer presentation contract. */
-export function IndependentAgent() {
+export function IndependentAgent({ provider }: { provider: AgentProviderId }) {
   const [state, setState] = useState<AgentUiState>(initial);
-  const [provider, setProvider] = useState<AgentProviderId>('openai');
-  const [model, setModel] = useState<string>(AGENT_PROVIDERS.openai.models[0]!);
+  const [model, setModel] = useState<string>(AGENT_PROVIDERS[provider].models[0] ?? '');
   const [endpoint, setEndpoint] = useState(DEFAULT_LOCAL_ENDPOINT);
   const [goal, setGoal] = useState('');
   const [maxTurns, setMaxTurns] = useState<number>(AGENT_BUDGET_LIMITS.maxTurns.default);
@@ -29,7 +28,8 @@ export function IndependentAgent() {
   const budgetError = validateAgentBudget({ maxTurns, maxToolCalls });
   const selection: AgentProviderSelection = provider === 'local' ? { provider, endpoint } : { provider };
   const validationError = validateUnifiedAgentRequest(goal, model) ?? validateProviderSelection(selection, model) ?? budgetError;
-  const changeProvider = (next: AgentProviderId) => { setProvider(next); setModel(AGENT_PROVIDERS[next].models[0] ?? ''); };
+  // The provider is chosen in the Creative Partner panel header; picking another one starts from that provider's first model.
+  useEffect(() => { setModel(AGENT_PROVIDERS[provider].models[0] ?? ''); }, [provider]);
   const providerLabel = AGENT_PROVIDERS[provider].label;
   const busy = presentation.busy || requestPending;
   const canEditPlan = !busy && (state.status === 'paused' || state.status === 'limit');
@@ -69,11 +69,8 @@ export function IndependentAgent() {
   };
 
   return <div className="claude-section">
-    <div className="asset-meta">Uses the existing CreateCraft agent with the AI provider you choose. OpenAI and Gemini use the API key saved in Settings (it never leaves the app's secure storage) and calls may incur charges. A local model runs on this PC through a localhost endpoint. Continue Task keeps the provider the task started with.</div>
+    <div className="asset-meta">Runs with the AI you chose above. OpenAI and Gemini use the API key saved in Settings (it never leaves the app's secure storage) and calls may incur charges. A local model runs on this PC through a localhost endpoint. Continue Task keeps the provider the task started with.</div>
     <div className="claude-row">
-      <select aria-label="Independent AI provider" value={provider} disabled={busy} onChange={(e) => changeProvider(e.target.value as AgentProviderId)}>
-        {AGENT_PROVIDER_IDS.map((id) => <option key={id} value={id}>{AGENT_PROVIDERS[id].label}</option>)}
-      </select>
       {provider === 'local'
         ? <input aria-label="Independent AI local model name" placeholder="Model name" value={model} disabled={busy} maxLength={80} onChange={(e) => setModel(e.target.value)} />
         : <select aria-label="Independent AI model" value={model} disabled={busy} onChange={(e) => setModel(e.target.value)}>

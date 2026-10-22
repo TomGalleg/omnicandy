@@ -6,6 +6,7 @@ import type { Asset } from '@shared/types';
 import type { LiveApi } from '../useLive';
 import { TaskControls } from './live/LiveParts';
 import { IndependentAgent } from './IndependentAgent';
+import { AGENT_PROVIDER_IDS, AGENT_PROVIDERS, type AgentProviderId } from '@shared/agentProvider';
 
 interface Props {
   selected: Asset | null;
@@ -24,7 +25,7 @@ export function ClaudePanel({ liveApi }: Props) {
   const { live } = liveApi;
   const [st, setSt] = useState<ClaudeState | null>(null);
   const [draft, setDraft] = useState('');
-  const [engine, setEngine] = useState<'claude' | 'independent'>('claude');
+  const [engine, setEngine] = useState<'claude' | AgentProviderId>('claude');
   const [error, setError] = useState<string | null>(null);
 
   const chatRef = useRef<HTMLDivElement>(null);
@@ -58,18 +59,25 @@ export function ClaudePanel({ liveApi }: Props) {
     window.studio.claude.send(text).catch((e) => setError(errText(e)));
   };
 
-  if (engine === 'independent') return <aside className="pane claude" aria-label="Independent CreateCraft AI">
-    <div className="pane-header">CreateCraft · Independent AI</div>
-    <div className="claude-section"><button className="btn small" onClick={() => setEngine('claude')}>Switch to Claude Code</button></div>
-    <IndependentAgent />
+  // One panel for every AI: the choice sits at the top; Claude Code keeps its chat, the others use the task panel.
+  const engineSelect = <div className="claude-section">
+    <select aria-label="AI" value={engine} onChange={(e) => setEngine(e.target.value as 'claude' | AgentProviderId)}>
+      <option value="claude">Claude (Claude Code)</option>
+      {AGENT_PROVIDER_IDS.map((id) => <option key={id} value={id}>{AGENT_PROVIDERS[id].label}</option>)}
+    </select>
+  </div>;
+  if (engine !== 'claude') return <aside className="pane claude" aria-label="Creative Partner">
+    {engineSelect}
+    <div className="pane-header">Creative Partner</div>
+    <IndependentAgent provider={engine} />
     {open && <TaskControls liveApi={liveApi} />}
   </aside>;
 
   return (
-    <aside className="pane claude" aria-label="Claude Creative Partner">
-      <div className="claude-section"><button className="btn small" onClick={() => setEngine('independent')}>Switch to Independent AI</button></div>
+    <aside className="pane claude" aria-label="Creative Partner">
+      {engineSelect}
       <div className="pane-header">
-        Claude · Creative Partner
+        Creative Partner
         <span className={`chip ${signedOut ? 'warn' : st?.signedIn ? 'real' : 'off'}`}><span className="dot" />{signedOut ? 'Sign-in needed' : working ? 'Working…' : 'Ready'}</span>
       </div>
 
