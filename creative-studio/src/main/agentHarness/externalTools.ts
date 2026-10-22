@@ -4,7 +4,8 @@ import { z } from 'zod';
 import { inspectExternalCommand } from '@shared/commandCapabilityInspection';
 import type { CommandSpec, JobInfo } from '@shared/integrations';
 import type { IntegrationManager } from '../integrations/manager';
-import { isTrustedReadbackCommand } from '../integrations/readback';
+import { isTrustedReadbackCommand, isViewOnlyCommand } from '../integrations/readback';
+import fs from 'node:fs/promises';
 import { tool, ToolRegistry } from './registry';
 
 /** The only external execution backend is IntegrationManager: never bypass its approval and policy checks. */
@@ -16,7 +17,14 @@ export interface ExternalToolOptions {
   jobGuard?: (appKey: string, commandId: string) => string | undefined;
   /** Formats a job for the model (the host may also bring finished outputs into the library). Defaults to a plain summary. */
   describeJob?: (jobId: string, cancel: boolean) => Promise<string>;
+  /** The model can see images: only then may a preview command (a picture of the application) run. */
+  supportsVision?: boolean;
 }
+/** Cost and privacy limits for pictures of an application: per task, between pictures, and the size sent to the model. */
+export const MAX_PREVIEWS_PER_TASK = 6;
+export const MIN_PREVIEW_INTERVAL_MS = 2000;
+export const MAX_PREVIEW_BYTES = 2_000_000;
+export const MAX_PREVIEW_SIDE = 1024;
 const empty = z.object({}).strict();
 const identifier = z.string().min(1).max(1024);
 const argsSchema = z.record(z.string().min(1).max(128), z.unknown());
@@ -68,6 +76,9 @@ export function externalTools(backend: ExternalBackend, options: ExternalToolOpt
   const list = async () => (await backend.list()).filter(app => usable(app.status) && !!app.adapterId);
   const resolve = async (ref: string) => resolveApplication(await backend.list(), ref);
   const trusted = (adapterId: string | null | undefined, spec: CommandSpec) => isTrustedExternalReadback(backend.isBuiltin?.bind(backend), adapterId, spec);
+  const viewOnly = (adapterId: string | null | undefined, spec: CommandSpec) => isViewOnlyCommand(backend.isBuiltin?.bind(backend), adapterId, spec);
+  let previews = 0;
+  let lastPreview = 0;
   const tools = [
     tool('external_apps', 'List already-connected external applications and their names. Only connected applications may be controlled.', empty, async () =>
       JSON.stringify((await list()).map(app => ({ key: app.key, name: app.name, status: app.status, adapter: app.adapterName })))),
@@ -107,6 +118,15 @@ export function externalTools(backend: ExternalBackend, options: ExternalToolOpt
           }
           const problem = preflightExternalParams(spec, params ?? {});
           if (problem) throw new Error(`validation: ${problem}`);
+          const preview = spec.preview === true && viewOnly(app.adapterId, spec);
+          if (preview) {
+            // Pictures cost tokens and show the user's work to the model provider: only for models that can see, and rationed.
+            if (!options.supportsVision) throw new Error('This model cannot see images, so no picture was taken. Continue with structured inspection (for Blender: scene.inspect_detail).');
+            if (previews >= MAX_PREVIEWS_PER_TASK) throw new Error(`Picture limit reached (${MAX_PREVIEWS_PER_TASK} per task). Continue with structured inspection (scene.inspect_detail).`);
+            if (Date.now() - lastPreview < MIN_PREVIEW_INTERVAL_MS) throw new Error('Pictures are limited to one every few seconds. Inspect the structured state first, then ask again.');
+            previews++;
+            lastPreview = Date.now();
+          }
           const result = await backend.execute(app_key, command, params ?? {}, { background: spec.longRunning === true });
           const payload = { ok: result.ok, verified: result.verified, message: result.message,
             evidence: result.evidence, outputs: result.outputs, data: result.data, error: result.error };
@@ -114,6 +134,17 @@ export function externalTools(backend: ExternalBackend, options: ExternalToolOpt
             const detail = result.error?.message && result.error.message !== result.message ? ` ${result.error.message}` : '';
             const category = classifyCommandError(`${result.error?.kind ?? ''} ${result.message} ${detail}`);
             throw new Error(`${category} (${result.error?.kind ?? 'app-error'}): ${result.message}${detail}`);
+          }
+          if (preview) {
+            const image = (result.data?.image ?? {}) as { path?: unknown; width?: unknown; height?: unknown };
+            const file = typeof image.path === 'string' ? image.path : '';
+            let png: Buffer | undefined;
+            try { png = file ? await fs.readFile(file) : undefined; } finally { if (file) await fs.rm(file, { force: true }).catch(() => undefined); } // pictures are temporary
+            const w = Number(image.width), h = Number(image.height);
+            if (!png || png.length < 8 || png.length > MAX_PREVIEW_BYTES || png.subarray(0, 8).toString('hex') !== '89504e470d0a1a0a' || !(w > 0 && h > 0 && Math.max(w, h) <= MAX_PREVIEW_SIDE))
+              throw new Error('The application returned no usable picture (missing, not a PNG, or larger than the limits). Use structured inspection.');
+            const data = { ...(result.data ?? {}), image: { width: w, height: h, bytes: png.length } };
+            return { text: JSON.stringify({ ok: true, message: result.message, data, note: 'A picture of the open application follows. It is NOT proof of saved state: verify with a structured read-back.' }), verified: false, imageDataUrl: `data:image/png;base64,${png.toString('base64')}` };
           }
           const jobId = typeof result.data?.jobId === 'string' ? result.data.jobId : undefined;
           if (spec.longRunning && jobId) await options.onJobStarted?.({ jobId, appKey: app_key, commandId: command });
@@ -133,7 +164,7 @@ export function externalTools(backend: ExternalBackend, options: ExternalToolOpt
         const found = await resolve(parsed.data.app_key);
         const app = 'app' in found ? found.app : undefined;
         const spec = app?.commands.find(c => c.id === parsed.data.command);
-        return !!app && !!spec && trusted(app.adapterId, spec);
+        return !!app && !!spec && (trusted(app.adapterId, spec) || viewOnly(app.adapterId, spec));
       },
     },
   ];

@@ -17,10 +17,25 @@ export const TRUSTED_READBACK_COMMANDS: Readonly<Record<string, readonly string[
   'davinci.resolve': ['app.info', 'project.list', 'project.inspect'],
 };
 
+/**
+ * Read-only commands that return a temporary PICTURE for a vision-capable model. They are inspections (they never change the project, so they
+ * are not edits and do not lock the agent) but NOT read-back evidence: a picture proves nothing about saved state, and its result is never
+ * stored for evidence_verify or recovery. Built-in adapters only, listed by name.
+ */
+export const VIEW_ONLY_COMMANDS: Readonly<Record<string, readonly string[]>> = {
+  blender: ['scene.viewport'],
+};
+
 const WRITING_PERMISSIONS = new Set<string>(['write-files', 'modify-project', 'ui-automation', 'network']);
 
 export function isTrustedReadbackCommand(isBuiltin: ((adapterId: string) => boolean) | undefined, adapterId: string | null | undefined, spec: CommandSpec): boolean {
   if (!isBuiltin || !adapterId || !isBuiltin(adapterId)) return false;
   if (!TRUSTED_READBACK_COMMANDS[adapterId]?.includes(spec.id)) return false;
   return spec.idempotent === true && !spec.destructive && !spec.longRunning && !spec.permissions.some((p) => WRITING_PERMISSIONS.has(p));
+}
+
+export function isViewOnlyCommand(isBuiltin: ((adapterId: string) => boolean) | undefined, adapterId: string | null | undefined, spec: CommandSpec): boolean {
+  if (!isBuiltin || !adapterId || !isBuiltin(adapterId)) return false;
+  if (!VIEW_ONLY_COMMANDS[adapterId]?.includes(spec.id)) return false;
+  return spec.preview === true && spec.idempotent === true && !spec.destructive && !spec.longRunning && !spec.permissions.some((p) => WRITING_PERMISSIONS.has(p));
 }

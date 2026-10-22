@@ -46,3 +46,19 @@ facts (never the raw spec). After an interrupted `scene.build` all edits stay lo
 `blenderBatchSpec.test.ts`, `jsonParams.test.ts`, `jsonParam.test.ts` and `blenderBatchRecovery.test.ts` run everywhere.
 `blenderBatch.live.test.ts` drives a real Blender on disposable files (`CS_LIVE_TESTS=1`), including crashes at every point of the
 save (the adapter forwards `CREATECRAFT_BATCH_FAULT` to the script; it can only abort).
+
+## script.run (open-ended Python, approval-gated)
+
+For what the typed commands cannot do (armatures and rigging, geometry nodes, simulation, UVs). The user reads and approves the
+exact code on EVERY run (never "always allow"). It runs in a background Blender on a COPY of the project, with only an allow-list of
+modules importable (checked by an AST walk inside Blender; a guard against mistakes, not a sandbox). On success a backup is kept
+(`.cc-backups`, last ten) and the project is replaced in one step; the open window saves first and reloads after. A run marker in the
+work folder holds the file's hash before and after, so recovery can prove applied (file == new), absent (file == old, may run again)
+or ambiguous (anything else; the lock stays). Not idempotent: read the result back with `scene.inspect_detail`.
+
+## scene.viewport (pictures for vision models)
+
+A read-only picture of the open window's 3D view (iso/front/back/left/right/top/camera, optional `focus`), drawn into an offscreen GPU
+buffer with explicit matrices (no render, the user's own viewport is not changed). It is a view-only inspection: not an edit, never
+read-back evidence, never proof. Pictures go only to vision-capable models, at most 6 per task, one every 2 seconds, at most 1024 px
+and 2 MB, are deleted after use, and the temporary path is never shown to the model.

@@ -11,6 +11,7 @@ import { ADAPTER_SDK_VERSION, type AdapterManifest, type CommandSpec, type Disco
 import { LiveBlenderSession, blenderLiveEnabled } from './blenderLive';
 import { SCENE_COMMANDS, SCENE_PRELUDE, SCENE_SCRIPTS, EDIT_COMMAND_IDS } from './blenderScene';
 import { BATCH_COMMANDS, BATCH_PRELUDE, BATCH_SCRIPTS, BATCH_VOCAB, assembleDiscovery, type DiscoveryFacts } from './blenderBatch';
+import { VIEWPORT_BODY, VIEWPORT_COMMAND, VIEWPORT_MAX_SIDE } from './blenderViewport';
 import { SCRIPT_COMMAND, SCRIPT_RUN_BODY, SCRIPT_WINDOW_RELOAD_BODY, SCRIPT_WINDOW_SAVE_BODY } from './blenderScript';
 import { SCRIPT_RULES, assessScriptRun, fileHashOf, scriptHashOf, validateScript, type ScriptMarker, type ScriptSpec } from './blenderScriptSpec';
 import { BATCH_ID, MAX_BATCH_OBJECTS, assessBatchReadback, chunkOf, expectedBatchFromParams, specHashOf, validateBuildSpec, type BuildSpec } from './blenderBatchSpec';
@@ -47,7 +48,7 @@ const COMMANDS: CommandSpec[] = [
   },
 ];
 
-COMMANDS.push(...SCENE_COMMANDS, ...BATCH_COMMANDS, SCRIPT_COMMAND);
+COMMANDS.push(...SCENE_COMMANDS, ...BATCH_COMMANDS, SCRIPT_COMMAND, VIEWPORT_COMMAND);
 
 export const BLENDER_MANIFEST: AdapterManifest = {
   id: 'blender', name: 'Blender', vendor: 'Blender Foundation', sdkVersion: ADAPTER_SDK_VERSION, maturity: 'verified',
@@ -138,7 +139,7 @@ for (const [id, body] of Object.entries(SCENE_SCRIPTS)) SCRIPTS[id] = `${PRELUDE
 // Batch commands share one extra prelude; in the open window it is simply part of each (short-lived) script body.
 for (const [id, body] of Object.entries(BATCH_SCRIPTS)) SCRIPTS[id] = `${PRELUDE}${SCENE_PRELUDE}${BATCH_PRELUDE}\n${body}`;
 // script.run and the two open-window helpers around it (save what the window holds, reload the replaced project).
-for (const [id, body] of Object.entries({ 'script.run': SCRIPT_RUN_BODY, 'script.window_save': SCRIPT_WINDOW_SAVE_BODY, 'script.window_reload': SCRIPT_WINDOW_RELOAD_BODY })) SCRIPTS[id] = `${PRELUDE}${SCENE_PRELUDE}${BATCH_PRELUDE}\n${body}`;
+for (const [id, body] of Object.entries({ 'scene.viewport': VIEWPORT_BODY, 'script.run': SCRIPT_RUN_BODY, 'script.window_save': SCRIPT_WINDOW_SAVE_BODY, 'script.window_reload': SCRIPT_WINDOW_RELOAD_BODY })) SCRIPTS[id] = `${PRELUDE}${SCENE_PRELUDE}${BATCH_PRELUDE}\n${body}`;
 
 export function runBlender(exe: string, args: string[], signal: AbortSignal | undefined, timeoutMs: number): Promise<RunResult> {
   return runProcess(exe, args, { signal, timeoutMs, label: 'Blender' });
@@ -345,6 +346,22 @@ class BlenderAdapter implements ExternalAdapter {
         data: { status: summary.status, batch_id: spec.batch_id, chunk: c.index, total: c.total, spec_hash: hash, created: summary.created, updated: summary.updated, names: summary.names, project_id: summary.project_id, ledger_complete: verdict.ledgerComplete, content_matches: verdict.contentMatches, object_count: check.summary.count },
         verified: true,
         evidence: [`re-read from the saved file by a fresh Blender: ledger records ${spec.batch_id}#${c.index}; ${ids.length} object(s) present with the requested content`],
+      };
+    }
+    if (cmd.id === 'scene.viewport') {
+      if (!this.live?.alive) throw new AdapterError('unsupported', 'Viewport pictures need the open Blender window, which is not running. Use scene.inspect_detail instead.');
+      const dir = path.join(ctx.workDir, '.captures');
+      await fs.mkdir(dir, { recursive: true });
+      for (const f of await fs.readdir(dir).catch(() => [] as string[])) { const p = path.join(dir, f); if (Date.now() - (await fs.stat(p).then((s) => s.mtimeMs, () => Date.now())) > 3_600_000) await fs.rm(p, { force: true }); }
+      const output = path.join(dir, `view-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}.png`);
+      const { summary } = await this.script(ctx, cmd.id, { view: String(params.view ?? 'iso'), focus: String(params.focus ?? ''), size: Math.min(Number(params.size ?? 800), VIEWPORT_MAX_SIDE), output });
+      const bytes = (await fs.stat(output).catch(() => null))?.size ?? 0;
+      if (!bytes) throw new AdapterError('app-error', 'Blender did not write the viewport picture.');
+      return {
+        message: `Picture of the Blender window (${String(summary.view)} view, ${String(summary.width)}x${String(summary.height)}, ${String(summary.objects)} object(s)). Temporary, from the open window; not proof of the saved project.`,
+        outputs: [],
+        data: { image: { path: output, width: summary.width, height: summary.height, bytes }, view: summary.view, focus: summary.focus, objects: summary.objects, center: summary.center, radius: summary.radius, source: 'open-window', proof: false },
+        verified: false,
       };
     }
     if (cmd.id === 'script.run') return this.runScript(ctx, String(params.file_name), String(params.script), await existing(String(params.file_name)));

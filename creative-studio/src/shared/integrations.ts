@@ -61,6 +61,8 @@ export interface CommandSpec {
   timeoutMs?: number;
   /** Runs as a job (renders, exports): returns a job handle at once; progress, cancel and result via the job. */
   longRunning?: boolean;
+  /** Built-in adapters only: returns a temporary picture (data.image.path) for a vision-capable model. Never proof of project state. */
+  preview?: boolean;
 }
 
 /** What an adapter needs before it can work; shown before the user connects. */

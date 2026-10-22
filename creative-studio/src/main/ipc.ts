@@ -1206,6 +1206,7 @@ export function registerIpc(d: IpcDeps): void {
     const registry = addExternalTools(nativeToolRegistry(ctl, store, { supportsVision: provider.supportsVision, createBlank: createAgentBlank }), external, {
       onJobStarted: (job) => jobLedger.started({ id: job.jobId, appKey: job.appKey, commandId: job.commandId }),
       jobGuard: (appKey, commandId) => jobLedger.guard(appKey, commandId),
+      supportsVision: provider.supportsVision,
       describeJob: async (id, cancel) => { const report = await externalJobReport(id, cancel); jobLedger.reconcile(); return report; },
     });
     addExportTools(registry, { ctl, store, deliver });
