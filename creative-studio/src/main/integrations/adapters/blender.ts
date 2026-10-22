@@ -278,11 +278,18 @@ class BlenderAdapter implements ExternalAdapter {
       return { message: `Found ${String(data.total)} matching item(s) in Blender ${String(data.blender)}.`, outputs: [], data, verified: true, evidence: [`read from the running Blender ${String(data.blender)}`] };
     }
     if (cmd.id === 'scene.inspect_detail') {
-      const input = await existing(String(params.file_name));
       const ids = String(params.ids ?? '').split(',').map((s) => s.trim()).filter(Boolean);
       if (ids.length > MAX_BATCH_OBJECTS || ids.some((i) => !BATCH_ID.test(i))) throw new AdapterError('invalid-params', `ids must be at most ${MAX_BATCH_OBJECTS} comma-separated cc_ids.`);
       const batch = String(params.batch_id ?? '').trim();
       if (batch && !BATCH_ID.test(batch)) throw new AdapterError('invalid-params', 'batch_id is not a valid batch id.');
+      // Asked about a batch in a project file that does not exist: scene.build only ever changes an EXISTING file, so nothing of the
+      // batch can have been saved. That is a real, checkable answer (absent), not an error - recovery needs it to get unstuck.
+      const wanted = path.join(ctx.workDir, safeName(String(params.file_name), '.blend'));
+      if (batch && !(await fs.stat(wanted).then((st) => st.isFile(), () => false))) {
+        const data = { blender: this.version, count: 0, objects: {}, project: { file: path.basename(wanted), project_id: null, exists: false }, object_count: 0, truncated: false, cc_ids: [], cc_ids_truncated: false, details: [], ledger: { ok: true, error: null, entries: [], entries_total: 0 }, batch: { batch_id: batch, chunk: Number(params.chunk ?? 0), state: 'absent', ledger_hash: null, ids_present: [], ids_missing: ids }, source: 'saved-file', read_at: new Date().toISOString() };
+        return { message: `${path.basename(wanted)} does not exist in the Blender folder, so batch ${batch} cannot have been saved to it.`, outputs: [], data, verified: true, evidence: ['the project file does not exist in the Blender folder (scene.build only changes existing files)'] };
+      }
+      const input = await existing(String(params.file_name));
       const { summary } = await this.script(ctx, cmd.id, { input, ids, batch_id: batch || null, chunk: params.chunk ?? 0, max_objects: params.max_objects ?? 60 }, { background: true });
       const n = Array.isArray(summary.cc_ids) ? summary.cc_ids.length : 0;
       // Always the SAVED file read by a process that has never seen the edit: that is what makes this a fresh read-back.

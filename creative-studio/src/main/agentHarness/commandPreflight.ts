@@ -34,7 +34,9 @@ export function preflightExternalParams(cmd: CommandSpec, raw: Record<string, un
 /** Diagnostics never indicate that an attempted edit can safely be replayed. */
 export function classifyCommandError(message: string): 'permission' | 'validation' | 'unavailable' | 'execution' {
   if (/permission[- ]denied|user declined|user did not allow|not approved|do not retry|stop and wait/i.test(message)) return 'permission';
-  if (/invalid tool arguments|unknown parameter|unknown setting|missing required|must be|at least|at most|not advertised|invalid parameter/i.test(message)) return 'validation';
-  if (/not connected|disconnected|unavailable|no longer available|not supported/i.test(message)) return 'unavailable';
+  // The manager's own error kinds come first: invalid-params, not-connected, missing-app and unsupported are refusals made BEFORE
+  // the adapter touched anything, so they can never leave an edit half done (the message wording alone is not a reliable signal).
+  if (/invalid tool arguments|invalid-params|unknown parameter|unknown setting|missing required|is required for|must be|at least|at most|not advertised|invalid parameter/i.test(message)) return 'validation';
+  if (/not connected|not-connected|missing-app|unsupported|disconnected|unavailable|no longer available|not supported/i.test(message)) return 'unavailable';
   return 'execution';
 }

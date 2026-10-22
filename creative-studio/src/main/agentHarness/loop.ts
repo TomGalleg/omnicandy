@@ -34,6 +34,10 @@ const MUTATING_TOOLS = new Set(['external_command','photocraft_command','timelin
 const batchRecoveryHint = (outcome: string): string => outcome === 'applied' ? 'Confirm it with evidence_verify (data.batch.state is "recorded"); do not run the batch again.'
   : outcome === 'absent' ? 'Confirm it with evidence_verify (data.batch.state is "absent"); after a passing check the lock is released and the same batch may be run again.'
   : 'The lock stays. Do not run the batch again; tell the user what was found and stop.';
+/** The concrete way out of a lock on a Blender batch: which read-back to take and what to compare, so a small model does not have to guess. */
+const batchRecoveryPlan = (e: ExpectedEdit | undefined): string => e?.kind === 'blender.scene.batch'
+  ? ` To resolve it call external_command scene.inspect_detail with file_name "${e.file}", batch_id "${e.batch_id}", chunk ${e.chunk}, ids "${e.ids.join(',')}" (a trusted read-only read-back of the saved file), then evidence_verify data.batch.state on that receipt ("recorded" if the batch is there, "absent" if nothing of it is). The host decides from the read-back whether the lock is released; if the file cannot be read, stop and tell the user.`
+  : '';
 const isMutation = (name: string, args: unknown): boolean => MUTATING_TOOLS.has(name) || (name === 'app_command' && !isNativeReadback(name,args));
 // Anything that can change document content. save_version only persists a version and has its own confirmed receipt.
 const requiresCompletionEvidence = (name: string, args: unknown): boolean => isMutation(name,args) || name === 'new_document' || name === 'apply_edit';
@@ -64,7 +68,7 @@ export async function runAgent(args: { goal: string; provider: ModelProvider; re
     const fresh = registry.snapshot();
     const status = await registry.call(fresh, 'get_status', {});
     if (status.isError) throw new Error(`Cannot resume without current document status: ${status.text}`);
-    if (args.resumeUncertainEdit) messages.push({role:'user',content:`Recovery safety lock: the previous ${args.resumeUncertainEdit} edit may have partially succeeded. All edits remain blocked until a FRESH authorized read-back of the CURRENT document and a passing evidence_verify comparison. Do not repeat the old command. If the intended result cannot be independently compared, retain the lock and ask for help.`});
+    if (args.resumeUncertainEdit) messages.push({role:'user',content:`Recovery safety lock: the previous ${args.resumeUncertainEdit} edit may have partially succeeded. All edits remain blocked until a FRESH authorized read-back of the CURRENT document and a passing evidence_verify comparison. Do not repeat the old command. If the intended result cannot be independently compared, retain the lock and ask for help.${batchRecoveryPlan(args.resumeExpectedEdit)}`});
     if (args.resumePlan) messages.push({role:'user',content:`Current project task plan (user edits take priority over earlier plan messages; verify steps before changing their status): ${JSON.stringify(args.resumePlan).slice(0,12000)}`});
     resumedUnverified = await hasUnverifiedChanges(messages, (name, callArgs) => registry.isReadOnly(fresh, name, callArgs));
     messages.push({role:'user',content:`The user requested continuation after an interruption, takeover, or execution budget limit. Reconcile the CURRENT application state against previous work. Do not replay finished actions. Inspect what actually remains and continue only with authorized steps. Current status: ${status.text.slice(0,8000)}`});
@@ -121,7 +125,7 @@ export async function runAgent(args: { goal: string; provider: ModelProvider; re
       if (!reply.toolCalls.length) {
         if (uncertainEdit) {
           emit({kind:'stop',text:'Uncertain edit has not been reconciled against document state.'});
-          return result('limit',`An application edit may have partially succeeded (${uncertainEdit}). Inspect current state and perform a passing evidence_verify comparison to resolve the lock; no edits were replayed.`);
+          return result('limit',`An application edit may have partially succeeded (${uncertainEdit}). Inspect current state and perform a passing evidence_verify comparison to resolve the lock; no edits were replayed.${batchRecoveryPlan(expectedIntent)}`);
         }
         // Model prose is never enough to close a structured plan. Give the model
         // one chance to reconcile the remaining steps, then retain continuation
@@ -161,7 +165,7 @@ export async function runAgent(args: { goal: string; provider: ModelProvider; re
         let r;
         if (halt) r = {text:`Error: Not executed; agent ${halt}.`,isError:true};
         else if (uncertainEdit && mutating) {
-          r = {text:`Error: Previous ${uncertainEdit} returned an uncertain result. Further edits remain blocked until a FRESH read-back and a passing evidence_verify comparison resolve the result. A successful inspection alone does not unlock editing. No edit was executed.`,isError:true};
+          r = {text:`Error: Previous ${uncertainEdit} returned an uncertain result. Further edits remain blocked until a FRESH read-back and a passing evidence_verify comparison resolve the result. A successful inspection alone does not unlock editing. No edit was executed.${batchRecoveryPlan(expectedIntent)}`,isError:true};
         } else {
           const signature = JSON.stringify([call.name, call.args]);
           if ((failedCalls.get(signature) ?? 0) >= 2) {

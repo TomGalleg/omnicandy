@@ -4,6 +4,7 @@
 import { describe, expect, it } from 'vitest';
 import type { CommandResult, ExternalAppInfo } from '@shared/integrations';
 import { BLENDER_MANIFEST } from '../integrations/adapters/blender';
+import { classifyCommandError } from './commandPreflight';
 import { addExternalTools, externalTools, resolveApplication } from './externalTools';
 import { runAgent } from './loop';
 import { ScriptedProvider } from './providers/scripted';
@@ -42,13 +43,16 @@ describe('the application a model names', () => {
   });
   it('is never guessed: an unknown or ambiguous reference is explained, and is not called a lost connection', () => {
     const unknown = resolveApplication(apps, 'maya') as { error: string };
-    expect(unknown.error).toContain('No connected application matches "maya"');
+    expect(unknown.error).toContain('no connected application matches "maya"');
+    expect(classifyCommandError(unknown.error)).toBe('validation'); // a wrong reference is a refusal before anything runs, never an uncertain edit
     expect(unknown.error).toContain(JSON.stringify(KEY));
     expect(unknown.error).toContain('not a lost connection');
     expect(unknown.error).not.toMatch(/disconnected|stop and/i);
     const twin = [app(KEY, 'Blender', 'blender'), app('d:\\blender 3.6\\blender.exe', 'Blender', 'blender')];
     const ambiguous = resolveApplication(twin, 'blender') as { error: string };
     expect(ambiguous.error).toContain('matches several connected applications');
+    expect(classifyCommandError(ambiguous.error)).toBe('validation');
+    expect(classifyCommandError((resolveApplication([app(KEY, 'Blender', 'blender', 'available')], 'blender') as { error: string }).error)).not.toBe('execution');
     expect(ambiguous.error).toContain('d:\\\\blender 3.6');
     expect(resolveApplication(twin, KEY)).toMatchObject({ app: { key: KEY } }); // the exact key always wins
   });
@@ -82,6 +86,14 @@ describe('Independent AI commands with a mangled application key', () => {
     expect(a.status).not.toBe('paused'); // the model corrected the key and carried on
     expect(wrong.executed).toEqual([{ key: KEY, command: 'scene.inspect' }]);
     expect(texts(a.messages)[0]).toContain('not a lost connection');
+
+    // an EDIT with a wrong key is refused before dispatch: no uncertain edit, no lock, the corrected call goes through
+    const edit = rig([app(KEY, 'Blender', 'blender')]);
+    const spec = { batch_id: 'b1', objects: [{ id: 'a', kind: 'box' }] };
+    const build = (id: string, k: string) => call(id, 'external_command', { app_key: k, command: 'scene.build', params: { file_name: 'a.blend', spec } });
+    const e = await runAgent({ goal: 'build', ctl: idle(), registry: addExternalTools(new ToolRegistry(), edit.backend), provider: new ScriptedProvider([build('1', 'maya'), build('2', 'blender'), final]) });
+    expect(edit.executed).toEqual([{ key: KEY, command: 'scene.build' }]);
+    expect(texts(e.messages).some((t) => t.includes('edits remain blocked'))).toBe(false);
 
     const down = rig([app(KEY, 'Blender', 'blender', 'available')]);
     const b = await runAgent({ goal: 'inspect', ctl: idle(), registry: addExternalTools(new ToolRegistry(), down.backend), provider: new ScriptedProvider([inspect('1', KEY), inspect('2', KEY), inspect('3', KEY), final]) });

@@ -201,6 +201,16 @@ describe('an interrupted Blender batch, through the real agent loop', () => {
     });
   }
 
+  it('tells the locked agent exactly which read-back to take and what to compare', async () => {
+    const { j, first } = await interrupted(world(), 'apply-then-lose');
+    const w = world({ applied: true });
+    const r = await resume(j, first, w, [build('2'), final]);
+    const plan = /call external_command scene.inspect_detail with file_name "a.blend", batch_id "castle", chunk 0, ids "tower,wall".*evidence_verify data.batch.state/;
+    expect(r.messages.some((m) => m.role === 'user' && m.content.includes('Recovery safety lock') && plan.test(m.content))).toBe(true); // on resume
+    expect(toolTexts(r.messages).some((t) => t.includes('Further edits remain blocked') && plan.test(t))).toBe(true); // when an edit is refused
+    // and the first run's own lock message (end of the interrupted run) carries it too
+    expect(first.text).toMatch(plan);
+  });
   it('does not trust a read-back taken before the interruption was inspected, or the edit response itself', async () => {
     const { j, first } = await interrupted(world(), 'apply-then-lose');
     const w = world({ applied: true });

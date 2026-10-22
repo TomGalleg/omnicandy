@@ -43,11 +43,11 @@ export function resolveApplication<T extends AppRef>(all: readonly T[], ref: str
   };
   const hit = pick(live);
   if (hit.length === 1) return { app: hit[0]! };
-  if (hit.length > 1) return { error: `"${ref}" matches several connected applications. Use one key exactly as external_apps lists it: ${hit.map((a) => JSON.stringify(a.key)).join(', ')}.` };
+  if (hit.length > 1) return { error: `Invalid parameter app_key: "${ref}" matches several connected applications. Use one key exactly as external_apps lists it: ${hit.map((a) => JSON.stringify(a.key)).join(', ')}.` };
   const down = pick(all);
   if (down.length === 1) return { error: `${down[0]!.name} is not connected (status: ${down[0]!.status}${down[0]!.statusDetail ? `; ${down[0]!.statusDetail}` : ''}). Stop and wait for the user to reconnect it.` };
   return { error: live.length
-    ? `No connected application matches "${ref}". Connected: ${live.map((a) => `${a.name} (key ${JSON.stringify(a.key)})`).join('; ')}. Use a key exactly as external_apps lists it, or the application name. This is not a lost connection.`
+    ? `Invalid parameter app_key: no connected application matches "${ref}". Connected: ${live.map((a) => `${a.name} (key ${JSON.stringify(a.key)})`).join('; ')}. Use a key exactly as external_apps lists it, or the application name. This is not a lost connection.`
     : 'No external application is connected. Stop and wait for the user to connect one.' };
 }
 /** Host trust decision lives in integrations/readback.ts: built-in adapters and explicitly listed read-only commands only. */
