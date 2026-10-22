@@ -67,6 +67,8 @@ Do not start any work and do not mention software internals, node graphs or file
 /** Shown when the Claude Code command cannot be found. */
 export const CLAUDE_CODE_MISSING = 'Claude Code is not installed on this PC (or OmniCandy cannot find it). Install it, then press Check again.';
 
+/** Plain settings are limited to 512 characters by the integration manager; a structured (JSON) setting of a built-in adapter, such as the Blender scene spec, may be an object or longer JSON text. */
+export const externalRunSettings = z.record(z.string(), z.union([z.string().max(64000), z.number(), z.boolean(), z.record(z.string(), z.unknown()), z.array(z.unknown())]));
 const TOOL_NAMES = ['get_status', 'look_at_document', 'apply_edit', 'photocraft_command', 'app_commands', 'app_command', 'undo', 'save_version', 'list_files', 'open_file', 'new_document', 'list_image_models', 'generate_image', 'list_video_models', 'generate_video', 'local_video_status', 'make_local_video', 'make_motion_video', 'request_model_download', 'list_export_formats', 'export_file', 'timeline_add', 'timeline_move_clip', 'timeline_remove_clip', 'workflow_catalog', 'plan_workflow', 'workflow_status', 'run_workflow', 'rerun_workflow', 'pause_workflow', 'resume_workflow', 'cancel_workflow', 'change_workflow_step', 'list_workflow_versions', 'restore_workflow_version', 'save_workflow_template', 'external_apps', 'external_run', 'external_job', 'integration_builder_start', 'integration_builder_status', 'planner_packages', 'planner_get_package', 'planner_claim', 'planner_report', 'planner_propose'];
 
 export interface WorkflowControlApi {
@@ -113,7 +115,7 @@ export interface ClaudePartnerDeps {
   /** External third-party applications (not the native Craft apps): scan result as JSON text, and one verified command run. */
   external: {
     list: () => Promise<string>;
-    run: (app: string, command: string, params: Record<string, string | number | boolean>, background?: boolean) => Promise<string>;
+    run: (app: string, command: string, params: Record<string, unknown>, background?: boolean) => Promise<string>;
     /** Status (and optionally cancel) of a background job started by run. */
     job: (id: string, cancel: boolean) => Promise<string>;
   };
@@ -520,7 +522,7 @@ Now explain the plan to the user in plain language, including cost and what they
         tool('external_run', 'Runs one command from external_apps in an external application. The user is asked to allow it first; if they decline, accept it. The result states what was verified (for example the saved file exists and was re-opened); report only that, never claim more. Outputs land in the project external folder.', {
           app: z.string().max(200).describe('app_key, adapter id or name from external_apps.'),
           command: z.string().max(100),
-          settings: z.record(z.string(), z.union([z.string().max(512), z.number(), z.boolean()])).optional(),
+          settings: externalRunSettings.optional(),
           background: z.boolean().optional().describe('Commands marked long_running start a job and return a job id at once; follow it with external_job. Set false to wait for the result instead.'),
         }, async ({ app, command, settings, background }) => {
           try { activity(`Running ${command} in ${app}`); return text(await this.d.external.run(app, command, settings ?? {}, background)); } catch (e) { return fail(e); }
