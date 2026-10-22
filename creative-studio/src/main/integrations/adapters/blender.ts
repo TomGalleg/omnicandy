@@ -10,6 +10,8 @@ import { spawn } from 'node:child_process';
 import { ADAPTER_SDK_VERSION, type AdapterManifest, type CommandSpec, type DiscoveredApp } from '@shared/integrations';
 import { LiveBlenderSession, blenderLiveEnabled } from './blenderLive';
 import { SCENE_COMMANDS, SCENE_PRELUDE, SCENE_SCRIPTS, EDIT_COMMAND_IDS } from './blenderScene';
+import { BATCH_COMMANDS, BATCH_PRELUDE, BATCH_SCRIPTS, BATCH_VOCAB, assembleDiscovery, type DiscoveryFacts } from './blenderBatch';
+import { BATCH_ID, MAX_BATCH_OBJECTS, assessBatchReadback, chunkOf, expectedBatchFromParams, specHashOf, validateBuildSpec, type BuildSpec } from './blenderBatchSpec';
 import { runProcess, safeFileName, parseResultLine, type RunResult } from '../process';
 import { AdapterError, type AdapterFactory, type AdapterOutcome, type ExecuteContext, type ExternalAdapter, type HealthResult, type ProbeResult } from '../sdk';
 
@@ -43,7 +45,7 @@ const COMMANDS: CommandSpec[] = [
   },
 ];
 
-COMMANDS.push(...SCENE_COMMANDS);
+COMMANDS.push(...SCENE_COMMANDS, ...BATCH_COMMANDS);
 
 export const BLENDER_MANIFEST: AdapterManifest = {
   id: 'blender', name: 'Blender', vendor: 'Blender Foundation', sdkVersion: ADAPTER_SDK_VERSION, maturity: 'verified',
@@ -131,6 +133,8 @@ _result(_summary())
 };
 
 for (const [id, body] of Object.entries(SCENE_SCRIPTS)) SCRIPTS[id] = `${PRELUDE}${SCENE_PRELUDE}\n${body}`;
+// Batch commands share one extra prelude; in the open window it is simply part of each (short-lived) script body.
+for (const [id, body] of Object.entries(BATCH_SCRIPTS)) SCRIPTS[id] = `${PRELUDE}${SCENE_PRELUDE}${BATCH_PRELUDE}\n${body}`;
 
 export function runBlender(exe: string, args: string[], signal: AbortSignal | undefined, timeoutMs: number): Promise<RunResult> {
   return runProcess(exe, args, { signal, timeoutMs, label: 'Blender' });
@@ -265,6 +269,55 @@ class BlenderAdapter implements ExternalAdapter {
         evidence: ['re-opened in a fresh Blender and read back'],
       };
     }
+    if (cmd.id === 'discover.search') {
+      const kind = String(params.kind ?? 'all').toLowerCase(), query = String(params.query ?? ''), name = String(params.name ?? '');
+      const wantOps = kind === 'operators' || name.includes('.') || (kind === 'all' && query.trim() !== '');
+      // Read only and independent of any project: always a short background run, never the user's open window.
+      const { summary } = await this.script(ctx, cmd.id, { vocab: BATCH_VOCAB, want_ops: wantOps, ops_query: query, op_name: name }, { background: true });
+      const data = assembleDiscovery({ kind, query, name, limit: Number(params.limit ?? 12) }, summary as DiscoveryFacts);
+      return { message: `Found ${String(data.total)} matching item(s) in Blender ${String(data.blender)}.`, outputs: [], data, verified: true, evidence: [`read from the running Blender ${String(data.blender)}`] };
+    }
+    if (cmd.id === 'scene.inspect_detail') {
+      const input = await existing(String(params.file_name));
+      const ids = String(params.ids ?? '').split(',').map((s) => s.trim()).filter(Boolean);
+      if (ids.length > MAX_BATCH_OBJECTS || ids.some((i) => !BATCH_ID.test(i))) throw new AdapterError('invalid-params', `ids must be at most ${MAX_BATCH_OBJECTS} comma-separated cc_ids.`);
+      const batch = String(params.batch_id ?? '').trim();
+      if (batch && !BATCH_ID.test(batch)) throw new AdapterError('invalid-params', 'batch_id is not a valid batch id.');
+      const { summary } = await this.script(ctx, cmd.id, { input, ids, batch_id: batch || null, chunk: params.chunk ?? 0, max_objects: params.max_objects ?? 60 }, { background: true });
+      const n = Array.isArray(summary.cc_ids) ? summary.cc_ids.length : 0;
+      // Always the SAVED file read by a process that has never seen the edit: that is what makes this a fresh read-back.
+      return { message: `${path.basename(input)} has ${String(summary.count)} object(s), ${n} with a cc_id.`, outputs: [], data: { ...summary, source: 'saved-file', read_at: new Date().toISOString() }, verified: true, evidence: ['read from the saved file by a fresh Blender process'] };
+    }
+    if (cmd.id === 'scene.build') {
+      const input = await existing(String(params.file_name));
+      const canonical = String(params.spec);
+      const spec = JSON.parse(canonical) as BuildSpec;
+      const problem = validateBuildSpec(spec);
+      if (problem) throw new AdapterError('invalid-params', `Invalid parameter "spec": ${problem}`);
+      const hash = specHashOf(canonical);
+      const c = chunkOf(spec);
+      ctx.progress('Building the scene', 0.2);
+      const { summary } = await this.script(ctx, cmd.id, { input, spec, spec_hash: hash, vocab: BATCH_VOCAB, fault: process.env.CREATECRAFT_BATCH_FAULT ?? null });
+      // Verification: a fresh Blender reads the saved file; the requested content and the batch ledger are judged separately.
+      ctx.progress('Checking the saved file', 0.7);
+      const ids = spec.objects.map((o) => o.id);
+      const check = await this.script(ctx, 'scene.inspect_detail', { input, ids, batch_id: spec.batch_id, chunk: c.index, max_objects: MAX_BATCH_OBJECTS }, { background: true });
+      const expected = expectedBatchFromParams({ file_name: String(params.file_name), spec: canonical });
+      const verdict = expected ? assessBatchReadback({ data: check.summary }, expected) : undefined;
+      if (!verdict || verdict.outcome !== 'applied') {
+        throw new AdapterError('verification-failed', `The saved file does not show batch ${spec.batch_id} (chunk ${c.index + 1} of ${c.total}) as built: ${verdict ? `${verdict.outcome} - ${verdict.reason}` : 'the expectation could not be derived'}.`);
+      }
+      const replay = summary.status === 'already_applied';
+      return {
+        message: replay
+          ? `Batch ${spec.batch_id} (chunk ${c.index + 1} of ${c.total}) was already applied with this exact content; nothing was changed.`
+          : `Built ${ids.length} object(s) in ${path.basename(input)} (batch ${spec.batch_id}, chunk ${c.index + 1} of ${c.total}); read back from the saved file.`,
+        outputs: [],
+        data: { status: summary.status, batch_id: spec.batch_id, chunk: c.index, total: c.total, spec_hash: hash, created: summary.created, updated: summary.updated, names: summary.names, project_id: summary.project_id, ledger_complete: verdict.ledgerComplete, content_matches: verdict.contentMatches, object_count: check.summary.count },
+        verified: true,
+        evidence: [`re-read from the saved file by a fresh Blender: ledger records ${spec.batch_id}#${c.index}; ${ids.length} object(s) present with the requested content`],
+      };
+    }
     if (cmd.id === 'scene.render_animation') {
       const input = await existing(String(params.file_name));
       const output = path.join(ctx.workDir, safeName(String(params.file_name), '.mp4'));
@@ -292,4 +345,8 @@ class BlenderAdapter implements ExternalAdapter {
   async dispose(): Promise<void> { await this.releaseLive(); this.app = null; }
 }
 
-export const blenderFactory: AdapterFactory = { manifest: BLENDER_MANIFEST, create: () => new BlenderAdapter() };
+export const blenderFactory: AdapterFactory = {
+  manifest: BLENDER_MANIFEST,
+  create: () => new BlenderAdapter(),
+  validateJson: (commandId, param, value) => commandId === 'scene.build' && param === 'spec' ? validateBuildSpec(value) : `${commandId}.${param} is not a structured parameter.`,
+};

@@ -10,7 +10,8 @@ export interface AgentRecoveryInfo {
   /** The recorded expected outcome, in a form that can be shown to the user and compared with a trusted read-back. */
   expected?: { kind: 'photocraft.shape.edit.rect'; layer: number; rect: [number,number,number,number] }
     | { kind: 'blender.object.transform'; file: string; object: string; values: Record<string, number> }
-    | { kind: 'blender.object.color'; file: string; object: string; color: string };
+    | { kind: 'blender.object.color'; file: string; object: string; color: string }
+    | { kind: 'blender.scene.batch'; file: string; batch_id: string; chunk: number; total: number; objects: number };
   message: string;
 }
 export interface AgentUsage { input: number; output: number }

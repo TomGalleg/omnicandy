@@ -1,4 +1,5 @@
 import type { CommandSpec } from '@shared/integrations';
+import { normalizeJsonParam } from '@shared/jsonParam';
 
 /** Advisory fast-fail validation. IntegrationManager remains the final authority. */
 export function preflightExternalParams(cmd: CommandSpec, raw: Record<string, unknown>): string | undefined {
@@ -20,6 +21,9 @@ export function preflightExternalParams(cmd: CommandSpec, raw: Record<string, un
       if (spec.max !== undefined && num > spec.max) return `Parameter "${key}" must be at most ${spec.max}.`;
     } else if (spec.type === 'boolean') {
       if (typeof value !== 'boolean') return `Parameter "${key}" must be true or false.`;
+    } else if (spec.type === 'json') {
+      const j = normalizeJsonParam(value, key, { maxChars: spec.maxChars, maxDepth: spec.maxDepth });
+      if (!j.ok) return j.error;
     } else if (typeof value !== 'string' || value.length > 512) {
       return `Parameter "${key}" must be text (up to 512 characters).`;
     }

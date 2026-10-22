@@ -13,7 +13,7 @@ import type { CommandSpec } from '@shared/integrations';
  * Anything not listed (including every edit command) is an execution receipt only.
  */
 export const TRUSTED_READBACK_COMMANDS: Readonly<Record<string, readonly string[]>> = {
-  blender: ['scene.inspect'],
+  blender: ['scene.inspect', 'scene.inspect_detail', 'discover.search'],
   'davinci.resolve': ['app.info', 'project.list', 'project.inspect'],
 };
 

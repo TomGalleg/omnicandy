@@ -72,6 +72,11 @@ export interface AdapterFactory {
    * information" (not connected); the manager then does not narrow. Commands outside the set are refused as unsupported.
    */
   availableCommands?(): ReadonlySet<string> | null;
+  /**
+   * Built-in adapters only: checks the schema of a structured (`json`) parameter before the user is asked or anything is
+   * dispatched. Returns a problem text, or undefined when the value is acceptable.
+   */
+  validateJson?(commandId: string, param: string, value: unknown): string | undefined;
   /** Forget crash counters etc. (Repair). */
   reset?(): void;
 }

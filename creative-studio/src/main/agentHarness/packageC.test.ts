@@ -33,11 +33,11 @@ describe('trusted read-back classification against the real built-in adapters', 
   const classify = (adapterId: string, commands: typeof BLENDER_MANIFEST.commands) =>
     commands.filter((c) => isTrustedReadbackCommand(() => true, adapterId, c)).map((c) => c.id).sort();
   it('trusts exactly the documented read-only inspections of Blender and Resolve', () => {
-    expect(classify('blender', BLENDER_MANIFEST.commands)).toEqual(['scene.inspect']);
+    expect(classify('blender', BLENDER_MANIFEST.commands)).toEqual(['discover.search', 'scene.inspect', 'scene.inspect_detail']);
     expect(classify('davinci.resolve', RESOLVE_MANIFEST.commands)).toEqual(['app.info', 'project.inspect', 'project.list']);
   });
   it('never trusts an edit, render, create or delete command', () => {
-    for (const id of ['object.transform', 'material.set', 'object.delete', 'object.add', 'scene.set', 'scene.create_basic', 'scene.render_still', 'scene.render_animation', 'animation.keyframe'])
+    for (const id of ['object.transform', 'material.set', 'object.delete', 'object.add', 'scene.set', 'scene.create_basic', 'scene.render_still', 'scene.render_animation', 'animation.keyframe', 'scene.build'])
       expect(BLENDER_MANIFEST.commands.some((c) => c.id === id && isTrustedReadbackCommand(() => true, 'blender', c))).toBe(false);
     for (const id of ['project.create_scratch', 'project.delete_scratch', 'timeline.export'])
       expect(RESOLVE_MANIFEST.commands.some((c) => c.id === id && isTrustedReadbackCommand(() => true, 'davinci.resolve', c))).toBe(false);

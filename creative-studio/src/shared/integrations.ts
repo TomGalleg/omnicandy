@@ -34,8 +34,15 @@ export type CapabilityId =
   | 'executeCommand' | 'getExecutionStatus' | 'cancelOperation' | 'saveProject' | 'exportFile'
   | 'importFile' | 'getApplicationState' | 'dispose';
 
-export type ParamType = 'string' | 'number' | 'boolean';
-export interface ParamSpec { type: ParamType; description: string; required?: boolean; default?: string | number | boolean; min?: number; max?: number }
+/** 'json' is bounded structured data (see jsonParam.ts); only built-in adapters may declare it, installed packages cannot. */
+export type ParamType = 'string' | 'number' | 'boolean' | 'json';
+export interface ParamSpec {
+  type: ParamType; description: string; required?: boolean; default?: string | number | boolean; min?: number; max?: number;
+  /** json only: longest canonical text (default 16000, hard limit 64000). */
+  maxChars?: number;
+  /** json only: deepest nesting (default 8, hard limit 12). */
+  maxDepth?: number;
+}
 
 /** A typed command an adapter exposes. */
 export interface CommandSpec {

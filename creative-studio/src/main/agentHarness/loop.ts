@@ -31,6 +31,9 @@ const nativeCommandId = (args: unknown): string | undefined => args && typeof ar
 const isNativeReadback = (name: string, args: unknown): boolean => name === 'app_command' && readbackCommands.has(nativeCommandId(args) ?? '');
 // Tools that can change document or project content. Whether an external_command is really an edit is decided per call by the host (ToolDef.readOnly).
 const MUTATING_TOOLS = new Set(['external_command','photocraft_command','timeline_add','timeline_move_clip','timeline_remove_clip']);
+const batchRecoveryHint = (outcome: string): string => outcome === 'applied' ? 'Confirm it with evidence_verify (data.batch.state is "recorded"); do not run the batch again.'
+  : outcome === 'absent' ? 'Confirm it with evidence_verify (data.batch.state is "absent"); after a passing check the lock is released and the same batch may be run again.'
+  : 'The lock stays. Do not run the batch again; tell the user what was found and stop.';
 const isMutation = (name: string, args: unknown): boolean => MUTATING_TOOLS.has(name) || (name === 'app_command' && !isNativeReadback(name,args));
 // Anything that can change document content. save_version only persists a version and has its own confirmed receipt.
 const requiresCompletionEvidence = (name: string, args: unknown): boolean => isMutation(name,args) || name === 'new_document' || name === 'apply_edit';
@@ -196,6 +199,10 @@ export async function runAgent(args: { goal: string; provider: ModelProvider; re
                 if (planControl.isReadbackReceipt(receiptId)) readbackSeq.set(receiptId, mutationSeq);
                 if (uncertainEdit && (isNativeReadback(call.name, call.args) || (call.name === 'external_command' && !mutating && r.trustedReadback === true)) && planControl.isReadbackReceipt(receiptId)) {
                   recoveryReadbacks.add(receiptId);
+                  // A Blender batch is judged by the host from this read-back alone (project identity, ledger, content): tell the model what it means.
+                  const assessed = expectedIntent ? planControl.assessExpectedEdit(receiptId, expectedIntent) : undefined;
+                  if (assessed) r = {...r, text:`${r.text}
+Recovery assessment (host, from this read-back): ${assessed.outcome} - ${assessed.reason}. ${batchRecoveryHint(assessed.outcome)}`};
                   emit({kind:'model',text:'Fresh read-back recorded. Compare actual fields with the intended result using evidence_verify. Editing remains locked until a passing comparison.'});
                 }
                 r = {...r, text:`${r.text}\nExecution receipt: ${receiptId} (tool accepted; verify actual state before claiming outcome).`};
@@ -206,13 +213,14 @@ export async function runAgent(args: { goal: string; provider: ModelProvider; re
               }
               if (uncertainEdit && call.name === 'evidence_verify' && r.verified === true) {
                 const data = planControl.latestPassingCheck();
+                const releasedAssessment = data && expectedIntent ? planControl.assessExpectedEdit(data.sourceReceiptId, expectedIntent) : undefined;
                 if (data && recoveryReadbacks.has(data.sourceReceiptId) && expectedIntent &&
                     planControl.matchesExpectedEdit(data.sourceReceiptId, expectedIntent)) {
                   await args.onRecoveryResolved?.();
                   uncertainEdit = undefined;
                   expectedIntent = undefined;
                   recoveryReadbacks.clear();
-                  emit({kind:'model',text:'A fresh trusted read-back matched the durable recorded expected outcome. Recovery lock released.'});
+                  emit({kind:'model',text: releasedAssessment?.outcome === 'absent' ? 'A fresh trusted read-back proves the batch never reached the saved project. Recovery lock released; the same batch may be run again.' : 'A fresh trusted read-back matched the durable recorded expected outcome. Recovery lock released.'});
                 }
               }
             }

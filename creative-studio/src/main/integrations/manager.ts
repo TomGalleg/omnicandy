@@ -11,6 +11,7 @@ import {
   type DiscoveredApp, type ExternalAppInfo, type ExternalScan, type IntegrationStatus, type JobInfo, type Permission, type ProgressEvent,
 } from '@shared/integrations';
 import { discoverApps, REMEMBERED_SOURCES, realDiscoveryEnv, type DiscoveryEnv, type DiscoveryTarget } from './discovery';
+import { normalizeJsonParam } from '@shared/jsonParam';
 import { AdapterError, validateManifest, type AdapterFactory, type ExternalAdapter } from './sdk';
 import { currentOs, DEFAULT_PLATFORMS, OS_LABEL, supportsOs, type OsId } from '@shared/platform';
 
@@ -82,6 +83,11 @@ export class IntegrationManager {
       if (!sameId && !sameExe) continue;
       if (other.manifest.maturity === 'stub' && f.manifest.maturity !== 'stub') { replaced.push(other); continue; }
       throw new Error(sameId ? `Adapter ${f.manifest.id} is already registered.` : `Adapter ${f.manifest.id} drives the same program as ${other.manifest.id}, which already handles it.`);
+    }
+    // JSON parameters are for trusted built-in adapters only; an installed package can neither declare nor receive them.
+    if (!opts.builtin) {
+      const json = f.manifest.commands.flatMap((c) => Object.entries(c.params).filter(([, p]) => p.type === 'json').map(([k]) => `${c.id}.${k}`));
+      if (json.length) throw new Error(`Adapter ${f.manifest.id} rejected: JSON parameters are only available to built-in adapters (${json.join(', ')}).`);
     }
     // The replaced placeholder's entries ("Unsupported") must disappear at once, not at the next scan.
     for (const o of replaced) { this.dropApps(o); this.factories.delete(o.manifest.id); }
@@ -365,6 +371,15 @@ export class IntegrationManager {
     if (live && !live.has(cmd.id)) return fail('unsupported', `The add-in inside ${app.name} has not made "${commandId}" available (this version or edition of the program may not support it). Available now: ${[...live].join(', ') || 'none'}.`, app.name);
     const params = validateParams(cmd, raw);
     if (typeof params === 'string') return fail('invalid-params', params, app.name);
+    // Structured parameters: built-in adapters only, and the adapter's own schema must accept them before the user is asked or anything runs.
+    const jsonKeys = Object.entries(cmd.params).filter(([k, p]) => p.type === 'json' && params[k] !== undefined).map(([k]) => k);
+    if (jsonKeys.length) {
+      if (!this.builtin.has(f)) return fail('unsupported', `"${commandId}" uses structured parameters, which only built-in integrations may use; nothing was run.`, app.name);
+      for (const k of jsonKeys) {
+        const problem = f.validateJson?.(cmd.id, k, JSON.parse(String(params[k])));
+        if (problem) return fail('invalid-params', `Invalid parameter "${k}": ${problem}`, app.name);
+      }
+    }
 
     // An installed package can never exceed what the user approved when installing it, whatever its manifest says.
     if (f.permissionCeiling) {
@@ -495,6 +510,11 @@ export function validateParams(cmd: CommandSpec, raw: Record<string, unknown>): 
       if (spec.max !== undefined && v > spec.max) return `"${k}" must be at most ${spec.max}.`;
     } else if (spec.type === 'boolean') {
       if (typeof v !== 'boolean') return `"${k}" must be true or false.`;
+    } else if (spec.type === 'json') {
+      // Size, depth and syntax are checked here; the adapter factory checks the schema (validateJson) before anything is dispatched.
+      const j = normalizeJsonParam(v, k, { maxChars: spec.maxChars, maxDepth: spec.maxDepth });
+      if (!j.ok) return j.error;
+      v = j.text;
     } else if (typeof v !== 'string' || v.length > 512) return `"${k}" must be text (up to 512 characters).`;
     out[k] = v as string | number | boolean;
   }

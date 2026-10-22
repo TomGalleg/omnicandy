@@ -1,6 +1,7 @@
 /** Structured, advisory task plan. Only application tools may modify user documents. */
 import { z } from 'zod';
 import type { ExpectedEdit } from './editIntentJournal';
+import { assessBatchReadback, type BatchAssessment } from '../integrations/adapters/blenderBatchSpec';
 import { NATIVE_READBACK_COMMANDS } from './nativeReadback';
 import { PATH_SHAPE, compareEvidence, parseEvidencePath, resolveEvidencePath, summarizeObserved, MAX_EXPECTED_ITEMS, MAX_PATH_LENGTH, type Primitive } from './evidencePath';
 import { tool, type ToolRegistry } from './registry';
@@ -163,7 +164,8 @@ export function registerTaskPlan(registry: ToolRegistry, initialGoal: string, in
       const doc = readbacks.get(receiptId);
       if (!receipt || doc === undefined) return false;
       if (expected.kind === 'photocraft.shape.edit.rect') return receipt.command === 'shape.info' && matchesRect(doc, expected.layer, expected.rect);
-      if (receipt.tool !== 'external_command' || receipt.command !== 'scene.inspect' || receipt.file !== expected.file) return false;
+      if (expected.kind === 'blender.scene.batch') return receipt.tool === 'external_command' && receipt.command === 'scene.inspect_detail' && assessBatchReadback(doc, expected).releasesLock;
+      if (receipt.tool !== 'external_command' || (receipt.command !== 'scene.inspect' && receipt.command !== 'scene.inspect_detail') || receipt.file !== expected.file) return false;
       const details = field(doc, 'data.details');
       if (!details.exists || !Array.isArray(details.value)) return false;
       const entries = details.value.filter((d): d is Record<string, unknown> => !!d && typeof d === 'object' && (d as Record<string, unknown>).name === expected.object);
@@ -184,6 +186,13 @@ export function registerTaskPlan(registry: ToolRegistry, initialGoal: string, in
         const c = m && typeof m === 'object' ? (m as Record<string, unknown>).color : undefined;
         return Array.isArray(c) && rgb.every((v, i) => typeof c[i] === 'number' && Math.abs((c[i] as number) - v) <= 0.002);
       });
+    },
+    /** What a stored trusted read-back says about a recorded Blender batch (applied / absent / partial / ambiguous). */
+    assessExpectedEdit: (receiptId: string, expected: ExpectedEdit): BatchAssessment | undefined => {
+      const receipt = receipts.find(r => r.id === receiptId);
+      const doc = readbacks.get(receiptId);
+      if (expected.kind !== 'blender.scene.batch' || !receipt || doc === undefined || receipt.tool !== 'external_command' || receipt.command !== 'scene.inspect_detail') return undefined;
+      return assessBatchReadback(doc, expected);
     },
     matchesRecordedRect: (receiptId: string, layer: number, rect: readonly number[]): boolean => {
       const doc = readbacks.get(receiptId);
