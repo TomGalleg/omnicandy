@@ -204,6 +204,12 @@ export function App() {
   const media = useDock('cs-media', true);
   const claude = useDock('cs-claude', false);
   const toggleMedia = media.toggle, toggleClaude = claude.toggle;
+  // Home starts a project with another AI: open the Creative Partner panel so its progress is visible.
+  useEffect(() => {
+    const open = () => { if (!claude.open) claude.toggle(); };
+    window.addEventListener('createcraft:open-partner', open);
+    return () => window.removeEventListener('createcraft:open-partner', open);
+  }, [claude]);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (!e.ctrlKey || !e.shiftKey || e.altKey) return;

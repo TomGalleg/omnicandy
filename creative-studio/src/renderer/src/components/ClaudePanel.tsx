@@ -25,7 +25,17 @@ export function ClaudePanel({ liveApi }: Props) {
   const { live } = liveApi;
   const [st, setSt] = useState<ClaudeState | null>(null);
   const [draft, setDraft] = useState('');
-  const [engine, setEngine] = useState<'claude' | AgentProviderId>('claude');
+  const [engine, setEngineState] = useState<'claude' | AgentProviderId>(() => {
+    try { const v = window.sessionStorage.getItem('cs-engine'); if (v === 'claude' || (AGENT_PROVIDER_IDS as readonly string[]).includes(v ?? '')) return v as 'claude' | AgentProviderId; } catch { /* storage unavailable */ }
+    return 'claude';
+  });
+  const setEngine = (next: 'claude' | AgentProviderId) => { setEngineState(next); try { window.sessionStorage.setItem('cs-engine', next); } catch { /* storage unavailable */ } };
+  // Home picks the AI that builds an approved project: show that AI here.
+  useEffect(() => {
+    const on = (e: Event) => { const v = (e as CustomEvent<string>).detail; if ((AGENT_PROVIDER_IDS as readonly string[]).includes(v)) setEngineState(v as AgentProviderId); };
+    window.addEventListener('createcraft:engine', on);
+    return () => window.removeEventListener('createcraft:engine', on);
+  }, []);
   const [error, setError] = useState<string | null>(null);
 
   const chatRef = useRef<HTMLDivElement>(null);

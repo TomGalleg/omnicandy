@@ -95,13 +95,15 @@ Needs: ${t.needs}` : ''}`, objective: t.description };
   const [aiModel, setAiModel] = useState('');
   const [aiEndpoint, setAiEndpoint] = useState(DEFAULT_LOCAL_ENDPOINT);
   const aiName = ai === 'claude' ? 'Claude' : AGENT_PROVIDERS[ai].label;
+  /** What the chosen AI is called with; undefined means Claude. The same choice plans the project AND builds it after approval. */
+  const aiVia = ai === 'claude' ? undefined : { selection: ai === 'local' ? { provider: ai, endpoint: aiEndpoint } : { provider: ai }, model: aiModel };
   const changeAi = (next: 'claude' | AgentProviderId) => { setAi(next); setAiModel(next === 'claude' ? '' : (AGENT_PROVIDERS[next].models[0] ?? '')); };
   /** One real AI call (Claude or the chosen provider). Nothing is created and nothing paid starts until the plan is approved. */
   const makePlan = async () => {
     const text = [request.trim(), answers.trim() && `My answers to your questions: ${answers.trim()}`].filter(Boolean).join('\n\n');
     if (text.length < 3) return;
     setPlanning(true); setError(null);
-    try { setPlan(await window.studio.claude.planProject(text, ai === 'claude' ? undefined : { selection: ai === 'local' ? { provider: ai, endpoint: aiEndpoint } : { provider: ai }, model: aiModel })); } catch (e) { setError(errText(e)); } finally { setPlanning(false); }
+    try { setPlan(await window.studio.claude.planProject(text, aiVia)); } catch (e) { setError(errText(e)); } finally { setPlanning(false); }
   };
   /** A recommended template starts from a picture. With none supplied, Claude asks whether to make one with AI first. */
   const needsPicture = !!plan?.template && useRecommended && refs.length === 0;
@@ -123,7 +125,10 @@ Needs: ${t.needs}` : ''}`, objective: t.description };
     if (tpl) await window.studio.useWorkflowTemplate(tpl);
     // Start the new project's chat with the planning exchange (saved inside the project folder).
     const startNote = answers.trim();
-    const seeded = window.studio.claude.seed(request.trim(),`${plan.finishedOutput}\n\n${plan.summary}\n\n${plan.steps.map((s, i) => `${i + 1}. ${s}`).join('\n')}`);
+    const via = aiVia; // the AI picked on this screen, captured before the form is cleared
+    const planText = `${plan.finishedOutput}\n\n${plan.summary}\n\n${plan.steps.map((s, i) => `${i + 1}. ${s}`).join('\n')}`;
+    const planName = plan.name.trim();
+    const seeded = via ? Promise.resolve() : window.studio.claude.seed(request.trim(),`${plan.finishedOutput}\n\n${plan.summary}\n\n${plan.steps.map((s, i) => `${i + 1}. ${s}`).join('\n')}`);
     setPlan(null); setRequest(''); setAnswers(''); setLocation(null);
     // Reference files are copied only now, after approval: into Assets/Originals, hashed, never modified.
     let imported = 0;
@@ -134,7 +139,15 @@ Needs: ${t.needs}` : ''}`, objective: t.description };
       log('project', `Imported ${imported} reference file${imported === 1 ? '' : 's'}${r.errors.length ? `; ${r.errors.length} failed: ${r.errors.join('; ')}` : ''}.`);
     }
     // Approving means "go": Claude starts on the plan now, so nobody has to type a message first.
-    void Promise.resolve(seeded)
+    if (via) {
+      // Another AI was picked: IT builds the project (not Claude). Creative Partner switches to it so progress is visible.
+      try { window.sessionStorage.setItem('cs-engine', via.selection.provider); } catch { /* storage unavailable */ }
+      window.dispatchEvent(new CustomEvent('createcraft:engine', { detail: via.selection.provider }));
+      window.dispatchEvent(new Event('createcraft:open-partner'));
+      const goal = `Project "${planName}". The user asked for: ${request.trim()}\n\nPlan the user approved:\n${planText}${startNote ? `\n\nThe user's answers to the open questions: ${startNote}` : ''}\n\nApproved. Start working on this project now, following the plan. Use the connected apps and verify your work.`.slice(0, 3990);
+      void window.studio.agent.run(goal, via.model, undefined, via.selection)
+        .catch((e: unknown) => log('project', `${aiName} could not start on its own: ${e instanceof Error ? e.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '') : String(e)}`));
+    } else void Promise.resolve(seeded)
       .then(() => window.studio.claude.send(`Approved. Start working on this project now, following the plan above. Ask me only if you are truly blocked.${startNote ? ` My answers to your questions: ${startNote}` : ''}`))
       .catch((e: unknown) => log('project', `Claude could not start on its own: ${e instanceof Error ? e.message : String(e)}`));
     if (generateFirst) {
