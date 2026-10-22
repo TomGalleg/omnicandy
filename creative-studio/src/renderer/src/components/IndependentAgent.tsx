@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { AgentUiState, AgentPlanStep } from '@shared/agentHarness';
 import { presentUnifiedAgent, validateUnifiedAgentRequest } from '@shared/unifiedAgentPresentation';
 import { AGENT_BUDGET_LIMITS, validateAgentBudget } from '@shared/agentBudget';
@@ -25,6 +25,9 @@ export function IndependentAgent({ provider }: { provider: AgentProviderId }) {
   const previewActive = import.meta.env.DEV && !state.recovery && recoveryFixture !== 'off';
   const recoveryToDisplay = state.recovery ?? (previewActive ? fixture.info : undefined);
   const presentation = useMemo(() => presentUnifiedAgent(state), [state]);
+  // New activity scrolls into view, like a chat: the feed keeps the newest line at the bottom, next to the instruction box.
+  const feedRef = useRef<HTMLDivElement>(null);
+  useEffect(() => { const el = feedRef.current; if (el) el.scrollTop = el.scrollHeight; }, [presentation.activities.length, presentation.result]);
   const budgetError = validateAgentBudget({ maxTurns, maxToolCalls });
   const selection: AgentProviderSelection = provider === 'local' ? { provider, endpoint } : { provider };
   const validationError = validateUnifiedAgentRequest(goal, model) ?? validateProviderSelection(selection, model) ?? budgetError;
@@ -68,7 +71,8 @@ export function IndependentAgent({ provider }: { provider: AgentProviderId }) {
     void window.studio.agent.resume().then(setState).catch((e) => setError(errorText(e)));
   };
 
-  return <div className="claude-section">
+  return <div className="agent-panel">
+  <div className="claude-section">
     <div className="asset-meta">Runs with the AI you chose above. OpenAI and Gemini use the API key saved in Settings (it never leaves the app's secure storage) and calls may incur charges. A local model runs on this PC through a localhost endpoint. Continue Task keeps the provider the task started with.</div>
     <div className="claude-row">
       {provider === 'local'
@@ -90,14 +94,8 @@ export function IndependentAgent({ provider }: { provider: AgentProviderId }) {
         onChange={(e) => setMaxToolCalls(e.target.valueAsNumber)} /></label>
     </div>
     {budgetError && <div className="asset-meta" role="alert">{budgetError}</div>}
-    <textarea aria-label="Independent AI instruction" value={goal} disabled={busy}
-      onChange={(e) => setGoal(e.target.value)} placeholder="Describe what you want to do in a connected app" rows={5} maxLength={4000} />
-    {state.usage && <div className="asset-meta" role="status" aria-label="Independent AI token usage">Tokens reported by the provider: {state.usage.input.toLocaleString()} in, {state.usage.output.toLocaleString()} out{state.provider ? ` (${AGENT_PROVIDERS[state.provider.provider].label})` : ''}</div>}
-    <div className="btn-row">
-      <button className="btn primary" disabled={busy || !presentation.canRun || !!validationError} onClick={run}>Run with {providerLabel}</button>
-      <button className="btn" disabled={!presentation.canStop} onClick={stop}>Stop</button>
-      <button className="btn" disabled={!presentation.canResume} onClick={resume}>Continue Task</button>
-    </div>
+  </div>
+  <div className="agent-feed" ref={feedRef}>
     {import.meta.env.DEV && <details className="agent-recovery-preview-controls">
       <summary>Developer recovery UI preview (no commands executed)</summary>
       <label>Simulated scenario: <select aria-label="Simulated recovery scenario" disabled={!!state.recovery} value={recoveryFixture} onChange={e => setRecoveryFixture(e.target.value as RecoveryFixture)}>
@@ -162,10 +160,21 @@ export function IndependentAgent({ provider }: { provider: AgentProviderId }) {
     {!busy && goal.length > 0 && validationError && <div className="notice" role="alert">{validationError}</div>}
     {error && <div className="notice" role="alert">{error}</div>}
     {presentation.result && <div className="notice" role="status">{presentation.result}</div>}
-    <div role="log" aria-label="AI activity" aria-live="polite" style={{ maxHeight: 300, overflowY: 'auto' }}>
+    <div role="log" aria-label="AI activity" aria-live="polite">
       {presentation.activities.map((activity, index) => <div className="asset-meta" key={index}>
         <span className={activity.failed ? 'warn' : ''}>{activity.label}</span>
       </div>)}
     </div>
+  </div>
+  <div className="agent-compose">
+    <textarea aria-label="Independent AI instruction" value={goal} disabled={busy}
+      onChange={(e) => setGoal(e.target.value)} placeholder="Describe what you want to do in a connected app" rows={3} maxLength={4000} />
+    {state.usage && <div className="asset-meta" role="status" aria-label="Independent AI token usage">Tokens reported by the provider: {state.usage.input.toLocaleString()} in, {state.usage.output.toLocaleString()} out{state.provider ? ` (${AGENT_PROVIDERS[state.provider.provider].label})` : ''}</div>}
+    <div className="btn-row">
+      <button className="btn primary" disabled={busy || !presentation.canRun || !!validationError} onClick={run}>Run with {providerLabel}</button>
+      <button className="btn" disabled={!presentation.canStop} onClick={stop}>Stop</button>
+      <button className="btn" disabled={!presentation.canResume} onClick={resume}>Continue Task</button>
+    </div>
+  </div>
   </div>;
 }
