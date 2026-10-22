@@ -139,7 +139,7 @@ export function registerTaskPlan(registry: ToolRegistry, initialGoal: string, in
           // An external application's project is saved by its own commands; the proof is the saved FILE read back by a fresh process (scene.inspect_detail), not a save_version receipt, which only exists for the native Craft apps.
           const savedFileReadback = (step.verificationIds ?? []).some(id => checks.some(c => c.id === id && c.passed && receipts.some(r => r.id === c.sourceReceiptId && r.tool === 'external_command' && r.command === 'scene.inspect_detail')));
           if (saveStep && !confirmedVersion && !savedFileReadback)
-            return {text:`Error: Save step ${step.id} requires a confirmed new-version save_version receipt; a read-back comparison alone cannot confirm saving.`,isError:true};
+            return {text:`Error: Save step ${step.id} requires a confirmed new-version save_version receipt (native Craft apps) OR, for an external application such as Blender, a passing evidence_verify on a fresh scene.inspect_detail of the saved file (external_command scene.inspect_detail, then evidence_verify, then cite its ID in verificationIds). A read-back of the open window cannot confirm saving.`,isError:true};
           if (!validVerification && !confirmedVersion)
             return {text:`Error: Newly completed step ${step.id} requires a passing evidence_verify ID or a confirmed save_version receipt from THIS run. Receipt and verification IDs from before a Continue Task are no longer valid: take a fresh read-only inspection now, run evidence_verify on it, and cite that new ID (verificationIds). Model prose or edit receipts are not independent evidence.`,isError:true};
         }

@@ -30,6 +30,7 @@ describe('completing a save step', () => {
     const r = await t.complete('Save the project as a .blend file', [window.id]);
     expect(r.isError).toBe(true);
     expect(r.text).toMatch(/requires a confirmed new-version save_version receipt/);
+    expect(r.text).toMatch(/external application such as Blender.*scene.inspect_detail.*verificationIds/); // names the way out for Blender
     const none = await t.complete('Save the project as a .blend file', []);
     expect(none.isError).toBe(true);
   });
@@ -40,5 +41,23 @@ describe('completing a save step', () => {
     expect(native.isError).toBe(true);
     const plain = await t.complete('Add four towers', [check.id]);
     expect(plain.isError, plain.text).toBeFalsy();
+  });
+});
+
+describe('a model that keeps calling save_version while working in Blender', () => {
+  it('is told once, in the tool result, that save_version does not apply and what to do instead', async () => {
+    const { runAgent } = await import('./loop');
+    const { ScriptedProvider } = await import('./providers/scripted');
+    const { z } = await import('zod');
+    const { tool } = await import('./registry');
+    const registry = new ToolRegistry([
+      tool('save_version', 'save', z.object({}).strict(), async () => { throw new Error('Open a file in the Edit tab first.'); }),
+      tool('external_command', 'external', z.object({}).passthrough(), async () => 'ok'),
+    ]);
+    const ctl = { snapshot: () => ({ collab: { phase: 'idle', lockOwner: null, activeOperation: null }, asset: null, history: [], savedVersionIds: [] }), claudeDone: () => undefined } as never;
+    const r = await runAgent({ goal: 'save it', ctl, registry, provider: new ScriptedProvider([{ text: null, toolCalls: [{ id: '1', name: 'save_version', args: {} }] }, { text: 'done', toolCalls: [] }]) });
+    const text = r.messages.filter((m) => m.role === 'tool').map((m) => m.content)[0]!;
+    expect(text).toMatch(/Open a file in the Edit tab first/);
+    expect(text).toMatch(/save_version does not apply to an external application such as Blender.*scene\.inspect_detail/);
   });
 });

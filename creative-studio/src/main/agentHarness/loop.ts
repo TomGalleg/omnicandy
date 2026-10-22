@@ -198,6 +198,10 @@ export async function runAgent(args: { goal: string; provider: ModelProvider; re
               }
               dispatched = true;
               r = await registry.call(snapshot,call.name,call.args);
+              // save_version only exists for the native Craft apps. A model working in Blender keeps trying it and getting stuck.
+              if (r.isError && call.name === 'save_version' && snapshot.some(t => t.name === 'external_command'))
+                r = {...r, text:`${r.text}
+save_version does not apply to an external application such as Blender: its commands save the project file themselves. Do not call save_version again. Read the saved file with external_command scene.inspect_detail, run evidence_verify on that read-back, and cite the verification ID in task_plan.`};
               if (!r.isError && (mutating || call.name === 'new_document' || call.name === 'apply_edit')) mutationSeq++;
               if (mutating) {
                 const safe = !r.isError || classifyCommandError(r.text) !== 'execution' || stopText.test(r.text);
