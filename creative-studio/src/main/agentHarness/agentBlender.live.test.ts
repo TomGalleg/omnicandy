@@ -67,7 +67,8 @@ describe.skipIf(!on)('Independent AI + real Blender (real adapter, scripted mode
     if (turn === 2) return inspect();
     if (turn === 3) {
       const details = (JSON.parse(lastTool(messages).split('\nExecution receipt')[0]!).data.details as Array<{ name: string }>);
-      return call('verify', 'evidence_verify', { receipt_id: 'r2', path: `data.details.${details.findIndex((d) => d.name === 'Cube')}.location.0`, expected, tolerance: 0.001 });
+      return call('verify', 'evidence_verify', { receipt_id: 'r2', path: `data.details[name=Cube].location[0]`, expected, tolerance: 0.001 }); // selector path against the REAL scene.inspect array
+      void details;
     }
     return final;
   });

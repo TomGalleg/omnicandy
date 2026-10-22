@@ -38,6 +38,7 @@ import { DEFAULT_AGENT_PROVIDER, validateProviderSelection } from '@shared/agent
 import type { PausedAgent } from './agentHarness/recoveryIpcState';
 import { AgentJobLedger } from './agentHarness/jobLedger';
 import { SHARED_CLAUDE_TOOL_NAMES } from './agentHarness/sharedClaudeTools';
+import { familiesUsedIn, registerSharedTools } from './agentHarness/toolFamilies';
 import type { JournaledTool } from './agentHarness/editIntentJournal';
 import { stepSchema as planStepSchema, validatePlanEdit } from './agentHarness/taskPlan';
 import { nativeToolRegistry } from './agentHarness/nativeTools';
@@ -1199,7 +1200,7 @@ export function registerIpc(d: IpcDeps): void {
   let interruptNote = '';
   const cancelAgentJobs = (): string[] => { const ids = jobLedger.cancelRunning(); if (ids.length) interruptNote = ` Background job${ids.length > 1 ? 's' : ''} ${ids.join(', ')} ${ids.length > 1 ? 'were' : 'was'} cancelled.`; return ids; };
   const takeInterruptNote = (): string => { const n = interruptNote; interruptNote = ''; return n; };
-  const buildAgentRegistry = async (ctl: Awaited<ReturnType<typeof live>>, provider: { supportsVision: boolean }) => {
+  const buildAgentRegistry = async (ctl: Awaited<ReturnType<typeof live>>, provider: { supportsVision: boolean }, resumeMessages?: import('./agentHarness/types').Message[]) => {
     const store = await d.project();
     jobLedger.reconcile();
     const registry = addExternalTools(nativeToolRegistry(ctl, store, { supportsVision: provider.supportsVision, createBlank: createAgentBlank }), external, {
@@ -1209,7 +1210,8 @@ export function registerIpc(d: IpcDeps): void {
     });
     addExportTools(registry, { ctl, store, deliver });
     // Timeline, workflow, planner, generation and PhotoCraft tools are Claude's own handlers (approvals and path rules included).
-    for (const def of await claude().agentToolDefs(SHARED_CLAUDE_TOOL_NAMES)) registry.add(def);
+    // Planner / workflow / generation / local-media tools are advertised on request (enable_tools); a resumed task gets back the ones it used.
+    registerSharedTools(registry, await claude().agentToolDefs(SHARED_CLAUDE_TOOL_NAMES), familiesUsedIn(resumeMessages));
     return registry;
   };
   let agentState: AgentUiState = { status: 'idle', model: 'gpt-4.1-mini', goal: '', result: '', events: [] };
@@ -1328,7 +1330,7 @@ export function registerIpc(d: IpcDeps): void {
     agentState = { ...agentState, status: 'working', result: '', provider: selection, budget }; publishAgent();
     try {
       const outcome = await withAgentProvider(selection, saved.model, vault, (provider) =>
-        buildAgentRegistry(ctl, provider).then((registry) => runAgent({ goal: saved.goal, resumeMessages: saved.messages, resumePlan:saved.plan, resumeUncertainEdit:saved.uncertainEdit, resumeExpectedEdit:unresolvedJournal?.expected, provider,
+        buildAgentRegistry(ctl, provider, saved.messages).then((registry) => runAgent({ goal: saved.goal, resumeMessages: saved.messages, resumePlan:saved.plan, resumeUncertainEdit:saved.uncertainEdit, resumeExpectedEdit:unresolvedJournal?.expected, provider,
           registry, ctl, signal: abort.signal, ...budget, onInterrupted: () => { cancelAgentJobs(); },
           ...journalHooks,
           onPlan: (plan) => { agentState = { ...agentState, plan }; publishAgent(); },

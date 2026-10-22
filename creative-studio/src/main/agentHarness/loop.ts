@@ -5,7 +5,8 @@ import type { LiveTaskController } from '../liveTask';
 import { registerTaskPlan, type TaskPlan } from './taskPlan';
 import { NATIVE_READBACK_COMMANDS } from './nativeReadback';
 import { expectedEditIntent, type ExpectedEdit, type JournaledTool } from './editIntentJournal';
-import { compactAgentHistory, boundToolOutput, VERIFIED_MARKER } from './contextBudget';
+import { compactAgentHistory, boundToolOutput, compactToolSchema, VERIFIED_MARKER } from './contextBudget';
+import { optionalFamiliesPrompt } from './toolFamilies';
 import { clampAgentBudgets } from './executionBudget';
 
 const active = new WeakSet<LiveTaskController>();
@@ -17,7 +18,7 @@ const externalSystem = `
 CreateCraft supports native Craft applications and external applications. get_status and app_commands describe only the native Craft applications. External applications (Blender, FreeCAD and any other non-Craft program) are found with external_apps, their supported commands with external_commands, and commands are run with external_command. When the user asks for Blender, FreeCAD or any other non-Craft application, call external_apps first, then external_commands for the chosen application, and inspect each external command with external_commands command_id to see parameter types, ranges and permissions before executing. Execute only commands that external_commands returned, with the parameters it lists. Never invent external commands or parameters. Never assume an external application is unavailable because get_status does not list it; say it cannot be found only after external_apps has been checked.`;
 /** The instructions for the tools that are really registered: external discovery is explained only when the external tools exist. */
 export const buildSystemPrompt = (toolNames: readonly string[]): string =>
-  baseSystem + (toolNames.includes('new_document') || toolNames.includes('look_at_document') ? nativeExtra : '') + (toolNames.includes('external_apps') && toolNames.includes('external_commands') && toolNames.includes('external_command') ? externalSystem : '') + (['generate_image','generate_video','timeline_add','run_workflow','photocraft_command','planner_packages'].some(n => toolNames.includes(n)) ? creativeExtra : '');
+  baseSystem + (toolNames.includes('new_document') || toolNames.includes('look_at_document') ? nativeExtra : '') + (toolNames.includes('external_apps') && toolNames.includes('external_commands') && toolNames.includes('external_command') ? externalSystem : '') + (['generate_image','generate_video','timeline_add','run_workflow','photocraft_command','planner_packages'].some(n => toolNames.includes(n)) ? creativeExtra : '') + (toolNames.includes('enable_tools') ? optionalFamiliesPrompt() : '');
 /** True while the user owns the document or has paused/approval pending: the agent must not start or edit. */
 export const userControlActive = (ctl: LiveTaskController): boolean => {
   const c = ctl.snapshot().collab;
@@ -105,7 +106,7 @@ export async function runAgent(args: { goal: string; provider: ModelProvider; re
       const snapshot = registry.snapshot();
       if (turn === 0) emit({ kind: 'model', tool: 'tools', text: `Tools available to the model: ${snapshot.map((t) => t.name).join(', ') || '(none)'}` }); // names only
       let reply;
-      try { reply = await provider.complete({ system: buildSystemPrompt(snapshot.map((t) => t.name)), messages, tools: snapshot.map(({name,description,parameters})=>({name,description,parameters})), signal: args.signal ?? new AbortController().signal }); }
+      try { reply = await provider.complete({ system: buildSystemPrompt(snapshot.map((t) => t.name)), messages, tools: snapshot.map(({name,description,parameters})=>({name,description,parameters:compactToolSchema(parameters)})), signal: args.signal ?? new AbortController().signal }); }
       catch (e) {
         if (args.signal?.aborted) return result('cancelled', 'Cancelled.');
         const msg = e instanceof Error ? e.message : String(e);

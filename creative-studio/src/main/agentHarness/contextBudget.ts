@@ -6,6 +6,28 @@ export function boundToolOutput(text: string): string {
   if (text.length <= MAX_TOOL_OUTPUT) return text;
   return `${text.slice(0, MAX_TOOL_OUTPUT)}\n[Tool output truncated; inspect smaller sections to verify remaining content.]`;
 }
+/**
+ * Smaller JSON Schema for the model: validation keywords that only matter at execution time are dropped
+ * ($schema, additionalProperties:false, string/array length limits, propertyNames). Types, enums, required lists,
+ * descriptions, defaults and numeric ranges stay. Execution still validates against the full zod schema, so nothing
+ * becomes more permissive.
+ */
+const DROP_KEYS = new Set(['$schema', 'maxLength', 'minLength', 'maxItems', 'minItems', 'propertyNames', 'exclusiveMinimum', 'exclusiveMaximum']);
+export function compactToolSchema(schema: Record<string, unknown>): Record<string, unknown> {
+  const node = (value: unknown): unknown => {
+    if (Array.isArray(value)) return value.map(node);
+    if (!value || typeof value !== 'object') return value;
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      if (DROP_KEYS.has(k)) continue;
+      if (k === 'additionalProperties' && v === false) continue;
+      if (k === 'properties' && v && typeof v === 'object') out[k] = Object.fromEntries(Object.entries(v as Record<string, unknown>).map(([pk, pv]) => [pk, node(pv)]));
+      else out[k] = node(v);
+    }
+    return out;
+  };
+  return node(schema) as Record<string, unknown>;
+}
 /** Survives compaction so a resumed task can still tell that a comparison passed. */
 export const VERIFIED_MARKER = '[evidence_verify passed]';
 /** Preserve tool call/result pairing by replacing old content, never deleting messages. The `Error:` prefix and the

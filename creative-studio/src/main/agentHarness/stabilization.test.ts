@@ -113,7 +113,7 @@ describe('F1: structured read-back followed by PhotoCraft diagnostics', () => {
     expect(toolText(mismatch.messages, 2)).toContain('"passed":false');
     expect(mismatch.status).toBe('limit');
     const diag = await run(captured, [edit, info, verify('3', 'r2', 'Parameter', 'validation'), final, final]);
-    expect(toolText(diag.messages, 2)).toMatch(/not present|Error/);
+    expect(toolText(diag.messages, 2)).toMatch(/not (present|usable)|Error/);
     expect(diag.status).toBe('limit');
   });
   it('does not accept partial or malformed JSON, or junk glued to the closing bracket', async () => {

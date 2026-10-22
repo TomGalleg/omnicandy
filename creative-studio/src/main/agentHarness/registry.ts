@@ -9,6 +9,9 @@ export class ToolRegistry {
     if (!/^[a-z][a-z0-9_]{0,63}$/.test(tool.name) || this.tools.has(tool.name)) throw new Error(`Invalid or duplicate tool: ${tool.name}`);
     this.tools.set(tool.name, tool);
   }
+  private readonly hints = new Map<string, string>();
+  /** Extra guidance for a call to a tool that is not (yet) advertised, for example the family to enable first. */
+  hint(name: string, text: string) { this.hints.set(name, text); }
   /** Lets a tool bound to per-run state (task_plan) be registered again when a registry is reused for a resumed run. */
   remove(name: string) { this.tools.delete(name); }
   snapshot(): ToolDef[] { return [...this.tools.values()]; }
@@ -21,7 +24,7 @@ export class ToolRegistry {
   async call(snapshot: readonly ToolDef[], name: string, args: unknown): Promise<ToolResult> {
     const advertised = snapshot.find((t) => t.name === name);
     const current = this.tools.get(name);
-    if (!advertised || !current || current !== advertised) return { text: `Error: Tool ${name} is unknown or no longer available.`, isError: true };
+    if (!advertised || !current || current !== advertised) return { text: `Error: Tool ${name} is unknown or no longer available.${this.hints.get(name) ? ` ${this.hints.get(name)}` : ''}`, isError: true };
     try {
       // Every native tool also performs zod validation; execution backend enforces real permissions.
       const result = await current.execute(args);

@@ -2,6 +2,7 @@
 import { z } from 'zod';
 import type { ExpectedEdit } from './editIntentJournal';
 import { NATIVE_READBACK_COMMANDS } from './nativeReadback';
+import { PATH_SHAPE, compareEvidence, parseEvidencePath, resolveEvidencePath, summarizeObserved, MAX_EXPECTED_ITEMS, MAX_PATH_LENGTH, type Primitive } from './evidencePath';
 import { tool, type ToolRegistry } from './registry';
 export const stepSchema = z.object({
   id: z.string().regex(/^[a-zA-Z0-9_-]{1,48}$/),
@@ -18,7 +19,7 @@ export const planSchema = z.object({
 export type TaskPlan = z.infer<typeof planSchema>;
 export const clonePlan = (plan: TaskPlan): TaskPlan => structuredClone(planSchema.parse(plan));
 export interface ApplicationReceipt { id: string; tool: string; summary: string; verified: boolean; command?: string; /** External read-backs: the file the inspection was about. */ file?: string; readback?: boolean; saveVersionId?: string }
-export interface EvidenceCheck { id: string; sourceReceiptId: string; path: string; expected: string | number | boolean | null; observed: unknown; passed: boolean }
+export interface EvidenceCheck { id: string; sourceReceiptId: string; path: string; expected: Primitive | Primitive[]; observed: unknown; passed: boolean }
 /** Only known native inspection commands qualify. Other command results are execution receipts,
  * never independently verified read-back. External adapters need explicit read-only metadata first. */
 const confirmedSave = (text: string): string | undefined => {
@@ -57,12 +58,10 @@ const parseReadback = (text: string): unknown => {
   try { return JSON.parse(json); } catch { return undefined; }
 };
 const field = (root: unknown, path: string): { exists: boolean; value?: unknown } => {
-  let cur: unknown = root;
-  for (const part of path.split('.')) {
-    if (cur === null || typeof cur !== 'object' || !Object.prototype.hasOwnProperty.call(cur, part)) return {exists:false};
-    cur = (cur as Record<string, unknown>)[part];
-  }
-  return { exists:true, value:cur };
+  const tokens = parseEvidencePath(path);
+  if (!tokens) return { exists:false };
+  const r = resolveEvidencePath(root, tokens);
+  return r.exists ? { exists:true, value:r.value } : { exists:false };
 };
 const matchesRect = (doc: unknown, layer: number, rect: readonly number[]): boolean => {
   const reportedLayer = field(doc, 'layer');
@@ -103,20 +102,21 @@ export function registerTaskPlan(registry: ToolRegistry, initialGoal: string, in
     return id;
   };
   registry.remove('evidence_verify');
-  registry.add(tool('evidence_verify', 'Independently compare a primitive expected value against structured JSON from a successful read-only application inspection receipt (currently shape.info, layer.list, document.inspect). Does not execute or edit anything. Only a passing check counts as a verified read-back; other receipts prove tool execution only.',
-    z.object({receipt_id:z.string().regex(/^r[1-9][0-9]*$/),path:z.string().regex(/^[a-zA-Z_][a-zA-Z0-9_]*(\.(?:[a-zA-Z_][a-zA-Z0-9_]*|[0-9]+))*$/).max(160),expected:z.union([z.string().max(500),z.number().finite(),z.boolean(),z.null()]),tolerance:z.number().min(0).max(1000000).optional()}).strict(),
+  registry.add(tool('evidence_verify', 'Independently compare an expected value against structured JSON from a successful read-only inspection receipt (shape.info, layer.list, get_status, or a trusted external inspection such as Blender scene.inspect). Does not execute or edit anything. Only a passing check counts as a verified read-back; other receipts prove tool execution only. path: dotted keys and indexes (data.details.1.location.0), brackets (data.details[1].location[0]), or select an array element by a key (data.details[name=Cube].materials[0].color). expected: a string/number/boolean/null, or an array of up to 16 of them to compare a whole vector (location [3,0,0]); numbers match within tolerance; "#rrggbb" matches a colour array (channels 0..1, default tolerance 0.002).',
+    z.object({receipt_id:z.string().regex(/^r[1-9][0-9]*$/),path:z.string().regex(PATH_SHAPE).max(MAX_PATH_LENGTH),expected:z.union([z.string().max(500),z.number().finite(),z.boolean(),z.null(),z.array(z.union([z.string().max(200),z.number().finite(),z.boolean(),z.null()])).min(1).max(MAX_EXPECTED_ITEMS)]),tolerance:z.number().min(0).max(1000000).optional()}).strict(),
     async ({receipt_id,path,expected,tolerance}) => {
       if (!readbacks.has(receipt_id)) return {text:'Error: Receipt has no eligible structured read-back; use an approved read-only inspection command.',isError:true};
+      const tokens = parseEvidencePath(path);
+      if (!tokens) return {text:'Error: Unsupported path. Use dotted keys and indexes, [n] indexes, or [key=value] selectors (at most 12 steps).',isError:true};
       // An external result envelope carries the command's own claims (verified, message, evidence); only its returned state may be compared.
-      if (receipts.find(r => r.id === receipt_id)?.tool === 'external_command' && !path.startsWith('data.'))
+      const first = tokens[0];
+      if (receipts.find(r => r.id === receipt_id)?.tool === 'external_command' && !(first && 'key' in first && first.key === 'data' && tokens.length > 1))
         return {text:'Error: For external read-backs compare fields under data.* only; the command\'s own verified/message/evidence fields are claims, not state.',isError:true};
-      const found=field(readbacks.get(receipt_id),path);
-      if (!found.exists) return {text:`Verification unavailable: ${path} not present in read-back ${receipt_id}.`,verified:false};
+      const found=resolveEvidencePath(readbacks.get(receipt_id),tokens);
+      if (!found.exists) return {text:`Verification unavailable: ${path} not usable in read-back ${receipt_id}${found.reason ? ` (${found.reason})` : ''}.`,verified:false};
       const observed=found.value;
-      const passed = tolerance !== undefined && typeof observed === 'number' && typeof expected === 'number'
-        ? Number.isFinite(observed) && Math.abs(observed-expected)<=tolerance
-        : (observed === expected);
-      const check: EvidenceCheck={id:`v${nextCheck++}`,sourceReceiptId:receipt_id,path,expected,observed,passed};
+      const passed = compareEvidence(observed, expected as Primitive | Primitive[], tolerance);
+      const check: EvidenceCheck={id:`v${nextCheck++}`,sourceReceiptId:receipt_id,path,expected:expected as Primitive | Primitive[],observed:summarizeObserved(observed),passed};
       checks.push(check);if(checks.length>100)checks.shift();
       return {text:JSON.stringify(check),verified:passed};
     }));
