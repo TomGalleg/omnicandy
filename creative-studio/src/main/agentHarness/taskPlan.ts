@@ -2,6 +2,7 @@
 import { z } from 'zod';
 import type { ExpectedEdit } from './editIntentJournal';
 import { assessBatchReadback, type BatchAssessment } from '../integrations/adapters/blenderBatchSpec';
+import { assessScriptReadback, type ScriptAssessment } from '../integrations/adapters/blenderScriptSpec';
 import { NATIVE_READBACK_COMMANDS } from './nativeReadback';
 import { PATH_SHAPE, compareEvidence, parseEvidencePath, resolveEvidencePath, summarizeObserved, MAX_EXPECTED_ITEMS, MAX_PATH_LENGTH, type Primitive } from './evidencePath';
 import { tool, type ToolRegistry } from './registry';
@@ -164,6 +165,7 @@ export function registerTaskPlan(registry: ToolRegistry, initialGoal: string, in
       const doc = readbacks.get(receiptId);
       if (!receipt || doc === undefined) return false;
       if (expected.kind === 'photocraft.shape.edit.rect') return receipt.command === 'shape.info' && matchesRect(doc, expected.layer, expected.rect);
+      if (expected.kind === 'blender.script.run') return receipt.tool === 'external_command' && receipt.command === 'scene.inspect_detail' && assessScriptReadback(doc, expected).releasesLock;
       if (expected.kind === 'blender.scene.batch') return receipt.tool === 'external_command' && receipt.command === 'scene.inspect_detail' && assessBatchReadback(doc, expected).releasesLock;
       if (receipt.tool !== 'external_command' || (receipt.command !== 'scene.inspect' && receipt.command !== 'scene.inspect_detail') || receipt.file !== expected.file) return false;
       const details = field(doc, 'data.details');
@@ -188,11 +190,11 @@ export function registerTaskPlan(registry: ToolRegistry, initialGoal: string, in
       });
     },
     /** What a stored trusted read-back says about a recorded Blender batch (applied / absent / partial / ambiguous). */
-    assessExpectedEdit: (receiptId: string, expected: ExpectedEdit): BatchAssessment | undefined => {
+    assessExpectedEdit: (receiptId: string, expected: ExpectedEdit): BatchAssessment | ScriptAssessment | undefined => {
       const receipt = receipts.find(r => r.id === receiptId);
       const doc = readbacks.get(receiptId);
-      if (expected.kind !== 'blender.scene.batch' || !receipt || doc === undefined || receipt.tool !== 'external_command' || receipt.command !== 'scene.inspect_detail') return undefined;
-      return assessBatchReadback(doc, expected);
+      if ((expected.kind !== 'blender.scene.batch' && expected.kind !== 'blender.script.run') || !receipt || doc === undefined || receipt.tool !== 'external_command' || receipt.command !== 'scene.inspect_detail') return undefined;
+      return expected.kind === 'blender.script.run' ? assessScriptReadback(doc, expected) : assessBatchReadback(doc, expected);
     },
     matchesRecordedRect: (receiptId: string, layer: number, rect: readonly number[]): boolean => {
       const doc = readbacks.get(receiptId);

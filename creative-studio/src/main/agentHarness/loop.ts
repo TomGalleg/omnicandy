@@ -31,11 +31,17 @@ const nativeCommandId = (args: unknown): string | undefined => args && typeof ar
 const isNativeReadback = (name: string, args: unknown): boolean => name === 'app_command' && readbackCommands.has(nativeCommandId(args) ?? '');
 // Tools that can change document or project content. Whether an external_command is really an edit is decided per call by the host (ToolDef.readOnly).
 const MUTATING_TOOLS = new Set(['external_command','photocraft_command','timeline_add','timeline_move_clip','timeline_remove_clip']);
-const batchRecoveryHint = (outcome: string): string => outcome === 'applied' ? 'Confirm it with evidence_verify (data.batch.state is "recorded"); do not run the batch again.'
+const batchRecoveryHint = (outcome: string, kind?: string): string => kind === 'blender.script.run'
+  ? (outcome === 'applied' ? 'Confirm it with evidence_verify (data.script.outcome is "applied"); do not run the script again.'
+    : outcome === 'absent' ? 'Confirm it with evidence_verify (data.script.outcome is "absent"); after a passing check the lock is released and the script may be run again (the user approves it again).'
+    : 'The lock stays. Do not run the script again; tell the user what was found and stop.')
+  : outcome === 'applied' ? 'Confirm it with evidence_verify (data.batch.state is "recorded"); do not run the batch again.'
   : outcome === 'absent' ? 'Confirm it with evidence_verify (data.batch.state is "absent"); after a passing check the lock is released and the same batch may be run again.'
   : 'The lock stays. Do not run the batch again; tell the user what was found and stop.';
 /** The concrete way out of a lock on a Blender batch: which read-back to take and what to compare, so a small model does not have to guess. */
-const batchRecoveryPlan = (e: ExpectedEdit | undefined): string => e?.kind === 'blender.scene.batch'
+const batchRecoveryPlan = (e: ExpectedEdit | undefined): string => e?.kind === 'blender.script.run'
+  ? ` To resolve it call external_command scene.inspect_detail with file_name "${e.file}" and script_hash "${e.script_hash}" (a trusted read-only read-back of the saved file), then evidence_verify data.script.outcome on that receipt ("applied" if the script's result is in the saved project, "absent" if the project is exactly as it was before). The host decides from the read-back whether the lock is released; if it cannot be read, stop and tell the user.`
+  : e?.kind === 'blender.scene.batch'
   ? ` To resolve it call external_command scene.inspect_detail with file_name "${e.file}", batch_id "${e.batch_id}", chunk ${e.chunk}, ids "${e.ids.join(',')}" (a trusted read-only read-back of the saved file), then evidence_verify data.batch.state on that receipt ("recorded" if the batch is there, "absent" if nothing of it is). The host decides from the read-back whether the lock is released; if the file cannot be read, stop and tell the user.`
   : '';
 const isMutation = (name: string, args: unknown): boolean => MUTATING_TOOLS.has(name) || (name === 'app_command' && !isNativeReadback(name,args));
@@ -206,7 +212,7 @@ export async function runAgent(args: { goal: string; provider: ModelProvider; re
                   // A Blender batch is judged by the host from this read-back alone (project identity, ledger, content): tell the model what it means.
                   const assessed = expectedIntent ? planControl.assessExpectedEdit(receiptId, expectedIntent) : undefined;
                   if (assessed) r = {...r, text:`${r.text}
-Recovery assessment (host, from this read-back): ${assessed.outcome} - ${assessed.reason}. ${batchRecoveryHint(assessed.outcome)}`};
+Recovery assessment (host, from this read-back): ${assessed.outcome} - ${assessed.reason}. ${batchRecoveryHint(assessed.outcome, expectedIntent?.kind)}`};
                   emit({kind:'model',text:'Fresh read-back recorded. Compare actual fields with the intended result using evidence_verify. Editing remains locked until a passing comparison.'});
                 }
                 r = {...r, text:`${r.text}\nExecution receipt: ${receiptId} (tool accepted; verify actual state before claiming outcome).`};

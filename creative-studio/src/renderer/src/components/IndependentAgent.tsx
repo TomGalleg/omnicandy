@@ -119,6 +119,7 @@ export function IndependentAgent({ provider }: { provider: AgentProviderId }) {
         <strong>Recorded expected outcome</strong>
         {recoveryToDisplay.expected.kind === 'photocraft.shape.edit.rect' && <div>Layer {recoveryToDisplay.expected.layer}: rectangle [{recoveryToDisplay.expected.rect.join(', ')}]</div>}
         {recoveryToDisplay.expected.kind === 'blender.object.transform' && <div>Blender object {recoveryToDisplay.expected.object} in {recoveryToDisplay.expected.file}: {Object.entries(recoveryToDisplay.expected.values).map(([axis, v]) => `${axis}=${v}`).join(', ')}</div>}
+        {recoveryToDisplay.expected.kind === 'blender.script.run' && <div>Blender script run in {recoveryToDisplay.expected.file}</div>}
         {recoveryToDisplay.expected.kind === 'blender.scene.batch' && <div>Blender batch {recoveryToDisplay.expected.batch_id} (chunk {recoveryToDisplay.expected.chunk + 1} of {recoveryToDisplay.expected.total}, {recoveryToDisplay.expected.objects} object(s)) in {recoveryToDisplay.expected.file}</div>}
         {recoveryToDisplay.expected.kind === 'blender.object.color' && <div>Blender object {recoveryToDisplay.expected.object} in {recoveryToDisplay.expected.file}: colour {recoveryToDisplay.expected.color}</div>}
       </div>}

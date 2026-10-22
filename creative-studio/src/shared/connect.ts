@@ -226,6 +226,11 @@ export function explainConnectFailure(status: IntegrationStatus, name: string, r
  * Text of the native "Run X in Y?" question, in plain language first and the technical permission names after it
  * (advanced users still see exactly what is asked). Pure so the wording is tested.
  */
+/** A parameter that is JSON holding {purpose, code}: a script to show to the user. */
+function scriptOf(v: unknown): { purpose: string; code: string } | null {
+  if (typeof v !== 'string' || v.charAt(0) !== '{') return null;
+  try { const o = JSON.parse(v) as Record<string, unknown>; return typeof o.code === 'string' ? { purpose: typeof o.purpose === 'string' ? o.purpose : '', code: o.code } : null; } catch { return null; }
+}
 export function approvalDetail(r: { command: { description: string }; params: Record<string, unknown>; needed: Permission[]; destructive: boolean; untrusted?: boolean }): string {
   const nl = String.fromCharCode(10);
   const lines: string[] = [r.command.description, ''];
@@ -234,7 +239,11 @@ export function approvalDetail(r: { command: { description: string }; params: Re
     for (const p of r.needed) lines.push(`  • ${PERMISSION_PLAIN[p].title}`);
     lines.push(`Technical: ${r.needed.map((p) => PERMISSION_LABEL[p].toLowerCase()).join('; ')}.`);
   } else lines.push('You already allowed everything this needs.');
-  if (Object.keys(r.params).length) lines.push('', `Settings: ${Object.entries(r.params).map(([k, v]) => `${k} ${String(v)}`).join(', ')}`);
+  // A script is shown in full, as code: approving something you cannot read is not approval.
+  const code = Object.values(r.params).map(scriptOf).find((x) => x);
+  const plain = Object.entries(r.params).filter(([, v]) => !scriptOf(v));
+  if (plain.length) lines.push('', `Settings: ${plain.map(([k, v]) => `${k} ${String(v)}`).join(', ')}`);
+  if (code) lines.push('', `Purpose: ${code.purpose}`, 'Code that will run (read it before you allow it):', '----------------------------------------', code.code, '----------------------------------------');
   lines.push('');
   if (r.untrusted) lines.push('This connector is NOT signed, so OmniCandy cannot tell who made it. You are asked every time.');
   lines.push(r.destructive

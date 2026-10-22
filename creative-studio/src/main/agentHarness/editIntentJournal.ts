@@ -7,6 +7,7 @@ import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import type { CheckpointCrypto } from './taskCheckpoint';
 import { expectedBatchFromParams, expectedBatchSchema } from '../integrations/adapters/blenderBatchSpec';
+import { expectedScriptFromParams, expectedScriptSchema } from '../integrations/adapters/blenderScriptSpec';
 
 export const expectedRectSchema = z.object({kind:z.literal('photocraft.shape.edit.rect'), layer:z.number().int().min(1), rect:z.tuple([z.number().finite(),z.number().finite(),z.number().finite().positive(),z.number().finite().positive()])});
 export type ExpectedRect = z.infer<typeof expectedRectSchema>;
@@ -18,7 +19,7 @@ export const expectedBlenderTransformSchema = z.object({
 export const expectedBlenderMaterialSchema = z.object({
   kind: z.literal('blender.object.color'), file: z.string().min(1).max(200), object: z.string().min(1).max(200), color: z.string().regex(/^#[0-9a-fA-F]{6}$/),
 });
-export const expectedEditSchema = z.discriminatedUnion('kind', [expectedRectSchema, expectedBlenderTransformSchema, expectedBlenderMaterialSchema, expectedBatchSchema]);
+export const expectedEditSchema = z.discriminatedUnion('kind', [expectedRectSchema, expectedBlenderTransformSchema, expectedBlenderMaterialSchema, expectedBatchSchema, expectedScriptSchema]);
 export type ExpectedEdit = z.infer<typeof expectedEditSchema>;
 const record = (value: unknown): Record<string, unknown> | undefined => value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : undefined;
 /**
@@ -36,6 +37,8 @@ export function expectedEditIntent(tool:string, args:unknown):ExpectedEdit | und
     const result = expectedRectSchema.safeParse({kind:'photocraft.shape.edit.rect',layer:params.layer,rect:params.rect});
     return result.success ? result.data : undefined;
   }
+  // Blender script.run: the script's hash; recovery compares the saved project's hash with the run marker's before/after hashes.
+  if (tool === 'external_command' && call.command === 'script.run' && params) return expectedScriptFromParams(params);
   // Blender scene.build: the batch identity, hash, object ids and a few requested facts (read back with scene.inspect_detail).
   if (tool === 'external_command' && call.command === 'scene.build' && params) return expectedBatchFromParams(params);
   if (tool === 'external_command' && params && typeof params.file_name === 'string' && typeof params.name === 'string') {

@@ -18,10 +18,13 @@ const LISTENER = `import bpy, json, os, sys, traceback, math
 _dir = sys.argv[sys.argv.index('--') + 1]
 _ns = {'bpy': bpy, 'json': json, 'sys': sys, 'math': math, 'os': os}
 exec(open(os.path.join(_dir, 'prelude.py')).read(), _ns)
-def _live_open(path):
+def _live_open(path, reload=False):
     cur = os.path.normcase(os.path.abspath(bpy.data.filepath)) if bpy.data.filepath else ''
     if cur != os.path.normcase(os.path.abspath(path)):
         bpy.ops.wm.open_mainfile(filepath=path)
+    elif reload:
+        # the project file was replaced on disk (script.run): load it again, keeping the user's layout
+        bpy.ops.wm.open_mainfile(filepath=path, load_ui=False)
 try:
     bpy.context.preferences.view.render_display_type = 'NONE'
 except Exception:
@@ -80,7 +83,7 @@ def _tick():
                 _ns['_p'] = job['params']
                 _ns['_result'] = lambda d: out.append(d)
                 if job.get('open'):
-                    _live_open(job['open'])
+                    _live_open(job['open'], bool(job.get('reload')))
                 with bpy.context.temp_override(**_ctx()):
                     _object_mode()
                     exec(job['script'], _ns)
@@ -139,10 +142,10 @@ export class LiveBlenderSession {
   }
 
   /** Runs one fixed command script in the open window; resolves with the script's result dictionary. */
-  async run(script: string, params: Record<string, unknown>, opts: { timeoutMs: number; signal?: AbortSignal; restore?: boolean; open?: string }): Promise<Record<string, unknown>> {
+  async run(script: string, params: Record<string, unknown>, opts: { timeoutMs: number; signal?: AbortSignal; restore?: boolean; open?: string; reload?: boolean }): Promise<Record<string, unknown>> {
     if (!this.alive) throw new Error('The Blender window is not open.');
     const id = ++this.seq;
-    await fs.writeFile(path.join(this.dir, `cmd-${String(id).padStart(6, '0')}.json.tmp`), JSON.stringify({ id, script, params, restore: !!opts.restore, open: opts.open ?? null }));
+    await fs.writeFile(path.join(this.dir, `cmd-${String(id).padStart(6, '0')}.json.tmp`), JSON.stringify({ id, script, params, restore: !!opts.restore, open: opts.open ?? null, reload: !!opts.reload }));
     await fs.rename(path.join(this.dir, `cmd-${String(id).padStart(6, '0')}.json.tmp`), path.join(this.dir, `cmd-${String(id).padStart(6, '0')}.json`));
     const resFile = path.join(this.dir, `res-${id}.json`);
     const end = Date.now() + opts.timeoutMs;

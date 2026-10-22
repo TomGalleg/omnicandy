@@ -11,6 +11,8 @@ import { ADAPTER_SDK_VERSION, type AdapterManifest, type CommandSpec, type Disco
 import { LiveBlenderSession, blenderLiveEnabled } from './blenderLive';
 import { SCENE_COMMANDS, SCENE_PRELUDE, SCENE_SCRIPTS, EDIT_COMMAND_IDS } from './blenderScene';
 import { BATCH_COMMANDS, BATCH_PRELUDE, BATCH_SCRIPTS, BATCH_VOCAB, assembleDiscovery, type DiscoveryFacts } from './blenderBatch';
+import { SCRIPT_COMMAND, SCRIPT_RUN_BODY, SCRIPT_WINDOW_RELOAD_BODY, SCRIPT_WINDOW_SAVE_BODY } from './blenderScript';
+import { SCRIPT_RULES, assessScriptRun, fileHashOf, scriptHashOf, validateScript, type ScriptMarker, type ScriptSpec } from './blenderScriptSpec';
 import { BATCH_ID, MAX_BATCH_OBJECTS, assessBatchReadback, chunkOf, expectedBatchFromParams, specHashOf, validateBuildSpec, type BuildSpec } from './blenderBatchSpec';
 import { runProcess, safeFileName, parseResultLine, type RunResult } from '../process';
 import { AdapterError, type AdapterFactory, type AdapterOutcome, type ExecuteContext, type ExternalAdapter, type HealthResult, type ProbeResult } from '../sdk';
@@ -45,7 +47,7 @@ const COMMANDS: CommandSpec[] = [
   },
 ];
 
-COMMANDS.push(...SCENE_COMMANDS, ...BATCH_COMMANDS);
+COMMANDS.push(...SCENE_COMMANDS, ...BATCH_COMMANDS, SCRIPT_COMMAND);
 
 export const BLENDER_MANIFEST: AdapterManifest = {
   id: 'blender', name: 'Blender', vendor: 'Blender Foundation', sdkVersion: ADAPTER_SDK_VERSION, maturity: 'verified',
@@ -135,12 +137,25 @@ _result(_summary())
 for (const [id, body] of Object.entries(SCENE_SCRIPTS)) SCRIPTS[id] = `${PRELUDE}${SCENE_PRELUDE}\n${body}`;
 // Batch commands share one extra prelude; in the open window it is simply part of each (short-lived) script body.
 for (const [id, body] of Object.entries(BATCH_SCRIPTS)) SCRIPTS[id] = `${PRELUDE}${SCENE_PRELUDE}${BATCH_PRELUDE}\n${body}`;
+// script.run and the two open-window helpers around it (save what the window holds, reload the replaced project).
+for (const [id, body] of Object.entries({ 'script.run': SCRIPT_RUN_BODY, 'script.window_save': SCRIPT_WINDOW_SAVE_BODY, 'script.window_reload': SCRIPT_WINDOW_RELOAD_BODY })) SCRIPTS[id] = `${PRELUDE}${SCENE_PRELUDE}${BATCH_PRELUDE}\n${body}`;
 
 export function runBlender(exe: string, args: string[], signal: AbortSignal | undefined, timeoutMs: number): Promise<RunResult> {
   return runProcess(exe, args, { signal, timeoutMs, label: 'Blender' });
 }
 
 const safeName = safeFileName;
+
+const MARKER_FILE = '.cc-script-marker.json';
+const writeMarker = async (dir: string, m: ScriptMarker): Promise<void> => {
+  const tmp = path.join(dir, `${MARKER_FILE}.${Math.random().toString(36).slice(2, 8)}.tmp`);
+  await fs.writeFile(tmp, JSON.stringify(m));
+  await fs.rename(tmp, path.join(dir, MARKER_FILE));
+};
+const readMarker = async (dir: string): Promise<ScriptMarker | null> => {
+  try { const m = JSON.parse(await fs.readFile(path.join(dir, MARKER_FILE), 'utf8')) as ScriptMarker; return m && typeof m === 'object' ? m : null; } catch { return null; }
+};
+const BACKUPS_KEPT = 10;
 
 class BlenderAdapter implements ExternalAdapter {
   private app: DiscoveredApp | null = null;
@@ -193,7 +208,7 @@ class BlenderAdapter implements ExternalAdapter {
       const lb = liveBody(commandId);
       let summary: Record<string, unknown>;
       try {
-        summary = await this.live.run(lb.script, params, { timeoutMs: commandId === 'scene.render_animation' ? 1_800_000 : 300_000, signal: ctx.signal, restore: commandId.startsWith('scene.render'), open: lb.opensFile ? String(params.input) : undefined });
+        summary = await this.live.run(lb.script, params, { timeoutMs: commandId === 'scene.render_animation' ? 1_800_000 : 300_000, signal: ctx.signal, restore: commandId.startsWith('scene.render'), open: lb.opensFile ? String(params.input) : undefined, reload: commandId === 'script.window_reload' });
       } catch (e) { throw new AdapterError('app-error', e instanceof Error ? e.message : String(e)); }
       return { summary, r: { out: '', err: '', code: 0 } as RunResult };
     }
@@ -291,6 +306,13 @@ class BlenderAdapter implements ExternalAdapter {
       }
       const input = await existing(String(params.file_name));
       const { summary } = await this.script(ctx, cmd.id, { input, ids, batch_id: batch || null, chunk: params.chunk ?? 0, max_objects: params.max_objects ?? 60 }, { background: true });
+      // Identity of the saved file by content, and the latest script run record: what recovery of a script.run compares.
+      const sha = fileHashOf(await fs.readFile(input));
+      const marker = await readMarker(ctx.workDir);
+      const project: { file?: unknown; [k: string]: unknown } = { ...(summary.project as Record<string, unknown>), file_sha256: sha };
+      const scriptHash = String(params.script_hash ?? '').trim();
+      const script = /^[0-9a-f]{64}$/.test(scriptHash) ? { script_hash: scriptHash, ...assessScriptRun(marker, sha, project, { file: String(params.file_name), script_hash: scriptHash }) } : undefined;
+      Object.assign(summary, { project, script_marker: marker, ...(script ? { script } : {}) });
       const n = Array.isArray(summary.cc_ids) ? summary.cc_ids.length : 0;
       // Always the SAVED file read by a process that has never seen the edit: that is what makes this a fresh read-back.
       return { message: `${path.basename(input)} has ${String(summary.count)} object(s), ${n} with a cc_id.`, outputs: [], data: { ...summary, source: 'saved-file', read_at: new Date().toISOString() }, verified: true, evidence: ['read from the saved file by a fresh Blender process'] };
@@ -325,6 +347,7 @@ class BlenderAdapter implements ExternalAdapter {
         evidence: [`re-read from the saved file by a fresh Blender: ledger records ${spec.batch_id}#${c.index}; ${ids.length} object(s) present with the requested content`],
       };
     }
+    if (cmd.id === 'script.run') return this.runScript(ctx, String(params.file_name), String(params.script), await existing(String(params.file_name)));
     if (cmd.id === 'scene.render_animation') {
       const input = await existing(String(params.file_name));
       const output = path.join(ctx.workDir, safeName(String(params.file_name), '.mp4'));
@@ -349,11 +372,70 @@ class BlenderAdapter implements ExternalAdapter {
     throw new AdapterError('unsupported', `Blender cannot run "${cmd.id}".`);
   }
 
+  /**
+   * script.run: the user's code runs in a background Blender on a COPY; only a script that ran and produced a file that opens
+   * replaces the project, after a backup, with a run marker that lets recovery prove later whether the swap happened.
+   */
+  private async runScript(ctx: ExecuteContext, fileName: string, scriptText: string, input: string): Promise<AdapterOutcome> {
+    const spec = JSON.parse(scriptText) as ScriptSpec;
+    const problem = validateScript(spec);
+    if (problem) throw new AdapterError('invalid-params', `Invalid parameter "script": ${problem}`);
+    const hash = scriptHashOf(spec.code);
+    const dir = path.dirname(input);
+    const stem = path.basename(input, '.blend');
+    const fault = process.env.CREATECRAFT_BATCH_FAULT; // test seam: can only abort, at the two points that matter for recovery
+    // The open window may hold hand edits: write them to the project so the script starts from what the user sees.
+    if (this.live?.alive) { ctx.progress('Saving the open Blender window', 0.05); await this.script(ctx, 'script.window_save', { input }); }
+    const before = fileHashOf(await fs.readFile(input));
+    await writeMarker(ctx.workDir, { file: path.basename(input), script_hash: hash, state: 'started', before_sha256: before, at: new Date().toISOString() });
+    const copy = path.join(dir, `.cc-script-${stem}-${Math.random().toString(36).slice(2, 8)}.tmp.blend`);
+    let summary: Record<string, unknown>;
+    let log = '';
+    let backup = '';
+    try {
+      await fs.copyFile(input, copy);
+      ctx.progress('Running the script on a copy of the project', 0.2);
+      const run = await this.script(ctx, 'script.run', { input: copy, code: spec.code, rules: SCRIPT_RULES }, { background: true });
+      summary = run.summary;
+      log = run.r.out.split(/\r?\n/).filter((l) => l && !l.startsWith('CREATECRAFT_RESULT')).slice(-12).join('\n').slice(-1500);
+      ctx.progress('Checking the result', 0.6);
+      const bytes = await fs.readFile(copy);
+      const head = bytes.subarray(0, 12);
+      const magic = head.subarray(0, 7).toString('latin1') === 'BLENDER' || (head[0] === 0x28 && head[1] === 0xb5 && head[2] === 0x2f && head[3] === 0xfd) || (head[0] === 0x1f && head[1] === 0x8b);
+      if (bytes.length < 1024 || !magic) throw new AdapterError('verification-failed', 'The script finished but its result is not a Blender file; the project was not changed.');
+      await this.script(ctx, 'scene.inspect', { input: copy }, { background: true }); // the result must open in a fresh Blender
+      const after = fileHashOf(bytes);
+      if (fault === 'script_before_swap') throw new AdapterError('app-error', 'injected fault before the swap');
+      await writeMarker(ctx.workDir, { file: path.basename(input), script_hash: hash, state: 'swapping', before_sha256: before, after_sha256: after, at: new Date().toISOString() });
+      // keep what was there: a backup folder (last ten per project) and Blender's own previous-version file
+      const bdir = path.join(dir, '.cc-backups');
+      await fs.mkdir(bdir, { recursive: true });
+      backup = `${stem}.${new Date().toISOString().replace(/[:.]/g, '-')}.blend`;
+      await fs.copyFile(input, path.join(bdir, backup));
+      const olds = (await fs.readdir(bdir)).filter((f) => f.startsWith(`${stem}.`) && f.endsWith('.blend')).sort();
+      for (const f of olds.slice(0, Math.max(0, olds.length - BACKUPS_KEPT))) await fs.rm(path.join(bdir, f), { force: true });
+      await fs.copyFile(input, input + '1').catch(() => undefined);
+      await fs.rename(copy, input);
+      if (fault === 'script_after_swap') throw new AdapterError('app-error', 'injected fault after the swap');
+    } finally { await fs.rm(copy, { force: true }); }
+    if (this.live?.alive) { ctx.progress('Reloading the open Blender window', 0.85); await this.script(ctx, 'script.window_reload', { input }); }
+    const check = await this.script(ctx, 'scene.inspect', { input }, { background: true });
+    return {
+      message: `Ran the script "${spec.purpose}" in ${path.basename(input)}; the project now has ${String(check.summary.count)} object(s). The script succeeded; whether it did what was meant must still be read back (scene.inspect_detail).`,
+      outputs: [],
+      data: { status: 'applied', script_hash: hash, purpose: spec.purpose, result: summary.result ?? null, objects: check.summary.count, armatures: summary.armatures, meshes: summary.meshes, log, backup: path.join('.cc-backups', backup), file: fileName },
+      verified: true,
+      evidence: ['ran on a copy, the result opened in a fresh Blender, then replaced the project (backup kept)'],
+    };
+  }
+
   async dispose(): Promise<void> { await this.releaseLive(); this.app = null; }
 }
 
 export const blenderFactory: AdapterFactory = {
   manifest: BLENDER_MANIFEST,
   create: () => new BlenderAdapter(),
-  validateJson: (commandId, param, value) => commandId === 'scene.build' && param === 'spec' ? validateBuildSpec(value) : `${commandId}.${param} is not a structured parameter.`,
+  validateJson: (commandId, param, value) => commandId === 'scene.build' && param === 'spec' ? validateBuildSpec(value)
+    : commandId === 'script.run' && param === 'script' ? validateScript(value)
+    : `${commandId}.${param} is not a structured parameter.`,
 };

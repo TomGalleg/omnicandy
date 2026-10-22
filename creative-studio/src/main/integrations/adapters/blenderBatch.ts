@@ -37,6 +37,7 @@ export const BATCH_COMMANDS: CommandSpec[] = [
       batch_id: text('Report this batch\'s ledger state and which of ids exist.'),
       chunk: { type: 'number', description: 'Chunk index of batch_id (default 0).', default: 0, min: 0, max: 63 },
       max_objects: { type: 'number', description: 'Most objects to list in detail.', default: 60, min: 1, max: 200 },
+      script_hash: text('sha256 of a script.run code: reports whether that script landed (data.script.outcome applied or absent).'),
     },
   },
   {
