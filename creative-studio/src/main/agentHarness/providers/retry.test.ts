@@ -13,7 +13,7 @@ const noSleep = vi.fn(async () => undefined);
 
 describe('retrying a rate-limited or briefly unavailable provider', () => {
   it('waits and tries again on 429 and 5xx, honouring Retry-After (capped), and returns the first good answer', async () => {
-    const sleep = vi.fn(async () => undefined);
+    const sleep = vi.fn(async (_ms: number) => undefined);
     const answers = [res(429, { 'retry-after': '3' }), res(503), res(200)];
     const doFetch = vi.fn(async () => answers.shift()!);
     const r = await fetchWithRetry(doFetch, signal(), sleep);
