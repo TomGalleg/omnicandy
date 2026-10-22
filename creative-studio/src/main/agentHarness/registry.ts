@@ -28,7 +28,7 @@ export class ToolRegistry {
       if (typeof result?.text !== 'string' || (result.imageDataUrl !== undefined && (!/^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(result.imageDataUrl) || result.imageDataUrl.length > 4_000_000)) || (result.isError !== undefined && typeof result.isError !== 'boolean')) {
         return { text: 'Error: Tool returned an invalid result.', isError: true };
       }
-      return { ...result, text: result.text.slice(0, 8000), ...(result.trustedReadback === true && !result.isError ? { trustedReadback: true } : { trustedReadback: undefined }) };
+      return { ...result, text: result.text.slice(0, 8000), ...(result.trustedReadback === true && !result.isError ? { trustedReadback: true, readback: result.readback } : { trustedReadback: undefined, readback: undefined }) };
     } catch (e) { return { text: `Error: ${e instanceof Error ? e.message : String(e)}`.slice(0, 8000), isError: true }; }
   }
 }

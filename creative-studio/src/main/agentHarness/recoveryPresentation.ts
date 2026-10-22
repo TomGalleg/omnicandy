@@ -11,7 +11,9 @@ export function recoveryPresentation(intent: EditIntent | null, unreadable = fal
     tool: intent.tool,
     command: intent.command,
     startedAt: intent.startedAt,
-    ...(intent.expected ? { expected: { kind: intent.expected.kind, layer: intent.expected.layer, rect: [...intent.expected.rect] as [number,number,number,number] } } : {}),
+    ...(intent.expected ? { expected: intent.expected.kind === 'photocraft.shape.edit.rect'
+      ? { kind: intent.expected.kind, layer: intent.expected.layer, rect: [...intent.expected.rect] as [number,number,number,number] }
+      : { ...intent.expected } } : {}),
     message: 'The edit may have changed the document. Actual state is not verified. Continue Task must inspect and reconcile it before more editing.',
   };
 }

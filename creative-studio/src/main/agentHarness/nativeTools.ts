@@ -11,7 +11,11 @@ const values = z.record(z.string().max(64), z.unknown());
 /** Uses the existing controller: it owns command allow-lists, versioning and human approval. */
 export function nativeToolRegistry(ctl: LiveTaskController, store: ProjectStore, opts: { supportsVision?: boolean; createBlank?: (app: Exclude<EditorAppId, 'filmcraft'>, name?: string) => Promise<{id:string;name:string}> } = {}): ToolRegistry {
   const tools = [
-    tool('get_status', 'Get the currently open app, document, edit lock and available edits. Call first.', empty, async () => JSON.stringify(await ctl.statusForClaude())),
+    tool('get_status', 'Get the currently open app, document, edit lock and available edits. Call first.', empty, async () => {
+      // Fresh controller state, independent of any edit response: usable as read-back evidence for edits whose effect shows in the status (timeline, document details, history).
+      const status = await ctl.statusForClaude();
+      return { text: JSON.stringify(status), readback: JSON.parse(JSON.stringify(status)) as unknown, trustedReadback: true };
+    }),
     tool('list_files', 'List names and formats of project library files.', empty, async () => JSON.stringify((await store.loadManifest()).assets.map(a => ({ name: a.name, kind: a.kind, format: a.sourceFormat, version: !!a.parentId })))),
     tool('open_file', 'Open a project library file by its exact name. Do not discard unsaved edits.', z.object({ name: z.string().min(1).max(512), app: z.string().max(32).optional() }).strict(), async ({name, app}) => {
       const s = ctl.snapshot();

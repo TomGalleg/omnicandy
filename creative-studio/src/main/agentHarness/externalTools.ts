@@ -4,13 +4,16 @@ import { z } from 'zod';
 import { inspectExternalCommand } from '@shared/commandCapabilityInspection';
 import type { CommandSpec, JobInfo } from '@shared/integrations';
 import type { IntegrationManager } from '../integrations/manager';
+import { isTrustedReadbackCommand } from '../integrations/readback';
 import { tool, ToolRegistry } from './registry';
 
 /** The only external execution backend is IntegrationManager: never bypass its approval and policy checks. */
 type ExternalBackend = Pick<IntegrationManager, 'list' | 'execute'> & Partial<Pick<IntegrationManager, 'job' | 'jobs' | 'cancelJob' | 'isBuiltin'>>;
 export interface ExternalToolOptions {
-  /** Reports a job launched by the agent so the host can cancel it when the task is stopped. */
-  onJobStarted?: (jobId: string) => void;
+  /** Reports a job launched by the agent so the host can cancel it and remember it across restarts. Awaited before the result is returned. */
+  onJobStarted?: (job: { jobId: string; appKey: string; commandId: string }) => void | Promise<void>;
+  /** Returns a reason when this command must not be launched again (a job of this agent that was never seen to finish). */
+  jobGuard?: (appKey: string, commandId: string) => string | undefined;
   /** Formats a job for the model (the host may also bring finished outputs into the library). Defaults to a plain summary. */
   describeJob?: (jobId: string, cancel: boolean) => Promise<string>;
 }
@@ -18,18 +21,17 @@ const empty = z.object({}).strict();
 const identifier = z.string().min(1).max(1024);
 const argsSchema = z.record(z.string().min(1).max(128), z.unknown());
 const usable = (status: string) => status === 'connected' || status === 'limited';
-/** Declared permissions that can only look. Anything that writes, runs scripts or drives the UI is never a read-back. */
-const READ_ONLY_PERMISSIONS = new Set<string>(['read-info', 'read-project']);
+/** Host trust decision lives in integrations/readback.ts: built-in adapters and explicitly listed read-only commands only. */
+export const isTrustedExternalReadback = isTrustedReadbackCommand;
 
-/**
- * A command's result may stand in as independent read-back evidence only when the HOST trusts it: the adapter is
- * built in (not a package or private connector that could claim anything), the command is idempotent and declares
- * nothing beyond read permissions. The command's own `verified` flag plays no part. Unknown means not trusted.
- */
-export function isTrustedExternalReadback(isBuiltin: ((adapterId: string) => boolean) | undefined, adapterId: string | null | undefined, spec: CommandSpec): boolean {
-  return !!isBuiltin && !!adapterId && isBuiltin(adapterId) && spec.idempotent === true && !spec.destructive && !spec.longRunning &&
-    spec.permissions.length > 0 && spec.permissions.every((p) => READ_ONLY_PERMISSIONS.has(p));
+/** Compact map of a large result (keys, array lengths) so the model can choose evidence_verify paths without the whole state in context. */
+export function outline(value: unknown, depth = 3): unknown {
+  if (Array.isArray(value)) return { items: value.length, ...(value.length && depth > 0 ? { first: outline(value[0], depth - 1) } : {}) };
+  if (value && typeof value === 'object') return depth <= 0 ? '{…}' : Object.fromEntries(Object.entries(value).slice(0, 40).map(([k, v]) => [k, outline(v, depth - 1)]));
+  return typeof value;
 }
+const MAX_MODEL_TEXT = 6000;
+const MAX_READBACK_BYTES = 1_000_000;
 
 const summary = (j: JobInfo) => ({ job_id: j.id, app: j.appName, command: j.commandId, status: j.status, stage: j.stage, progress: j.fraction, started: j.startedAt, finished: j.finishedAt });
 
@@ -66,6 +68,8 @@ export function externalTools(backend: ExternalBackend, options: ExternalToolOpt
           if (spec.longRunning) {
             // A job that is still running (also one started before an interruption or by an earlier attempt) is never launched twice.
             const running = (backend.jobs?.() ?? []).find(j => j.status === 'running' && j.appKey === app_key && j.commandId === command);
+            const guard = options.jobGuard?.(app_key, command);
+            if (guard) throw new Error(`${guard} It must be checked with external_job and the application state before any new launch; it will not be launched again blindly.`);
             if (running) throw new Error(`Job ${running.id} for this command is already running; it must be followed with external_job instead of being launched again.`);
           }
           const problem = preflightExternalParams(spec, params ?? {});
@@ -79,9 +83,16 @@ export function externalTools(backend: ExternalBackend, options: ExternalToolOpt
             throw new Error(`${category} (${result.error?.kind ?? 'app-error'}): ${result.message}${detail}`);
           }
           const jobId = typeof result.data?.jobId === 'string' ? result.data.jobId : undefined;
-          if (spec.longRunning && jobId) options.onJobStarted?.(jobId);
+          if (spec.longRunning && jobId) await options.onJobStarted?.({ jobId, appKey: app_key, commandId: command });
+          const full = JSON.stringify(payload);
           // `verified` is the command's own claim. Only a host-trusted read-only command yields a read-back receipt.
-          return { text: JSON.stringify(payload), verified: result.verified === true, ...(trusted(app.adapterId, spec) ? { trustedReadback: true } : {}) };
+          if (!trusted(app.adapterId, spec)) return { text: full, verified: result.verified === true };
+          if (full.length > MAX_READBACK_BYTES)
+            return { text: JSON.stringify({ ok: true, message: result.message, note: `The state is too large to compare (${full.length} bytes); it cannot be used as verification evidence. Request a narrower inspection if the command allows it.` }), verified: false };
+          // The complete state is kept for evidence_verify (host side); the model sees the whole text when small, otherwise an outline.
+          const text = full.length <= MAX_MODEL_TEXT ? full
+            : JSON.stringify({ ok: true, message: result.message, note: `Large state (${full.length} bytes) retained in full for evidence_verify; compare fields by path under data.*.`, outline: outline(payload.data) });
+          return { text, verified: result.verified === true, trustedReadback: true, readback: payload };
         }),
       readOnly: async (raw: unknown) => {
         const parsed = z.object({ app_key: identifier, command: z.string().min(1).max(128) }).passthrough().safeParse(raw);

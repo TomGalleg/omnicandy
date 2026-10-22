@@ -19,7 +19,7 @@ const controller = (phase = 'idle', lockOwner: string | null = null) => ({
 
 const render: CommandSpec = { id: 'render', label: 'Render', description: 'Render a scene', params: {}, permissions: ['write-files'], longRunning: true };
 const move: CommandSpec = { id: 'move', label: 'Move', description: 'Move an object', params: {}, permissions: ['modify-project'] };
-const inspect: CommandSpec = { id: 'inspect', label: 'Inspect', description: 'Read object state', params: {}, permissions: ['read-project'], idempotent: true };
+const inspect: CommandSpec = { id: 'scene.inspect', label: 'Inspect', description: 'Read object state', params: {}, permissions: ['read-project'], idempotent: true };
 const app = (adapterId: string, commands: CommandSpec[]) => ({ key: 'app-1', name: 'Example', status: 'connected', adapterId, adapterName: 'Example', commands }) as unknown as ExternalAppInfo;
 const result = (over: Partial<CommandResult> = {}): CommandResult => ({ ok: true, verified: false, message: 'ok', evidence: [], outputs: [], durationMs: 1, ...over });
 
@@ -29,7 +29,7 @@ function backend(commands: CommandSpec[], opts: { builtin?: boolean; data?: Reco
   const executed: Array<{ command: string; background?: boolean }> = [];
   let next = 1;
   const b = {
-    list: async () => [app('adapter-1', commands)],
+    list: async () => [app('blender', commands)],
     isBuiltin: () => opts.builtin === true,
     jobs: () => [...jobs.values()],
     job: (id: string) => jobs.get(id) ?? null,
@@ -49,7 +49,7 @@ function backend(commands: CommandSpec[], opts: { builtin?: boolean; data?: Reco
 }
 const run = (be: ReturnType<typeof backend>, script: ProviderReply[], extra: Partial<Parameters<typeof runAgent>[0]> = {}) => {
   const started: string[] = [];
-  const registry = addExternalTools(new ToolRegistry(), be.b, { onJobStarted: (id) => started.push(id) });
+  const registry = addExternalTools(new ToolRegistry(), be.b, { onJobStarted: ({ jobId }) => { started.push(jobId); } });
   return runAgent({ goal: 'work', ctl: controller(), registry, provider: new ScriptedProvider(script), ...extra }).then((outcome) => ({ outcome, started }));
 };
 const text = (outcome: { messages: Array<{ role: string; content?: string | null }> }, id?: number) =>
@@ -132,29 +132,30 @@ describe('external long-running jobs', () => {
 
 describe('trusted versus untrusted external verification', () => {
   const edit = call('1', 'external_command', { app_key: 'app-1', command: 'move' });
-  const read = (id: string) => call(id, 'external_command', { app_key: 'app-1', command: 'inspect' });
+  const read = (id: string) => call(id, 'external_command', { app_key: 'app-1', command: 'scene.inspect' });
   const verify = (id: string, receipt: string, path = 'data.x') => call(id, 'evidence_verify', { receipt_id: receipt, path, expected: 5 });
 
   it('recognises only host-trusted read-only commands as read-back', () => {
     const builtin = () => true;
-    expect(isTrustedExternalReadback(builtin, 'a', inspect)).toBe(true);
-    expect(isTrustedExternalReadback(() => false, 'a', inspect)).toBe(false);
-    expect(isTrustedExternalReadback(undefined, 'a', inspect)).toBe(false);
-    expect(isTrustedExternalReadback(builtin, 'a', { ...inspect, idempotent: false })).toBe(false);
-    expect(isTrustedExternalReadback(builtin, 'a', { ...inspect, permissions: ['read-project', 'write-files'] })).toBe(false);
-    expect(isTrustedExternalReadback(builtin, 'a', { ...inspect, permissions: [] })).toBe(false);
-    expect(isTrustedExternalReadback(builtin, 'a', move)).toBe(false);
+    expect(isTrustedExternalReadback(builtin, 'blender', inspect)).toBe(true);
+    expect(isTrustedExternalReadback(() => false, 'blender', inspect)).toBe(false);
+    expect(isTrustedExternalReadback(undefined, 'blender', inspect)).toBe(false);
+    expect(isTrustedExternalReadback(builtin, 'blender', { ...inspect, idempotent: false })).toBe(false);
+    expect(isTrustedExternalReadback(builtin, 'blender', { ...inspect, permissions: ['read-project', 'write-files'] })).toBe(false);
+    expect(isTrustedExternalReadback(builtin, 'blender', { ...inspect, id: 'scene.render_still' })).toBe(false); // not on the host allow-list
+    expect(isTrustedExternalReadback(builtin, 'other-adapter', inspect)).toBe(false);
+    expect(isTrustedExternalReadback(builtin, 'blender', move)).toBe(false);
   });
   it('completes after an edit followed by a trusted read-back that matches', async () => {
     const be = backend([move, inspect], { builtin: true, data: { x: 5 } });
     const { outcome } = await run(be, [edit, read('2'), verify('3', 'r2'), final]);
     expect(outcome.status).toBe('completed');
-    expect(be.executed.map((e) => e.command)).toEqual(['move', 'inspect']);
+    expect(be.executed.map((e) => e.command)).toEqual(['move', 'scene.inspect']);
   });
   it('does not treat the inspection as an edit: it can run while an edit is uncertain', async () => {
     const be = backend([move, inspect], { builtin: true, data: { x: 5 } });
     const { outcome } = await run(be, [edit, read('2'), final, final]);
-    expect(be.executed.map((e) => e.command)).toEqual(['move', 'inspect']);
+    expect(be.executed.map((e) => e.command)).toEqual(['move', 'scene.inspect']);
     expect(outcome.status).toBe('limit'); // read but not compared
   });
   it('does not accept a read-back from an untrusted integration, even if the command says verified', async () => {

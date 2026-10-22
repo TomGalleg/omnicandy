@@ -3,7 +3,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { z } from 'zod';
-import { EditIntentJournal } from './editIntentJournal';
+import { EditIntentJournal, type JournaledTool } from './editIntentJournal';
 import { runAgent } from './loop';
 import { ScriptedProvider } from './providers/scripted';
 import { ToolRegistry, tool } from './registry';
@@ -41,7 +41,7 @@ async function rig() {
   ]);
   let resolved = 0;
   const hooks = {
-    onEditBegin: async (t: 'app_command' | 'external_command', c: string, a: unknown) => { await journal.begin('Resize shape', t, c, a); },
+    onEditBegin: async (t: JournaledTool, c: string, a: unknown) => { await journal.begin('Resize shape', t, c, a); },
     onEditSettled: async (safe: boolean) => { if (safe) await journal.clear(); },
     onRecoveryResolved: async () => { resolved++; await journal.clear(); },
   };

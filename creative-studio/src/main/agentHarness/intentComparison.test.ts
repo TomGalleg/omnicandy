@@ -5,7 +5,7 @@ import {registerTaskPlan} from './taskPlan';
 import {z} from 'zod';
 describe('durable edit intent matching',()=>{
  it('extracts supported shape edit intent and refuses unsupported operations',()=>{
-  expect(expectedEditIntent('app_command',{command:'shape.edit',params:{layer:20,rect:[300,490,100,100]}})?.rect).toEqual([300,490,100,100]);
+  expect((expectedEditIntent('app_command',{command:'shape.edit',params:{layer:20,rect:[300,490,100,100]}}) as { rect?: unknown } | undefined)?.rect).toEqual([300,490,100,100]);
   expect(expectedEditIntent('external_command',{command:'shape.edit',params:{layer:20,rect:[300,490,100,100]}})).toBeUndefined();
  });
  it('needs full geometry, target identity and an actual shape.info receipt',()=>{

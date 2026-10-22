@@ -51,22 +51,22 @@ describe('Package A completion enforcement', () => {
   it('keeps an unverified task resumable and conservative across a resumed transcript', async () => {
     const first = await run([edit('1'),finish,finish]);
     expect(first.status).toBe('limit');
-    expect(hasUnverifiedChanges(first.messages)).toBe(true);
+    expect(await hasUnverifiedChanges(first.messages)).toBe(true);
     const registry = () => { const r = shapeTools(); r.add(tool('get_status','status',z.object({}).strict(),async () => 'current')); return r; };
     const resumed = await runAgent({goal:'move shape',ctl:ctl(),registry:registry(),provider:new ScriptedProvider([finish,finish]),resumeMessages:first.messages});
     expect(resumed.status).toBe('limit');
     const verified = await runAgent({goal:'move shape',ctl:ctl(),registry:registry(),provider:new ScriptedProvider([read('2'),verify('3','r1'),finish]),resumeMessages:first.messages});
     expect(verified.status).toBe('completed');
   });
-  it('reconstructs verification only when a passing comparison follows the latest change', () => {
+  it('reconstructs verification only when a passing comparison follows the latest change', async () => {
     const call = (id: string, name: string, args: unknown): Message => ({role:'assistant',content:null,toolCalls:[{id,name,args}]});
     const result = (id: string, content: string): Message => ({role:'tool',toolCallId:id,content});
     const base: Message[] = [call('1','app_command',{command:'shape.edit'}),result('1','applied')];
-    expect(hasUnverifiedChanges(base)).toBe(true);
+    expect(await hasUnverifiedChanges(base)).toBe(true);
     const verified = [...base,call('2','evidence_verify',{}),result('2','{"passed":true}')];
-    expect(hasUnverifiedChanges(verified)).toBe(false);
-    expect(hasUnverifiedChanges([...verified,call('3','app_command',{command:'x'}),result('3','ok')])).toBe(true);
-    expect(hasUnverifiedChanges([call('1','app_command',{command:'shape.edit'}),result('1','Error: failed')])).toBe(false);
+    expect(await hasUnverifiedChanges(verified)).toBe(false);
+    expect(await hasUnverifiedChanges([...verified,call('3','app_command',{command:'x'}),result('3','ok')])).toBe(true);
+    expect(await hasUnverifiedChanges([call('1','app_command',{command:'shape.edit'}),result('1','Error: failed')])).toBe(false);
   });
 });
 

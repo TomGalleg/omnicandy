@@ -23,6 +23,8 @@ const checkpointSchema = z.object({
   provider: z.object({ provider: z.enum(AGENT_PROVIDER_IDS), endpoint: z.string().max(200).optional() }).strict().optional(),
   budget: agentBudgetSchema.optional(),
   usage: z.object({ input: z.number().int().min(0), output: z.number().int().min(0) }).strict().optional(),
+  // Background jobs started by the agent and not yet seen to finish (ids and command names only). Optional for older checkpoints.
+  jobs: z.array(z.object({ id: z.string().min(1).max(100), appKey: z.string().min(1).max(600), commandId: z.string().min(1).max(128) }).strict()).max(20).optional(),
 });
 export type TaskCheckpoint = Omit<z.infer<typeof checkpointSchema>, 'version'|'savedAt'>;
 export interface CheckpointCrypto {
@@ -67,7 +69,7 @@ export class TaskCheckpointStore {
     catch (e) { if ((e as NodeJS.ErrnoException).code === 'ENOENT') return null; throw e; }
     try {
       const parsed=checkpointSchema.parse(JSON.parse(this.crypto.decryptString(bytes)));
-      return {goal:parsed.goal,model:parsed.model,status:parsed.status,messages:parsed.messages as Message[],...(parsed.plan?{plan:parsed.plan}:{}),...(parsed.uncertainEdit?{uncertainEdit:parsed.uncertainEdit}:{}),...(parsed.provider?{provider:parsed.provider}:{}),...(parsed.budget?{budget:parsed.budget}:{}),...(parsed.usage?{usage:parsed.usage}:{})};
+      return {goal:parsed.goal,model:parsed.model,status:parsed.status,messages:parsed.messages as Message[],...(parsed.plan?{plan:parsed.plan}:{}),...(parsed.uncertainEdit?{uncertainEdit:parsed.uncertainEdit}:{}),...(parsed.provider?{provider:parsed.provider}:{}),...(parsed.budget?{budget:parsed.budget}:{}),...(parsed.usage?{usage:parsed.usage}:{}),...(parsed.jobs?{jobs:parsed.jobs}:{})};
     } catch { return null; } // Corrupt / outdated / undecryptable checkpoint: never execute it.
   }
   async clear(): Promise<void> { await fs.rm(this.file(),{force:true}); }

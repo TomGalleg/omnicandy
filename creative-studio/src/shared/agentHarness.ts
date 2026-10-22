@@ -4,10 +4,13 @@ export interface AgentPlanStep { id: string; title: string; status: 'pending' | 
 export interface AgentTaskPlan { goal: string; steps: AgentPlanStep[] }
 export interface AgentRecoveryInfo {
   status: 'unresolved' | 'unreadable';
-  tool?: 'app_command' | 'external_command';
+  tool?: string;
   command?: string;
   startedAt?: string;
-  expected?: { kind: 'photocraft.shape.edit.rect'; layer: number; rect: [number,number,number,number] };
+  /** The recorded expected outcome, in a form that can be shown to the user and compared with a trusted read-back. */
+  expected?: { kind: 'photocraft.shape.edit.rect'; layer: number; rect: [number,number,number,number] }
+    | { kind: 'blender.object.transform'; file: string; object: string; values: Record<string, number> }
+    | { kind: 'blender.object.color'; file: string; object: string; color: string };
   message: string;
 }
 export interface AgentUsage { input: number; output: number }

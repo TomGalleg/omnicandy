@@ -120,7 +120,9 @@ export function IndependentAgent() {
       {recoveryToDisplay.startedAt && <div className="asset-meta">Recorded: {recoveryToDisplay.startedAt}</div>}
       {recoveryToDisplay.expected && <div className="agent-recovery-expected">
         <strong>Recorded expected outcome</strong>
-        <div>Layer {recoveryToDisplay.expected.layer}: rectangle [{recoveryToDisplay.expected.rect.join(', ')}]</div>
+        {recoveryToDisplay.expected.kind === 'photocraft.shape.edit.rect' && <div>Layer {recoveryToDisplay.expected.layer}: rectangle [{recoveryToDisplay.expected.rect.join(', ')}]</div>}
+        {recoveryToDisplay.expected.kind === 'blender.object.transform' && <div>Blender object {recoveryToDisplay.expected.object} in {recoveryToDisplay.expected.file}: {Object.entries(recoveryToDisplay.expected.values).map(([axis, v]) => `${axis}=${v}`).join(', ')}</div>}
+        {recoveryToDisplay.expected.kind === 'blender.object.color' && <div>Blender object {recoveryToDisplay.expected.object} in {recoveryToDisplay.expected.file}: colour {recoveryToDisplay.expected.color}</div>}
       </div>}
       <div className="asset-meta">{!previewActive ? 'Actual outcome: not independently verified. Editing stays guarded until reconciliation succeeds.' : fixture.actual}</div>
       {previewActive && <div className="asset-meta">{fixture.explanation}</div>}

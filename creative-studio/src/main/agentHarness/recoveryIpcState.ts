@@ -1,6 +1,7 @@
 import type { AgentUiState, AgentUsage } from '@shared/agentHarness';
 import { DEFAULT_AGENT_PROVIDER, type AgentProviderSelection } from '@shared/agentProvider';
 import type { AgentBudget } from '@shared/agentBudget';
+import type { AgentJob } from './jobLedger';
 import type { Message } from './types';
 import type { TaskPlan } from './taskPlan';
 import type { TaskCheckpoint } from './taskCheckpoint';
@@ -9,7 +10,7 @@ import { recoveryPresentation } from './recoveryPresentation';
 
 /** Everything Continue Task needs, as restored from the encrypted checkpoint. Holds no credentials. */
 export type PausedAgent = { goal: string; model: string; messages: Message[]; plan?: TaskPlan; uncertainEdit?: string;
-  provider?: AgentProviderSelection; budget?: AgentBudget; usage?: AgentUsage };
+  provider?: AgentProviderSelection; budget?: AgentBudget; usage?: AgentUsage; jobs?: AgentJob[] };
 
 /** The production IPC agentState handler uses this conversion after loading the
  * project's encrypted checkpoint and write-ahead journal. No edit is executed.
@@ -28,7 +29,7 @@ export function recoveryIpcState(restored:
   return {
     paused: { goal: task.goal, model: task.model, messages: task.messages,
       plan: task.plan, uncertainEdit: restored.uncertainEdit,
-      ...(task.provider ? { provider: task.provider } : {}), ...(task.budget ? { budget: task.budget } : {}), ...(task.usage ? { usage: task.usage } : {}) },
+      ...(task.provider ? { provider: task.provider } : {}), ...(task.budget ? { budget: task.budget } : {}), ...(task.usage ? { usage: task.usage } : {}), ...(task.jobs ? { jobs: task.jobs } : {}) },
     state: { status: task.status, model: task.model, goal: task.goal,
       result: restored.notice, events: [], plan: task.plan, recovery: recoveryPresentation(restored.intent),
       provider: task.provider ?? DEFAULT_AGENT_PROVIDER, ...(task.budget ? { budget: task.budget } : {}), ...(task.usage ? { usage: task.usage } : {}) },

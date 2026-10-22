@@ -3,19 +3,20 @@ import { ToolRegistry } from './registry';
 import { classifyCommandError } from './commandPreflight';
 import type { LiveTaskController } from '../liveTask';
 import { registerTaskPlan, type TaskPlan } from './taskPlan';
-import { expectedEditIntent, type ExpectedRect } from './editIntentJournal';
-import { compactAgentHistory, boundToolOutput } from './contextBudget';
+import { expectedEditIntent, type ExpectedEdit, type JournaledTool } from './editIntentJournal';
+import { compactAgentHistory, boundToolOutput, VERIFIED_MARKER } from './contextBudget';
 import { clampAgentBudgets } from './executionBudget';
 
 const active = new WeakSet<LiveTaskController>();
 const baseSystem = `For newly completed task_plan steps, supply a passing evidence_verify ID; save steps can instead cite a save_version execution receipt with a confirmed new version ID. If you cannot verify a step, leave it pending/blocked and report why. Use evidence_verify to compare expected values with authoritative structured read-back receipts when possible; a failed or unavailable comparison is not verified completion. Use evidence_receipts to cite real successful tool results when updating completed steps. A receipt proves a successful tool response, NOT that the desired visual or document outcome was verified. Read back actual state and compare it to the goal. Use task_plan early in multi-step tasks to record concise steps and update it when verified progress changes. Completing a plan step requires concrete evidence from application read-back; the plan itself does not prove success. You operate ONLY connected CreateCraft applications through approved tools. Call get_status before editing, search app_commands by task noun, inspect exact command IDs for full parameters and inspect results before continuing. A discovered ID is not permission to execute it. When validation is unavailable, use only explicitly known parameters; request help rather than inventing values. If a schema is unavailable, do not guess missing arguments. Never invent success. For state-changing tasks, READ actual object IDs/properties first, EDIT with commands that explicitly support those properties, then VERIFY by reading back authoritative state (bounds, transforms, text, or other app-supported information). Use a visual preview for appearance when available. If verification disagrees, inspect the exact command schema and current state before a correction; never repeat an uncertain edit blindly. If no read-back capability exists, report that verification is unavailable, not success. A command returning applied does not prove the requested outcome. Before multi-step editing, form a short internal action plan and execute one verified step at a time. If the budget is running out, preserve the current state and explain what remains rather than guessing or repeating edits. Autonomous task completion is the default: pursue the full original user goal rather than stopping after an intermediate command succeeds. Make reasonable routine creative and technical choices (such as equal spacing, centering, or picking a supported command) without asking the user to decide every step; use explicit user constraints when supplied. For each substantive edit, distinguish command acceptance from changed application state: read back the relevant object/document properties and compare against the goal; inspect a preview when a registered visual tool is available and visual confirmation is material. If read-back is null, inconsistent, or uninformative, inspect another authoritative source or preview and state what could not be verified; never claim unverified visual success. If an attempted edit did not achieve its intended effect, re-inspect state and choose a different authorized method where the tool definitions support one. Do not blindly repeat state-changing calls, assume an earlier edit failed, or recreate objects already present. Only ask the user to intervene for a genuine blocker, missing permission, unsafe or consequential ambiguity, or an unavoidable choice; otherwise continue within the execution budget. If the task is unfinished when you must stop, explicitly summarize verified completed work, outstanding work, and blockers. Human denials, pauses and takeovers are final; stop. Save versions only when the user requests it. Do not request shell, code execution or unlisted tools.`;
+const creativeExtra = `\nPaid generation (generate_image, generate_video) always asks the user for approval and may be declined; use it only when the user asked for generated media, say which model, and stop if it is declined. Timeline, workflow, planner and PhotoCraft tools change project or document state: read the result back (get_status, a document inspection or workflow_status) before claiming success.`;
 const nativeExtra = `\nUse new_document to start a blank document when available. Use look_at_document to inspect a visible preview when available and needed; it returns an image. Do not invent image contents.`;
 const externalSystem = `
 
 CreateCraft supports native Craft applications and external applications. get_status and app_commands describe only the native Craft applications. External applications (Blender, FreeCAD and any other non-Craft program) are found with external_apps, their supported commands with external_commands, and commands are run with external_command. When the user asks for Blender, FreeCAD or any other non-Craft application, call external_apps first, then external_commands for the chosen application, and inspect each external command with external_commands command_id to see parameter types, ranges and permissions before executing. Execute only commands that external_commands returned, with the parameters it lists. Never invent external commands or parameters. Never assume an external application is unavailable because get_status does not list it; say it cannot be found only after external_apps has been checked.`;
 /** The instructions for the tools that are really registered: external discovery is explained only when the external tools exist. */
 export const buildSystemPrompt = (toolNames: readonly string[]): string =>
-  baseSystem + (toolNames.includes('new_document') || toolNames.includes('look_at_document') ? nativeExtra : '') + (toolNames.includes('external_apps') && toolNames.includes('external_commands') && toolNames.includes('external_command') ? externalSystem : '');
+  baseSystem + (toolNames.includes('new_document') || toolNames.includes('look_at_document') ? nativeExtra : '') + (toolNames.includes('external_apps') && toolNames.includes('external_commands') && toolNames.includes('external_command') ? externalSystem : '') + (['generate_image','generate_video','timeline_add','run_workflow','photocraft_command','planner_packages'].some(n => toolNames.includes(n)) ? creativeExtra : '');
 const paused = (ctl: LiveTaskController) => {
   const c = ctl.snapshot().collab;
   return c.lockOwner === 'user' || ['manual','pausing','paused','awaiting_approval'].includes(c.phase);
@@ -24,11 +25,15 @@ const stopText = /stop and wait|do not retry|user declined|user paused|user canc
 const readbackCommands = new Set(['shape.info', 'layer.list', 'document.inspect']);
 const nativeCommandId = (args: unknown): string | undefined => args && typeof args === 'object' && !Array.isArray(args) && typeof (args as Record<string, unknown>).command === 'string' ? (args as Record<string, string>).command : undefined;
 const isNativeReadback = (name: string, args: unknown): boolean => name === 'app_command' && readbackCommands.has(nativeCommandId(args) ?? '');
-const isMutation = (name: string, args: unknown): boolean => name === 'external_command' || (name === 'app_command' && !isNativeReadback(name,args));
+// Tools that can change document or project content. Whether an external_command is really an edit is decided per call by the host (ToolDef.readOnly).
+const MUTATING_TOOLS = new Set(['external_command','photocraft_command','timeline_add','timeline_move_clip','timeline_remove_clip']);
+const isMutation = (name: string, args: unknown): boolean => MUTATING_TOOLS.has(name) || (name === 'app_command' && !isNativeReadback(name,args));
 // Anything that can change document content. save_version only persists a version and has its own confirmed receipt.
 const requiresCompletionEvidence = (name: string, args: unknown): boolean => isMutation(name,args) || name === 'new_document' || name === 'apply_edit';
-/** Conservative reconstruction for resumed transcripts: unverified unless a passing evidence_verify follows the latest successful change. */
-export function hasUnverifiedChanges(messages: Message[]): boolean {
+/** Conservative reconstruction for resumed transcripts: unverified unless a passing evidence_verify follows the latest successful change.
+ * `isReadOnly` lets the host say that a call (a trusted external inspection) never changed anything. Compaction keeps the
+ * `Error:` prefix and the verification marker, so compacted history gives the same answer as the full transcript. */
+export async function hasUnverifiedChanges(messages: Message[], isReadOnly?: (name: string, args: unknown) => Promise<boolean>): Promise<boolean> {
   const calls = new Map<string, { name: string; args: unknown }>();
   let unverified = false;
   for (const m of messages) {
@@ -36,23 +41,25 @@ export function hasUnverifiedChanges(messages: Message[]): boolean {
     else if (m.role === 'tool' && !m.content.startsWith('Error:')) {
       const c = calls.get(m.toolCallId);
       if (!c) continue;
-      if (requiresCompletionEvidence(c.name, c.args)) unverified = true;
-      else if (c.name === 'evidence_verify' && m.content.includes('"passed":true')) unverified = false;
+      if (requiresCompletionEvidence(c.name, c.args)) { if (!(MUTATING_TOOLS.has(c.name) && c.name === 'external_command' && await isReadOnly?.(c.name, c.args))) unverified = true; }
+      else if (c.name === 'evidence_verify' && (m.content.includes('"passed":true') || m.content.includes(VERIFIED_MARKER))) unverified = false;
     }
   }
   return unverified;
 }
-export async function runAgent(args: { goal: string; provider: ModelProvider; registry: ToolRegistry; ctl: LiveTaskController; signal?: AbortSignal; maxTurns?: number; maxToolCalls?: number; onEvent?: (event: AgentEvent) => void; resumeMessages?: Message[]; resumePlan?: TaskPlan; resumeUncertainEdit?: string; resumeExpectedEdit?: ExpectedRect; onEditBegin?: (tool:'app_command'|'external_command', command:string,callArgs:unknown)=>Promise<void>; onEditSettled?: (safe:boolean)=>Promise<void>; onRecoveryResolved?: ()=>Promise<void>; onPlan?: (plan: TaskPlan) => void }): Promise<AgentOutcome> {
+export async function runAgent(args: { goal: string; provider: ModelProvider; registry: ToolRegistry; ctl: LiveTaskController; signal?: AbortSignal; maxTurns?: number; maxToolCalls?: number; onEvent?: (event: AgentEvent) => void; resumeMessages?: Message[]; resumePlan?: TaskPlan; resumeUncertainEdit?: string; resumeExpectedEdit?: ExpectedEdit; onInterrupted?: (status: 'cancelled' | 'paused') => void | Promise<void>; onEditBegin?: (tool:JournaledTool, command:string,callArgs:unknown)=>Promise<void>; onEditSettled?: (safe:boolean)=>Promise<void>; onRecoveryResolved?: ()=>Promise<void>; onPlan?: (plan: TaskPlan) => void }): Promise<AgentOutcome> {
   const { provider, registry, ctl } = args;
   if (active.has(ctl) || ctl.snapshot().collab.activeOperation || ctl.snapshot().collab.phase === 'running') throw new Error('Another application task is already running.');
   if (paused(ctl)) throw new Error('User control or pause is active.');
   const messages: Message[] = args.resumeMessages ? structuredClone(args.resumeMessages) : [{ role: 'user', content: args.goal }];
+  let resumedUnverified = false;
   if (args.resumeMessages) {
     const fresh = registry.snapshot();
     const status = await registry.call(fresh, 'get_status', {});
     if (status.isError) throw new Error(`Cannot resume without current document status: ${status.text}`);
     if (args.resumeUncertainEdit) messages.push({role:'user',content:`Recovery safety lock: the previous ${args.resumeUncertainEdit} edit may have partially succeeded. All edits remain blocked until a FRESH authorized read-back of the CURRENT document and a passing evidence_verify comparison. Do not repeat the old command. If the intended result cannot be independently compared, retain the lock and ask for help.`});
     if (args.resumePlan) messages.push({role:'user',content:`Current project task plan (user edits take priority over earlier plan messages; verify steps before changing their status): ${JSON.stringify(args.resumePlan).slice(0,12000)}`});
+    resumedUnverified = await hasUnverifiedChanges(messages, (name, callArgs) => registry.isReadOnly(fresh, name, callArgs));
     messages.push({role:'user',content:`The user requested continuation after an interruption, takeover, or execution budget limit. Reconcile the CURRENT application state against previous work. Do not replay finished actions. Inspect what actually remains and continue only with authorized steps. Current status: ${status.text.slice(0,8000)}`});
   }
   const planControl = registerTaskPlan(registry, args.goal, args.resumePlan, plan => args.onPlan?.(plan));
@@ -62,11 +69,16 @@ export async function runAgent(args: { goal: string; provider: ModelProvider; re
   // Provider-reported only: never estimate or invent token counts.
   const usage = { input: 0, output: 0 };
   let usageReported = false;
-  const result = (status: AgentOutcome['status'], text: string): AgentOutcome => ({ status, text, messages, events, plan: planControl.snapshot(), ...(uncertainEdit ? { uncertainEdit } : {}), ...(usageReported ? { usage: { ...usage } } : {}) });
+  // Takeover and cancellation must also stop what the agent started outside the model loop (background jobs).
+  const notifyInterrupted = (status: AgentOutcome['status']) => {
+    if (status !== 'cancelled' && status !== 'paused') return;
+    try { void Promise.resolve(args.onInterrupted?.(status)).catch(() => undefined); } catch { /* the host's cleanup must never mask the stop */ }
+  };
+  const result = (status: AgentOutcome['status'], text: string): AgentOutcome => (notifyInterrupted(status), { status, text, messages, events, plan: planControl.snapshot(), ...(uncertainEdit ? { uncertainEdit } : {}), ...(usageReported ? { usage: { ...usage } } : {}) });
   const { maxTurns, maxToolCalls: maxCalls } = clampAgentBudgets(args.maxTurns, args.maxToolCalls);
   // Completion needs a passing evidence_verify whose read-back was taken after the latest successful change.
   // Adapter `verified:true` flags and plan status are claims, not evidence, and never clear this.
-  let mutationSeq = args.resumeMessages && hasUnverifiedChanges(args.resumeMessages) ? 1 : 0;
+  let mutationSeq = resumedUnverified ? 1 : 0;
   let verifiedSeq = 0;
   const readbackSeq = new Map<string, number>();
   let verificationReminderSent = false;
@@ -75,7 +87,7 @@ export async function runAgent(args: { goal: string; provider: ModelProvider; re
   // A failed write may have partially changed the document. Require an actual
   // read-only inspection before attempting another write. No automatic replay.
   let uncertainEdit: string | undefined = args.resumeUncertainEdit;
-  let expectedIntent: ExpectedRect | undefined = args.resumeExpectedEdit;
+  let expectedIntent: ExpectedEdit | undefined = args.resumeExpectedEdit;
   // Only read-backs taken AFTER an uncertain edit can resolve the safety lock.
   // These receipts are per-run; restored tasks must acquire new evidence.
   const recoveryReadbacks = new Set<string>();
@@ -156,7 +168,7 @@ export async function runAgent(args: { goal: string; provider: ModelProvider; re
             let dispatched = false;
             try {
               if (mutating) {
-                await args.onEditBegin?.(call.name as 'app_command'|'external_command', nativeCommandId(call.args) ?? call.name,call.args);
+                await args.onEditBegin?.(call.name as JournaledTool, nativeCommandId(call.args) ?? call.name,call.args);
                 expectedIntent = expectedEditIntent(call.name,call.args);
               }
               dispatched = true;
@@ -175,10 +187,10 @@ export async function runAgent(args: { goal: string; provider: ModelProvider; re
               }
             }
             if (!r.isError) {
-              const receiptId = planControl.record(call.name, r.text, r.verified === true, call.args, r.trustedReadback === true && call.name === 'external_command' && !mutating);
+              const receiptId = planControl.record(call.name, r.text, r.verified === true, call.args, r.trustedReadback === true && (call.name === 'get_status' || (call.name === 'external_command' && !mutating)), r.readback);
               if (receiptId) {
                 if (planControl.isReadbackReceipt(receiptId)) readbackSeq.set(receiptId, mutationSeq);
-                if (uncertainEdit && isNativeReadback(call.name, call.args) && planControl.isReadbackReceipt(receiptId)) {
+                if (uncertainEdit && (isNativeReadback(call.name, call.args) || (call.name === 'external_command' && !mutating && r.trustedReadback === true)) && planControl.isReadbackReceipt(receiptId)) {
                   recoveryReadbacks.add(receiptId);
                   emit({kind:'model',text:'Fresh read-back recorded. Compare actual fields with the intended result using evidence_verify. Editing remains locked until a passing comparison.'});
                 }
@@ -191,12 +203,12 @@ export async function runAgent(args: { goal: string; provider: ModelProvider; re
               if (uncertainEdit && call.name === 'evidence_verify' && r.verified === true) {
                 const data = planControl.latestPassingCheck();
                 if (data && recoveryReadbacks.has(data.sourceReceiptId) && expectedIntent &&
-                    planControl.matchesRecordedRect(data.sourceReceiptId, expectedIntent.layer, expectedIntent.rect)) {
+                    planControl.matchesExpectedEdit(data.sourceReceiptId, expectedIntent)) {
                   await args.onRecoveryResolved?.();
                   uncertainEdit = undefined;
                   expectedIntent = undefined;
                   recoveryReadbacks.clear();
-                  emit({kind:'model',text:'A fresh shape.info read-back matched the durable recorded target and all four rectangle coordinates. Recovery lock released.'});
+                  emit({kind:'model',text:'A fresh trusted read-back matched the durable recorded expected outcome. Recovery lock released.'});
                 }
               }
             }

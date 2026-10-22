@@ -28,6 +28,7 @@ import { claudeLoginLaunch, defaultClaudeCliPath, findOnPath } from './platform/
 import { parseProjectPlan, PROJECT_KINDS, type ProjectPlan } from '@shared/projectPlan';
 import type { LiveTaskController } from './liveTask';
 import type { ProjectStore } from './projectStore';
+import type { ToolDef } from './agentHarness/types';
 
 const SYSTEM_PROMPT = `You are Claude, the Creative Partner inside OmniCandy, a desktop app where the user edits media in ArtCraft apps: PhotoCraft (photos), VectorCraft (vector art), SoundCraft (audio), FilmCraft (video, on a timeline), DesignCraft (page layouts) WordCraft (word-processing documents, .docx), GridCraft (spreadsheets, .xlsx), DeckCraft (presentations, .deckcraft and .pptx), FigCraft (UI and UX design, .figcraft), CADCraft (2D CAD drawings, .dxf and .dwg) and PdfCraft (PDFs: text, pages, watermark) in the Edit tab, LightCraft (photo light and colour) in the Color tab, and EffectCraft (effects and titles on pictures and video) in the Effects tab. The file the user is working on is open in one of these apps, shown inside OmniCandy. get_status tells you which app, and the edits that app offers.
 
@@ -303,17 +304,14 @@ export class ClaudePartner {
     this.abort?.abort();
   }
 
-  private async tools() {
-    const { tool, createSdkMcpServer } = await import('@anthropic-ai/claude-agent-sdk');
+  /** Every tool Claude has. Handlers are shared as they are: the Independent AI agent reuses the very same implementations (see agentToolDefs). */
+  private async toolDefinitions(activity: (t: string) => void) {
+    const { tool } = await import('@anthropic-ai/claude-agent-sdk');
     const text = (t: string) => ({ content: [{ type: 'text' as const, text: t }] });
     const fail = (e: unknown) => ({ content: [{ type: 'text' as const, text: `Error: ${e instanceof Error ? e.message : String(e)}` }], isError: true });
-    const activity = (t: string) => this.add('activity', t);
     const ctl = await this.d.live();
 
-    return createSdkMcpServer({
-      name: 'createcraft',
-      version: '0.1.0',
-      tools: [
+    return [
         tool('get_status', 'What is open (file and app), its edit history, whether you may edit (lock), and the edits available for this app with their settings.', {}, async () => {
           try { return text(JSON.stringify(await ctl.statusForClaude(), null, 2)); } catch (e) { return fail(e); }
         }),
@@ -674,7 +672,41 @@ New files: ${names.join(', ') || '(none)'}`);
             return text(`${a.name} is open in ${appName}. Call get_status to see its edits.`);
           } catch (e) { return fail(e); }
         }),
-      ],
+    ];
+  }
+
+  private async tools() {
+    const { createSdkMcpServer } = await import('@anthropic-ai/claude-agent-sdk');
+    return createSdkMcpServer({ name: 'createcraft', version: '0.1.0', tools: await this.toolDefinitions((t) => this.add('activity', t)) });
+  }
+
+  /**
+   * The named Claude tools as Independent AI tools: same handlers and same input schemas, so approvals (paid
+   * generation, model downloads, workflow runs), output-path rules and manual-takeover checks are exactly the
+   * ones Claude has. Nothing is re-implemented, and nothing is written to Claude's chat.
+   */
+  async agentToolDefs(names: readonly string[]): Promise<ToolDef[]> {
+    const wanted = new Set(names);
+    const defs = (await this.toolDefinitions(() => undefined)).filter((t) => wanted.has(t.name));
+    return defs.map((def): ToolDef => {
+      const schema = z.object(def.inputSchema as z.ZodRawShape).strict();
+      return {
+        name: def.name,
+        description: def.description,
+        parameters: z.toJSONSchema(schema) as Record<string, unknown>,
+        execute: async (args) => {
+          const parsed = schema.safeParse(args);
+          if (!parsed.success) return { text: `Error: Invalid tool arguments: ${z.prettifyError(parsed.error)}`.slice(0, 2000), isError: true };
+          const reply = await (def.handler as (a: unknown, extra: unknown) => Promise<{ content?: Array<{ type: string; text?: string; data?: string; mimeType?: string }>; isError?: boolean }>)(parsed.data, {});
+          const parts = reply.content ?? [];
+          const image = parts.find((p) => p.type === 'image' && p.data && p.mimeType === 'image/png');
+          return {
+            text: parts.filter((p) => p.type === 'text').map((p) => p.text ?? '').join('\n') || (image ? 'Picture follows.' : ''),
+            ...(reply.isError ? { isError: true } : {}),
+            ...(image ? { imageDataUrl: `data:image/png;base64,${image.data}` } : {}),
+          };
+        },
+      };
     });
   }
 
