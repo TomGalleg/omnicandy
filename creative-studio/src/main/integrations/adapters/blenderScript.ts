@@ -5,7 +5,7 @@ import type { CommandSpec } from '@shared/integrations';
 import { SCRIPT_MAX_CODE, SCRIPT_PARAM_MAX_CHARS, SCRIPT_PARAM_MAX_DEPTH } from './blenderScriptSpec';
 
 export const SCRIPT_COMMAND: CommandSpec = {
-  id: 'script.run', label: 'Run a Blender Python script', destructive: true, timeoutMs: 600_000,
+  id: 'script.run', label: 'Run a Blender Python script', destructive: true, confirmEveryTime: true, timeoutMs: 600_000,
   permissions: ['launch', 'open-files', 'read-project', 'modify-project', 'write-files', 'execute-scripts'],
   description: `Runs a Python script (bpy / bmesh / mathutils) in Blender for anything the typed commands cannot do: armatures and rigging, geometry nodes, simulations, UV unwrapping, curves, shape keys, drivers, importing assets. The user approves EVERY run after reading the exact code. It runs on a copy of the project; if it fails nothing changes. On success a backup is kept and the saved project is replaced; the open Blender window reloads it (unsaved hand edits are saved first). Do NOT use it for towers, walls, roofs, boxes, cylinders, cones or other ordinary shapes: scene.build makes those, without a script. Use script.run only for what scene.build cannot do. Only bpy, bmesh, bpy_extras, mathutils, math, random, itertools, collections, functools, colorsys, json, re, typing and dataclasses can be imported; no files, processes or network. Set a variable named result to a small JSON value to get it back. Not idempotent: read the result back with scene.inspect_detail (and the viewport, when available) before claiming success.`,
   params: {

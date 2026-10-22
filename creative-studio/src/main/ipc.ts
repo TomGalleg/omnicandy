@@ -706,7 +706,12 @@ export function registerIpc(d: IpcDeps): void {
   const bundled = bundledPaths({ packaged: app.isPackaged, resourcesPath: process.resourcesPath, appPath: app.getAppPath() });
   const catalogDirs = [bundled.adaptersDir];
   let connect: ConnectService | null = null;
+  // Destructive commands (such as deleting an object) the user allowed for this session: memory only, cleared when the project changes or a chat is reset.
+  const sessionAllowed = new Set<string>();
+  const sessionKey = (appKey: string, commandId: string) => `${appKey}\u0000${commandId}`;
+  resetters.push(() => sessionAllowed.clear());
   const external = createIntegrationManager({
+    sessionAllowed: { has: (k, c) => sessionAllowed.has(sessionKey(k, c)), add: (k, c) => { sessionAllowed.add(sessionKey(k, c)); } },
     workDir: async (id) => (await d.project()).workDir('external', id),
     permissions: { load: async () => (await extStore.read()).grants, save: async (grants) => { await extStore.update((st) => { st.grants = grants; }); } },
     userPaths: async () => (await extStore.read()).paths,
@@ -715,10 +720,11 @@ export function registerIpc(d: IpcDeps): void {
     remembered: { load: async () => (await extStore.read()).remembered, save: async (remembered) => { await extStore.update((st) => { st.remembered = remembered; }); } },
     approve: async (r): Promise<ApprovalAnswer> => {
       const win = d.window();
-      const buttons = r.destructive || r.untrusted ? ['Cancel', 'Allow once'] : ['Cancel', 'Allow once', `Always allow for ${r.app.adapterName ?? r.app.name}`];
+      const canSession = r.destructive && !r.untrusted && !r.command.confirmEveryTime && r.needed.length === 0;
+      const buttons = canSession ? ['Cancel', 'Allow once', 'Allow for this session'] : r.destructive || r.untrusted ? ['Cancel', 'Allow once'] : ['Cancel', 'Allow once', `Always allow for ${r.app.adapterName ?? r.app.name}`];
       const options: Electron.MessageBoxOptions = { type: 'question', title: 'External application', message: `Run "${r.command.label}" in ${r.app.adapterName ?? r.app.name}?`, detail: approvalDetail(r), buttons, defaultId: 0, cancelId: 0, noLink: true };
       const res = win && !win.isDestroyed() ? await dialog.showMessageBox(win, options) : await dialog.showMessageBox(options);
-      return res.response === 1 ? 'once' : res.response === 2 ? 'always' : 'deny';
+      return res.response === 1 ? 'once' : res.response === 2 ? (canSession ? 'session' : 'always') : 'deny';
     },
   });
   // A third-party program's own window (Blender) opened for Claude: it is docked into the Software tab like the ArtCraft apps.
@@ -1267,7 +1273,7 @@ export function registerIpc(d: IpcDeps): void {
     agentState = { ...agentState, plan }; publishAgent();
     return agentState;
   });
-  handle(IPC.agentStop, none, async () => { if (await (await editJournal()).load()) throw new Error('An unresolved edit journal exists. Continue Task to resolve it before discarding the session.'); pausedAgent = null; cancelAgentJobs(); jobLedger.clear(); agentAbort?.abort(); await (await taskStore()).clear(); conversation = null; agentState = { status: 'idle', model: agentState.model, goal: '', result: '', events: [], chat: [] }; publishAgent(); return agentState; });
+  handle(IPC.agentStop, none, async () => { if (await (await editJournal()).load()) throw new Error('An unresolved edit journal exists. Continue Task to resolve it before discarding the session.'); pausedAgent = null; cancelAgentJobs(); jobLedger.clear(); agentAbort?.abort(); await (await taskStore()).clear(); conversation = null; sessionAllowed.clear(); agentState = { status: 'idle', model: agentState.model, goal: '', result: '', events: [], chat: [] }; publishAgent(); return agentState; });
   handle(IPC.agentInterrupt, none, async () => { agentAbort?.abort(); return agentState; });
   // Every event updates both the raw event list and the chat view the panel shows.
   const onAgentEvent = (event: AgentUiEvent) => { agentState = { ...agentState, events: [...agentState.events, event].slice(-100), chat: appendChat(agentState.chat, chatItemFromEvent(event)) }; publishAgent(); };

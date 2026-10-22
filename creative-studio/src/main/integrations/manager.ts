@@ -36,6 +36,8 @@ export interface ManagerDeps {
   /** Applications the user has connected, kept across restarts so they are connected again at startup. */
   connected?: { load: () => Promise<string[]>; save: (keys: string[]) => Promise<void> };
   onProgress?: (e: ProgressEvent) => void;
+  /** Destructive commands the user allowed for this session (memory only). Scripts, unsigned packages and anything needing a new permission are never in it. */
+  sessionAllowed?: { has(appKey: string, commandId: string): boolean; add(appKey: string, commandId: string): void };
 }
 
 interface Session { app: DiscoveredApp; adapter: ExternalAdapter; factory: AdapterFactory; version: string | null }
@@ -390,8 +392,10 @@ export class IntegrationManager {
     // Permissions: ask for what is not granted yet, always for destructive commands and for unsigned packages.
     const granted = new Set(await this.grantsFor(key));
     const needed = cmd.permissions.filter((p) => !granted.has(p));
-    if (needed.length || cmd.destructive || f.alwaysAsk) {
+    const sessionOk = !!cmd.destructive && !cmd.confirmEveryTime && !f.alwaysAsk && !needed.length && !!this.d.sessionAllowed?.has(key, cmd.id);
+    if ((needed.length || cmd.destructive || f.alwaysAsk) && !sessionOk) {
       const answer = await this.d.approve({ app: await this.info(app), command: cmd, params, needed, destructive: !!cmd.destructive, untrusted: !!f.alwaysAsk }).catch(() => 'deny' as const);
+      if (answer === 'session' && cmd.destructive && !cmd.confirmEveryTime && !f.alwaysAsk && !needed.length) this.d.sessionAllowed?.add(key, cmd.id);
       if (answer === 'deny') return fail('permission-denied', 'The user did not allow this. Do not ask again unless they bring it up.', app.name);
       if (answer === 'always' && !cmd.destructive && !f.alwaysAsk) {
         for (const p of needed) granted.add(p);

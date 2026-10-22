@@ -231,7 +231,7 @@ function scriptOf(v: unknown): { purpose: string; code: string } | null {
   if (typeof v !== 'string' || v.charAt(0) !== '{') return null;
   try { const o = JSON.parse(v) as Record<string, unknown>; return typeof o.code === 'string' ? { purpose: typeof o.purpose === 'string' ? o.purpose : '', code: o.code } : null; } catch { return null; }
 }
-export function approvalDetail(r: { command: { description: string }; params: Record<string, unknown>; needed: Permission[]; destructive: boolean; untrusted?: boolean }): string {
+export function approvalDetail(r: { command: { description: string; confirmEveryTime?: boolean }; params: Record<string, unknown>; needed: Permission[]; destructive: boolean; untrusted?: boolean }): string {
   const nl = String.fromCharCode(10);
   const lines: string[] = [r.command.description, ''];
   if (r.needed.length) {
@@ -247,7 +247,7 @@ export function approvalDetail(r: { command: { description: string }; params: Re
   lines.push('');
   if (r.untrusted) lines.push('This connector is NOT signed, so OmniCandy cannot tell who made it. You are asked every time.');
   lines.push(r.destructive
-    ? 'This can change or remove work you already have and may not be undoable. You are asked every time.'
+    ? (r.untrusted || r.command.confirmEveryTime ? 'This can change or remove work you already have and may not be undoable. You are asked every time.' : 'This can change or remove work you already have. You are asked each time unless you choose "Allow for this session".')
     : 'New files go into this project’s external folder; your existing files are not changed.');
   return lines.join(nl);
 }

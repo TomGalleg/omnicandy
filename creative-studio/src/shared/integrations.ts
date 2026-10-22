@@ -61,6 +61,8 @@ export interface CommandSpec {
   timeoutMs?: number;
   /** Runs as a job (renders, exports): returns a job handle at once; progress, cancel and result via the job. */
   longRunning?: boolean;
+  /** Built-in adapters only: even a destructive command that could be allowed for a session is asked about every single time (a script, whose code the user must read). */
+  confirmEveryTime?: boolean;
   /** Built-in adapters only: returns a temporary picture (data.image.path) for a vision-capable model. Never proof of project state. */
   preview?: boolean;
 }
@@ -189,7 +191,8 @@ export interface ApprovalRequest {
   /** An unsigned package: it is asked every time and "always" is not offered. */
   untrusted?: boolean;
 }
-export type ApprovalAnswer = 'once' | 'always' | 'deny';
+/** 'session': a destructive command (not a script) is allowed without asking again until the project changes or the chat is reset. Never saved. */
+export type ApprovalAnswer = 'once' | 'always' | 'session' | 'deny';
 
 /** "major.minor.patch" comparison; missing parts count as 0. */
 export function compareVersions(a: string, b: string): number {
