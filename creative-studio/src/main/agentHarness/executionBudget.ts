@@ -11,4 +11,5 @@ export function clampAgentBudgets(turns?: number, calls?: number) {
 export const agentBudgetSchema = z.object({
   maxTurns: z.number().int().min(AGENT_BUDGET_LIMITS.maxTurns.min).max(AGENT_BUDGET_LIMITS.maxTurns.max).optional(),
   maxToolCalls: z.number().int().min(AGENT_BUDGET_LIMITS.maxToolCalls.min).max(AGENT_BUDGET_LIMITS.maxToolCalls.max).optional(),
+  strictVerification: z.boolean().optional(),
 }).strict();

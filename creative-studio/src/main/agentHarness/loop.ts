@@ -3,6 +3,7 @@ import { ToolRegistry } from './registry';
 import { classifyCommandError } from './commandPreflight';
 import type { LiveTaskController } from '../liveTask';
 import { registerTaskPlan, seedPlanFromGoal, type TaskPlan } from './taskPlan';
+import { claudeStyleSystem } from './claudeStylePrompt';
 import { NATIVE_READBACK_COMMANDS } from './nativeReadback';
 import { expectedEditIntent, type ExpectedEdit, type JournaledTool } from './editIntentJournal';
 import { compactAgentHistory, boundToolOutput, compactToolSchema, VERIFIED_MARKER } from './contextBudget';
@@ -17,7 +18,10 @@ const externalSystem = `
 
 CreateCraft supports native Craft applications and external applications. get_status and app_commands describe only the native Craft applications. External applications (Blender, FreeCAD and any other non-Craft program) are found with external_apps, their supported commands with external_commands, and commands are run with external_command. When the user asks for Blender, FreeCAD or any other non-Craft application, call external_apps first, then external_commands for the chosen application, and inspect each external command with external_commands command_id to see parameter types, ranges and permissions before executing. Execute only commands that external_commands returned, with the parameters it lists. Never invent external commands or parameters. Never assume an external application is unavailable because get_status does not list it; say it cannot be found only after external_apps has been checked. For Blender prefer the typed commands (scene.build for many objects, then scene.inspect_detail to read the saved file back); use scene.viewport, when it is offered, only to look at the result, because a picture is never proof; Blender commands save the .blend file themselves, so never use save_version for Blender: to finish a "save the project" step, read the saved file with scene.inspect_detail, run evidence_verify on it and cite that ID; use script.run (the user approves the code) only for what the typed commands cannot do, such as rigging or geometry nodes.`;
 /** The instructions for the tools that are really registered: external discovery is explained only when the external tools exist. */
-export const buildSystemPrompt = (toolNames: readonly string[]): string =>
+export const buildSystemPrompt = (toolNames: readonly string[], relaxed = false): string => relaxed
+  ? claudeStyleSystem(toolNames, (toolNames.includes('new_document') || toolNames.includes('look_at_document') ? nativeExtra : '') + (['generate_image','generate_video','timeline_add','run_workflow','photocraft_command','planner_packages'].some(n => toolNames.includes(n)) ? creativeExtra : '') + (toolNames.includes('enable_tools') ? optionalFamiliesPrompt() : ''))
+  : buildStrictSystemPrompt(toolNames);
+const buildStrictSystemPrompt = (toolNames: readonly string[]): string =>
   baseSystem + (toolNames.includes('new_document') || toolNames.includes('look_at_document') ? nativeExtra : '') + (toolNames.includes('external_apps') && toolNames.includes('external_commands') && toolNames.includes('external_command') ? externalSystem : '') + (['generate_image','generate_video','timeline_add','run_workflow','photocraft_command','planner_packages'].some(n => toolNames.includes(n)) ? creativeExtra : '') + (toolNames.includes('enable_tools') ? optionalFamiliesPrompt() : '');
 /** True while the user owns the document or has paused/approval pending: the agent must not start or edit. */
 export const userControlActive = (ctl: LiveTaskController): boolean => {
@@ -64,7 +68,7 @@ export async function hasUnverifiedChanges(messages: Message[], isReadOnly?: (na
   }
   return unverified;
 }
-export async function runAgent(args: { goal: string; provider: ModelProvider; registry: ToolRegistry; ctl: LiveTaskController; signal?: AbortSignal; maxTurns?: number; maxToolCalls?: number; onEvent?: (event: AgentEvent) => void; resumeMessages?: Message[]; resumePlan?: TaskPlan; resumeUncertainEdit?: string; resumeExpectedEdit?: ExpectedEdit; onInterrupted?: (status: 'cancelled' | 'paused') => void | Promise<void>; onEditBegin?: (tool:JournaledTool, command:string,callArgs:unknown)=>Promise<void>; onEditSettled?: (safe:boolean)=>Promise<void>; onRecoveryResolved?: ()=>Promise<void>; onPlan?: (plan: TaskPlan) => void; /** A chat message that continues the same conversation: it replaces the generic "continue after an interruption" note. */ followUp?: string }): Promise<AgentOutcome> {
+export async function runAgent(args: { goal: string; provider: ModelProvider; registry: ToolRegistry; ctl: LiveTaskController; signal?: AbortSignal; maxTurns?: number; maxToolCalls?: number; onEvent?: (event: AgentEvent) => void; resumeMessages?: Message[]; resumePlan?: TaskPlan; resumeUncertainEdit?: string; resumeExpectedEdit?: ExpectedEdit; onInterrupted?: (status: 'cancelled' | 'paused') => void | Promise<void>; onEditBegin?: (tool:JournaledTool, command:string,callArgs:unknown)=>Promise<void>; onEditSettled?: (safe:boolean)=>Promise<void>; onRecoveryResolved?: ()=>Promise<void>; onPlan?: (plan: TaskPlan) => void; /** Claude-style: short instructions, no plan or verification gates on finishing (approvals, journal, recovery locks and a command's own read-back still apply). Default is the strict harness. */ relaxed?: boolean; /** A chat message that continues the same conversation: it replaces the generic "continue after an interruption" note. */ followUp?: string }): Promise<AgentOutcome> {
   const { provider, registry, ctl } = args;
   if (active.has(ctl) || ctl.snapshot().collab.activeOperation || ctl.snapshot().collab.phase === 'running') throw new Error('Another application task is already running.');
   if (paused(ctl)) throw new Error('User control or pause is active.');
@@ -82,8 +86,10 @@ export async function runAgent(args: { goal: string; provider: ModelProvider; re
     else messages.push({role:'user',content:`The user requested continuation after an interruption, takeover, or execution budget limit. Reconcile the CURRENT application state against previous work. Do not replay finished actions. Inspect what actually remains and continue only with authorized steps. Current status: ${status.text.slice(0,8000)}`});
   }
   // A plan the user approved is recorded as the task plan from the start (a fresh task only; a resumed one keeps its saved plan).
-  const seededPlan = !args.resumeMessages && !args.resumePlan ? seedPlanFromGoal(args.goal) : undefined;
+  const seededPlan = !args.relaxed && !args.resumeMessages && !args.resumePlan ? seedPlanFromGoal(args.goal) : undefined;
   const planControl = registerTaskPlan(registry, args.goal, args.resumePlan ?? seededPlan, plan => args.onPlan?.(plan));
+  // Claude-style: no plan bookkeeping tools to juggle (and no tokens spent describing them).
+  if (args.relaxed) { registry.remove('task_plan'); registry.remove('evidence_receipts'); }
   if (seededPlan) {
     messages.push({role:'user',content:`The plan the user approved is recorded as ${seededPlan.steps.length} task steps (${seededPlan.steps.map(s => s.id).join(', ')}). Work through them in order and keep them current with task_plan. A step is completed only with a passing evidence_verify ID from a fresh read-back; the task is not finished while any step is unfinished.`});
     args.onPlan?.(planControl.snapshot());
@@ -123,11 +129,11 @@ export async function runAgent(args: { goal: string; provider: ModelProvider; re
     for (let turn = 0; turn < maxTurns; turn++) {
       if (args.signal?.aborted) return result('cancelled', 'Cancelled.');
       if (paused(ctl)) return result('paused', 'User intervention is required.');
-      compactAgentHistory(messages);
+      compactAgentHistory(messages, args.relaxed ? 16 : 28);
       const snapshot = registry.snapshot();
       if (turn === 0) emit({ kind: 'model', tool: 'tools', text: `Tools available to the model: ${snapshot.map((t) => t.name).join(', ') || '(none)'}` }); // names only
       let reply;
-      try { reply = await provider.complete({ system: buildSystemPrompt(snapshot.map((t) => t.name)), messages, tools: snapshot.map(({name,description,parameters})=>({name,description,parameters:compactToolSchema(parameters)})), signal: args.signal ?? new AbortController().signal }); }
+      try { reply = await provider.complete({ system: buildSystemPrompt(snapshot.map((t) => t.name), !!args.relaxed), messages, tools: snapshot.map(({name,description,parameters})=>({name,description,parameters:compactToolSchema(parameters)})), signal: args.signal ?? new AbortController().signal }); }
       catch (e) {
         if (args.signal?.aborted) return result('cancelled', 'Cancelled.');
         const msg = e instanceof Error ? e.message : String(e);
@@ -148,7 +154,7 @@ export async function runAgent(args: { goal: string; provider: ModelProvider; re
         // one chance to reconcile the remaining steps, then retain continuation
         // state rather than pretending that the project is finished.
         const incomplete = planControl.snapshot().steps.filter(step => step.status !== 'completed');
-        if (incomplete.length) {
+        if (incomplete.length && !args.relaxed) {
           const remaining = incomplete.map(step => `${step.id} (${step.status}): ${step.title}`).join('; ').slice(0, 3500);
           if (completionReminders < 3 && turn + 1 < maxTurns) {
             completionReminders++;
@@ -160,7 +166,7 @@ export async function runAgent(args: { goal: string; provider: ModelProvider; re
           emit({kind:'stop',text:'Model stopped with unfinished plan steps; task remains resumable.'});
           return result('limit',`Task is not yet verified complete. Remaining plan steps: ${remaining}. Use Continue Task to inspect current state and finish safely.`);
         }
-        if (mutationSeq > verifiedSeq) {
+        if (mutationSeq > verifiedSeq && !args.relaxed) {
           const reminder = 'The task changed application state but no passing evidence_verify compared a fresh read-back taken after the latest change. Inspect authoritative current state, then verify before declaring completion. If verification is unavailable, explain that the task remains unverified.';
           if (!verificationReminderSent && turn + 1 < maxTurns) {
             verificationReminderSent = true; messages.push({ role:'user', content:reminder });

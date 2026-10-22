@@ -1203,13 +1203,14 @@ export function registerIpc(d: IpcDeps): void {
   let interruptNote = '';
   const cancelAgentJobs = (): string[] => { const ids = jobLedger.cancelRunning(); if (ids.length) interruptNote = ` Background job${ids.length > 1 ? 's' : ''} ${ids.join(', ')} ${ids.length > 1 ? 'were' : 'was'} cancelled.`; return ids; };
   const takeInterruptNote = (): string => { const n = interruptNote; interruptNote = ''; return n; };
-  const buildAgentRegistry = async (ctl: Awaited<ReturnType<typeof live>>, provider: { supportsVision: boolean }, resumeMessages?: import('./agentHarness/types').Message[]) => {
+  const buildAgentRegistry = async (ctl: Awaited<ReturnType<typeof live>>, provider: { supportsVision: boolean }, resumeMessages?: import('./agentHarness/types').Message[], claudeStyle = false) => {
     const store = await d.project();
     jobLedger.reconcile();
     const registry = addExternalTools(nativeToolRegistry(ctl, store, { supportsVision: provider.supportsVision, createBlank: createAgentBlank }), external, {
       onJobStarted: (job) => jobLedger.started({ id: job.jobId, appKey: job.appKey, commandId: job.commandId }),
       jobGuard: (appKey, commandId) => jobLedger.guard(appKey, commandId),
       supportsVision: provider.supportsVision,
+      claudeStyle,
       describeJob: async (id, cancel) => { const report = await externalJobReport(id, cancel); jobLedger.reconcile(); return report; },
     });
     addExportTools(registry, { ctl, store, deliver });
@@ -1295,7 +1296,7 @@ export function registerIpc(d: IpcDeps): void {
         // crash in the first run must not strand the write-ahead journal alone.
         const seedSaved = await (await taskStore()).save({goal,model,status:'limit',messages:[{role:'user',content:goal}],provider:selection,budget});
         if (!seedSaved) throw new Error('Secure task checkpoint unavailable. Editing was not started.');
-        return runAgent({ goal, provider, registry: await buildAgentRegistry(ctl, provider), ctl, signal: abort.signal, ...budget, onInterrupted: () => { cancelAgentJobs(); },
+        return runAgent({ goal, provider, registry: await buildAgentRegistry(ctl, provider, undefined, !budget.strictVerification), ctl, signal: abort.signal, ...budget, relaxed: !budget.strictVerification, onInterrupted: () => { cancelAgentJobs(); },
           ...journalHooks,
           onPlan: (plan) => { agentState = { ...agentState, plan }; publishAgent(); },
           onEvent: onAgentEvent });
@@ -1345,8 +1346,8 @@ export function registerIpc(d: IpcDeps): void {
     agentState = { ...agentState, status: 'working', result: '', provider: selection, budget, ...(followUp ? { chat: appendChat(agentState.chat, userChatItem(followUp)) } : {}) }; publishAgent();
     try {
       const outcome = await withAgentProvider(selection, saved.model, vault, (provider) =>
-        buildAgentRegistry(ctl, provider, saved.messages).then((registry) => runAgent({ goal: saved.goal, resumeMessages: saved.messages, resumePlan:saved.plan, resumeUncertainEdit:saved.uncertainEdit, resumeExpectedEdit:unresolvedJournal?.expected, ...(followUp ? { followUp } : {}), provider,
-          registry, ctl, signal: abort.signal, ...budget, onInterrupted: () => { cancelAgentJobs(); },
+        buildAgentRegistry(ctl, provider, saved.messages, !budget.strictVerification).then((registry) => runAgent({ goal: saved.goal, resumeMessages: saved.messages, resumePlan:saved.plan, resumeUncertainEdit:saved.uncertainEdit, resumeExpectedEdit:unresolvedJournal?.expected, ...(followUp ? { followUp } : {}), provider,
+          registry, ctl, signal: abort.signal, ...budget, relaxed: !budget.strictVerification, onInterrupted: () => { cancelAgentJobs(); },
           ...journalHooks,
           onPlan: (plan) => { agentState = { ...agentState, plan }; publishAgent(); },
           onEvent: onAgentEvent })));

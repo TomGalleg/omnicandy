@@ -19,6 +19,8 @@ export interface ExternalToolOptions {
   describeJob?: (jobId: string, cancel: boolean) => Promise<string>;
   /** The model can see images: only then may a preview command (a picture of the application) run. */
   supportsVision?: boolean;
+  /** Claude-style discovery: external_apps lists the applications and, with an app_key, that application's commands and settings; no separate command search. */
+  claudeStyle?: boolean;
 }
 /** Cost and privacy limits for pictures of an application: per task, between pictures, and the size sent to the model. */
 export const MAX_PREVIEWS_PER_TASK = 6;
@@ -182,7 +184,35 @@ export function externalTools(backend: ExternalBackend, options: ExternalToolOpt
         return JSON.stringify({ ...summary(j), result: j.result });
       })
   );
-  return tools;
+  if (!options.claudeStyle) return tools;
+  // Claude-style: one discovery tool, the same wording Claude's own panel works from.
+  const apps = tool('external_apps', 'External third-party software (Blender, Autodesk, Adobe and others) that is connected, and what it can do. With no app_key: the connected applications. With an app_key: that application\'s commands and the settings each takes. Only commands listed here exist. Read this before running anything.',
+    z.object({ app_key: identifier.optional() }).strict(), async ({ app_key }) => {
+      const all = await backend.list();
+      if (!app_key) return JSON.stringify({ applications: all.filter(a => !!a.adapterId).map(a => ({ app_key: a.key, name: a.name, status: a.status, commands: a.commands.length })), next: 'Call external_apps with an app_key to see that application\'s commands and settings.' });
+      const found = resolveApplication(all, app_key);
+      if ('error' in found) throw new Error(found.error);
+      const a = found.app;
+      // Plain lines, not JSON: no quoting overhead, so every command fits in one model-visible answer.
+      const nl = String.fromCharCode(10);
+      return `${a.name} (app_key ${JSON.stringify(a.key)}), status ${a.status}. ${a.commands.length} commands; run one with external_command {app_key, command, params}.${nl}${nl}${a.commands.map(describeCommand).join(nl + nl)}`;
+    });
+  const keep = tools.filter(t => t.name !== 'external_apps' && t.name !== 'external_commands')
+    .map(t => t.name === 'external_command' ? { ...t, description: 'Runs one command from external_apps in a connected external application. The user is asked to allow it first; if they decline, accept it. The result states what was verified (for example that the saved file was re-opened and checked); report only that, never claim more. Long-running commands start a background job: follow it with external_job.' } : t);
+  return [apps, ...keep] as typeof tools;
+}
+
+/** A setting as one short line: type, limits, default and what it is for. Structured (json) settings keep their longer description: it holds the example. */
+function describeParam(p: CommandSpec['params'][string]): string {
+  const range = p.min !== undefined || p.max !== undefined ? ` ${p.min ?? ''}..${p.max ?? ''}` : '';
+  const dflt = p.default !== undefined ? ` default ${String(p.default)}` : '';
+  return `${p.type}${p.required ? ' (required)' : ''}${range}${dflt}: ${p.description.slice(0, p.type === 'json' ? 1250 : 90)}`;
+}
+export function describeCommand(c: CommandSpec): string {
+  const structured = Object.values(c.params).some((p) => p.type === 'json');
+  const flags = `${c.destructive ? ' [asks you every time]' : ''}${c.longRunning ? ' [long-running: returns a job]' : ''}`;
+  const params = Object.entries(c.params).map(([k, p]) => `  ${k}: ${describeParam(p)}`).join(String.fromCharCode(10));
+  return `${c.id}${flags} - ${c.description.slice(0, structured ? 600 : 130)}${params ? String.fromCharCode(10) + params : ''}`;
 }
 
 /** Extend an existing native registry without replacing native tools or weakening adapter policy. */

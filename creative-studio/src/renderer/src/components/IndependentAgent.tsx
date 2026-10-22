@@ -16,6 +16,7 @@ export function IndependentAgent({ provider }: { provider: AgentProviderId }) {
   const [goal, setGoal] = useState('');
   const [maxTurns, setMaxTurns] = useState<number>(AGENT_BUDGET_LIMITS.maxTurns.default);
   const [maxToolCalls, setMaxToolCalls] = useState<number>(AGENT_BUDGET_LIMITS.maxToolCalls.default);
+  const [strict, setStrict] = useState(false);
   const [error, setError] = useState('');
   const [requestPending, setRequestPending] = useState(false);
   const [draftSteps, setDraftSteps] = useState<AgentPlanStep[]>([]);
@@ -63,7 +64,7 @@ export function IndependentAgent({ provider }: { provider: AgentProviderId }) {
     setError('');
     setRequestPending(true);
     setGoal('');
-    void window.studio.agent.send(text, model, { maxTurns, maxToolCalls }, selection)
+    void window.studio.agent.send(text, model, { maxTurns, maxToolCalls, ...(strict ? { strictVerification: true } : {}) }, selection)
       .then(setState).catch((e) => { setError(errorText(e)); setGoal((g) => g || text); })
       .finally(() => setRequestPending(false));
   };
@@ -101,6 +102,7 @@ export function IndependentAgent({ provider }: { provider: AgentProviderId }) {
           min={AGENT_BUDGET_LIMITS.maxToolCalls.min} max={AGENT_BUDGET_LIMITS.maxToolCalls.max} step={1}
           onChange={(e) => setMaxToolCalls(e.target.valueAsNumber)} /></label>
       </div>
+      <label className="asset-meta"><input type="checkbox" aria-label="Strict verification" checked={strict} disabled={busy} onChange={(e) => setStrict(e.target.checked)} /> Strict verification: every plan step must be proven before the task can finish. Slower, and smaller models stall more often. Off = works the way Claude does.</label>
       {budgetError && <div className="asset-meta" role="alert">{budgetError}</div>}
       {state.usage && <div className="asset-meta" role="status" aria-label="Independent AI token usage">Tokens reported by the provider: {state.usage.input.toLocaleString()} in, {state.usage.output.toLocaleString()} out{state.provider ? ` (${AGENT_PROVIDERS[state.provider.provider].label})` : ''}</div>}
     </details>
