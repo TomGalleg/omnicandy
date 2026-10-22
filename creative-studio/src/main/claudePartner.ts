@@ -29,6 +29,7 @@ import { parseProjectPlan, PROJECT_KINDS, type ProjectPlan } from '@shared/proje
 import type { LiveTaskController } from './liveTask';
 import type { ProjectStore } from './projectStore';
 import type { ToolDef } from './agentHarness/types';
+import type { Requester } from './generation';
 
 const SYSTEM_PROMPT = `You are Claude, the Creative Partner inside OmniCandy, a desktop app where the user edits media in ArtCraft apps: PhotoCraft (photos), VectorCraft (vector art), SoundCraft (audio), FilmCraft (video, on a timeline), DesignCraft (page layouts) WordCraft (word-processing documents, .docx), GridCraft (spreadsheets, .xlsx), DeckCraft (presentations, .deckcraft and .pptx), FigCraft (UI and UX design, .figcraft), CADCraft (2D CAD drawings, .dxf and .dwg) and PdfCraft (PDFs: text, pages, watermark) in the Edit tab, LightCraft (photo light and colour) in the Color tab, and EffectCraft (effects and titles on pictures and video) in the Effects tab. The file the user is working on is open in one of these apps, shown inside OmniCandy. get_status tells you which app, and the edits that app offers.
 
@@ -96,9 +97,9 @@ export interface ClaudePartnerDeps {
   auth: ClaudeAuth;
   workDir: () => Promise<string>;
   /** Same path as the Generate tab: approval dialog in main, then the provider call. */
-  generate: (job: ImageJob) => Promise<GenerateResultDto>;
+  generate: (job: ImageJob, requester?: Requester) => Promise<GenerateResultDto>;
   /** Same approval dialog and spending limit as the Generate tab; resolves when the job is submitted, not when the video is ready. */
-  generateVideo: (job: VideoJob) => Promise<VideoJobRecord>;
+  generateVideo: (job: VideoJob, requester?: Requester) => Promise<VideoJobRecord>;
   /** Free local AI and Motion Effects (no provider, no cost). Every method returns plain text for Claude. */
   localAi: {
     status: () => Promise<string>;
@@ -305,7 +306,7 @@ export class ClaudePartner {
   }
 
   /** Every tool Claude has. Handlers are shared as they are: the Independent AI agent reuses the very same implementations (see agentToolDefs). */
-  private async toolDefinitions(activity: (t: string) => void) {
+  private async toolDefinitions(activity: (t: string) => void, requester: Requester = 'claude') {
     const { tool } = await import('@anthropic-ai/claude-agent-sdk');
     const text = (t: string) => ({ content: [{ type: 'text' as const, text: t }] });
     const fail = (e: unknown) => ({ content: [{ type: 'text' as const, text: `Error: ${e instanceof Error ? e.message : String(e)}` }], isError: true });
@@ -615,7 +616,7 @@ Now explain the plan to the user in plain language, including cost and what they
             const r = await this.d.generateVideo({
               modelId: model_id, prompt, referenceAssetId: ref,
               aspectRatio: aspect_ratio ?? '16:9', durationSeconds: duration_seconds ?? (vm.durations.includes(4) ? 4 : vm.durations[0]!), resolution: resolution ?? vm.resolutions[0]!,
-            });
+            }, requester);
             activity('Video job started');
             return text(`Video job started (${vm.label}, about $${r.estimateUsd.toFixed(2)}). It takes a few minutes; it will appear in the library and under Video jobs in AI Generate when it is ready. Do not wait for it; tell the user.`);
           } catch (e) { return fail(e); }
@@ -636,7 +637,7 @@ Now explain the plan to the user in plain language, including cost and what they
             });
             const paid = providerById(modelById(model_id)?.provider ?? '')?.billable ?? true;
             activity(`Asked to generate ${count ?? 1} image${(count ?? 1) === 1 ? '' : 's'} with ${model_id}${paid ? ' (waiting for your approval)' : ''}`);
-            const r = await this.d.generate({ modelId: model_id, prompt, referenceAssetIds: refs, settings: settings ?? {}, count: count ?? 1 });
+            const r = await this.d.generate({ modelId: model_id, prompt, referenceAssetIds: refs, settings: settings ?? {}, count: count ?? 1 }, requester);
             const names = (await (await this.d.store()).loadManifest()).assets.filter((a) => r.assetIds.includes(a.id)).map((a) => a.name);
             activity(r.message);
             return text(`${r.message}
@@ -687,7 +688,7 @@ New files: ${names.join(', ') || '(none)'}`);
    */
   async agentToolDefs(names: readonly string[]): Promise<ToolDef[]> {
     const wanted = new Set(names);
-    const defs = (await this.toolDefinitions(() => undefined)).filter((t) => wanted.has(t.name));
+    const defs = (await this.toolDefinitions(() => undefined, 'independent')).filter((t) => wanted.has(t.name));
     return defs.map((def): ToolDef => {
       const schema = z.object(def.inputSchema as z.ZodRawShape).strict();
       return {

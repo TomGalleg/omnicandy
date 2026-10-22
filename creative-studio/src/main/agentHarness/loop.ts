@@ -3,6 +3,7 @@ import { ToolRegistry } from './registry';
 import { classifyCommandError } from './commandPreflight';
 import type { LiveTaskController } from '../liveTask';
 import { registerTaskPlan, type TaskPlan } from './taskPlan';
+import { NATIVE_READBACK_COMMANDS } from './nativeReadback';
 import { expectedEditIntent, type ExpectedEdit, type JournaledTool } from './editIntentJournal';
 import { compactAgentHistory, boundToolOutput, VERIFIED_MARKER } from './contextBudget';
 import { clampAgentBudgets } from './executionBudget';
@@ -17,12 +18,14 @@ CreateCraft supports native Craft applications and external applications. get_st
 /** The instructions for the tools that are really registered: external discovery is explained only when the external tools exist. */
 export const buildSystemPrompt = (toolNames: readonly string[]): string =>
   baseSystem + (toolNames.includes('new_document') || toolNames.includes('look_at_document') ? nativeExtra : '') + (toolNames.includes('external_apps') && toolNames.includes('external_commands') && toolNames.includes('external_command') ? externalSystem : '') + (['generate_image','generate_video','timeline_add','run_workflow','photocraft_command','planner_packages'].some(n => toolNames.includes(n)) ? creativeExtra : '');
-const paused = (ctl: LiveTaskController) => {
+/** True while the user owns the document or has paused/approval pending: the agent must not start or edit. */
+export const userControlActive = (ctl: LiveTaskController): boolean => {
   const c = ctl.snapshot().collab;
   return c.lockOwner === 'user' || ['manual','pausing','paused','awaiting_approval'].includes(c.phase);
 };
+const paused = userControlActive;
 const stopText = /stop and wait|do not retry|user declined|user paused|user cancelled|taken control|not available here|permission[- ]denied|user did not allow|not approved/i;
-const readbackCommands = new Set(['shape.info', 'layer.list', 'document.inspect']);
+const readbackCommands = NATIVE_READBACK_COMMANDS;
 const nativeCommandId = (args: unknown): string | undefined => args && typeof args === 'object' && !Array.isArray(args) && typeof (args as Record<string, unknown>).command === 'string' ? (args as Record<string, string>).command : undefined;
 const isNativeReadback = (name: string, args: unknown): boolean => name === 'app_command' && readbackCommands.has(nativeCommandId(args) ?? '');
 // Tools that can change document or project content. Whether an external_command is really an edit is decided per call by the host (ToolDef.readOnly).

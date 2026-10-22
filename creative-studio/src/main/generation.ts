@@ -17,6 +17,15 @@ import type { ProjectStore } from './projectStore';
 export const OPENAI_BASE = 'https://api.openai.com/v1';
 export const GEMINI_BASE = 'https://generativelanguage.googleapis.com/v1beta';
 
+/** The AI that is asking, for the approval card text. */
+export type Requester = 'claude' | 'independent';
+
+/** Card heading prefix: names the AI that is really asking. Claude wording is unchanged for Claude requests. */
+export function approvalAsker(r: { requestedBy: 'user' | 'claude'; requester?: Requester }): string {
+  if (r.requester === 'independent') return 'Independent AI is asking to generate';
+  return r.requestedBy === 'claude' ? 'Claude is asking to generate' : 'Generate';
+}
+
 export interface ApprovalRequest {
   /** 'video' for Veo jobs (default 'image'). */
   kind?: 'image' | 'video';
@@ -28,6 +37,8 @@ export interface ApprovalRequest {
   references: string[];
   estimate: CostEstimate;
   requestedBy: 'user' | 'claude';
+  /** Who is shown as asking. Display only: billing, spend records and approval enforcement all use `requestedBy`. */
+  requester?: Requester;
   /** This project's limit and what is already estimated as spent (USD); null limit = none. */
   limitUsd?: number | null;
   spentUsd?: number;
@@ -126,7 +137,7 @@ export class GenerationService {
 
   estimate(job: ImageJob): CostEstimate { return estimateCost(job); }
 
-  async generate(raw: ImageJob, requestedBy: 'user' | 'claude'): Promise<GenerateResult> {
+  async generate(raw: ImageJob, requestedBy: 'user' | 'claude', requester?: Requester): Promise<GenerateResult> {
     if (this.busy) throw new Error('A generation is already running. Wait for it to finish.');
     const job = normalizeJob(raw);
     const model = modelById(job.modelId)!;
@@ -157,7 +168,7 @@ export class GenerationService {
       if (provider.billable) {
         const ok = await this.d.approve({
           provider: provider.label, model: model.label, prompt: job.prompt, count: job.count, settings: job.settings,
-          references: refs.map((r) => r.name), estimate, requestedBy, limitUsd: spend?.limitUsd ?? null, spentUsd: spend?.spentUsd ?? 0,
+          references: refs.map((r) => r.name), estimate, requestedBy, ...(requester ? { requester } : {}), limitUsd: spend?.limitUsd ?? null, spentUsd: spend?.spentUsd ?? 0,
         });
         if (ok !== true) throw new GenerationCancelled();
       }

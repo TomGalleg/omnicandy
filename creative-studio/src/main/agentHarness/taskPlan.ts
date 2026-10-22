@@ -1,6 +1,7 @@
 /** Structured, advisory task plan. Only application tools may modify user documents. */
 import { z } from 'zod';
 import type { ExpectedEdit } from './editIntentJournal';
+import { NATIVE_READBACK_COMMANDS } from './nativeReadback';
 import { tool, type ToolRegistry } from './registry';
 export const stepSchema = z.object({
   id: z.string().regex(/^[a-zA-Z0-9_-]{1,48}$/),
@@ -28,11 +29,32 @@ const confirmedSave = (text: string): string | undefined => {
     return entry.saved === true && typeof entry.versionId === 'string' && entry.versionId.length > 0 && entry.versionId.length <= 160 ? entry.versionId : undefined;
   } catch { return; }
 };
-const readOnlyNativeCommands = new Set(['shape.info', 'layer.list', 'document.inspect']);
+const readOnlyNativeCommands = NATIVE_READBACK_COMMANDS;
+/** The first COMPLETE JSON object/array at the start of `raw`, located by a string-aware bracket scan. Anything after it must
+ * start on a new line (PhotoCraft appends diagnostics such as "Parameter validation unavailable: ..."): that text is ignored
+ * and is never evidence. Partial JSON, or junk glued to the closing bracket, yields undefined. */
+const firstJsonValue = (raw: string): string | undefined => {
+  if (raw[0] !== '{' && raw[0] !== '[') return;
+  let depth = 0, inString = false, escaped = false;
+  for (let i = 0; i < raw.length; i++) {
+    const ch = raw[i]!;
+    if (inString) { if (escaped) escaped = false; else if (ch === '\\') escaped = true; else if (ch === '"') inString = false; continue; }
+    if (ch === '"') inString = true;
+    else if (ch === '{' || ch === '[') depth++;
+    else if (ch === '}' || ch === ']') {
+      depth--;
+      if (depth === 0) { const rest = raw.slice(i + 1); return rest === '' || /^\s/.test(rest) ? raw.slice(0, i + 1) : undefined; }
+      if (depth < 0) return;
+    }
+  }
+  return;
+};
 const parseReadback = (text: string): unknown => {
   const marker = text.indexOf('\nResult: ');
   const raw = marker >= 0 ? text.slice(marker + '\nResult: '.length).trim() : text.startsWith('Result: ') ? text.slice('Result: '.length).trim() : text.trim();
-  try { return JSON.parse(raw); } catch { return undefined; }
+  const json = firstJsonValue(raw);
+  if (json === undefined) return undefined;
+  try { return JSON.parse(json); } catch { return undefined; }
 };
 const field = (root: unknown, path: string): { exists: boolean; value?: unknown } => {
   let cur: unknown = root;

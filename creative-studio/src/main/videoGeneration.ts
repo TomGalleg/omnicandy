@@ -8,7 +8,7 @@ import { randomUUID } from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { ACTIVE_VIDEO_STATES, estimateVideoCost, normalizeVideoJob, videoModelById, type VideoJob, type VideoJobRecord } from '@shared/video';
-import { GEMINI_BASE, GenerationCancelled, type GenerationDeps } from './generation';
+import { GEMINI_BASE, GenerationCancelled, type GenerationDeps, type Requester } from './generation';
 import { redact } from './credentialVault';
 import type { ProjectStore } from './projectStore';
 import { parseOperation, parseOperationName, parseRunwayTask, parseRunwayTaskId, runwayRequest, veoBody, type PollResult, type RefImage } from './videoApis';
@@ -91,7 +91,7 @@ export class VideoService {
     return jobs.slice().reverse();
   }
 
-  async submit(raw: VideoJob, requestedBy: 'user' | 'claude'): Promise<VideoJobRecord> {
+  async submit(raw: VideoJob, requestedBy: 'user' | 'claude', requester?: Requester): Promise<VideoJobRecord> {
     const job = normalizeVideoJob(raw);
     const model = videoModelById(job.modelId)!;
     if (!(await this.d.vault.status(model.provider)).configured) throw new Error(`Add your ${model.provider === 'runway' ? 'Runway' : 'Gemini'} API key first (AI Generate → Providers).`);
@@ -118,7 +118,7 @@ export class VideoService {
     const ok = await this.d.approve({
       kind: 'video', provider: PROVIDER_NAME[model.provider], model: model.label, prompt: job.prompt, count: 1,
       settings: { aspect: job.aspectRatio, length: `${job.durationSeconds} s`, resolution: job.resolution },
-      references: refName ? [refName] : [], estimate, requestedBy, limitUsd: spend.limitUsd, spentUsd: spend.spentUsd + inFlight,
+      references: refName ? [refName] : [], estimate, requestedBy, ...(requester ? { requester } : {}), limitUsd: spend.limitUsd, spentUsd: spend.spentUsd + inFlight,
     });
     if (ok !== true) throw new GenerationCancelled();
 

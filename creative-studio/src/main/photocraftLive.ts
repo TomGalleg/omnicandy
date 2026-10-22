@@ -18,6 +18,7 @@ import type { TimelineDto, TimelineEdit } from '@shared/live';
 import { McpClient } from './mcpClient';
 import { binName } from '@shared/platform';
 import { formatDiscoveredCommands, parsePlainCommandCatalog } from './commandDiscovery';
+import { commandTier } from '@shared/photocraftOps';
 
 /** What the live task controller needs from an open document. Implemented for real below; faked in tests. */
 export interface LiveDoc {
@@ -50,6 +51,25 @@ export interface LiveDoc {
   describe?(): Promise<unknown>;
   /** Video apps: steps for adding, reordering or removing clips (the controller resolves and checks the file). */
   timelineSteps?(edit: TimelineEdit, file?: { path: string; still: boolean }): Promise<AppOperation[]>;
+}
+
+/**
+ * Discovery must not offer what PhotoCraft's own permission check refuses (for example `document.inspect`, which the app
+ * lists but the policy answers with "not allowed"). Only the offer is filtered: execution still goes through the
+ * unchanged tier / parameter / approval checks.
+ */
+export function keepPermittedCommands(data: unknown): unknown {
+  const permitted = (entry: unknown): boolean => {
+    const id = typeof entry === 'string' ? entry : entry && typeof entry === 'object'
+      ? ((entry as Record<string, unknown>).id ?? (entry as Record<string, unknown>).name) : undefined;
+    return typeof id === 'string' && commandTier(id) !== 'never';
+  };
+  if (Array.isArray(data)) return data.filter(permitted);
+  if (data && typeof data === 'object') {
+    const o = data as Record<string, unknown>;
+    for (const key of ['commands', 'items', 'tools']) if (Array.isArray(o[key])) return { ...o, [key]: (o[key] as unknown[]).filter(permitted) };
+  }
+  return data;
 }
 
 export function versionOf(history: string[]): string {
@@ -164,10 +184,10 @@ export class LivePhotoCraft implements LiveDoc {
         (err, stdout) => err && !stdout ? reject(new Error('PhotoCraft command discovery failed.')) : resolve(stdout));
     });
     const catalog = await read(['commands', '--json']).catch(() => read(['commands']));
-    try { return formatDiscoveredCommands(JSON.parse(catalog), filter, 'PhotoCraft'); }
+    try { return formatDiscoveredCommands(keepPermittedCommands(JSON.parse(catalog)), filter, 'PhotoCraft'); }
     catch (e) {
       if (catalog.trim().startsWith('[') || catalog.trim().startsWith('{')) throw e;
-      return formatDiscoveredCommands(parsePlainCommandCatalog(catalog), filter, 'PhotoCraft');
+      return formatDiscoveredCommands(keepPermittedCommands(parsePlainCommandCatalog(catalog)), filter, 'PhotoCraft');
     }
   }
 

@@ -25,6 +25,7 @@ import { ClaudePartner, defaultClaudeCli, type PlanReference } from './claudePar
 import { ANTHROPIC_VAULT_ID, ClaudeAuth } from './claudeAuth';
 import { LiveTaskController } from './liveTask';
 import { runAgent } from './agentHarness/loop';
+import { prepareNewTask } from './agentHarness/startGuard';
 import { TaskCheckpointStore } from './agentHarness/taskCheckpoint';
 import { EditIntentJournal } from './agentHarness/editIntentJournal';
 import { restoreRecoveryState, resumeFailureNotice } from './agentHarness/crashRecovery';
@@ -56,7 +57,7 @@ import { parseWorkflow } from './schemas';
 import { UnavailableWindowCapture } from './services';
 import { SafeStorageVault } from './credentialVault';
 import { secureEncryptor, secureStorageStatus } from './platform/secureStorage';
-import { GenerationService, type ApprovalRequest } from './generation';
+import { GenerationService, approvalAsker, type ApprovalRequest, type Requester } from './generation';
 import { VideoService } from './videoGeneration';
 import { MotionService } from './motionEffects';
 import { detectHardware } from './hardware';
@@ -494,7 +495,7 @@ export function registerIpc(d: IpcDeps): void {
     const prompt = r.prompt.length > 300 ? `${r.prompt.slice(0, 300)}…` : r.prompt;
     return showApprovalCard(win, {
       title: isVideo ? 'Approve paid video generation' : 'Approve paid image generation',
-      heading: `${r.requestedBy === 'claude' ? 'Claude is asking to generate' : 'Generate'} ${isVideo ? 'a' : r.count} ${many} with ${r.provider} · ${r.model}?`,
+      heading: `${approvalAsker(r)} ${isVideo ? 'a' : r.count} ${many} with ${r.provider} · ${r.model}?`,
       cost: `${r.estimate.approximate ? '≈ ' : ''}${formatUsd(r.estimate.amount)} USD`,
       costNote: `${r.estimate.basis} Charged to your ${r.provider} account.`,
       rows: [
@@ -547,8 +548,8 @@ export function registerIpc(d: IpcDeps): void {
     settings: z.record(z.string().max(64), z.string().max(64)),
     count: z.number().int().min(1).max(4),
   });
-  const runGeneration = async (job: z.infer<typeof jobSchema>, requestedBy: 'user' | 'claude'): Promise<GenerateResultDto> => {
-    const r = await generation.generate(job, requestedBy);
+  const runGeneration = async (job: z.infer<typeof jobSchema>, requestedBy: 'user' | 'claude', requester?: Requester): Promise<GenerateResultDto> => {
+    const r = await generation.generate(job, requestedBy, requester);
     const dto = { assetIds: r.assets.map((a) => a.id), message: r.message, estimate: r.estimate, requestedBy };
     emitGenerated(dto);
     return dto;
@@ -999,8 +1000,8 @@ export function registerIpc(d: IpcDeps): void {
     emit: (st) => { for (const w of BrowserWindow.getAllWindows()) if (!w.isDestroyed()) w.webContents.send(IPC.claudeEvent, st); },
     cliPath: defaultClaudeCli(),
     auth: claudeAuth,
-    generate: (job) => runGeneration(job, 'claude'),
-    generateVideo: (job) => video.submit(job, 'claude'),
+    generate: (job, requester) => runGeneration(job, 'claude', requester),
+    generateVideo: (job, requester) => video.submit(job, 'claude', requester),
     localAi: {
       status: async () => {
         const report = await detectHardware(await getModelDir());
@@ -1261,15 +1262,15 @@ export function registerIpc(d: IpcDeps): void {
   });
   handle(IPC.agentStop, none, async () => { if (await (await editJournal()).load()) throw new Error('An unresolved edit journal exists. Continue Task to resolve it before discarding the session.'); pausedAgent = null; cancelAgentJobs(); jobLedger.clear(); agentAbort?.abort(); await (await taskStore()).clear(); return agentState; });
   handle(IPC.agentRun, z.tuple([z.string().min(1).max(4000), z.string().min(1).max(80), agentBudgetSchema.default({}), agentProviderSchema.default(DEFAULT_AGENT_PROVIDER)]), async (goal, model, budget, selection) => {
-    if (agentAbort || agentState.status === 'working') throw new Error('The independent agent is already working.');
-    const unresolved = await (await editJournal()).load();
-    if (unresolved) throw new Error('Unresolved edit journal found. Restore and resolve the previous task before starting a new one.');
-    pausedAgent = null;
-    jobLedger.resetForNewTask();
-    await (await taskStore()).clear().catch(() => undefined);
-    if (partner?.state().status === 'working') throw new Error('Stop Claude before starting the independent agent.');
     const ctl = await live();
-    if (ctl.snapshot().collab.activeOperation || ctl.snapshot().collab.phase === 'running') throw new Error('An application task is already running.');
+    // Every rejection happens BEFORE anything is reset: a refused Run must never delete or replace the saved task or its checkpoint.
+    await prepareNewTask({
+      busy: !!agentAbort || agentState.status === 'working',
+      loadJournal: async () => (await editJournal()).load(),
+      claudeWorking: partner?.state().status === 'working',
+      ctl, hasPausedTask: !!pausedAgent,
+      reset: async () => { pausedAgent = null; jobLedger.resetForNewTask(); await (await taskStore()).clear().catch(() => undefined); },
+    });
     const abort = new AbortController();
     agentAbort = abort;
     agentState = { status: 'working', model, goal, result: '', events: [], provider: selection, budget };
