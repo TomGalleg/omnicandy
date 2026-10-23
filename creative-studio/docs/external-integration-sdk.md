@@ -123,9 +123,26 @@ refused before Unreal is touched).
 | `actor.place`, `actor.transform`, `actor.delete`, `level.save` | modify-project (+write-files) | verified shortcuts: each re-reads the editor and fails with `verification-failed` if it differs; delete is asked |
 | `script.run` | execute-scripts, **asked every time** | Epic's tool-orchestration sandbox (math/re/time/json/copy/datetime, can only call registered tools); the user reads the code |
 
-Every edit is refused while Play-In-Editor runs (the editor has no level then), except `StopPIE`. Results over 60,000 characters are cut with a note.
-Tests: `unreal.test.ts` (mock server shaped like Unreal's, with a small stateful editor), `unreal.live.test.ts` (real editor, skipped when none
-answers; the place/move/delete round trip runs only with `OMNICANDY_UNREAL_LIVE_EDIT=1`).
+Every edit is refused while Play-In-Editor runs (the editor has no level then), except `StopPIE`. Results over 20,000 characters are cut with a note.
+
+**Files and other projects** (`adapters/unrealFiles.ts`). Unreal now works like the other apps: it writes files into the OmniCandy project
+(`work/external/unreal/`) and hands pictures to the library.
+
+| Command | Permissions | Notes |
+|---|---|---|
+| `viewport.capture`, `asset.preview` | read-project, write-files | PNG into `work/external/unreal/captures/`, checked as a real PNG and re-read; the app adds it to the library ("Made in Unreal Engine") like a Blender render, so PhotoCraft and other projects can use it. A camera can be given without moving the editor camera |
+| `bundle.export` | read-project, write-files | saves the assets (and their `/Game` dependencies; engine content is not carried), packs them with SHA-256 into ONE `<name>.unrealbundle` (a ZIP with `bundle.json`) plus a manifest copy, then re-reads the finished bundle; a level is bundled with its external actors |
+| `bundle.list` | read-info | the bundles in this project |
+| `bundle.import` | open-files, modify-project, write-files, **asked** | installs a bundle (by name, or by full path of a file from another OmniCandy project) into the open Unreal project's Content folder; validated first (format, only Unreal file types, every checksum, no unlisted files); never overwrites unless `overwrite`, and then backs the old files up in `work/external/unreal/backups/`; undoes itself on a failed write; reports whether Unreal has noticed the new assets |
+| `asset.import` | open-files, modify-project | a picture or mesh from inside the OmniCandy project folder becomes a Texture or Static Mesh asset; the file must resolve (symlinks included) inside the project folder; verified by the asset existing |
+
+The Unreal MCP server gives no disk paths, so the project's Content folder is read from Unreal's own log (the loaded level's file or any saved package)
+and accepted only if the open level's file exists there. `level.save` is proven by the log line Unreal always writes when it saves a package
+(`LogSavePackage: Moving output files for package: ...`), not by the dirty flag, which Unreal does not set for an edited level.
+
+Tests: `unreal.test.ts` (mock server shaped like Unreal's, with a small stateful editor and two fake Unreal projects on disk, so a bundle is proven to
+travel from one project to another), `unreal.live.test.ts` (real editor, skipped when none answers; everything that writes runs only with
+`OMNICANDY_UNREAL_LIVE_EDIT=1` and cleans up after itself).
 ## Vendor groundwork (not integrated yet)
 
 Revit: C#/.NET add-in per Revit year (version-specific module), local pipe, work inside Revit's API context via

@@ -21,6 +21,8 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { ADAPTER_SDK_VERSION, type AdapterManifest, type CommandSpec, type DiscoveredApp } from '@shared/integrations';
 import { McpHttpClient, McpHttpError } from '../../mcpHttpClient';
+import { safeFileName } from '../process';
+import { BUNDLE_EXT, bundleFileName, exportBundle, findContentRoot, installBundle, isGamePackage, manifestSchema, pngInfo, projectRootOf, readBundle, waitForPackages, type UnrealIO } from './unrealFiles';
 import { AdapterError, type AdapterFactory, type AdapterOutcome, type ExecuteContext, type ExternalAdapter, type HealthResult, type ProbeResult } from '../sdk';
 import {
   classifyTool, COMMAND_TIERS, isPlainObject, isToolName, isToolsetName, MAX_BATCH_CALLS, PLAIN_ERROR_RE, SCRIPT_MAX_CODE, shortToolset,
@@ -45,7 +47,7 @@ const NUM = (description: string, def?: number): { type: 'number'; description: 
 const COMMANDS: CommandSpec[] = [
   {
     id: 'app.info', label: 'Check Unreal Editor',
-    description: 'Connects to the editor\'s MCP server and reports the server, how many toolsets it offers, the open level and whether Play-In-Editor is running (read only).',
+    description: 'START HERE. Connects to the editor\'s MCP server and reports how many toolsets it offers, the open level and whether Play-In-Editor is running (read only). Then: tools.search finds any tool and names the command that runs it; tool.batch makes many changes in one step; actor.place places actors; read the state back (level.inspect, tool.read) before claiming success, because a tool.edit result is only Unreal\'s own answer. Objects are {"refPath": "..."}, colours run 0 to 1, set_properties takes its values as JSON text, and there is no undo tool. viewport.capture and asset.preview put pictures in the library; bundle.export and bundle.import move assets between projects.',
     params: {}, permissions: ['read-info', 'read-project'], idempotent: true, timeoutMs: 60_000,
   },
   {
@@ -151,9 +153,64 @@ const COMMANDS: CommandSpec[] = [
   },
   {
     id: 'level.save', label: 'Save the open level (verified)',
-    description: 'Saves the open level to disk and confirms it is no longer marked as having unsaved changes. Overwrites the level file.',
+    description: 'Saves the open level to disk and confirms from Unreal\'s log that the level file was written. Overwrites the level file: use it only when the user asked to save.',
     params: {},
     permissions: ['modify-project', 'write-files'], idempotent: true, timeoutMs: 120_000,
+  },
+  {
+    id: 'viewport.capture', label: 'Take a picture of the editor viewport',
+    description: 'Captures the level viewport (optionally from a given camera position, leaving the editor camera where it is) as a PNG in the OmniCandy project. The picture is added to the library like a render from any other app, so PhotoCraft and the other apps can use it in this and other projects.',
+    params: {
+      file_name: { type: 'string', description: 'Name for the picture (letters, digits, space, dash).', default: 'viewport' },
+      x: NUM('Camera X (cm). Give x, y, z, pitch, yaw and roll together, or none to use the current view.'), y: NUM('Camera Y (cm).'), z: NUM('Camera Z (cm).'),
+      pitch: NUM('Camera pitch (degrees).'), yaw: NUM('Camera yaw (degrees).'), roll: NUM('Camera roll (degrees).'),
+      show_ui: { type: 'boolean', description: 'Include editor gizmos and overlays.', default: false },
+    },
+    permissions: ['read-project', 'write-files'], idempotent: false, timeoutMs: 90_000,
+  },
+  {
+    id: 'asset.preview', label: 'Take a picture of an asset',
+    description: 'Renders a thumbnail picture of one asset (mesh, material, texture, animation) as a PNG in the OmniCandy project, added to the library.',
+    params: {
+      asset: { type: 'string', description: 'Asset path such as /Game/Courtyard/M_Stone.', required: true },
+      file_name: { type: 'string', description: 'Name for the picture (letters, digits, space, dash). Defaults to the asset name.', default: '' },
+    },
+    permissions: ['read-project', 'write-files'], idempotent: false, timeoutMs: 90_000,
+  },
+  {
+    id: 'bundle.export', label: 'Save Unreal assets as a reusable bundle',
+    description: `Saves the given assets (and, by default, everything they depend on in /Game) and packs their files into ONE ${BUNDLE_EXT} file in this OmniCandy project, with checksums, read back to confirm. A bundle can be copied to other OmniCandy projects and installed into any Unreal project with bundle.import. A level is bundled with its external actors. Saves the assets first.`,
+    params: {
+      name: { type: 'string', description: 'Bundle name (letters, digits, space, dash).', required: true },
+      assets: { type: 'json', description: 'JSON array of asset paths, e.g. ["/Game/Courtyard/M_Stone", "/Game/ThirdPerson/Lvl_ThirdPerson"]. At most 100.', required: true, maxChars: 24_000, maxDepth: 3 },
+      include_dependencies: { type: 'boolean', description: 'Also carry the /Game assets these depend on (materials, textures, meshes).', default: true },
+    },
+    permissions: ['read-project', 'write-files'], idempotent: false, timeoutMs: 300_000,
+  },
+  {
+    id: 'bundle.list', label: 'List saved Unreal bundles',
+    description: `Lists the ${BUNDLE_EXT} bundles saved in this OmniCandy project (name, date, engine version, what they hold). Read only.`,
+    params: {}, permissions: ['read-info'], idempotent: true, timeoutMs: 60_000,
+  },
+  {
+    id: 'bundle.import', label: 'Install a bundle into the open Unreal project',
+    description: `Installs a bundle into the Content folder of the Unreal project that is open: from this project's bundle list (by name) or from the full path of a ${BUNDLE_EXT} file made in another project. The bundle is checked first (format, only Unreal content files, every checksum). Existing files are never replaced unless overwrite is true, and then the old versions are backed up in this OmniCandy project first. Always asks first.`,
+    params: {
+      source: { type: 'string', description: `Bundle name from bundle.list, or the full path of a ${BUNDLE_EXT} file.`, required: true },
+      overwrite: { type: 'boolean', description: 'Replace files that already exist (backed up first).', default: false },
+    },
+    permissions: ['open-files', 'modify-project', 'write-files'], destructive: true, idempotent: false, timeoutMs: 300_000,
+  },
+  {
+    id: 'asset.import', label: 'Import a picture or mesh into the Unreal project',
+    description: 'Imports a file from this OmniCandy project (for example a picture from the library, or a mesh file) into the open Unreal project as a Texture or Static Mesh asset, and confirms the asset now exists. The file must be inside the OmniCandy project folder.',
+    params: {
+      kind: { type: 'string', description: 'texture (png, jpg, bmp, tga, exr, hdr) or static_mesh (fbx, obj, gltf, glb).', required: true },
+      file: { type: 'string', description: 'Path of the file: absolute, or relative to the OmniCandy project folder.', required: true },
+      folder: { type: 'string', description: 'Unreal content folder for the new asset.', default: '/Game/OmniCandy' },
+      name: { type: 'string', description: 'Asset name (letters, digits, underscore). Defaults to the file name.', default: '' },
+    },
+    permissions: ['open-files', 'modify-project'], idempotent: false, timeoutMs: 180_000,
   },
   {
     id: 'script.run', label: 'Run an Unreal tool script',
@@ -256,7 +313,7 @@ interface ToolInfo { name: string; summary: string; params: string[]; required: 
 interface Described { description: string; tools: Map<string, ToolInfo> }
 
 /** Output of a tool call can be huge (whole graphs); keep what is shown to the AI bounded and say so. */
-export const RESULT_MAX_CHARS = 60_000;
+export const RESULT_MAX_CHARS = 20_000;
 export function capResult(v: unknown): { result?: unknown; preview?: string; truncated: boolean; chars: number } {
   const text = typeof v === 'string' ? v : JSON.stringify(v) ?? '';
   if (text.length <= RESULT_MAX_CHARS) return { result: v, truncated: false, chars: text.length };
@@ -368,7 +425,9 @@ class UnrealAdapter implements ExternalAdapter {
     const sig = ctx.signal;
     const live = ['read from the running Unreal Editor through its MCP server'];
     const receipt = (what: string) => [`${what} (Unreal's own answer; not independently re-read: check with a read command)`];
+    const app = this.app;
     return withSession(sig, async (c) => {
+      const io: UnrealIO = { tool: (toolset, tool, args) => rawToolCall(c, toolset, tool, args, sig, 120_000) };
       switch (cmd.id) {
         case 'app.info': {
           const toolsets = parseToolsetList(await metaText(c, 'list_toolsets', {}, sig));
@@ -529,11 +588,124 @@ class UnrealAdapter implements ExternalAdapter {
           await this.requireEditable(c, sig);
           const level = String(await toolCall(c, SCENE, 'get_current_level', {}, sig));
           if (!level) throw new AdapterError('app-error', 'The editor reports no open level to save.');
+          // Unreal does not flag an edited level as dirty through is_dirty, so that flag proves nothing here. What a real save always leaves
+          // is a "LogSavePackage: Moving output files for package: <level>" line (with the file written), so the proof is that line appearing.
+          const saveLines = async () => {
+            const lines = await toolCall(c, LOGS, 'GetLogEntries', { category: '', pattern: `LogSavePackage: Moving output files for package: ${level.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, maxEntries: 0 }, sig);
+            return (Array.isArray(lines) ? lines : []).map(String);
+          };
+          const before = await saveLines();
           const dirtyBefore = await toolCall(c, ASSETS, 'is_dirty', { asset_path: level }, sig).catch(() => null);
-          await toolCall(c, ASSETS, 'save_assets', { asset_paths: [level] }, sig);
-          const dirtyAfter = await toolCall(c, ASSETS, 'is_dirty', { asset_path: level }, sig);
-          if (dirtyAfter !== false) throw new AdapterError('verification-failed', `Unreal still reports ${level} as having unsaved changes after saving (${JSON.stringify(dirtyAfter)}).`);
-          return { message: `Saved ${level}.`, outputs: [], data: { level, dirtyBefore, dirtyAfter }, verified: true, evidence: ['the level is no longer marked as having unsaved changes'] };
+          const answer = await toolCall(c, ASSETS, 'save_assets', { asset_paths: [level] }, sig);
+          const after = await saveLines();
+          if (after.length <= before.length) throw new AdapterError('verification-failed', `Unreal answered ${JSON.stringify(answer)} but its log shows no save of ${level}, so the level was probably not written.`);
+          const base = level.slice(level.lastIndexOf('/') + 1).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          const moved = await toolCall(c, LOGS, 'GetLogEntries', { category: '', pattern: `LogSavePackage: Moving '[^']*' to '[^']*/${base}\\.(?:umap|uasset)'`, maxEntries: 1 }, sig).catch(() => []);
+          const written = /to '([^']+)'/.exec(String((Array.isArray(moved) ? moved : []).at(-1) ?? ''))?.[1] ?? null;
+          return { message: `Saved ${level}.`, outputs: [], data: { level, dirtyBefore, file: written, saveEntries: after.length - before.length }, verified: true, evidence: [`Unreal's log shows ${level} being written${written ? ` to ${written}` : ''}`] };
+        }
+        case 'viewport.capture': case 'asset.preview': {
+          let image: unknown, base: string;
+          if (cmd.id === 'viewport.capture') {
+            const cam = ['x', 'y', 'z', 'pitch', 'yaw', 'roll'].map((k) => (typeof params[k] === 'number' ? params[k] as number : undefined));
+            const given = cam.filter((v) => v !== undefined).length;
+            if (given !== 0 && given !== 6) throw new AdapterError('invalid-params', 'Give all of x, y, z, pitch, yaw and roll for a camera position, or none of them to use the current view.');
+            const captureTransform = given ? { location: { x: cam[0], y: cam[1], z: cam[2] }, rotation: { pitch: cam[3], yaw: cam[4], roll: cam[5] } } : null;
+            const r = await toolCall(c, APP, 'CaptureViewport', { captureTransform, annotations: [], bShowUI: params.show_ui === true }, sig);
+            image = isPlainObject(r) ? r.image : null;
+            base = String(params.file_name || 'viewport');
+          } else {
+            const asset = String(params.asset).trim();
+            if (!/^\/(?:Game|Engine)\/[A-Za-z0-9_\-/.]{1,300}$/.test(asset)) throw new AdapterError('invalid-params', 'asset must be an asset path such as /Game/Courtyard/M_Stone.');
+            image = await toolCall(c, APP, 'CaptureAssetImage', { assetPath: asset }, sig);
+            base = String(params.file_name || asset.slice(asset.lastIndexOf('/') + 1).split('.')[0]);
+          }
+          const b64 = isPlainObject(image) && typeof image.data === 'string' ? image.data : '';
+          const png = Buffer.from(b64, 'base64');
+          const dims = pngInfo(png);
+          if (!dims) throw new AdapterError('app-error', 'Unreal returned no usable picture (it was empty or not a PNG).');
+          const dir = path.join(ctx.workDir, 'captures');
+          await fs.mkdir(dir, { recursive: true });
+          const file = path.join(dir, safeFileName(base, `-${Date.now().toString(36)}.png`));
+          await fs.writeFile(file, png);
+          const back = await fs.readFile(file);
+          if (!back.equals(png)) throw new AdapterError('verification-failed', 'The picture on disk differs from what Unreal returned.');
+          return { message: `Saved a ${dims.width}x${dims.height} picture (${path.basename(file)}).`, outputs: [file], data: { ...dims, file: path.basename(file) }, verified: true, evidence: [`a valid ${dims.width}x${dims.height} PNG written and re-read from disk`] };
+        }
+        case 'bundle.export': {
+          const assets = JSON.parse(String(params.assets)) as unknown;
+          if (!Array.isArray(assets) || !assets.length || assets.length > 100 || !assets.every(isGamePackage)) throw new AdapterError('invalid-params', 'assets must be 1 to 100 asset paths under /Game, e.g. ["/Game/Courtyard/M_Stone"].');
+          const level = String(await toolCall(c, SCENE, 'get_current_level', {}, sig));
+          const r = await exportBundle(io, { name: String(params.name), assets, includeDeps: params.include_dependencies !== false, level, engine: app.version, workDir: ctx.workDir, progress: ctx.progress });
+          const n = r.manifest.assets.length;
+          return {
+            message: `Saved bundle "${r.manifest.name}": ${n} asset(s), ${r.fileCount} file(s), ${Math.round(r.bytes / 1024)} KB.${r.manifest.skippedDependencies.length ? ` ${r.manifest.skippedDependencies.length} engine/plugin dependency(ies) are not carried.` : ''}`,
+            outputs: [r.zipPath, r.manifestPath], data: { name: r.manifest.name, assets: r.manifest.assets.map((a) => a.package), files: r.fileCount, bytes: r.bytes, skippedDependencies: r.manifest.skippedDependencies.slice(0, 50) },
+            verified: true, evidence: [`every file's checksum was re-read from the finished bundle (${r.fileCount} files)`],
+          };
+        }
+        case 'bundle.list': {
+          const dir = path.join(ctx.workDir, 'bundles');
+          const names = (await fs.readdir(dir).catch(() => [] as string[])).filter((f) => f.endsWith('.json'));
+          const bundles: Array<{ name: string; createdAt: string; engine: string | null; assets: number; packages: string[]; bytes: number }> = [];
+          for (const f of names) {
+            try {
+              const m = manifestSchema.parse(JSON.parse(await fs.readFile(path.join(dir, f), 'utf8')));
+              const st = await fs.stat(path.join(dir, `${f.slice(0, -5)}${BUNDLE_EXT}`));
+              bundles.push({ name: f.slice(0, -5), createdAt: m.createdAt, engine: m.engine, assets: m.assets.length, packages: m.assets.slice(0, 10).map((a) => a.package), bytes: st.size });
+            } catch { /* a stray json file is not a bundle */ }
+          }
+          return { message: `${bundles.length} bundle(s) in this project.`, outputs: [], data: { count: bundles.length, bundles }, verified: true, evidence: ['read from this project\'s bundle folder'] };
+        }
+        case 'bundle.import': {
+          const source = String(params.source).trim();
+          const file = source.toLowerCase().endsWith(BUNDLE_EXT) && path.isAbsolute(source) ? source : path.join(ctx.workDir, 'bundles', `${bundleFileName(source)}${BUNDLE_EXT}`);
+          ctx.progress('Checking the bundle', 0.1);
+          const { manifest, files } = await readBundle(file);
+          const level = String(await toolCall(c, SCENE, 'get_current_level', {}, sig));
+          const root = await findContentRoot(io, level);
+          ctx.progress(`Installing ${files.size} file(s)`, 0.4);
+          const r = await installBundle({ files, root, overwrite: params.overwrite === true, backupDir: path.join(ctx.workDir, 'backups') });
+          ctx.progress('Waiting for Unreal to notice the new assets', 0.8);
+          const packages = manifest.assets.map((a) => a.package);
+          const missing = await waitForPackages(io, packages, Number(process.env.OMNICANDY_UNREAL_IMPORT_WAIT_MS) || 20_000, sig);
+          const warn = manifest.engine && app.version && manifest.engine.split('.').slice(0, 2).join('.') !== app.version.split('.').slice(0, 2).join('.') ? `The bundle was made in Unreal ${manifest.engine}; this editor is ${app.version}, so some assets may not load.` : undefined;
+          const data = { bundle: manifest.name, files: files.size, written: r.written.length, overwritten: r.overwritten.length, backup: r.backupDir, visibleInEditor: packages.length - missing.length, assets: packages.length, notYetVisible: missing.slice(0, 20), warning: warn };
+          const visible = !missing.length;
+          return {
+            message: `Installed "${manifest.name}": ${files.size} file(s) copied and checksum-checked${visible ? `; all ${packages.length} asset(s) are visible in Unreal` : `; ${missing.length} of ${packages.length} asset(s) are not visible in Unreal yet (click in the editor window or restart it)`}.${warn ? ` ${warn}` : ''}`,
+            outputs: [], data, verified: visible, evidence: [`${files.size} file(s) written into ${root} and re-read by checksum`, ...(visible ? ['Unreal reports every asset of the bundle as existing'] : [])],
+          };
+        }
+        case 'asset.import': {
+          const kind = String(params.kind).trim();
+          const spec = kind === 'texture' ? { toolset: 'editor_toolset.toolsets.texture.TextureTools', exts: ['.png', '.jpg', '.jpeg', '.bmp', '.tga', '.exr', '.hdr'] }
+            : kind === 'static_mesh' ? { toolset: 'editor_toolset.toolsets.static_mesh.StaticMeshTools', exts: ['.fbx', '.obj', '.gltf', '.glb'] } : null;
+          if (!spec) throw new AdapterError('invalid-params', 'kind must be texture or static_mesh.');
+          const root = projectRootOf(ctx.workDir);
+          const asked = String(params.file).trim();
+          const real = await fs.realpath(path.resolve(root, asked)).catch(() => null);
+          if (!real) throw new AdapterError('invalid-params', `There is no file ${asked} in the OmniCandy project.`);
+          const inside = path.relative(await fs.realpath(root), real);
+          if (inside.startsWith('..') || path.isAbsolute(inside)) throw new AdapterError('invalid-params', 'Only files inside the OmniCandy project folder can be imported.');
+          const ext = path.extname(real).toLowerCase();
+          if (!spec.exts.includes(ext)) throw new AdapterError('invalid-params', `A ${kind} must be one of ${spec.exts.join(', ')} (got ${ext || 'no extension'}).`);
+          if (!(await fs.stat(real)).isFile()) throw new AdapterError('invalid-params', `${asked} is not a file.`);
+          const folder = String(params.folder).trim() || '/Game/OmniCandy';
+          if (!/^\/Game(\/[A-Za-z0-9_-]+)*$/.test(folder)) throw new AdapterError('invalid-params', 'folder must be an Unreal content folder such as /Game/OmniCandy.');
+          const name = (String(params.name).trim() || path.basename(real, ext)).replace(/[^A-Za-z0-9_]/g, '_').slice(0, 60);
+          if (!name || /^\d/.test(name)) throw new AdapterError('invalid-params', 'The asset name must start with a letter or underscore.');
+          const target = `${folder}/${name}`;
+          if ((await toolCall(c, ASSETS, 'exists', { path: target }, sig)) === true) throw new AdapterError('invalid-params', `${target} already exists in the project. Choose another name.`);
+          const args: Obj = { folder_path: folder, asset_name: name, source_file: real.split(path.sep).join('/') };
+          if (kind === 'static_mesh') Object.assign(args, { import_materials: true, import_textures: true, combine_meshes: false });
+          const made = await rawToolCall(c, spec.toolset, 'import_file', args, sig, cmd.timeoutMs ?? 180_000);
+          const created = refList(made);
+          if (!created.length) throw new AdapterError('app-error', `Unreal imported nothing from ${path.basename(real)} (it may be an unsupported or damaged file).`);
+          const there = (await toolCall(c, ASSETS, 'exists', { path: target }, sig)) === true;
+          if (!there) throw new AdapterError('verification-failed', `Unreal reported ${created.length} imported asset(s) but ${target} does not exist.`);
+          const cls = await toolCall(c, ASSETS, 'get_asset_class', { asset_path: target }, sig).catch(() => null);
+          return { message: `Imported ${path.basename(real)} as ${target}.`, outputs: [], data: { asset: target, class: cls, created }, verified: true, evidence: [`Unreal now lists ${target}${cls ? ` as a ${String(cls)}` : ''}`] };
         }
         case 'script.run': {
           await this.requireEditable(c, sig);

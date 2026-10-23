@@ -72,6 +72,85 @@ describe.skipIf(!up || !haveExe)('Unreal adapter against the live editor', { tim
     expect((await m.execute(key, 'tool.read', { toolset: 'editor_toolset.toolsets.scene.SceneTools', tool: 'remove_from_scene', arguments: { actor: { refPath: '/x' } } })).error?.message).toMatch(/tool\.restricted/);
   });
 
+  // Writes files (pictures into a temp OmniCandy project; saves and bundles the courtyard materials in the Unreal project; imports and
+  // then deletes one texture): only when asked for, never by default.
+  it.skipIf(process.env.OMNICANDY_UNREAL_LIVE_EDIT !== '1')('saves pictures and a bundle in the project folder, and imports a picture back into Unreal', async () => {
+    const m = new IntegrationManager({
+      workDir: async (id) => { const d = path.join(tmp, 'work', 'external', id); await fs.mkdir(d, { recursive: true }); return d; },
+      permissions: { load: async () => ({}), save: async () => undefined },
+      approve: async () => 'always',
+      discovery: { env: { ProgramFiles: 'C:\\x' }, exists: async (p) => p.toLowerCase() === exe.toLowerCase(), listDir: async () => [], run: async () => '' },
+      userPaths: async () => [exe],
+    });
+    m.register(unrealFactory, { builtin: true });
+    const key = (await m.scan()).apps[0]!.key;
+    await m.connect(key);
+
+    const shot = await m.execute(key, 'viewport.capture', { file_name: 'live view' });
+    expect(shot.error, JSON.stringify(shot.error)).toBeUndefined();
+    const png = await fs.readFile(shot.outputs[0]!.path);
+    expect(png.subarray(1, 4).toString()).toBe('PNG');
+    expect(png.length).toBeGreaterThan(10_000);
+
+    const stone = '/Game/Courtyard/M_Stone';
+    const have = (await m.execute(key, 'assets.find', { folder: '/Game/Courtyard', name: 'M_Stone' })).data as { total: number };
+    if (have.total > 0) {
+      const prev = await m.execute(key, 'asset.preview', { asset: stone });
+      expect(prev.error, JSON.stringify(prev.error)).toBeUndefined();
+      const exp = await m.execute(key, 'bundle.export', { name: 'live materials', assets: [stone, '/Game/Courtyard/M_Paving'] });
+      expect(exp.error, JSON.stringify(exp.error)).toBeUndefined();
+      expect(exp.verified).toBe(true);
+      expect((exp.data as { assets: string[] }).assets).toEqual(expect.arrayContaining([stone, '/Game/Courtyard/M_Paving']));
+      expect(((await m.execute(key, 'bundle.list')).data as { bundles: Array<{ name: string }> }).bundles.map((b) => b.name)).toContain('live materials');
+    }
+
+    // picture -> Unreal texture -> removed again
+    const rel = path.relative(tmp, shot.outputs[0]!.path);
+    const imp = await m.execute(key, 'asset.import', { kind: 'texture', file: rel, folder: '/Game/OmniCandyLiveTest', name: 'T_LiveShot' });
+    try {
+      expect(imp.error, JSON.stringify(imp.error)).toBeUndefined();
+      expect(imp.data).toMatchObject({ asset: '/Game/OmniCandyLiveTest/T_LiveShot' });
+    } finally {
+      const del = await m.execute(key, 'tool.restricted', { toolset: 'editor_toolset.toolsets.asset.AssetTools', tool: 'delete', arguments: { path: '/Game/OmniCandyLiveTest' } });
+      expect(del.error, JSON.stringify(del.error)).toBeUndefined();
+    }
+    const gone = await m.execute(key, 'tool.read', { toolset: 'editor_toolset.toolsets.asset.AssetTools', tool: 'exists', arguments: { path: '/Game/OmniCandyLiveTest' } });
+    expect((gone.data as { result: unknown }).result).toBe(false);
+  });
+
+  // The whole point of bundles: content leaves the project as one file, and comes back (as into another project) with Unreal noticing it.
+  it.skipIf(process.env.OMNICANDY_UNREAL_LIVE_EDIT !== '1')('a bundle really restores deleted content, and the running editor notices the new files', async () => {
+    const m = new IntegrationManager({
+      workDir: async (id) => { const d = path.join(tmp, 'work', 'external', id); await fs.mkdir(d, { recursive: true }); return d; },
+      permissions: { load: async () => ({}), save: async () => undefined },
+      approve: async () => 'always',
+      discovery: { env: { ProgramFiles: 'C:\\x' }, exists: async (p) => p.toLowerCase() === exe.toLowerCase(), listDir: async () => [], run: async () => '' },
+      userPaths: async () => [exe],
+    });
+    m.register(unrealFactory, { builtin: true });
+    const key = (await m.scan()).apps[0]!.key;
+    await m.connect(key);
+    const AS = 'editor_toolset.toolsets.asset.AssetTools', MT = 'editor_toolset.toolsets.material.MaterialTools';
+    const folder = '/Game/OmniCandyBundleTest', asset = `${folder}/M_BundleProbe`;
+    const del = () => m.execute(key, 'tool.restricted', { toolset: AS, tool: 'delete', arguments: { path: folder } });
+    const exists = async () => ((await m.execute(key, 'tool.read', { toolset: AS, tool: 'exists', arguments: { path: asset } })).data as { result: unknown }).result;
+    try {
+      const made = await m.execute(key, 'tool.edit', { toolset: MT, tool: 'create_material', arguments: { folder_path: folder, asset_name: 'M_BundleProbe' } });
+      expect(made.error, JSON.stringify(made.error)).toBeUndefined();
+      const exp = await m.execute(key, 'bundle.export', { name: 'probe bundle', assets: [asset] });
+      expect(exp.error, JSON.stringify(exp.error)).toBeUndefined();
+      expect(exp.verified).toBe(true);
+      expect((await del()).error).toBeUndefined();
+      expect(await exists()).toBe(false);                 // really gone from the project
+      const back = await m.execute(key, 'bundle.import', { source: 'probe bundle' });
+      expect(back.error, JSON.stringify(back.error)).toBeUndefined();
+      expect(back.data).toMatchObject({ assets: 1, visibleInEditor: 1 });
+      expect(back.verified).toBe(true);
+      expect(await exists()).toBe(true);                  // the editor noticed the copied files
+    } finally { await del(); }
+    expect(await exists()).toBe(false);
+  });
+
   // Changes the open level (and cleans up after itself): only when asked for, never by default.
   it.skipIf(process.env.OMNICANDY_UNREAL_LIVE_EDIT !== '1')('places, moves and deletes an actor with read-back verification', async () => {
     const m = new IntegrationManager({

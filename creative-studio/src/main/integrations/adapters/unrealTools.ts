@@ -77,6 +77,12 @@ export function validateUnrealJson(commandId: string, param: string, value: unkn
     }
     return undefined;
   }
+  if (commandId === 'bundle.export' && param === 'assets') {
+    if (!Array.isArray(value) || value.length < 1 || value.length > 100) return 'assets must be an array of 1 to 100 asset paths such as "/Game/Courtyard/M_Stone".';
+    const bad = value.find((a) => typeof a !== 'string' || !/^\/Game(\/[A-Za-z0-9_-]+)+$/.test(a));
+    if (bad !== undefined) return `"${String(bad).slice(0, 80)}" is not an asset path under /Game (no file extension, no dots), e.g. "/Game/Courtyard/M_Stone".`;
+    return undefined;
+  }
   if (commandId === 'script.run' && param === 'script') {
     if (!isPlainObject(value)) return 'script must be {"purpose": "...", "code": "..."}.';
     const keys = Object.keys(value);
