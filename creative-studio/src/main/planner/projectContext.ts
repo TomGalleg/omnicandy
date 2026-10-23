@@ -23,7 +23,7 @@ export interface ProjectFindings {
 const KIND_WORD: Partial<Record<AssetKind, [string, string]>> = {
   image: ['picture', 'pictures'], vector: ['vector drawing', 'vector drawings'], video: ['video', 'videos'], audio: ['sound', 'sounds'],
   design: ['design', 'designs'], project: ['project file', 'project files'], document: ['document', 'documents'], sheet: ['spreadsheet', 'spreadsheets'],
-  deck: ['presentation', 'presentations'], ui: ['UI design', 'UI designs'], cad: ['CAD drawing', 'CAD drawings'],
+  deck: ['presentation', 'presentations'], ui: ['UI design', 'UI designs'], cad: ['CAD drawing', 'CAD drawings'], model: ['3D model', '3D models'],
 };
 const word = (k: string, n: number) => { const w = KIND_WORD[k as AssetKind]; return w ? (n === 1 ? w[0] : w[1]) : n === 1 ? 'file' : 'files'; };
 const day = (iso: string) => (iso || '').slice(0, 10);

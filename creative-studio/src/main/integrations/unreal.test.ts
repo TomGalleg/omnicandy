@@ -259,6 +259,7 @@ describe('Unreal adapter through the shared manager (mock server)', { timeout: 6
   const asked: Array<{ cmd: string; destructive: boolean }> = [];
   let answer: ApprovalAnswer = 'always';
   let grants: Record<string, Permission[]> = {};
+  const library = new Map<string, { id: string; name: string; kind: string; path: string }>();
   async function manager() {
     const m = new IntegrationManager({
       workDir: async (id) => { const d = path.join(tmp, 'work', 'external', id); await fs.mkdir(d, { recursive: true }); return d; },
@@ -266,6 +267,7 @@ describe('Unreal adapter through the shared manager (mock server)', { timeout: 6
       approve: async (r) => { asked.push({ cmd: r.command.id, destructive: r.destructive }); return answer; },
       discovery: { env: { ProgramFiles: 'C:\\x' }, exists: async (p) => p.toLowerCase() === exe.toLowerCase(), listDir: async () => [], run: async () => '' },
       userPaths: async () => [exe],
+      libraryFile: async (ref) => library.get(ref.toLowerCase()) ?? null,
     });
     m.register(unrealFactory, { builtin: true });
     const scan = await m.scan();
@@ -282,7 +284,7 @@ describe('Unreal adapter through the shared manager (mock server)', { timeout: 6
     process.env.OMNICANDY_UNREAL_MCP_URL = url;
   });
   afterAll(async () => { delete process.env.OMNICANDY_UNREAL_MCP_URL; refuseCalls = false; await fs.rm(tmp, { recursive: true, force: true }); });
-  beforeEach(() => { asked.length = 0; answer = 'always'; grants = {}; });
+  beforeEach(() => { asked.length = 0; answer = 'always'; grants = {}; library.clear(); });
 
   it('is found, reads its version from Build.version and connects', async () => {
     const { m, key, scan } = await manager();
@@ -662,9 +664,18 @@ describe('Unreal adapter through the shared manager (mock server)', { timeout: 6
       // refused: outside the project, wrong type for the kind, missing, bad folder, bad kind
       expect((await m.execute(key, 'asset.import', { kind: 'texture', file: outside })).error?.message).toMatch(/inside the OmniCandy project/);
       expect((await m.execute(key, 'asset.import', { kind: 'texture', file: '../' + path.basename(path.dirname(outside)) + '/secret.png' })).error?.message).toMatch(/inside the OmniCandy project/);
+      // hand-off by library item: the name list_files shows, no path needed; a library file outside the project is still refused
+      library.set('concrete.png', { id: 'a1', name: 'concrete.png', kind: 'image', path: path.join(tmp, 'assets', 'concrete.png') });
+      library.set('tower model.fbx', { id: 'a2', name: 'tower model.fbx', kind: 'model', path: path.join(tmp, 'assets', 'tower.fbx') });
+      library.set('evil.png', { id: 'a3', name: 'evil.png', kind: 'image', path: outside });
+      const byName = await m.execute(key, 'asset.import', { kind: 'texture', file: 'Concrete.PNG', name: 'T_FromLibrary' });
+      expect(byName.error, JSON.stringify(byName.error)).toBeUndefined();
+      expect(byName.data).toMatchObject({ asset: '/Game/OmniCandy/T_FromLibrary' });
+      expect((await m.execute(key, 'asset.import', { kind: 'static_mesh', file: 'tower model.fbx', name: 'SM_Tower' })).data).toMatchObject({ asset: '/Game/OmniCandy/SM_Tower' });
+      expect((await m.execute(key, 'asset.import', { kind: 'texture', file: 'evil.png', name: 'T_Evil' })).error?.message).toMatch(/inside the OmniCandy project/);
       expect((await m.execute(key, 'asset.import', { kind: 'texture', file: 'assets/notes.txt' })).error?.message).toMatch(/must be one of/);
       expect((await m.execute(key, 'asset.import', { kind: 'texture', file: 'assets/tower.fbx' })).error?.message).toMatch(/must be one of/);
-      expect((await m.execute(key, 'asset.import', { kind: 'texture', file: 'assets/nope.png' })).error?.message).toMatch(/no file/);
+      expect((await m.execute(key, 'asset.import', { kind: 'texture', file: 'assets/nope.png' })).error?.message).toMatch(/no library item or project file called assets\/nope\.png/);
       expect((await m.execute(key, 'asset.import', { kind: 'texture', file: 'assets/concrete.png', folder: '/Engine/Bad' })).error?.kind).toBe('invalid-params');
       expect((await m.execute(key, 'asset.import', { kind: 'sound', file: 'assets/concrete.png' })).error?.kind).toBe('invalid-params');
     } finally { await fs.rm(path.dirname(outside), { recursive: true, force: true }); }

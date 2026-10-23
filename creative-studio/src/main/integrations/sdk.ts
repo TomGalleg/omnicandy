@@ -17,6 +17,9 @@ export interface ProbeResult {
  */
 export interface HealthResult { ok: boolean; detail: string; state?: 'not-running' | 'api-unavailable' }
 
+/** A file of the OmniCandy project's library, resolved by name or id (always a file inside the project folder). */
+export interface LibraryFile { id: string; name: string; kind: string; path: string }
+
 export interface ExecuteContext {
   app: DiscoveredApp;
   /** Private working folder for this application inside the project; outputs go here. */
@@ -24,6 +27,11 @@ export interface ExecuteContext {
   /** Aborted on cancel or timeout; adapters must stop their work and clean up. */
   signal: AbortSignal;
   progress(stage: string, fraction?: number): void;
+  /**
+   * Hand-off by library item: resolves a library file by the name list_files shows (or its id). Null when there is none, or when
+   * the manager was created without a library (tests). Lets a command take "the file called landscape.glb" without knowing paths.
+   */
+  libraryFile?(ref: string): Promise<LibraryFile | null>;
 }
 
 export interface AdapterOutcome {

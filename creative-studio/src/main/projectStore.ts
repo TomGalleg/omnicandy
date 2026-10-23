@@ -49,7 +49,7 @@ export async function writeJsonAtomic(file: string, data: unknown): Promise<void
 
 /** Folders of a layout-2 project, created up front so the structure is visible in Explorer. */
 export const PROJECT_FOLDERS = [
-  'Assets/Originals', 'Assets/Generated', 'Assets/Audio', 'Assets/Video', 'Assets/Documents',
+  'Assets/Originals', 'Assets/Generated', 'Assets/Audio', 'Assets/Video', 'Assets/Documents', 'Assets/Models',
   ...Object.values(EDITOR_APPS).map((a) => a.name),
   'Workflows', 'Previews', 'Versions', 'Exports', 'Checkpoints',
 ];
@@ -61,6 +61,7 @@ function v2Folder(folder: StoreFolder, kind: AssetKind): string {
   if (folder === 'generated') return 'Assets/Generated';
   if (kind === 'audio') return 'Assets/Audio';
   if (kind === 'video') return 'Assets/Video';
+  if (kind === 'model') return 'Assets/Models';
   if (kind === 'design' || kind === 'project' || kind === 'document' || kind === 'sheet' || kind === 'deck' || kind === 'ui' || kind === 'cad') return 'Assets/Documents';
   return 'Assets/Originals';
 }

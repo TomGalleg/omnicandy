@@ -203,10 +203,10 @@ const COMMANDS: CommandSpec[] = [
   },
   {
     id: 'asset.import', label: 'Import a picture or mesh into the Unreal project',
-    description: 'Imports a file from this OmniCandy project (for example a picture from the library, or a mesh file) into the open Unreal project as a Texture or Static Mesh asset, and confirms the asset now exists. The file must be inside the OmniCandy project folder.',
+    description: 'Imports a library item of this OmniCandy project (a picture, or a 3D model such as a GLB or FBX made in Blender) into the open Unreal project as a Texture or Static Mesh asset, and confirms the asset now exists. A model made by another app arrives as one asset; its colours and materials come with a GLB.',
     params: {
       kind: { type: 'string', description: 'texture (png, jpg, bmp, tga, exr, hdr) or static_mesh (fbx, obj, gltf, glb).', required: true },
-      file: { type: 'string', description: 'Path of the file: absolute, or relative to the OmniCandy project folder.', required: true },
+      file: { type: 'string', description: 'The library item to import, by the name list_files shows (for example landscape.glb), or a path of a file inside the OmniCandy project folder.', required: true },
       folder: { type: 'string', description: 'Unreal content folder for the new asset.', default: '/Game/OmniCandy' },
       name: { type: 'string', description: 'Asset name (letters, digits, underscore). Defaults to the file name.', default: '' },
     },
@@ -684,8 +684,9 @@ class UnrealAdapter implements ExternalAdapter {
           if (!spec) throw new AdapterError('invalid-params', 'kind must be texture or static_mesh.');
           const root = projectRootOf(ctx.workDir);
           const asked = String(params.file).trim();
-          const real = await fs.realpath(path.resolve(root, asked)).catch(() => null);
-          if (!real) throw new AdapterError('invalid-params', `There is no file ${asked} in the OmniCandy project.`);
+          const lib = ctx.libraryFile ? await ctx.libraryFile(asked) : null;
+          const real = await fs.realpath(lib ? lib.path : path.resolve(root, asked)).catch(() => null);
+          if (!real) throw new AdapterError('invalid-params', `There is no library item or project file called ${asked}. Use list_files to see the names.`);
           const inside = path.relative(await fs.realpath(root), real);
           if (inside.startsWith('..') || path.isAbsolute(inside)) throw new AdapterError('invalid-params', 'Only files inside the OmniCandy project folder can be imported.');
           const ext = path.extname(real).toLowerCase();

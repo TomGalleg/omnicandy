@@ -15,7 +15,7 @@ interface Props {
 const VIEWABLE: AssetKind[] = ['image', 'vector'];
 
 /** Plain names for asset kinds, as people say them. */
-export const KIND_LABEL: Record<AssetKind, string> = { image: 'Picture', vector: 'Vector art', audio: 'Sound', video: 'Video', project: 'App document', design: 'Layout', document: 'Document', sheet: 'Spreadsheet', deck: 'Presentation', ui: 'UI design', cad: 'CAD drawing' };
+export const KIND_LABEL: Record<AssetKind, string> = { image: 'Picture', vector: 'Vector art', audio: 'Sound', video: 'Video', project: 'App document', design: 'Layout', document: 'Document', sheet: 'Spreadsheet', deck: 'Presentation', ui: 'UI design', cad: 'CAD drawing', model: '3D model' };
 const ORIGIN_LABEL: Record<string, string> = { imported: 'Imported', generated: 'Created in OmniCandy', fixture: 'Sample file' };
 
 const readKey = (k: string) => { try { return window.localStorage.getItem(k); } catch { return null; } };

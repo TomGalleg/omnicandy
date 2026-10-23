@@ -14,6 +14,8 @@ const KIND_BY_EXT: Record<string, AssetKind> = {
   deckcraft: 'deck', pptx: 'deck',
   figcraft: 'ui',
   dxf: 'cad', dwg: 'cad',
+  // 3D models: made in Blender, FreeCAD and Revit, imported into Unreal and others (exchange formats, not any one app's project file)
+  glb: 'model', gltf: 'model', fbx: 'model', obj: 'model', stl: 'model', ply: 'model', usd: 'model', usda: 'model', usdc: 'model', usdz: 'model', step: 'model', stp: 'model',
   pcraft: 'project', psd: 'project', vectorcraft: 'project', scraft: 'project', fcproj: 'project', ecproj: 'project',
 };
 

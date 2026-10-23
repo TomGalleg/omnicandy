@@ -713,6 +713,16 @@ export function registerIpc(d: IpcDeps): void {
   const external = createIntegrationManager({
     sessionAllowed: { has: (k, c) => sessionAllowed.has(sessionKey(k, c)), add: (k, c) => { sessionAllowed.add(sessionKey(k, c)); } },
     workDir: async (id) => (await d.project()).workDir('external', id),
+    // Hand-off by library item: the same names list_files shows. The newest file wins when versions share a name.
+    libraryFile: async (ref) => {
+      const store = await d.project();
+      const m = await store.loadManifest();
+      const want = ref.trim().toLowerCase();
+      if (!want) return null;
+      const hit = m.assets.filter((a) => a.id === ref.trim() || a.name.toLowerCase() === want).at(-1)
+        ?? (() => { const c = m.assets.filter((a) => a.name.toLowerCase().replace(/\.[^.]+$/, '') === want); return c.length === 1 ? c[0] : undefined; })();
+      return hit ? { id: hit.id, name: hit.name, kind: hit.kind, path: await store.resolveAssetPath(hit.id) } : null;
+    },
     permissions: { load: async () => (await extStore.read()).grants, save: async (grants) => { await extStore.update((st) => { st.grants = grants; }); } },
     userPaths: async () => (await extStore.read()).paths,
     connected: { load: async () => (await extStore.read()).connected, save: async (connected) => { await extStore.update((st) => { st.connected = connected; }); } },

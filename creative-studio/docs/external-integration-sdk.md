@@ -100,6 +100,18 @@ Commands: `scene.create_basic` (cube + camera + light, saved as .blend, then re-
 `scene.inspect` (read only), `scene.render_still` (Workbench PNG). Needs no add-on and no open window. Version support
 starts at 3.6; the scripts use only API calls stable across 3.6 to 4.x. Rollback: outputs are new files; nothing existing is touched.
 
+## Shared 3D foundation (apps sharing each other's work)
+
+The library has a **3D model** kind (`model`: GLB, glTF, FBX, OBJ, STL, PLY, USD, STEP) stored in `Assets/Models`. These are exchange formats: an app's own
+project file (`.blend`, `.uproject`) is not one and stays in that app's folder under `work/external/`. Any command output with one of these extensions is
+added to the library automatically, like a render, so it can be used by any other app and in any other project.
+
+* **Blender `mesh.export`** (read-project, write-files; never changes the project): GLB, FBX, OBJ or STL of all meshes or chosen objects, modifiers applied,
+  merged into one mesh by default (`join`), so a scene of thousands of instances becomes one clean model. Verified from the finished file (GLB container and
+  its triangle count against Blender's, FBX signature, OBJ vertices and faces, STL size or facets).
+* **Hand-off by library item** (`ExecuteContext.libraryFile`, supplied by the app from the project store): a command takes the name `list_files` shows
+  (or an id) instead of a path. The file is always inside the project folder; adapters still check that. Unreal's `asset.import` is the first user.
+* Blender → Unreal: `mesh.export` (GLB) → library → `asset.import` (static_mesh) → `actor.place`.
 ## Unreal Engine adapter (experimental)
 
 Id `unreal` (it replaced the placeholder). Control method: Epic's built-in MCP server (Unreal 5.8+, plugins "Unreal MCP" and "All Toolsets";

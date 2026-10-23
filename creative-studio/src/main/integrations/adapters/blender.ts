@@ -12,6 +12,7 @@ import { LiveBlenderSession, blenderLiveEnabled } from './blenderLive';
 import { SCENE_COMMANDS, SCENE_PRELUDE, SCENE_SCRIPTS, EDIT_COMMAND_IDS } from './blenderScene';
 import { BATCH_COMMANDS, BATCH_PRELUDE, BATCH_SCRIPTS, BATCH_VOCAB, assembleDiscovery, type DiscoveryFacts } from './blenderBatch';
 import { VIEWPORT_BODY, VIEWPORT_COMMAND, VIEWPORT_MAX_SIDE } from './blenderViewport';
+import { EXPORT_BODY, EXPORT_COMMAND, EXPORT_FORMATS, checkExportedFile, type ExportFormat } from './blenderExport';
 import { SCRIPT_COMMAND, SCRIPT_RUN_BODY, SCRIPT_WINDOW_RELOAD_BODY, SCRIPT_WINDOW_SAVE_BODY } from './blenderScript';
 import { SCRIPT_RULES, assessScriptRun, fileHashOf, scriptHashOf, validateScript, type ScriptMarker, type ScriptSpec } from './blenderScriptSpec';
 import { BATCH_ID, MAX_BATCH_OBJECTS, assessBatchReadback, chunkOf, expectedBatchFromParams, specHashOf, validateBuildSpec, type BuildSpec } from './blenderBatchSpec';
@@ -48,7 +49,7 @@ const COMMANDS: CommandSpec[] = [
   },
 ];
 
-COMMANDS.push(...SCENE_COMMANDS, ...BATCH_COMMANDS, SCRIPT_COMMAND, VIEWPORT_COMMAND);
+COMMANDS.push(...SCENE_COMMANDS, ...BATCH_COMMANDS, SCRIPT_COMMAND, VIEWPORT_COMMAND, EXPORT_COMMAND);
 
 export const BLENDER_MANIFEST: AdapterManifest = {
   id: 'blender', name: 'Blender', vendor: 'Blender Foundation', sdkVersion: ADAPTER_SDK_VERSION, maturity: 'verified',
@@ -138,6 +139,8 @@ _result(_summary())
 for (const [id, body] of Object.entries(SCENE_SCRIPTS)) SCRIPTS[id] = `${PRELUDE}${SCENE_PRELUDE}\n${body}`;
 // Batch commands share one extra prelude; in the open window it is simply part of each (short-lived) script body.
 for (const [id, body] of Object.entries(BATCH_SCRIPTS)) SCRIPTS[id] = `${PRELUDE}${SCENE_PRELUDE}${BATCH_PRELUDE}\n${body}`;
+// Export reads the saved project in its own background Blender and never saves it.
+SCRIPTS['mesh.export'] = `${PRELUDE}${SCENE_PRELUDE}\n${EXPORT_BODY}`;
 // script.run and the two open-window helpers around it (save what the window holds, reload the replaced project).
 for (const [id, body] of Object.entries({ 'scene.viewport': VIEWPORT_BODY, 'script.run': SCRIPT_RUN_BODY, 'script.window_save': SCRIPT_WINDOW_SAVE_BODY, 'script.window_reload': SCRIPT_WINDOW_RELOAD_BODY })) SCRIPTS[id] = `${PRELUDE}${SCENE_PRELUDE}${BATCH_PRELUDE}\n${body}`;
 
@@ -288,6 +291,26 @@ class BlenderAdapter implements ExternalAdapter {
         message: `${cmd.label} done in ${path.basename(input)}; it now has ${String(check.summary.count)} object(s).`,
         outputs: [], data: { objects: check.summary.objects, details: check.summary.details, scene: check.summary.scene, blender: summary.blender }, verified: true,
         evidence: ['re-opened in a fresh Blender and read back'],
+      };
+    }
+    if (cmd.id === 'mesh.export') {
+      const input = await existing(String(params.file_name));
+      const format = String(params.format).trim().toLowerCase() as ExportFormat;
+      if (!EXPORT_FORMATS.includes(format)) throw new AdapterError('invalid-params', `format must be one of ${EXPORT_FORMATS.join(', ')}.`);
+      const join = params.join !== false;
+      const dir = path.join(ctx.workDir, 'exports');
+      await fs.mkdir(dir, { recursive: true });
+      const output = path.join(dir, safeName(String(params.name || '').trim() || path.basename(input, '.blend'), `.${format}`));
+      const objects = String(params.objects ?? '').split(',').map((s) => s.trim()).filter(Boolean);
+      ctx.progress('Exporting the meshes', 0.3);
+      const { summary } = await this.script(ctx, 'mesh.export', { input, output, format, label: path.basename(output, `.${format}`), objects, join, apply_modifiers: params.apply_modifiers !== false }, { background: true });
+      ctx.progress('Checking the exported file', 0.85);
+      const check = await checkExportedFile(output, format, { joined: join, triangles: join ? Number(summary.triangles) || undefined : undefined });
+      if (!check.ok) throw new AdapterError('verification-failed', `Blender wrote ${path.basename(output)} but it does not check out: ${check.detail}.`);
+      return {
+        message: `Exported ${String(summary.source_objects)} mesh object(s) of ${path.basename(input)} as ${path.basename(output)} (${check.detail}).`,
+        outputs: [output], data: { file: path.basename(output), format, joined: join, source_objects: summary.source_objects, vertices: summary.vertices, triangles: summary.triangles, materials: summary.materials, ...check.facts },
+        verified: true, evidence: [`the finished file was read back: ${check.detail}`],
       };
     }
     if (cmd.id === 'discover.search') {

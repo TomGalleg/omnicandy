@@ -12,7 +12,7 @@ import {
 } from '@shared/integrations';
 import { discoverApps, REMEMBERED_SOURCES, realDiscoveryEnv, type DiscoveryEnv, type DiscoveryTarget } from './discovery';
 import { normalizeJsonParam } from '@shared/jsonParam';
-import { AdapterError, validateManifest, type AdapterFactory, type ExternalAdapter } from './sdk';
+import { AdapterError, validateManifest, type AdapterFactory, type ExternalAdapter, type LibraryFile } from './sdk';
 import { currentOs, DEFAULT_PLATFORMS, OS_LABEL, supportsOs, type OsId } from '@shared/platform';
 
 const listOs = (p: readonly OsId[] | undefined) => (p?.length ? p : DEFAULT_PLATFORMS).map((o) => OS_LABEL[o]).join(' and ');
@@ -38,6 +38,8 @@ export interface ManagerDeps {
   onProgress?: (e: ProgressEvent) => void;
   /** Destructive commands the user allowed for this session (memory only). Scripts, unsigned packages and anything needing a new permission are never in it. */
   sessionAllowed?: { has(appKey: string, commandId: string): boolean; add(appKey: string, commandId: string): void };
+  /** Finds a file of the project library by name or id, for commands that take a library item. */
+  libraryFile?: (ref: string) => Promise<LibraryFile | null>;
 }
 
 interface Session { app: DiscoveredApp; adapter: ExternalAdapter; factory: AdapterFactory; version: string | null }
@@ -422,7 +424,7 @@ export class IntegrationManager {
       const workDir = await this.d.workDir(f.manifest.id);
       await fs.mkdir(workDir, { recursive: true });
       const out = await raceAbort(activeSession.adapter.execute(cmd, params, {
-        app, workDir, signal: ac.signal,
+        app, workDir, signal: ac.signal, libraryFile: this.d.libraryFile,
         progress: (stage, fraction) => {
           const j = this.jobMap.get(opId);
           if (j) { j.stage = stage; if (fraction !== undefined) j.fraction = fraction; }
