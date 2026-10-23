@@ -10,7 +10,14 @@ export const unrealLive = (): UnrealLiveHooks | null => hooks;
 
 export interface RunningEditor { pid: number; commandLine: string; startedAt: number }
 /** Lists the running Unreal editors; replaced in tests. */
-export const processHooks: { list: () => Promise<RunningEditor[]> } = {
+export const processHooks: { list: () => Promise<RunningEditor[]>; ownerOfPort: (port: number) => Promise<number | null> } = {
+  /** The process that is listening on a local port: for the MCP server, that is the editor OmniCandy is driving. */
+  ownerOfPort: async (port) => {
+    const { runProcess } = await import('../process');
+    const r = await runProcess('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', `(Get-NetTCPConnection -State Listen -LocalPort ${Math.trunc(port)} -ErrorAction SilentlyContinue | Select-Object -First 1).OwningProcess`], { timeoutMs: 10_000, label: 'PowerShell' }).catch(() => null);
+    const n = Number((r?.out ?? '').trim());
+    return Number.isInteger(n) && n > 0 ? n : null;
+  },
   list: async () => {
     const { runProcess } = await import('../process');
     const script = "Get-CimInstance Win32_Process -Filter \"Name='UnrealEditor.exe'\" | ForEach-Object { \"$($_.ProcessId)|$([DateTimeOffset]$_.CreationDate | ForEach-Object { $_.ToUnixTimeSeconds() })|$($_.CommandLine)\" }";

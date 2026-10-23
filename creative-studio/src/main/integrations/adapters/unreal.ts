@@ -384,6 +384,25 @@ class UnrealAdapter implements ExternalAdapter {
     return { version: null };
   }
   async connect(app: DiscoveredApp): Promise<void> { this.app = app; this.described.clear(); this.index = null; }
+
+  private lastShown = { pid: 0, at: 0 };
+  /**
+   * Whatever editor a command talks to is the one the user should see in OmniCandy: find the process serving the connection and
+   * hand its window to the host (it docks it into the Software tab and switches there). Once per editor, and again after two quiet minutes,
+   * so a user who went to another tab is not pulled back on every single call.
+   */
+  private async showServingEditor(): Promise<void> {
+    const hooks = unrealLive();
+    if (!hooks?.onShow) return;
+    try {
+      const pid = await processHooks.ownerOfPort(Number(new URL(endpoint()).port || 80));
+      if (!pid) return;
+      const now = Date.now();
+      if (pid === this.lastShown.pid && now - this.lastShown.at < 120_000) return;
+      this.lastShown = { pid, at: now };
+      hooks.onShow(pid);
+    } catch { /* showing the window is a convenience: it never stops a command */ }
+  }
   async disconnect(): Promise<void> { this.app = null; }
 
   async healthCheck(): Promise<HealthResult> {
@@ -472,6 +491,7 @@ class UnrealAdapter implements ExternalAdapter {
     const app = this.app;
     // These work while the editor is closed, so they must not need its server.
     if (cmd.id === 'project.create' || cmd.id === 'project.list' || cmd.id === 'editor.launch' || cmd.id === 'editor.show') return this.offlineCommand(cmd, params, ctx, app);
+    await this.showServingEditor();
     return withSession(sig, async (c) => {
       const io: UnrealIO = { tool: (toolset, tool, args) => rawToolCall(c, toolset, tool, args, sig, 120_000) };
       switch (cmd.id) {

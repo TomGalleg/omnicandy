@@ -281,6 +281,31 @@ describe('project.create / editor.launch through the manager while the editor is
     expect(pickEditor([{ pid: 1, startedAt: 5, commandLine: 'C:\\p\\a.uproject' }], 'c:/p/A.uproject')?.pid).toBe(1);
   });
 
+  it('shows in OmniCandy the editor it is driving: once per editor, again when the editor changes, never without a host', async () => {
+    const m = await manager();
+    const origOwner = processHooks.ownerOfPort;
+    const shown: number[] = [];
+    let owner: number | null = 777;
+    processHooks.ownerOfPort = async () => owner;
+    server = await startServer(port);
+    try {
+      setUnrealLiveHooks({ onShow: (pid) => shown.push(pid) });
+      expect((await m.execute(key, 'app.info')).ok).toBe(true);
+      expect((await m.execute(key, 'level.inspect')).ok).toBe(true);
+      expect(shown).toEqual([777]);                        // two commands, one editor: shown once
+      owner = 888;                                          // the connection now belongs to another editor
+      expect((await m.execute(key, 'app.info')).ok).toBe(true);
+      expect(shown).toEqual([777, 888]);
+      owner = null;                                         // owner cannot be found: nothing is shown, the command still works
+      expect((await m.execute(key, 'app.info')).ok).toBe(true);
+      expect(shown).toEqual([777, 888]);
+      setUnrealLiveHooks(null);                             // no host (tests, other systems): nothing happens
+      owner = 999;
+      expect((await m.execute(key, 'app.info')).ok).toBe(true);
+      expect(shown).toEqual([777, 888]);
+    } finally { processHooks.ownerOfPort = origOwner; setUnrealLiveHooks(null); await new Promise<void>((r) => (server ? server.close(() => r()) : r())); server = null; }
+  });
+
   it('is only allowed for built-in adapters: the flag does nothing on a command in an installed package', () => {
     // the manager checks this.builtin before using a transient session; the manifest of every OTHER adapter has no offline command
     expect(UNREAL_MANIFEST.commands.filter((c) => c.offline).map((c) => c.id).sort()).toEqual(['editor.launch', 'editor.show', 'project.create', 'project.list']);
