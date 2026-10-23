@@ -13,6 +13,8 @@ export interface TrackedWindowState {
   minimized?: boolean;
   maximized?: boolean;
   owned?: boolean;
+  /** Whether the script has docked (borderless, owned) the window it is following now: false again when it switches to another window. */
+  embedded?: boolean;
 }
 
 let trackerSeq = 0;

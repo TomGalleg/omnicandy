@@ -95,6 +95,8 @@ export class EmbeddedApp {
       if (this.tracker !== t) return;
       if (!s.alive) { this.release(false); this.onGone(); return; }
       if (s.found && !this.found) { this.found = true; this.apply(); }
+      // The tracker moved on to another window of the program (Unreal opens a splash screen before the editor): dock that one too.
+      else if (s.found && this.embeddedOnce && s.embedded === false && this.mode === 'embedded') { this.embeddedOnce = false; this.fixes = 0; this.apply(); }
       this.correct(s);
     });
     t.on('exit', () => { if (this.tracker === t) { this.tracker = null; this.pid = null; } });

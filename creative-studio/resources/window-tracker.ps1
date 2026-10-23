@@ -88,13 +88,23 @@ public static class CsWindowTracker {
     }
 
     IntPtr target = IntPtr.Zero; string last = null; bool owned = false; bool embedded = false; long savedStyle = 0;
-    bool cloaked = false; bool offscreen = false; RECT before = new RECT();
+    bool cloaked = false; bool offscreen = false; RECT before = new RECT(); long lastPick = 0;
     var started = Stopwatch.StartNew();
     while (true) {
       Process proc = null;
       try { proc = Process.GetProcessById(pid); } catch { }
       if (proc == null || proc.HasExited) { Console.WriteLine("{\"alive\":false}"); return; }
-      if (target == IntPtr.Zero || !IsWindow(target)) {
+      // A program that opens several windows while it starts (Unreal: a splash, then the editor) must not leave us holding the first one.
+      // While nothing is docked yet, look again twice a second for the program's largest visible window and follow that instead.
+      bool pick = target == IntPtr.Zero || !IsWindow(target);
+      if (!pick && !embedded && started.ElapsedMilliseconds - lastPick > 500) {
+        lastPick = started.ElapsedMilliseconds;
+        IntPtr better = FindMain(pid, false);
+        if (better != IntPtr.Zero && better != target) pick = true;
+      }
+      if (pick) {
+        // a new window starts undocked, whatever was done to the one before it
+        embedded = false; savedStyle = 0; cloaked = false; offscreen = false;
         target = FindMain(pid, started.ElapsedMilliseconds > 3000); owned = false;
         if (target != IntPtr.Zero && cloak && !cloaked && !offscreen) {
           int on = 1;
