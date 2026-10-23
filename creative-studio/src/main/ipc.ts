@@ -42,7 +42,7 @@ import { familiesUsedIn, registerSharedTools } from './agentHarness/toolFamilies
 import type { JournaledTool } from './agentHarness/editIntentJournal';
 import { stepSchema as planStepSchema, validatePlanEdit } from './agentHarness/taskPlan';
 import { nativeToolRegistry } from './agentHarness/nativeTools';
-import { addExternalTools } from './agentHarness/externalTools';
+import { addExternalTools, describeAppForModel } from './agentHarness/externalTools';
 import type { AgentUiEvent, AgentUiState } from '@shared/agentHarness';
 import { appendChat, chatItemFromEvent, userChatItem } from '@shared/agentChat';
 import { PhotoCraftCliAdapter } from './photocraftCli';
@@ -895,11 +895,6 @@ export function registerIpc(d: IpcDeps): void {
     await extStore.addPath(p);
     return external.scan();
   });
-  const describeExternal = (a: ExternalAppInfo) => ({
-    app_key: a.key, name: a.name, version: a.version, status: a.status, detail: a.statusDetail, adapter: a.adapterId, maturity: a.maturity, methods: a.methods,
-    origin: a.origin, trust: a.trust, requirements: a.requirements.map((r) => r.text),
-    commands: a.commands.map((c) => ({ id: c.id, label: c.label, description: c.description, settings: c.params, needs: c.permissions, destructive: !!c.destructive, long_running: !!c.longRunning })),
-  });
 
   // AI Adapter Builder: private, local integrations. The AI writes data (a blueprint); OmniCandy's templates and validators decide
   // whether a package exists; installing still goes through the review + native confirmation above. Nothing is shared or uploaded.
@@ -1053,9 +1048,22 @@ export function registerIpc(d: IpcDeps): void {
       },
     },
     external: {
-      list: async () => {
+      // Short by default (a program's whole command list can be tens of thousands of characters, more than a model can be shown);
+      // one program's commands in full when it is asked for by name.
+      list: async (app) => {
         const s = await external.scan();
-        return JSON.stringify({ applications: s.apps.map(describeExternal), not_found: s.missing.map((m) => `${m.name} (${m.maturity})`), note: 'Only commands listed here exist. status connected/available means usable; unsupported means detected only.' }, null, 2);
+        if (app) {
+          const want = app.trim().toLowerCase();
+          const a = s.apps.find((x) => x.key === app || x.adapterId === app || x.name.toLowerCase() === want)
+            ?? s.apps.find((x) => x.adapterId && ((x.adapterName ?? x.name).toLowerCase() === want || x.name.toLowerCase().startsWith(want)));
+          if (!a) throw new Error(`No detected application "${app}". Use external_apps with no app to see the names.`);
+          return describeAppForModel(a);
+        }
+        const brief = (a: ExternalAppInfo) => ({
+          app_key: a.key, name: a.name, version: a.version, status: a.status, detail: a.statusDetail.slice(0, 160), adapter: a.adapterId, maturity: a.maturity,
+          commands: a.commands.map((c) => c.id),
+        });
+        return JSON.stringify({ applications: s.apps.map(brief), not_found: s.missing.map((m) => `${m.name} (${m.maturity})`), note: 'Only commands listed here exist. status connected/available means usable; unsupported means detected only. To see one program\'s commands and their settings call external_apps again with app set to its app_key or name.' }, null, 2);
       },
       run: async (app, command, params, background) => {
         await packagesReady;

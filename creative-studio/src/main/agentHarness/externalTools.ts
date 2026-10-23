@@ -227,3 +227,11 @@ export function addExternalTools(registry: ToolRegistry, backend: ExternalBacken
   for (const entry of externalTools(backend, options)) registry.add(entry);
   return registry;
 }
+
+/** One application's commands as plain lines (no JSON quoting), the commands to reach for first at the top: what a model reads when it asks about ONE app. */
+export function describeAppForModel(a: { name: string; key: string; status: string; commands: CommandSpec[] }): string {
+  const nl = '\n';
+  const rank = (id: string) => { const i = PREFERRED_COMMANDS.indexOf(id); return i < 0 ? PREFERRED_COMMANDS.length : i; };
+  const ordered = [...a.commands].sort((x, y) => rank(x.id) - rank(y.id));
+  return `${a.name} (app_key ${JSON.stringify(a.key)}), status ${a.status}. ${a.commands.length} commands; run one with external_run {app, command, settings}.${nl}${nl}${ordered.map(describeCommand).join(nl + nl)}`;
+}

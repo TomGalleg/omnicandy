@@ -114,7 +114,7 @@ export interface ClaudePartnerDeps {
   };
   /** External third-party applications (not the native Craft apps): scan result as JSON text, and one verified command run. */
   external: {
-    list: () => Promise<string>;
+    list: (app?: string) => Promise<string>;
     run: (app: string, command: string, params: Record<string, unknown>, background?: boolean) => Promise<string>;
     /** Status (and optionally cancel) of a background job started by run. */
     job: (id: string, cancel: boolean) => Promise<string>;
@@ -516,8 +516,8 @@ Now explain the plan to the user in plain language, including cost and what they
             })), null, 2));
           } catch (e) { return fail(e); }
         }),
-        tool('external_apps', 'External third-party software found on this PC (Blender, Autodesk, Adobe and others) with status, how it can be controlled and the exact commands that exist. These are NOT the native Craft apps. Only commands listed here can be run; unsupported programs are only detected.', {}, async () => {
-          try { activity('Looking for external applications'); return text(await this.d.external.list()); } catch (e) { return fail(e); }
+        tool('external_apps', 'External third-party software found on this PC (Blender, Autodesk, Adobe and others) with status, how it can be controlled and the exact commands that exist. These are NOT the native Craft apps. Only commands listed here can be run; unsupported programs are only detected. With no app: the programs and their status and command names (short). With app set to an app_key or name: that program\'s commands and the settings each takes, in full: read this before running anything in it.', { app: z.string().max(300).optional().describe('app_key, adapter id or name of one program, to see its commands and settings.') }, async ({ app }) => {
+          try { activity('Looking for external applications'); return text(await this.d.external.list(app)); } catch (e) { return fail(e); }
         }),
         tool('external_run', 'Runs one command from external_apps in an external application. The user is asked to allow it first; if they decline, accept it. The result states what was verified (for example the saved file exists and was re-opened); report only that, never claim more. Outputs land in the project external folder.', {
           app: z.string().max(200).describe('app_key, adapter id or name from external_apps.'),
