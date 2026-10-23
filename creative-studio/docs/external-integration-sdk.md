@@ -100,6 +100,24 @@ Commands: `scene.create_basic` (cube + camera + light, saved as .blend, then re-
 `scene.inspect` (read only), `scene.render_still` (Workbench PNG). Needs no add-on and no open window. Version support
 starts at 3.6; the scripts use only API calls stable across 3.6 to 4.x. Rollback: outputs are new files; nothing existing is touched.
 
+## Unreal Engine adapter (read only, experimental)
+
+Id `unreal` (it replaced the placeholder). Control method: Epic's built-in MCP server (Unreal 5.8+, plugins "Unreal MCP" and "All Toolsets",
+started with `ModelContextProtocol.StartServer`), reached over Streamable HTTP by `src/main/mcpHttpClient.ts` (loopback only, session id,
+JSON or SSE replies). The server offers three meta tools (`list_toolsets`, `describe_toolset`, `call_tool`); the adapter calls only fixed
+toolset tools. Endpoint `http://127.0.0.1:8000/mcp`, or `OMNICANDY_UNREAL_MCP_URL`. OmniCandy never starts the editor or the server.
+
+| Command | Permissions | Notes |
+|---|---|---|
+| `app.info` | read-info, read-project | server, toolset count, open level, Play-In-Editor state |
+| `toolsets.list` / `toolsets.describe` | read-info | the inventory of what the editor can be asked to do |
+| `level.inspect` | read-project | actors counted by kind; refuses with an explanation while Play-In-Editor hides the level |
+| `assets.find` | read-project | asset paths in a content folder |
+| `logs.read` | read-info | output-log lines, optional regex |
+
+Tests: `unreal.test.ts` (mock server shaped like Unreal's, SSE and JSON), `unreal.live.test.ts` (real editor, skipped when none answers).
+Editing commands are the next step and need transactions/undo and verification first.
+
 ## Vendor groundwork (not integrated yet)
 
 Revit: C#/.NET add-in per Revit year (version-specific module), local pipe, work inside Revit's API context via

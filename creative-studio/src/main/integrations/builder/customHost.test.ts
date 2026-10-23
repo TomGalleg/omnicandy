@@ -24,7 +24,7 @@ const UNREAL: Custom = {
 /** The FreeCAD enclosure blueprint, re-described as a custom program with the given launch settings. */
 const bpWith = (custom: Partial<Custom> = {}): Blueprint => {
   const b = parseBlueprint(JSON.parse(fs.readFileSync(fixture, 'utf8')));
-  b.application = { ...b.application, name: 'Unreal Editor', exeNames: ['UnrealEditor.exe'], displayNames: ['Unreal Editor'] };
+  b.application = { ...b.application, name: 'Mock Engine Editor', exeNames: ['MockEngineEditor.exe'], displayNames: ['Mock Engine Editor'] };
   b.python = { host: 'custom', custom: { ...UNREAL, ...custom } };
   return b;
 };

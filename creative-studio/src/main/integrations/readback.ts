@@ -15,6 +15,7 @@ import type { CommandSpec } from '@shared/integrations';
 export const TRUSTED_READBACK_COMMANDS: Readonly<Record<string, readonly string[]>> = {
   blender: ['scene.inspect', 'scene.inspect_detail', 'discover.search'],
   'davinci.resolve': ['app.info', 'project.list', 'project.inspect'],
+  unreal: ['app.info', 'level.inspect', 'assets.find'],
 };
 
 /**
