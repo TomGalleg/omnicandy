@@ -126,12 +126,14 @@ describe('JSON parameters', () => {
     const plain = BLENDER_MANIFEST.commands.find((c) => c.id === 'object.add')!;
     expect(preflightExternalParams(plain, { file_name: 'a.blend', type: 5 })).toMatch(/must be text/);
   });
-  it('are only declared by the built-in Blender adapter, which still registers cleanly next to its older commands', () => {
+  it('are only declared by built-in adapters (Blender and Unreal), and Blender still registers cleanly next to its older commands', () => {
     expect(validateManifest(BLENDER_MANIFEST, ADAPTER_SDK_VERSION)).toEqual([]);
     const m = createIntegrationManager({ workDir: async () => tmp, permissions: { load: async () => ({}), save: async () => undefined }, approve: async () => 'deny' });
     const blender = m.manifests().find((x) => x.id === 'blender')!;
     expect(blender.commands.map((c) => c.id)).toEqual(expect.arrayContaining(['scene.create_basic', 'scene.inspect', 'object.add', 'discover.search', 'scene.inspect_detail', 'scene.build']));
     expect(m.isBuiltin('blender')).toBe(true);
-    for (const other of m.manifests().filter((x) => x.id !== 'blender')) expect(other.commands.some((c) => Object.values(c.params).some((p) => p.type === 'json'))).toBe(false);
+    // Unreal passes tool arguments, call lists and script text as structured parameters; both adapters are built in, which the manager requires.
+    expect(m.isBuiltin('unreal')).toBe(true);
+    for (const other of m.manifests().filter((x) => x.id !== 'blender' && x.id !== 'unreal')) expect(other.commands.some((c) => Object.values(c.params).some((p) => p.type === 'json'))).toBe(false);
   });
 });

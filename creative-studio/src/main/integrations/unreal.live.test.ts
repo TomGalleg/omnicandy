@@ -58,5 +58,44 @@ describe.skipIf(!up || !haveExe)('Unreal adapter against the live editor', { tim
 
     const logs = await m.execute(key, 'logs.read', { pattern: 'ModelContextProtocol', max: 5 });
     expect((logs.data as { count: number }).count).toBeGreaterThan(0);
+
+    // the whole tool catalogue is searchable and each tool names the command that runs it
+    const search = await m.execute(key, 'tools.search', { query: 'blueprint compile', limit: 10 });
+    const tools = (search.data as { total: number; tools: Array<{ tool: string; command: string }> }).tools;
+    expect((search.data as { total: number }).total).toBeGreaterThan(500);
+    expect(tools.find((t) => t.tool === 'compile_blueprint')).toMatchObject({ command: 'tool.edit' });
+
+    // a generic read-tier call
+    const cur = await m.execute(key, 'tool.read', { toolset: 'editor_toolset.toolsets.scene.SceneTools', tool: 'get_current_level', arguments: {} });
+    expect(cur.error).toBeUndefined();
+    // and the wrong tier is refused before Unreal is touched
+    expect((await m.execute(key, 'tool.read', { toolset: 'editor_toolset.toolsets.scene.SceneTools', tool: 'remove_from_scene', arguments: { actor: { refPath: '/x' } } })).error?.message).toMatch(/tool\.restricted/);
+  });
+
+  // Changes the open level (and cleans up after itself): only when asked for, never by default.
+  it.skipIf(process.env.OMNICANDY_UNREAL_LIVE_EDIT !== '1')('places, moves and deletes an actor with read-back verification', async () => {
+    const m = new IntegrationManager({
+      workDir: async (id) => path.join(tmp, id),
+      permissions: { load: async () => ({}), save: async () => undefined },
+      approve: async () => 'always',
+      discovery: { env: { ProgramFiles: 'C:\\x' }, exists: async (p) => p.toLowerCase() === exe.toLowerCase(), listDir: async () => [], run: async () => '' },
+      userPaths: async () => [exe],
+    });
+    m.register(unrealFactory, { builtin: true });
+    const key = (await m.scan()).apps[0]!.key;
+    await m.connect(key);
+    const before = (await m.execute(key, 'level.inspect', { max_names: 0 })).data as { actorCount: number };
+    const placed = await m.execute(key, 'actor.place', { asset: '/Script/Engine.PointLight', name: 'OmniCandyTestLight', x: 120, y: -40, z: 250, scale: 1 });
+    expect(placed.error, JSON.stringify(placed.error)).toBeUndefined();
+    const actor = (placed.data as { actor: string }).actor;
+    try {
+      const moved = await m.execute(key, 'actor.transform', { actor, x: 300, yaw: 30 });
+      expect(moved.error, JSON.stringify(moved.error)).toBeUndefined();
+      expect((moved.data as { transform: { location: { x: number } } }).transform.location.x).toBeCloseTo(300, 0);
+    } finally {
+      const gone = await m.execute(key, 'actor.delete', { actor });
+      expect(gone.error, JSON.stringify(gone.error)).toBeUndefined();
+    }
+    expect(((await m.execute(key, 'level.inspect', { max_names: 0 })).data as { actorCount: number }).actorCount).toBe(before.actorCount);
   });
 });

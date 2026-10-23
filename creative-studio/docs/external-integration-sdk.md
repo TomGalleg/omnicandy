@@ -100,24 +100,32 @@ Commands: `scene.create_basic` (cube + camera + light, saved as .blend, then re-
 `scene.inspect` (read only), `scene.render_still` (Workbench PNG). Needs no add-on and no open window. Version support
 starts at 3.6; the scripts use only API calls stable across 3.6 to 4.x. Rollback: outputs are new files; nothing existing is touched.
 
-## Unreal Engine adapter (read only, experimental)
+## Unreal Engine adapter (experimental)
 
-Id `unreal` (it replaced the placeholder). Control method: Epic's built-in MCP server (Unreal 5.8+, plugins "Unreal MCP" and "All Toolsets",
-started with `ModelContextProtocol.StartServer`), reached over Streamable HTTP by `src/main/mcpHttpClient.ts` (loopback only, session id,
-JSON or SSE replies). The server offers three meta tools (`list_toolsets`, `describe_toolset`, `call_tool`); the adapter calls only fixed
-toolset tools. Endpoint `http://127.0.0.1:8000/mcp`, or `OMNICANDY_UNREAL_MCP_URL`. OmniCandy never starts the editor or the server.
+Id `unreal` (it replaced the placeholder). Control method: Epic's built-in MCP server (Unreal 5.8+, plugins "Unreal MCP" and "All Toolsets";
+Editor Preferences > Model Context Protocol > Auto Start Server, or `ModelContextProtocol.StartServer`), reached over Streamable HTTP by
+`src/main/mcpHttpClient.ts` (loopback only, session id, JSON or SSE replies). The server offers three meta tools (`list_toolsets`,
+`describe_toolset`, `call_tool`) in front of ~830 toolset tools. Endpoint `http://127.0.0.1:8000/mcp`, or `OMNICANDY_UNREAL_MCP_URL`.
+OmniCandy never starts the editor or the server. Unreal has no undo tool: recovery is Ctrl+Z in the editor plus the read-back checks.
+
+Wrapping 830 tools by hand would never end, so control is layered. Tiers live in `adapters/unrealTools.ts`; each tool belongs to exactly one,
+each generic command accepts only its own tier, and the tool must also exist in the live toolset with its required arguments (so a wrong tier is
+refused before Unreal is touched).
 
 | Command | Permissions | Notes |
 |---|---|---|
-| `app.info` | read-info, read-project | server, toolset count, open level, Play-In-Editor state |
-| `toolsets.list` / `toolsets.describe` | read-info | the inventory of what the editor can be asked to do |
-| `level.inspect` | read-project | actors counted by kind; refuses with an explanation while Play-In-Editor hides the level |
-| `assets.find` | read-project | asset paths in a content folder |
-| `logs.read` | read-info | output-log lines, optional regex |
+| `app.info`, `toolsets.list`, `toolsets.describe`, `tools.search` | read-info (+read-project) | inventory; `tools.search` finds any tool by words and says which command runs it |
+| `level.inspect`, `assets.find`, `logs.read` | read-project / read-info | typed read helpers; `level.inspect` explains an empty level during Play-In-Editor |
+| `tool.read` | read-project | any READ-tier tool (get_/list_/find_/is_...) |
+| `tool.edit` | modify-project | any EDIT-tier tool; result is Unreal's own answer, reported as a receipt, never "verified" |
+| `tool.restricted` | modify-project, write-files, **asked** | delete whole assets/actors, move assets, file paths, imports, level load, plugins, config, editor UI driving |
+| `tool.batch` | modify-project | up to 50 read/edit calls, all checked first, stops at the first failure and says what was applied (no rollback) |
+| `actor.place`, `actor.transform`, `actor.delete`, `level.save` | modify-project (+write-files) | verified shortcuts: each re-reads the editor and fails with `verification-failed` if it differs; delete is asked |
+| `script.run` | execute-scripts, **asked every time** | Epic's tool-orchestration sandbox (math/re/time/json/copy/datetime, can only call registered tools); the user reads the code |
 
-Tests: `unreal.test.ts` (mock server shaped like Unreal's, SSE and JSON), `unreal.live.test.ts` (real editor, skipped when none answers).
-Editing commands are the next step and need transactions/undo and verification first.
-
+Every edit is refused while Play-In-Editor runs (the editor has no level then), except `StopPIE`. Results over 60,000 characters are cut with a note.
+Tests: `unreal.test.ts` (mock server shaped like Unreal's, with a small stateful editor), `unreal.live.test.ts` (real editor, skipped when none
+answers; the place/move/delete round trip runs only with `OMNICANDY_UNREAL_LIVE_EDIT=1`).
 ## Vendor groundwork (not integrated yet)
 
 Revit: C#/.NET add-in per Revit year (version-specific module), local pipe, work inside Revit's API context via
