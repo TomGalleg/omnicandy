@@ -48,6 +48,7 @@ import { appendChat, chatItemFromEvent, userChatItem } from '@shared/agentChat';
 import { PhotoCraftCliAdapter } from './photocraftCli';
 import type { ProjectManager } from './projects';
 import { setBlenderLiveHooks } from './integrations/adapters/blenderLive';
+import { setUnrealLiveHooks } from './integrations/adapters/unrealLive';
 import { BLANK_FILES, EDITOR_APPS, type EditorAppId } from '@shared/appEditors';
 import { DeliverQueue } from './deliver';
 import { WorkflowSteps } from './workflowSteps';
@@ -745,6 +746,13 @@ export function registerIpc(d: IpcDeps): void {
     onExit: () => { liveExternal = { name: 'Blender', pid: null }; emitLiveExternal(); },
   });
   app.on('will-quit', () => setBlenderLiveHooks(null));
+  // The same for Unreal Editor: started by editor.launch, or an open one picked by editor.show. Docked into the Software tab.
+  setUnrealLiveHooks({
+    onSpawn: (pid) => { liveExternal = { name: 'Unreal Engine', pid }; d.embedded.prepare(pid); emitLiveExternal(); },
+    onShow: (pid) => { liveExternal = { name: 'Unreal Engine', pid }; d.embedded.attach(pid); emitLiveExternal(); },
+    onExit: (pid) => { if (liveExternal.pid === pid) { liveExternal = { name: 'Unreal Engine', pid: null }; emitLiveExternal(); } },
+  });
+  app.on('will-quit', () => setUnrealLiveHooks(null));
   /**
    * Pictures, video and audio that an external program wrote (a Blender render, an exported clip) are added to the
    * library (Media tab) and the first picture or video opens in PhotoCraft / FilmCraft inside OmniCandy, ready to edit.

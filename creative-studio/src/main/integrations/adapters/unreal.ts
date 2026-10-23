@@ -23,6 +23,7 @@ import path from 'node:path';
 import { ADAPTER_SDK_VERSION, type AdapterManifest, type CommandSpec, type DiscoveredApp } from '@shared/integrations';
 import { McpHttpClient, McpHttpError } from '../../mcpHttpClient';
 import { safeFileName } from '../process';
+import { pickEditor, processHooks, unrealLive } from './unrealLive';
 import { createProject, defaultProjectsDir, engineRootOf, launchHooks, readProjects, recordProject, resolveProject, TEMPLATES } from './unrealProject';
 import { BUNDLE_EXT, bundleFileName, exportBundle, findContentRoot, installBundle, isGamePackage, manifestSchema, pngInfo, projectRootOf, readBundle, waitForPackages, type UnrealIO } from './unrealFiles';
 import { AdapterError, type AdapterFactory, type AdapterOutcome, type ExecuteContext, type ExternalAdapter, type HealthResult, type ProbeResult } from '../sdk';
@@ -182,6 +183,12 @@ const COMMANDS: CommandSpec[] = [
       wait_seconds: { type: 'number', description: 'How long to wait for the editor to be ready.', default: 420, min: 30, max: 900 },
     },
     permissions: ['launch', 'open-files'], offline: true, idempotent: false, timeoutMs: 960_000,
+  },
+  {
+    id: 'editor.show', label: 'Show Unreal Editor inside OmniCandy',
+    description: 'Docks the window of a running Unreal Editor into OmniCandy (the Software tab) so you watch the work happen there instead of behind OmniCandy. project: a name from project.list or the full path of a .uproject; empty picks the newest editor that has a project open. editor.launch does this by itself when it starts the editor.',
+    params: { project: { type: 'string', description: 'Project name from project.list or full path of a .uproject. Empty: the newest running editor with a project.', default: '' } },
+    permissions: ['ui-automation'], offline: true, idempotent: true, timeoutMs: 60_000,
   },
   {
     id: 'viewport.capture', label: 'Take a picture of the editor viewport',
@@ -464,7 +471,7 @@ class UnrealAdapter implements ExternalAdapter {
     const receipt = (what: string) => [`${what} (Unreal's own answer; not independently re-read: check with a read command)`];
     const app = this.app;
     // These work while the editor is closed, so they must not need its server.
-    if (cmd.id === 'project.create' || cmd.id === 'project.list' || cmd.id === 'editor.launch') return this.offlineCommand(cmd, params, ctx, app);
+    if (cmd.id === 'project.create' || cmd.id === 'project.list' || cmd.id === 'editor.launch' || cmd.id === 'editor.show') return this.offlineCommand(cmd, params, ctx, app);
     return withSession(sig, async (c) => {
       const io: UnrealIO = { tool: (toolset, tool, args) => rawToolCall(c, toolset, tool, args, sig, 120_000) };
       switch (cmd.id) {
@@ -779,6 +786,16 @@ class UnrealAdapter implements ExternalAdapter {
         verified: true, evidence: ['the new .uproject was re-read with both plugins enabled', 'Auto Start Server is in the project settings', `every one of the ${r.files - 1} project files was re-read at its written size`, r.startupMap ? `the start-up map ${r.startupMap} exists in the new project` : 'the template names no start-up map'],
       };
     }
+    if (cmd.id === 'editor.show') {
+      const hooks = unrealLive();
+      if (!hooks?.onShow) throw new AdapterError('unsupported', 'OmniCandy cannot show another program\'s window on this computer (Windows only); the editor keeps its own window.');
+      const ref = String(params.project || '').trim();
+      const wanted = ref ? await resolveProject(ctx.workDir, ref) : null;
+      const editor = pickEditor(await processHooks.list(), wanted);
+      if (!editor) throw new AdapterError('app-error', wanted ? `No running Unreal Editor has ${path.basename(wanted)} open. Start it with editor.launch.` : 'No Unreal Editor with a project open is running. Start one with editor.launch.');
+      hooks.onShow(editor.pid);
+      return { message: `Showing Unreal Editor (process ${editor.pid}) inside OmniCandy.`, outputs: [], data: { pid: editor.pid, commandLine: editor.commandLine.slice(0, 300) }, verified: false, evidence: ['the editor process was found and its window handed to OmniCandy to dock (the window itself is not read back)'] };
+    }
     // editor.launch
     const uproject = await resolveProject(ctx.workDir, String(params.project));
     if (await serverIsUp()) throw new AdapterError('app-error', 'An Unreal editor is already serving OmniCandy on this computer (only one can at a time). Close it first, or work in it.');
@@ -790,6 +807,8 @@ class UnrealAdapter implements ExternalAdapter {
     child.once('exit', (code) => { exited = code ?? -1; });
     child.once('error', (e) => { spawnError = e.message; });
     child.unref?.(); // the editor is the user's program: it keeps running when OmniCandy closes
+    // dock its window into OmniCandy as it appears (the host moves it off-screen until it sits in the Software tab)
+    if (child.pid) { unrealLive()?.onSpawn?.(child.pid); child.once('exit', () => unrealLive()?.onExit?.(child.pid!)); }
     const t0 = Date.now();
     for (;;) {
       if (spawnError) throw new AdapterError('app-error', `Unreal Editor could not be started: ${spawnError}`);

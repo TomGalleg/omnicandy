@@ -13,6 +13,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { CommandResult, ExternalAppInfo } from '@shared/integrations';
 import { IntegrationManager } from './index';
 import { UNREAL_MANIFEST, unrealFactory } from './adapters/unreal';
+import { pickEditor, processHooks, setUnrealLiveHooks } from './adapters/unrealLive';
 import { createProject, engineRootOf, launchHooks, parseTemplateDefs, renameInText, validateProjectName } from './adapters/unrealProject';
 import { externalTools } from '../agentHarness/externalTools';
 
@@ -232,9 +233,57 @@ describe('project.create / editor.launch through the manager while the editor is
     } finally { launchHooks.start = orig; delete process.env.OMNICANDY_UNREAL_LAUNCH_POLL_MS; delete process.env.OMNICANDY_UNREAL_LAUNCH_WAIT_MS; }
   });
 
+  it('docks the editor into OmniCandy: launch hands over the new process, and its exit is reported', async () => {
+    const m = await manager();
+    const loc = path.join(tmp, 'dock');
+    expect((await m.execute(key, 'project.create', { name: 'Docked', location: loc })).ok).toBe(true);
+    const events: string[] = [];
+    setUnrealLiveHooks({ onSpawn: (pid) => events.push(`spawn ${pid}`), onShow: (pid) => events.push(`show ${pid}`), onExit: (pid) => events.push(`exit ${pid}`) });
+    const orig = launchHooks.start;
+    let child: ChildProcess | null = null;
+    launchHooks.start = () => { child = fakeChild(); setTimeout(() => { void startServer(port).then((s) => { server = s; }); }, 300); return child; };
+    process.env.OMNICANDY_UNREAL_LAUNCH_POLL_MS = '200';
+    try {
+      expect((await m.execute(key, 'editor.launch', { project: 'Docked' })).ok).toBe(true);
+      expect(events).toEqual(['spawn 4242']); // handed over as soon as it was started, before it was ready
+      child!.emit('exit', 0);
+      expect(events).toEqual(['spawn 4242', 'exit 4242']);
+    } finally { setUnrealLiveHooks(null); launchHooks.start = orig; delete process.env.OMNICANDY_UNREAL_LAUNCH_POLL_MS; await new Promise<void>((r) => (server ? server.close(() => r()) : r())); server = null; }
+  });
+
+  it('shows an editor that is already open: by project, else the newest with a project, and says so when there is none', async () => {
+    const m = await manager();
+    const loc = path.join(tmp, 'show');
+    expect((await m.execute(key, 'project.create', { name: 'ShowMe', location: loc })).ok).toBe(true);
+    const up = path.join(loc, 'ShowMe', 'ShowMe.uproject');
+    const origList = processHooks.list;
+    const shown: number[] = [];
+    try {
+      processHooks.list = async () => [
+        { pid: 11, startedAt: 100, commandLine: '"E:\\UE\\UnrealEditor.exe"' },                 // project browser, no project
+        { pid: 22, startedAt: 200, commandLine: `"E:\\UE\\UnrealEditor.exe" "${up}" -x` },
+        { pid: 33, startedAt: 300, commandLine: '"E:\\UE\\UnrealEditor.exe" "C:\\other\\Other.uproject"' },
+      ];
+      // with no hooks (not Windows / no host) the command says so and does nothing
+      setUnrealLiveHooks(null);
+      expect((await m.execute(key, 'editor.show', {})).error?.kind).toBe('unsupported');
+      setUnrealLiveHooks({ onShow: (pid) => shown.push(pid) });
+      expect((await m.execute(key, 'editor.show', { project: 'ShowMe' })).data).toMatchObject({ pid: 22 });
+      expect((await m.execute(key, 'editor.show', {})).data).toMatchObject({ pid: 33 }); // newest with a project
+      expect(shown).toEqual([22, 33]);
+      processHooks.list = async () => [{ pid: 11, startedAt: 100, commandLine: '"E:\\UE\\UnrealEditor.exe"' }];
+      expect((await m.execute(key, 'editor.show', {})).error?.message).toMatch(/No Unreal Editor with a project open is running/);
+      processHooks.list = async () => [];
+      expect((await m.execute(key, 'editor.show', { project: 'ShowMe' })).error?.message).toMatch(/No running Unreal Editor has ShowMe\.uproject open/);
+    } finally { processHooks.list = origList; setUnrealLiveHooks(null); }
+    // the same choice, as a plain function
+    expect(pickEditor([{ pid: 1, startedAt: 5, commandLine: 'a.uproject' }, { pid: 2, startedAt: 9, commandLine: 'B.UPROJECT' }], null)?.pid).toBe(2);
+    expect(pickEditor([{ pid: 1, startedAt: 5, commandLine: 'C:\\p\\a.uproject' }], 'c:/p/A.uproject')?.pid).toBe(1);
+  });
+
   it('is only allowed for built-in adapters: the flag does nothing on a command in an installed package', () => {
     // the manager checks this.builtin before using a transient session; the manifest of every OTHER adapter has no offline command
-    expect(UNREAL_MANIFEST.commands.filter((c) => c.offline).map((c) => c.id).sort()).toEqual(['editor.launch', 'project.create', 'project.list']);
+    expect(UNREAL_MANIFEST.commands.filter((c) => c.offline).map((c) => c.id).sort()).toEqual(['editor.launch', 'editor.show', 'project.create', 'project.list']);
   });
 });
 

@@ -28,7 +28,7 @@ function LiveStage({ live, onList }: { live: ExternalLiveState; onList: () => vo
   return (
     <div className="ext-live">
       <div className="ext-live-bar">
-        <strong>{live.name}</strong><span className="asset-meta">live: you can watch Claude work here and edit by hand. Edits are saved to the project file after each step.</span>
+        <strong>{live.name}</strong><span className="asset-meta">{live.name === 'Blender' ? 'live: you can watch Claude work here and edit by hand. Edits are saved to the project file after each step.' : `live: you can watch the work happen here and edit by hand. Changes are not saved to disk until you save in ${live.name} (Ctrl+S).`}</span>
         <button className="btn small" onClick={onList}>Software list</button>
       </div>
       <div className="ext-live-stage" ref={ref} />
