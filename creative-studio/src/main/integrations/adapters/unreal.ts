@@ -5,7 +5,8 @@
 // What Unreal itself dictates, and the adapter reports instead of hiding:
 //  * The editor must be RUNNING with the Unreal MCP and toolset plugins enabled and the server started
 //    (Editor Preferences > Model Context Protocol > Auto Start Server, or the console command ModelContextProtocol.StartServer).
-//    OmniCandy never starts the editor or the server.
+//    OmniCandy starts the editor only through editor.launch (the user approves it) and never closes it; project.create makes a project
+//    with the plugins and Auto Start already on, so a new project needs no hand setup.
 //  * The server has no authentication; the client refuses any endpoint that is not on this computer.
 //  * Tool calls run one at a time on the editor's game thread, so every command makes serial calls.
 //  * While Play-In-Editor runs, the editor has no level to edit; edits are refused with that explanation.
@@ -22,6 +23,7 @@ import path from 'node:path';
 import { ADAPTER_SDK_VERSION, type AdapterManifest, type CommandSpec, type DiscoveredApp } from '@shared/integrations';
 import { McpHttpClient, McpHttpError } from '../../mcpHttpClient';
 import { safeFileName } from '../process';
+import { createProject, defaultProjectsDir, engineRootOf, launchHooks, readProjects, recordProject, resolveProject, TEMPLATES } from './unrealProject';
 import { BUNDLE_EXT, bundleFileName, exportBundle, findContentRoot, installBundle, isGamePackage, manifestSchema, pngInfo, projectRootOf, readBundle, waitForPackages, type UnrealIO } from './unrealFiles';
 import { AdapterError, type AdapterFactory, type AdapterOutcome, type ExecuteContext, type ExternalAdapter, type HealthResult, type ProbeResult } from '../sdk';
 import {
@@ -158,6 +160,30 @@ const COMMANDS: CommandSpec[] = [
     permissions: ['modify-project', 'write-files'], idempotent: true, timeoutMs: 120_000,
   },
   {
+    id: 'project.create', label: 'Create a new Unreal project',
+    description: `Creates a new, ready-to-use Unreal project from one of Unreal's own templates (${Object.keys(TEMPLATES).join(', ')}) the way Unreal's New Project does, with the MCP plugins and Auto Start Server already on, so OmniCandy can control it as soon as it opens. Works while the editor is closed. Nothing is overwritten: an existing folder is refused. Start it with editor.launch.`,
+    params: {
+      name: { type: 'string', description: 'Project name: starts with a letter, then letters, digits and underscores (up to 40).', required: true },
+      template: { type: 'string', description: `One of: ${Object.keys(TEMPLATES).join(', ')}.`, default: 'third_person' },
+      location: { type: 'string', description: 'Folder to create the project folder in (full path). Empty uses your Unreal Projects folder in Documents.', default: '' },
+    },
+    permissions: ['write-files'], offline: true, idempotent: false, timeoutMs: 300_000,
+  },
+  {
+    id: 'project.list', label: 'List Unreal projects made by OmniCandy',
+    description: 'Lists the Unreal projects created with project.create (name, template, where they are, and whether the files are still there). Works while the editor is closed. Read only.',
+    params: {}, permissions: ['read-info'], offline: true, idempotent: true, timeoutMs: 60_000,
+  },
+  {
+    id: 'editor.launch', label: 'Start Unreal Editor on a project',
+    description: 'Starts Unreal Editor on a project (a name from project.list, or the full path of a .uproject file) and waits until its MCP server answers and the project\'s level is open, so the other commands work. Only one editor can serve OmniCandy at a time: it refuses if one already does. It never closes anything. The first open of a new project can take several minutes while Unreal prepares it.',
+    params: {
+      project: { type: 'string', description: 'A project name from project.list, or the full path of a .uproject file.', required: true },
+      wait_seconds: { type: 'number', description: 'How long to wait for the editor to be ready.', default: 420, min: 30, max: 900 },
+    },
+    permissions: ['launch', 'open-files'], offline: true, idempotent: false, timeoutMs: 960_000,
+  },
+  {
     id: 'viewport.capture', label: 'Take a picture of the editor viewport',
     description: 'Captures the level viewport (optionally from a given camera position, leaving the editor camera where it is) as a PNG in the OmniCandy project. The picture is added to the library like a render from any other app, so PhotoCraft and the other apps can use it in this and other projects.',
     params: {
@@ -231,7 +257,7 @@ export const UNREAL_MANIFEST: AdapterManifest = {
     { kind: 'running', text: 'Unreal Editor 5.8 or newer must be open with a project (and not in Play-In-Editor).' },
     { kind: 'preference', text: 'Enable the "Unreal MCP" and "All Toolsets" plugins (Edit > Plugins), restart, then turn on Auto Start Server (Editor Preferences > Model Context Protocol) or run ModelContextProtocol.StartServer in the editor console.' },
   ],
-  notes: 'Uses Epic\'s experimental built-in MCP server on this computer (default http://127.0.0.1:8000/mcp; set OMNICANDY_UNREAL_MCP_URL for another local port). OmniCandy never starts the editor or the server. It reaches all ~830 editor tools in tiers: reading, editing (asked once, then allowed), and restricted (deleting assets, files, plugins: asked every time). Unreal has no undo tool: use Ctrl+Z in the editor, and check results with the read commands.',
+  notes: 'Uses Epic\'s experimental built-in MCP server on this computer (default http://127.0.0.1:8000/mcp; set OMNICANDY_UNREAL_MCP_URL for another local port). It can create a new project from Unreal\'s own templates and start the editor on it (project.create, editor.launch: you approve each), but never closes or changes an editor that is already open. It reaches all ~830 editor tools in tiers: reading, editing (asked once, then allowed), and restricted (deleting assets, files, plugins: asked every time). Unreal has no undo tool: use Ctrl+Z in the editor, and check results with the read commands.',
 };
 
 type Obj = Record<string, unknown>;
@@ -318,6 +344,17 @@ export function capResult(v: unknown): { result?: unknown; preview?: string; tru
   const text = typeof v === 'string' ? v : JSON.stringify(v) ?? '';
   if (text.length <= RESULT_MAX_CHARS) return { result: v, truncated: false, chars: text.length };
   return { preview: text.slice(0, RESULT_MAX_CHARS), truncated: true, chars: text.length };
+}
+
+/** Is an Unreal editor already offering its server? */
+async function serverIsUp(): Promise<boolean> {
+  try { const c = await McpHttpClient.connect(endpoint(), {}, undefined, 2500); await c.close(); return true; } catch { return false; }
+}
+/** The open level once the editor is up and has a project loaded, else null. */
+async function probeLevel(signal: AbortSignal): Promise<string | null> {
+  try {
+    return await withSession(signal, async (c) => { const l = String(await toolCall(c, SCENE, 'get_current_level', {}, signal)); return l.startsWith('/Game/') ? l : null; });
+  } catch { return null; }
 }
 
 const near = (a: unknown, b: number, tol: number) => typeof a === 'number' && Math.abs(a - b) <= tol;
@@ -426,6 +463,8 @@ class UnrealAdapter implements ExternalAdapter {
     const live = ['read from the running Unreal Editor through its MCP server'];
     const receipt = (what: string) => [`${what} (Unreal's own answer; not independently re-read: check with a read command)`];
     const app = this.app;
+    // These work while the editor is closed, so they must not need its server.
+    if (cmd.id === 'project.create' || cmd.id === 'project.list' || cmd.id === 'editor.launch') return this.offlineCommand(cmd, params, ctx, app);
     return withSession(sig, async (c) => {
       const io: UnrealIO = { tool: (toolset, tool, args) => rawToolCall(c, toolset, tool, args, sig, 120_000) };
       switch (cmd.id) {
@@ -720,6 +759,54 @@ class UnrealAdapter implements ExternalAdapter {
       }
       throw new AdapterError('unsupported', `Unreal Engine cannot run "${cmd.id}".`);
     });
+  }
+
+  /** project.create, project.list and editor.launch: no editor server involved until the editor has been started. */
+  private async offlineCommand(cmd: CommandSpec, params: Record<string, string | number | boolean>, ctx: ExecuteContext, app: DiscoveredApp): Promise<AdapterOutcome> {
+    if (cmd.id === 'project.list') {
+      const rows = [];
+      for (const p of await readProjects(ctx.workDir)) rows.push({ ...p, exists: await fs.stat(p.uproject).then((s) => s.isFile(), () => false) });
+      return { message: ` project(s) made by OmniCandy.`, outputs: [], data: { count: rows.length, projects: rows, templates: Object.fromEntries(Object.entries(TEMPLATES).map(([k, v]) => [k, v.label])) }, verified: true, evidence: ['read from this project\'s list and the files on disk'] };
+    }
+    if (cmd.id === 'project.create') {
+      const name = String(params.name).trim();
+      const location = String(params.location || '').trim() || await defaultProjectsDir();
+      const r = await createProject({ engineRoot: engineRootOf(app.exePath), engineVersion: null, template: String(params.template || 'third_person').trim(), name, location, progress: ctx.progress });
+      await recordProject(ctx.workDir, { name, uproject: r.uproject, template: r.template, createdAt: new Date().toISOString() });
+      return {
+        message: `Created the Unreal project "${name}" (${TEMPLATES[r.template]!.label}) at ${r.projectDir}: ${r.files} files, ${Math.round(r.bytes / 1048576)} MB, MCP plugins and Auto Start on. Start it with editor.launch.`,
+        outputs: [], data: { name, projectDir: r.projectDir, uproject: r.uproject, template: r.template, files: r.files, plugins: r.plugins, startupMap: r.startupMap, sharedContent: r.packs },
+        verified: true, evidence: ['the new .uproject was re-read with both plugins enabled', 'Auto Start Server is in the project settings', `every one of the ${r.files - 1} project files was re-read at its written size`, r.startupMap ? `the start-up map ${r.startupMap} exists in the new project` : 'the template names no start-up map'],
+      };
+    }
+    // editor.launch
+    const uproject = await resolveProject(ctx.workDir, String(params.project));
+    if (await serverIsUp()) throw new AdapterError('app-error', 'An Unreal editor is already serving OmniCandy on this computer (only one can at a time). Close it first, or work in it.');
+    const waitMs = Number(process.env.OMNICANDY_UNREAL_LAUNCH_WAIT_MS) || Math.max(30, Math.min(900, Number(params.wait_seconds) || 420)) * 1000;
+    const pollMs = Number(process.env.OMNICANDY_UNREAL_LAUNCH_POLL_MS) || 3000;
+    ctx.progress('Starting Unreal Editor', 0.05);
+    const child = launchHooks.start(app.exePath, [uproject, '-ModelContextProtocolStartServer']);
+    let exited: number | null | undefined, spawnError = '';
+    child.once('exit', (code) => { exited = code ?? -1; });
+    child.once('error', (e) => { spawnError = e.message; });
+    child.unref?.(); // the editor is the user's program: it keeps running when OmniCandy closes
+    const t0 = Date.now();
+    for (;;) {
+      if (spawnError) throw new AdapterError('app-error', `Unreal Editor could not be started: ${spawnError}`);
+      if (exited !== undefined) throw new AdapterError('app-error', `Unreal Editor closed with code ${exited} before it was ready. Open the project by hand once to see what it says.`);
+      if (ctx.signal.aborted) throw new AdapterError('app-error', 'Cancelled while waiting; the editor was left running.');
+      const ready = await probeLevel(ctx.signal);
+      if (ready) {
+        return {
+          message: `Unreal Editor is running on ${path.basename(uproject)} (level ${ready}) after ${Math.round((Date.now() - t0) / 1000)} s; OmniCandy can control it now.`,
+          outputs: [], data: { project: uproject, level: ready, pid: child.pid ?? null, seconds: Math.round((Date.now() - t0) / 1000) },
+          verified: true, evidence: ['its MCP server answered', `it reports the open level ${ready}`],
+        };
+      }
+      if (Date.now() - t0 > waitMs) throw new AdapterError('app-error', `Unreal Editor did not become ready within ${Math.round(waitMs / 1000)} s (it may still be starting: the first open of a new project can take a few minutes). Try app.info in a moment.`);
+      ctx.progress(`Waiting for Unreal Editor (${Math.round((Date.now() - t0) / 1000)} s)`, Math.min(0.9, 0.1 + (Date.now() - t0) / waitMs));
+      await new Promise((r) => setTimeout(r, pollMs));
+    }
   }
 
   async dispose(): Promise<void> { this.app = null; this.described.clear(); this.index = null; }

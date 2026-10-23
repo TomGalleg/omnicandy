@@ -65,6 +65,11 @@ export interface CommandSpec {
   confirmEveryTime?: boolean;
   /** Built-in adapters only: returns a temporary picture (data.image.path) for a vision-capable model. Never proof of project state. */
   preview?: boolean;
+  /**
+   * Built-in adapters only: may run while the application itself is not running or not reachable (creating a project for it, starting it).
+   * The manager then uses a short-lived session without the application's health check. Everything else still needs a real connection.
+   */
+  offline?: boolean;
 }
 
 /** What an adapter needs before it can work; shown before the user connects. */

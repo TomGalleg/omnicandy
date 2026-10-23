@@ -31,6 +31,8 @@ const empty = z.object({}).strict();
 const identifier = z.string().min(1).max(1024);
 const argsSchema = z.record(z.string().min(1).max(128), z.unknown());
 const usable = (status: string) => status === 'connected' || status === 'limited';
+/** A closed application is still offered when it has commands that work closed (making its project, starting it). */
+const closedButUsable = (app: { status: string; commands?: Array<{ offline?: boolean }> }) => (app.status === 'api-unavailable' || app.status === 'not-running') && !!app.commands?.some((c) => c.offline === true);
 const normKey = (s: string) => s.trim().toLowerCase().replace(/[\\/]+/g, '\\');
 type AppRef = { key: string; name: string; adapterId?: string | null; status: string; statusDetail?: string };
 /**
@@ -40,7 +42,7 @@ type AppRef = { key: string; name: string; adapterId?: string | null; status: st
  * really is not connected is reported as disconnected (and asks the agent to stop, since nothing can run until the user acts).
  */
 export function resolveApplication<T extends AppRef>(all: readonly T[], ref: string): { app: T } | { error: string } {
-  const live = all.filter((a) => usable(a.status) && !!a.adapterId);
+  const live = all.filter((a) => (usable(a.status) || closedButUsable(a as { status: string; commands?: Array<{ offline?: boolean }> })) && !!a.adapterId);
   const want = normKey(ref);
   const pick = (pool: readonly T[]) => {
     const exact = pool.filter((a) => a.key === ref);
@@ -75,7 +77,7 @@ const MAX_READBACK_BYTES = 1_000_000;
 const summary = (j: JobInfo) => ({ job_id: j.id, app: j.appName, command: j.commandId, status: j.status, stage: j.stage, progress: j.fraction, started: j.startedAt, finished: j.finishedAt });
 
 export function externalTools(backend: ExternalBackend, options: ExternalToolOptions = {}) {
-  const list = async () => (await backend.list()).filter(app => usable(app.status) && !!app.adapterId);
+  const list = async () => (await backend.list()).filter(app => (usable(app.status) || closedButUsable(app)) && !!app.adapterId);
   const resolve = async (ref: string) => resolveApplication(await backend.list(), ref);
   const trusted = (adapterId: string | null | undefined, spec: CommandSpec) => isTrustedExternalReadback(backend.isBuiltin?.bind(backend), adapterId, spec);
   const viewOnly = (adapterId: string | null | undefined, spec: CommandSpec) => isViewOnlyCommand(backend.isBuiltin?.bind(backend), adapterId, spec);

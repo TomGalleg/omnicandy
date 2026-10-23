@@ -236,7 +236,8 @@ describe('Unreal helpers and safety tiers', () => {
 
   it('has a valid manifest whose dangerous commands are asked about, and nothing launches the editor', () => {
     expect(validateManifest(UNREAL_MANIFEST, ADAPTER_SDK_VERSION)).toEqual([]);
-    expect(UNREAL_MANIFEST.commands.flatMap((c) => c.permissions)).not.toContain('launch');
+    // starting the editor is one named command the user approves; no other command may ask to launch anything
+    expect(UNREAL_MANIFEST.commands.filter((c) => c.permissions.includes('launch')).map((c) => c.id)).toEqual(['editor.launch']);
     const cmd = (id: string) => UNREAL_MANIFEST.commands.find((c) => c.id === id)!;
     for (const id of ['tool.restricted', 'actor.delete', 'script.run', 'bundle.import']) expect(cmd(id).destructive, id).toBe(true);
     // the commands that write files into the OmniCandy project say so, so the user is asked for that permission

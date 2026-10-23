@@ -137,6 +137,15 @@ refused before Unreal is touched).
 
 Every edit is refused while Play-In-Editor runs (the editor has no level then), except `StopPIE`. Results over 20,000 characters are cut with a note.
 
+**Making and starting a project** (`adapters/unrealProject.ts`). OmniCandy can set an Unreal project up from nothing. These three commands carry the
+manifest flag `offline: true` (built-in adapters only): they run while the editor is closed, using a short-lived session with no health check, since
+there is no server yet. Everything else still needs a real connection, and the AI harness lists a closed Unreal because it has such commands.
+
+| Command | Permissions | Notes |
+|---|---|---|
+| `project.create` | write-files | does what Unreal's New Project does for a template, by the template's own `Config/TemplateDefs.ini` rules: copies the template (skipping the folders and files it ignores), renames the template in config text, copies the shared content packs it names from `Templates/TemplateResources/High` (characters, input, level prototyping), writes `<Name>.uproject` for this engine, turns on the `ModelContextProtocol` and `AllToolsets` plugins and Auto Start Server. Templates: third_person, first_person, top_down, vehicle, blank. Refuses an existing folder, a bad or reserved name, a relative path or a place inside the engine install; leaves nothing behind on failure. Proven by re-reading the .uproject, the plugin entries, the setting, every file's size and the start-up map |
+| `project.list` | read-info | the projects made this way (recorded in `work/external/unreal/projects.json`) and whether their files are still there |
+| `editor.launch` | launch, open-files | starts `UnrealEditor.exe <project> -ModelContextProtocolStartServer` (detached, so it outlives OmniCandy) and waits until the server answers and a level is open; refuses when an editor already serves OmniCandy; never closes anything; reports an early exit, a start failure or a timeout honestly |
 **Files and other projects** (`adapters/unrealFiles.ts`). Unreal now works like the other apps: it writes files into the OmniCandy project
 (`work/external/unreal/`) and hands pictures to the library.
 

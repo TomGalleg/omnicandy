@@ -407,6 +407,14 @@ export class IntegrationManager {
     }
 
     let session = this.sessions.get(key);
+    // A command that works while the program is closed (creating its project, starting it) gets a short-lived session with no health check.
+    let transient: ExternalAdapter | null = null;
+    if (!session && cmd.offline && this.builtin.has(f) && f.manifest.maturity !== 'stub') {
+      const adapter = f.create();
+      try { await withTimeout(adapter.connect(app), 30_000, 'connect'); } catch (e) { await adapter.dispose().catch(() => undefined); return fail('not-connected', `Could not prepare ${app.name}: ${errMsg(e)}`, app.name); }
+      transient = adapter;
+      session = { app, adapter, factory: f, version: this.versions.get(key) ?? app.version };
+    }
     if (!session) {
       try { await this.connect(key); session = this.sessions.get(key); } catch (e) { return fail('not-connected', `Could not connect to ${app.name}: ${errMsg(e)}`, app.name); }
     }
@@ -456,6 +464,7 @@ export class IntegrationManager {
     } finally {
       clearTimeout(timer);
       this.ops.delete(opId);
+      if (transient) await transient.dispose().catch(() => undefined);
     }
     };
 
