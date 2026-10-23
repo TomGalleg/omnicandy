@@ -146,7 +146,9 @@ def _engine(sc, name):
     sc.render.engine = 'BLENDER_WORKBENCH'
 def _details():
     out = []
-    for o in bpy.data.objects:
+    for _i, o in enumerate(bpy.data.objects):
+        if _i >= 300:
+            break
         d = {'name': o.name, 'type': o.type, 'location': [round(v, 4) for v in o.location], 'rotation_deg': [round(math.degrees(v), 2) for v in o.rotation_euler], 'scale': [round(v, 4) for v in o.scale], 'size': [round(v, 4) for v in o.dimensions]}
         if getattr(o.data, 'materials', None) is not None:
             d['materials'] = [{'name': m.name, 'color': [round(v, 3) for v in m.diffuse_color]} for m in o.data.materials if m]
@@ -158,7 +160,7 @@ def _details():
             d['keyframed'] = sorted(set(f.data_path for f in o.animation_data.action.fcurves))
         out.append(d)
     sc = bpy.context.scene
-    return {'details': out, 'scene': {'engine': sc.render.engine, 'width': sc.render.resolution_x, 'height': sc.render.resolution_y, 'fps': sc.render.fps, 'frame_start': sc.frame_start, 'frame_end': sc.frame_end, 'camera': sc.camera.name if sc.camera else None}}
+    return {'details': out, 'details_total': len(bpy.data.objects), 'details_truncated': len(bpy.data.objects) > 300, 'scene': {'engine': sc.render.engine, 'width': sc.render.resolution_x, 'height': sc.render.resolution_y, 'fps': sc.render.fps, 'frame_start': sc.frame_start, 'frame_end': sc.frame_end, 'camera': sc.camera.name if sc.camera else None}}
 def _save():
     bpy.ops.wm.save_mainfile()
 `;

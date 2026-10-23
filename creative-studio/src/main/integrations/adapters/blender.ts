@@ -142,7 +142,8 @@ for (const [id, body] of Object.entries(BATCH_SCRIPTS)) SCRIPTS[id] = `${PRELUDE
 for (const [id, body] of Object.entries({ 'scene.viewport': VIEWPORT_BODY, 'script.run': SCRIPT_RUN_BODY, 'script.window_save': SCRIPT_WINDOW_SAVE_BODY, 'script.window_reload': SCRIPT_WINDOW_RELOAD_BODY })) SCRIPTS[id] = `${PRELUDE}${SCENE_PRELUDE}${BATCH_PRELUDE}\n${body}`;
 
 export function runBlender(exe: string, args: string[], signal: AbortSignal | undefined, timeoutMs: number): Promise<RunResult> {
-  return runProcess(exe, args, { signal, timeoutMs, label: 'Blender' });
+  // A big scene's read-back is one long line; the default buffer would cut its start (the result marker) off.
+  return runProcess(exe, args, { signal, timeoutMs, label: 'Blender', maxOut: 4_000_000 });
 }
 
 const safeName = safeFileName;
@@ -223,7 +224,10 @@ class BlenderAdapter implements ExternalAdapter {
       const r = await runBlender(this.app!.exePath, ['--background', '--factory-startup', '--python', py, '--', js], ctx.signal, 300_000);
       const summary = parseResultLine(r.out);
       if (r.code !== 0 || !summary) {
-        const tail = (r.err || r.out).trim().split(/\r?\n/).slice(-6).join(' | ');
+        // The cause can be on stdout or stderr, and Blender prints harmless startup notices (TBBmalloc...) last: prefer lines that name an error.
+        const lines = `${r.out}\n${r.err}`.split(/\r?\n/).map((l) => l.trim()).filter((l) => l && !/TBBmalloc/.test(l));
+        const named = lines.filter((l) => /script_error|script_refused|script_syntax|invalid parameter|Traceback|Error\b|Exception/i.test(l));
+        const tail = (named.length ? named.slice(-3) : lines.slice(-6)).join(' | ');
         throw new AdapterError('app-error', `Blender stopped with exit code ${r.code}: ${tail.slice(0, 400)}`);
       }
       return { summary, r };
@@ -274,9 +278,10 @@ class BlenderAdapter implements ExternalAdapter {
       // Verification: re-open the saved file in a fresh Blender and read it back.
       ctx.progress('Checking the saved file', 0.7);
       const check = await this.script(ctx, 'scene.inspect', { input }, { background: true });
-      const details = (check.summary.details ?? []) as Array<{ name: string }>;
+      // Names come from the summary (every object, by type), not from `details`, which is capped for big scenes.
+      const names = new Set(Object.values((check.summary.objects ?? {}) as Record<string, string[]>).flat());
       const name = String(params.new_name ?? params.name ?? '');
-      if (cmd.id === 'object.delete' ? details.some((d) => d.name === name) : cmd.id === 'object.add' && params.name ? !details.some((d) => d.name === name) : false) {
+      if (cmd.id === 'object.delete' ? names.has(name) : cmd.id === 'object.add' && params.name ? !names.has(name) : false) {
         throw new AdapterError('verification-failed', `${cmd.id} did not change the saved file as expected (${name}).`);
       }
       return {

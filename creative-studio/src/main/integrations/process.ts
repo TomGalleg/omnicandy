@@ -14,6 +14,8 @@ export interface RunOptions {
   label: string;
   env?: NodeJS.ProcessEnv;
   cwd?: string;
+  /** Characters of stdout kept (the tail). Default 200,000. */
+  maxOut?: number;
 }
 
 /** Runs a program without a window; kills it on timeout or abort. Output is truncated to the tail. */
@@ -21,7 +23,8 @@ export function runProcess(exe: string, args: string[], o: RunOptions): Promise<
   return new Promise((resolve, reject) => {
     const p = spawn(exe, args, { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], env: o.env ?? process.env, cwd: o.cwd });
     let out = '', err = '';
-    p.stdout.on('data', (d: Buffer) => { out = (out + d.toString()).slice(-200_000); });
+    const keep = o.maxOut ?? 200_000;
+    p.stdout.on('data', (d: Buffer) => { out = (out + d.toString()).slice(-keep); });
     p.stderr.on('data', (d: Buffer) => { err = (err + d.toString()).slice(-20_000); });
     const kill = () => { try { p.kill(); } catch { /* gone */ } };
     const timer = setTimeout(() => { kill(); reject(new AdapterError('app-error', `${o.label} did not finish within ${Math.round(o.timeoutMs / 1000)} s.`)); }, o.timeoutMs);
