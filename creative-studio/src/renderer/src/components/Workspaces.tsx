@@ -6,7 +6,7 @@ import type { LiveApi } from '../useLive';
 import { AssetThumb, KIND_LABEL } from './AssetBrowser';
 import { DeliverWorkspace } from './DeliverWorkspace';
 import { AppWorkspace, EditWorkspace } from './EditWorkspace';
-import { GenerateWorkspace } from './GenerateWorkspace';
+import { GenerateHub } from './GenerateHub';
 import { HomeWorkspace } from './HomeWorkspace';
 import { SoftwareWorkspace } from './SoftwareWorkspace';
 import { WorkflowEditor } from './WorkflowEditor';
@@ -37,7 +37,7 @@ export function WorkspaceView(p: Props) {
     case 'home': return <HomeWorkspace manifest={p.manifest} projectKey={p.projectKey} onSwitched={p.onSwitched} onGoto={p.onGoto} log={p.log} />;
     case 'media': return <MediaWorkspace manifest={p.manifest} asset={p.selected} onSelect={p.onSelectAsset} onOpenIn={p.onOpenIn} />;
     case 'edit': return <EditWorkspace manifest={p.manifest} selected={p.selected} liveApi={p.liveApi} onProjectChanged={p.onProjectChanged} onSelectAsset={p.onSelectAsset} chosenApp={p.chosenApp} log={p.log} />;
-    case 'generate': return <GenerateWorkspace manifest={p.manifest} selected={p.selected} onGoto={p.onGoto} log={p.log} />;
+    case 'generate': return <GenerateHub manifest={p.manifest} selected={p.selected} onGoto={p.onGoto} log={p.log} />;
     case 'workflow': return <WorkflowEditor manifest={p.manifest} integrations={p.integrations} colorMode={p.resolvedTheme} log={p.log} onProjectChanged={p.onProjectChanged} />;
     case 'effects': return <AppWorkspace tab="effects" manifest={p.manifest} selected={p.selected} liveApi={p.liveApi} onProjectChanged={p.onProjectChanged} onSelectAsset={p.onSelectAsset} chosenApp={p.chosenApp} log={p.log} />;
     case 'color': return <AppWorkspace tab="color" manifest={p.manifest} selected={p.selected} liveApi={p.liveApi} onProjectChanged={p.onProjectChanged} onSelectAsset={p.onSelectAsset} chosenApp={p.chosenApp} log={p.log} />;

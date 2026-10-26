@@ -1,0 +1,36 @@
+/* AI Studio (Explore / Create / Assets / Jobs). Uses the app theme variables, so dark/light/system just work. */
+.aistudio { display: grid; gap: 14px; }
+.as-tabs { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.as-tab { border: 1px solid var(--border); background: var(--surface); color: var(--text); border-radius: 999px; padding: 6px 16px; cursor: pointer; font: inherit; }
+.as-tab[aria-selected='true'] { background: var(--accent); color: var(--accent-fg); border-color: transparent; }
+.as-tab .as-count { margin-left: 6px; opacity: 0.8; font-size: 0.85em; }
+.as-hero { border-radius: 14px; padding: 18px; display: grid; gap: 8px; border: 1px solid var(--border);
+  background: linear-gradient(120deg, color-mix(in srgb, var(--accent) 28%, var(--surface)), color-mix(in srgb, #c04fff 22%, var(--surface)) 55%, color-mix(in srgb, #ff9d4f 22%, var(--surface))); }
+.as-hero h2 { margin: 0; font-size: 1.25rem; }
+.as-filters { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.as-search { flex: 1 1 220px; min-width: 160px; }
+.as-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; }
+.as-card { --hue: var(--accent); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; background: var(--surface); display: grid; grid-template-rows: auto 1fr; transition: transform 0.12s ease, border-color 0.12s ease; }
+.as-card:hover { transform: translateY(-2px); border-color: var(--hue); }
+.as-card.soon { opacity: 0.88; }
+.as-art { height: 84px; display: flex; align-items: flex-end; justify-content: space-between; padding: 8px 10px; color: #fff; font-weight: 700; letter-spacing: 0.02em;
+  background: linear-gradient(135deg, var(--hue), color-mix(in srgb, var(--hue) 40%, #000)); }
+.as-art small { font-weight: 500; opacity: 0.9; }
+.as-body { padding: 10px; display: grid; gap: 8px; align-content: start; }
+.as-body h4 { margin: 0; font-size: 1rem; }
+.as-badges { display: flex; gap: 4px; flex-wrap: wrap; }
+.as-badge { font-size: 0.75rem; border: 1px solid var(--border); border-radius: 999px; padding: 1px 8px; color: var(--text-2, var(--text)); }
+.as-badge.ready { border-color: var(--ok); }
+.as-badge.warn { border-color: var(--warn); }
+.as-badge.svg { border-color: #c04fff; }
+.as-create { display: grid; grid-template-columns: minmax(280px, 380px) 1fr; gap: 14px; }
+@media (max-width: 900px) { .as-create { grid-template-columns: 1fr; } }
+.as-preview { min-height: 260px; border: 1px dashed var(--border-strong, var(--border)); border-radius: 12px; display: grid; place-items: center; padding: 14px; text-align: center; }
+.as-jobs { display: grid; gap: 8px; }
+.as-job { border: 1px solid var(--border); border-radius: 10px; padding: 10px; background: var(--surface); display: grid; gap: 4px; }
+.as-job .as-state { font-weight: 600; }
+.as-job.failed { border-color: var(--warn); }
+.as-job.done { border-color: var(--ok); }
+.as-spin { display: inline-block; width: 12px; height: 12px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: as-spin 0.9s linear infinite; margin-right: 6px; vertical-align: -2px; }
+@keyframes as-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .as-spin { animation: none; } .as-card { transition: none; } }
