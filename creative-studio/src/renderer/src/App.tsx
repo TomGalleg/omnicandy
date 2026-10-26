@@ -8,6 +8,7 @@ import type { AppProbeResult, Asset, ProjectManifest, WorkspaceId } from '@share
 import { AssetBrowser } from './components/AssetBrowser';
 import { BottomPanel, type LogEntry } from './components/BottomPanel';
 import { ClaudePanel } from './components/ClaudePanel';
+import { BuildPanel } from './components/BuildPanel';
 import { Header } from './components/Header';
 import { WorkspaceView } from './components/Workspaces';
 import { useAppearance } from './useAppearance';
@@ -110,6 +111,13 @@ export function App() {
   const [log, setLog] = useState<LogEntry[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [projectKey, setProjectKey] = useState<string | null>(null);
+  const [buildOpen, setBuildOpen] = useState(false);
+  useEffect(() => {
+    const on = (e: Event) => setBuildOpen((e as CustomEvent<{ open?: boolean }>).detail?.open !== false);
+    window.addEventListener('createcraft:build-panel', on);
+    return () => window.removeEventListener('createcraft:build-panel', on);
+  }, []);
+  const closeBuild = useCallback(() => setBuildOpen(false), []);
 
   const addLog = useCallback((source: string, message: string) => {
     setLog((l) => [...l.slice(-299), { at: new Date(), source, message }]);
@@ -223,6 +231,7 @@ export function App() {
 
   return (
     <div className="app">
+      {buildOpen && <BuildPanel onClose={closeBuild} />}
       <Header
         projectName={manifest?.name ?? '…'}
         onProjectHome={() => setWorkspace('home')}

@@ -16,3 +16,8 @@ creative-studio/addins/**/obj/
 
 # A stray compiled test double once landed here under this name
 creative-studio/undefined
+
+# Source bundle shipped for the Build panel, and its launch markers
+creative-studio/build-source/
+.started-ok
+.use-edited

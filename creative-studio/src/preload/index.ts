@@ -3,6 +3,7 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron';
 import { ASSET_SCHEME, IPC, type StudioApi } from '@shared/ipc';
 import type { ClaudeState } from '@shared/claude';
+import type { BuildState } from '@shared/buildSession';
 import type { GenerateResultDto } from '@shared/ipc';
 import type { DeliverJob } from '@shared/deliver';
 import type { LiveSnapshot } from '@shared/live';
@@ -58,6 +59,23 @@ const api: StudioApi = {
   },
   listExports: () => ipcRenderer.invoke(IPC.listExports),
   revealExport: (name) => ipcRenderer.invoke(IPC.revealExport, name),
+  build: {
+    state: () => ipcRenderer.invoke(IPC.buildState),
+    send: (message) => ipcRenderer.invoke(IPC.buildSend, message),
+    stop: () => ipcRenderer.invoke(IPC.buildStop),
+    reset: () => ipcRenderer.invoke(IPC.buildReset),
+    planUsage: () => ipcRenderer.invoke(IPC.buildPlanUsage),
+    setup: () => ipcRenderer.invoke(IPC.buildSetup),
+    rebuild: () => ipcRenderer.invoke(IPC.buildRebuild),
+    restore: () => ipcRenderer.invoke(IPC.buildRestore),
+    installNode: () => ipcRenderer.invoke(IPC.buildInstallNode),
+    answer: (id, allow) => ipcRenderer.invoke(IPC.buildAnswer, id, allow),
+    onChange: (cb) => {
+      const listener = (_e: IpcRendererEvent, s: BuildState) => cb(s);
+      ipcRenderer.on(IPC.buildEvent, listener);
+      return () => ipcRenderer.removeListener(IPC.buildEvent, listener);
+    },
+  },
   deliver: {
     jobs: () => ipcRenderer.invoke(IPC.deliverJobs),
     enqueue: (assetId, presetIds) => ipcRenderer.invoke(IPC.deliverEnqueue, assetId, presetIds),

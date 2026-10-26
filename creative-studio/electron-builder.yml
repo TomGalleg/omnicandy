@@ -27,6 +27,9 @@ extraResources:
   # The planner's MCP server: one file that runs with OmniCandy's own runtime (ELECTRON_RUN_AS_NODE=1), so AI clients can launch it.
   - from: out/planner-mcp.cjs
     to: planner-mcp.cjs
+  # The editable source for the Build panel's "Set up editing" (scripts/pack-source.mjs).
+  - from: build-source
+    to: source
   - from: resources/icon.png
     to: icon.png
   - from: fixtures/sample-project

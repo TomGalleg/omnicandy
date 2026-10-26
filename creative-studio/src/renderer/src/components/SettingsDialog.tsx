@@ -9,8 +9,6 @@ import type { LiveSnapshot } from '@shared/live';
 import { ACCENT_PRESETS, THEME_OPTIONS } from '@shared/theme';
 import type { AppProbeResult } from '@shared/types';
 import { setOverlayOpen } from '../overlay';
-import { ConnectApplicationsCard } from '../connect/ConnectApplicationsCard';
-import { CreateIntegrationCard } from '../builder/MyIntegrations';
 import { ExternalApps } from './ExternalApps';
 import type { useAppearance } from '../useAppearance';
 
@@ -57,7 +55,7 @@ export function SettingsDialog({ appearance, appTheme, apps, integrations, onClo
           <div role="tabpanel" className="settings-content">
             {section === 'appearance' && <AppearanceSettings appearance={appearance} appTheme={appTheme} />}
             {section === 'storage' && <StorageSettings />}
-            {section === 'integrations' && <IntegrationSettings apps={apps} />}
+            {section === 'integrations' && <IntegrationSettings apps={apps} onClose={onClose} />}
             {section === 'diagnostics' && <Diagnostics apps={apps} integrations={integrations} />}
           </div>
         </div>
@@ -181,12 +179,15 @@ function StorageSettings() {
   );
 }
 
-function IntegrationSettings({ apps }: { apps: AppProbeResult[] }) {
+function IntegrationSettings({ apps, onClose }: { apps: AppProbeResult[]; onClose: () => void }) {
   const installed = apps.filter((a) => a.installed).length;
   return (
     <>
-      <ConnectApplicationsCard />
-      <CreateIntegrationCard />
+      <div className="field">
+        <span className="menu-label">Add apps or change OmniCandy</span>
+        <button className="btn" onClick={() => { window.dispatchEvent(new CustomEvent('createcraft:build-panel', { detail: { open: true } })); onClose(); }}>Build with Claude Code</button>
+        <small>Opens a chat panel on the right with Claude Code, already aware of OmniCandy and its interface. Chat with it to connect a new app or change how OmniCandy looks.</small>
+      </div>
       <div className="field">
         <span className="menu-label">ArtCraft apps · {installed} of {apps.length} installed</span>
         <ul className="status-list">

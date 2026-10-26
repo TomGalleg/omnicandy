@@ -1,3 +1,4 @@
+import fs from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { app, BrowserWindow, nativeTheme, net, protocol, session, shell } from 'electron';
@@ -6,6 +7,7 @@ import { PALETTES, resolveTheme } from '@shared/theme';
 import { DockedPanel } from './dockedPanel';
 import { EmbeddedApp } from './embeddedApp';
 import { registerIpc } from './ipc';
+import { editedCopyToStart, startWithFallback, STARTED_OK } from './editWorkspace';
 import type { ProjectStore } from './projectStore';
 import { ProjectManager } from './projects';
 import { SettingsStore } from './settingsStore';
@@ -24,7 +26,12 @@ app.setName('OmniCandy');
 app.setPath('userData', process.env.CS_USER_DATA_DIR ? path.resolve(process.env.CS_USER_DATA_DIR) : path.join(app.getPath('appData'), 'creative-studio'));
 
 // One instance per profile: two processes seeding/writing the same project would race.
-if (!app.requestSingleInstanceLock()) app.exit(0);
+// An installed copy hands over to the person's edited copy (Build panel) when it was asked for and came up last time; if the
+// edited copy does not come up, the original starts again.
+const editedDir = path.join(app.getPath('home'), 'OmniCandy Source');
+const editedProgram = app.isPackaged && !process.env.CS_USER_DATA_DIR ? editedCopyToStart(editedDir) : null;
+if (editedProgram) void startWithFallback(editedDir, editedProgram, { cmd: process.execPath, args: [] }).then(() => app.exit(0));
+else if (!app.requestSingleInstanceLock()) app.exit(0);
 
 // Files that must stay plain files next to the program (a PowerShell script cannot be run from inside app.asar): in the installed
 // application they are electron-builder extraResources under process.resourcesPath; in development they are in the repository.
@@ -111,6 +118,9 @@ async function createWindow() {
 }
 
 app.whenReady().then(async () => {
+  if (editedProgram) return;
+  // An edited copy tells the program that started it that it came up.
+  if (!app.isPackaged) void fs.writeFile(path.join(app.getAppPath(), STARTED_OK), 'ok').catch(() => undefined);
   app.setAppUserModelId('ClaudeCraft.CreateCraft'); // the Windows identity of the app (taskbar grouping); not shown to anyone, kept so existing pins keep working
   session.defaultSession.setPermissionRequestHandler((_wc, _perm, cb) => cb(false));
 

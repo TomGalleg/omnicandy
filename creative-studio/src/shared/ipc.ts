@@ -5,6 +5,7 @@ import type { InstalledProgram } from './builder';
 import type { ClaudeAuthMode, ClaudeBilling, ClaudeState } from './claude';
 import type { AgentUiState } from './agentHarness';
 import type { ProjectPlan } from './projectPlan';
+import type { BuildState, PlanUsage } from './buildSession';
 
 export type ProjectMeta = Pick<ProjectManifest, 'kind' | 'brief' | 'objective'>;
 export type ProjectMetaPatch = Pick<ProjectManifest, 'objective' | 'view'>;
@@ -57,6 +58,17 @@ export const IPC = {
   workflowPlanDismiss: 'workflow:plan-dismiss',
   listExports: 'exports:list',
   revealExport: 'exports:reveal',
+  buildState: 'build:state',
+  buildSend: 'build:send',
+  buildStop: 'build:stop',
+  buildReset: 'build:reset',
+  buildAnswer: 'build:answer',
+  buildEvent: 'build:event',
+  buildPlanUsage: 'build:plan-usage',
+  buildSetup: 'build:setup',
+  buildRebuild: 'build:rebuild',
+  buildRestore: 'build:restore',
+  buildInstallNode: 'build:install-node',
   liveState: 'live:state',
   liveOpen: 'live:open',
   liveRun: 'live:run',
@@ -324,6 +336,24 @@ export interface StudioApi {
   onWorkflowEvent(cb: (e: WorkflowRunEvent) => void): () => void;
   listExports(): Promise<Array<{ name: string; bytes: number; modified: string }>>;
   revealExport(name: string): Promise<void>;
+  /** The Build chat: Claude Code working in OmniCandy's own source (slide panel). */
+  build: {
+    state(): Promise<BuildState>;
+    send(message: string): Promise<void>;
+    stop(): Promise<void>;
+    reset(): Promise<void>;
+    /** The plan limits Claude Code's /usage shows, read live. */
+    planUsage(): Promise<PlanUsage>;
+    /** Unpacks the editable source and installs what it needs. */
+    setup(): Promise<void>;
+    /** Builds the edited copy and restarts OmniCandy into it. */
+    rebuild(): Promise<void>;
+    /** Puts the shipped source back. */
+    restore(): Promise<void>;
+    installNode(): Promise<void>;
+    answer(id: string, allow: boolean): Promise<void>;
+    onChange(cb: (s: BuildState) => void): () => void;
+  };
   /** Deliver tab: export queue (ArtCraft command-line tools, no app windows). */
   deliver: {
     jobs(): Promise<DeliverJob[]>;

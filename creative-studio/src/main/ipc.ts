@@ -19,6 +19,9 @@ import { exportPresetsOf, importAssetIds, WorkflowRunner, type RunnerDeps } from
 import { probeAllArtCraftApps } from './artcraftProbe';
 import { IMPORTABLE_EXTENSIONS, kindForExtension } from './media';
 import { AppEditors } from './appEditors';
+import { BuildSession } from './devSession';
+import { EditWorkspace } from './editWorkspace';
+import { fetchPlanUsage } from './planUsage';
 import { showApprovalCard } from './approvalWindow';
 import { randomUUID } from 'node:crypto';
 import { ClaudePartner, defaultClaudeCli, type PlanReference } from './claudePartner';
@@ -1602,6 +1605,32 @@ export function registerIpc(d: IpcDeps): void {
     return true;
   });
   handle(IPC.projectsSetDefaultDir, z.tuple([folderPath.nullable()]), (dir) => d.projects.setDefaultDir(dir));
+  const emitBuild = (st: import('@shared/buildSession').BuildState) => { for (const w of BrowserWindow.getAllWindows()) if (!w.isDestroyed()) w.webContents.send(IPC.buildEvent, st); };
+  const editWorkspace = new EditWorkspace({
+    appPath: app.getAppPath(),
+    isPackaged: app.isPackaged,
+    bundleDir: app.isPackaged ? path.join(process.resourcesPath, 'source') : null,
+    workspaceDir: path.join(app.getPath('home'), 'OmniCandy Source'),
+    fallbackCommand: app.isPackaged ? { cmd: process.execPath, args: [] } : { cmd: process.execPath, args: [app.getAppPath()] },
+    emit: () => { void build.refresh(); },
+    quit: () => app.quit(),
+  });
+  const build: BuildSession = new BuildSession({
+    workspace: editWorkspace,
+    env: () => claudeAuth.env(),
+    scrub: (t) => claudeAuth.scrub(t),
+    emit: emitBuild,
+  });
+  handle(IPC.buildState, none, async () => { await build.refresh(); return build.state(); });
+  handle(IPC.buildSetup, none, () => editWorkspace.setup());
+  handle(IPC.buildRebuild, none, () => editWorkspace.rebuildAndRestart());
+  handle(IPC.buildRestore, none, () => editWorkspace.restoreOriginal());
+  handle(IPC.buildInstallNode, none, () => editWorkspace.installNode());
+  handle(IPC.buildSend, z.tuple([z.string().min(1).max(20000)]), (message) => build.send(message));
+  handle(IPC.buildStop, none, () => build.stop());
+  handle(IPC.buildReset, none, () => build.reset());
+  handle(IPC.buildPlanUsage, none, async () => ((await claudeAuth.mode()) === 'api-key' ? { plan: null, fetchedAt: Date.now(), error: 'Plan limits only apply when Claude is signed in with a Claude subscription, not an API key.', session: null, weekly: null, weeklyOpus: null, weeklySonnet: null, credits: null } : fetchPlanUsage()));
+  handle(IPC.buildAnswer, z.tuple([z.string().max(40), z.boolean()]), (id, allow) => build.answer(id, allow));
   handle(IPC.projectsRevealDefault, none, async () => { await shell.openPath((await d.projects.storageInfo()).defaultDir); });
   handle(IPC.projectsRename, z.tuple([projectKey, z.string().min(1).max(80)]), (key, name) => d.projects.rename(key, name));
   handle(IPC.projectsRemove, z.tuple([projectKey]), (key) => d.projects.remove(key));
