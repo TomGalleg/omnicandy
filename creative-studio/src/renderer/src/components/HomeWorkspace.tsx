@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
-import { briefFromPlan, PROJECT_KINDS, projectKindLabel, type ProjectKind, type ProjectPlan } from '@shared/projectPlan';
+import { PROJECT_KINDS, projectKindLabel, type ProjectKind } from '@shared/projectPlan';
 import type { ProjectManifest, ProjectSummary, WorkspaceId } from '@shared/types';
 import type { WorkflowGraph } from '@shared/workflow';
-import type { PendingReference } from '@shared/ipc';
 import type { WorkflowTemplate } from '@shared/workflowControl';
 import { formatBytes } from '../format';
 import { AGENT_PROVIDER_IDS, AGENT_PROVIDERS, DEFAULT_LOCAL_ENDPOINT, type AgentProviderId } from '@shared/agentProvider';
@@ -28,10 +27,7 @@ export function HomeWorkspace({ manifest, projectKey, onSwitched, onGoto, log }:
   const [busy, setBusy] = useState(false);
   // AI-first creation
   const [request, setRequest] = useState('');
-  const [answers, setAnswers] = useState('');
-  const [plan, setPlan] = useState<ProjectPlan | null>(null);
   const [planning, setPlanning] = useState(false);
-  const [refs, setRefs] = useState<PendingReference[]>([]);
   // Blank project
   const [blank, setBlank] = useState(false);
   const [newName, setNewName] = useState('');
@@ -43,8 +39,6 @@ export function HomeWorkspace({ manifest, projectKey, onSwitched, onGoto, log }:
   // Templates
   const [showTemplates, setShowTemplates] = useState(false);
   const [templates, setTemplates] = useState<WorkflowTemplate[]>([]);
-  const [useRecommended, setUseRecommended] = useState(true);
-  const [alsoPlanner, setAlsoPlanner] = useState(true);
 
   const reload = useCallback(() => { void window.studio.projects.list().then(setProjects); }, []);
   useEffect(reload, [reload, projectKey, manifest?.updatedAt]);
@@ -98,68 +92,26 @@ Needs: ${t.needs}` : ''}`, objective: t.description };
   /** What the chosen AI is called with; undefined means Claude. The same choice plans the project AND builds it after approval. */
   const aiVia = ai === 'claude' ? undefined : { selection: ai === 'local' ? { provider: ai, endpoint: aiEndpoint } : { provider: ai }, model: aiModel };
   const changeAi = (next: 'claude' | AgentProviderId) => { setAi(next); setAiModel(next === 'claude' ? '' : (AGENT_PROVIDERS[next].models[0] ?? '')); };
-  /** One real AI call (Claude or the chosen provider). Nothing is created and nothing paid starts until the plan is approved. */
+  /** Same as typing in the Creative Partner chat on the right: opens it and sends the request to the chosen AI. Nothing else is created. */
   const makePlan = async () => {
-    const text = [request.trim(), answers.trim() && `My answers to your questions: ${answers.trim()}`].filter(Boolean).join('\n\n');
+    const text = request.trim();
     if (text.length < 3) return;
     setPlanning(true); setError(null);
-    try { setPlan(await window.studio.claude.planProject(text, aiVia)); } catch (e) { setError(errText(e)); } finally { setPlanning(false); }
-  };
-  /** A recommended template starts from a picture. With none supplied, Claude asks whether to make one with AI first. */
-  const needsPicture = !!plan?.template && useRecommended && refs.length === 0;
-  const [pictureChoice, setPictureChoice] = useState<'generate' | 'own' | null>(null);
-  const approvePlan = () => run(async () => {
-    if (!plan) return;
-    const generateFirst = needsPicture && pictureChoice === 'generate';
-    const meta = { kind: plan.kind, brief: briefFromPlan(request, plan), objective: plan.steps[0] };
-    const key = await window.studio.projects.create(plan.name.trim() || 'Untitled project', location ?? undefined, meta);
-    await window.studio.projects.open(key);
-    log('project', `Created "${plan.name}" from your description.`);
-    onSwitched(key);
-    if (alsoPlanner) {
-      // The steps and questions go to the Planner as SUGGESTIONS only: they join its plan when you accept them there.
-      try { await window.studio.planner.createFromHomePlan({ title: plan.name.trim(), goal: plan.finishedOutput, kind: plan.kind, steps: plan.steps, questions: plan.questions }); log('project', 'Added the steps to the Planner as suggestions for you to accept.'); } catch (e) { log('project', `Could not add the steps to the Planner: ${errText(e)}`); }
-    }
-    const kind = plan.kind;
-    const tpl = useRecommended && plan.template && !generateFirst ? plan.template : null;
-    if (tpl) await window.studio.useWorkflowTemplate(tpl);
-    // Start the new project's chat with the planning exchange (saved inside the project folder).
-    const startNote = answers.trim();
-    const via = aiVia; // the AI picked on this screen, captured before the form is cleared
-    const planText = `${plan.finishedOutput}\n\n${plan.summary}\n\n${plan.steps.map((s, i) => `${i + 1}. ${s}`).join('\n')}`;
-    const planName = plan.name.trim();
-    const seeded = via ? Promise.resolve() : window.studio.claude.seed(request.trim(),`${plan.finishedOutput}\n\n${plan.summary}\n\n${plan.steps.map((s, i) => `${i + 1}. ${s}`).join('\n')}`);
-    setPlan(null); setRequest(''); setAnswers(''); setLocation(null);
-    // Reference files are copied only now, after approval: into Assets/Originals, hashed, never modified.
-    let imported = 0;
-    if (refs.length) {
-      const r = await window.studio.references.import();
-      imported = r.imported.length;
-      setRefs([]);
-      log('project', `Imported ${imported} reference file${imported === 1 ? '' : 's'}${r.errors.length ? `; ${r.errors.length} failed: ${r.errors.join('; ')}` : ''}.`);
-    }
-    // Approving means "go": Claude starts on the plan now, so nobody has to type a message first.
-    if (via) {
-      // Another AI was picked: IT builds the project (not Claude). Creative Partner switches to it so progress is visible.
-      try { window.sessionStorage.setItem('cs-engine', via.selection.provider); } catch { /* storage unavailable */ }
-      window.dispatchEvent(new CustomEvent('createcraft:engine', { detail: via.selection.provider }));
+    try {
       window.dispatchEvent(new Event('createcraft:open-partner'));
-      const goal = `Project "${planName}". The user asked for: ${request.trim()}\n\nPlan the user approved:\n${planText}${startNote ? `\n\nThe user's answers to the open questions: ${startNote}` : ''}\n\nApproved. Start working on this project now, following the plan. Use the connected apps and verify your work.`.slice(0, 3990);
-      void window.studio.agent.run(goal, via.model, undefined, via.selection)
-        .catch((e: unknown) => log('project', `${aiName} could not start on its own: ${e instanceof Error ? e.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '') : String(e)}`));
-    } else void Promise.resolve(seeded)
-      .then(() => window.studio.claude.send(`Approved. Start working on this project now, following the plan above. Ask me only if you are truly blocked.${startNote ? ` My answers to your questions: ${startNote}` : ''}`))
-      .catch((e: unknown) => log('project', `Claude could not start on its own: ${e instanceof Error ? e.message : String(e)}`));
-    if (generateFirst) {
-      // The AI Generate tab opens with the picture described; nothing is paid until the user approves the price there.
-      try { window.sessionStorage.setItem('cs-generate-prompt', `${plan.finishedOutput}. ${plan.summary}`.slice(0, 1000)); } catch { /* storage unavailable */ }
-      setPictureChoice(null);
-      onGoto('generate');
-      return;
-    }
-    setPictureChoice(null);
-    onGoto(imported ? 'media' : tpl ? 'workflow' : workspaceFor(kind));
-  });
+      if (aiVia) {
+        try { window.sessionStorage.setItem('cs-engine', aiVia.selection.provider); } catch { /* storage unavailable */ }
+        window.dispatchEvent(new CustomEvent('createcraft:engine', { detail: aiVia.selection.provider }));
+        void window.studio.agent.run(text.slice(0, 3990), aiVia.model, undefined, aiVia.selection)
+          .catch((e: unknown) => log('project', `${aiName} could not start: ${errText(e)}`));
+      } else {
+        try { window.sessionStorage.setItem('cs-engine', 'claude'); } catch { /* storage unavailable */ }
+        window.dispatchEvent(new CustomEvent('createcraft:engine', { detail: 'claude' }));
+        void window.studio.claude.send(text).catch((e: unknown) => log('project', `Claude could not start: ${errText(e)}`));
+      }
+      setRequest('');
+    } catch (e) { setError(errText(e)); } finally { setPlanning(false); }
+  };
 
   const q = search.trim().toLowerCase();
   /** Puts `key` where `target` is (or at the very top) and saves the whole order. */
@@ -177,46 +129,34 @@ Needs: ${t.needs}` : ''}`, objective: t.description };
     <div className="home">
       <section className="home-hero">
         <h1>What would you like to create?</h1>
-        <textarea aria-label="Describe what you would like to create" rows={3} maxLength={4000} disabled={planning || busy || !!plan}
+        <textarea aria-label="Describe what you would like to create" rows={3} maxLength={4000} disabled={planning || busy}
           placeholder="For example: a cinematic poster from my desert photo, with a bold title and a print-ready export."
           value={request} onChange={(e) => setRequest(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) void makePlan(); }} />
         <div className="btn-row">
-          <button className="btn primary" disabled={planning || busy || !!plan || request.trim().length < 3} onClick={() => void makePlan()}>
+          <button className="btn primary" disabled={planning || busy || request.trim().length < 3} onClick={() => void makePlan()}>
             {planning ? `${aiName} is thinking…` : `Create with ${aiName}`}
           </button>
-          <select aria-label="AI that makes the plan" value={ai} disabled={planning || busy || !!plan} onChange={(e) => changeAi(e.target.value as 'claude' | AgentProviderId)}>
+          <select aria-label="AI that makes the plan" value={ai} disabled={planning || busy} onChange={(e) => changeAi(e.target.value as 'claude' | AgentProviderId)}>
             <option value="claude">Claude</option>
             {AGENT_PROVIDER_IDS.map((id) => <option key={id} value={id}>{AGENT_PROVIDERS[id].label}</option>)}
           </select>
           {ai !== 'claude' && (ai === 'local'
-            ? <><input aria-label="Local model name" placeholder="Model name" maxLength={80} value={aiModel} disabled={planning || busy || !!plan} onChange={(e) => setAiModel(e.target.value)} />
-              <input aria-label="Local model endpoint" maxLength={200} value={aiEndpoint} disabled={planning || busy || !!plan} onChange={(e) => setAiEndpoint(e.target.value)} /></>
-            : <select aria-label="Model" value={aiModel} disabled={planning || busy || !!plan} onChange={(e) => setAiModel(e.target.value)}>
+            ? <><input aria-label="Local model name" placeholder="Model name" maxLength={80} value={aiModel} disabled={planning || busy} onChange={(e) => setAiModel(e.target.value)} />
+              <input aria-label="Local model endpoint" maxLength={200} value={aiEndpoint} disabled={planning || busy} onChange={(e) => setAiEndpoint(e.target.value)} /></>
+            : <select aria-label="Model" value={aiModel} disabled={planning || busy} onChange={(e) => setAiModel(e.target.value)}>
               {AGENT_PROVIDERS[ai].models.map((m) => <option key={m} value={m}>{m}</option>)}
             </select>)}
           <button className="btn" disabled={busy} onClick={() => setBlank((v) => !v)}>New blank project</button>
           <button className="btn" disabled={busy}
             onClick={() => void run(async () => { const key = await window.studio.projects.openExisting(); if (key) { await window.studio.projects.open(key); onSwitched(key); } })}>Open existing project…</button>
           <button className="btn" disabled={busy} aria-pressed={showTemplates} onClick={openTemplates}>Templates</button>
-          <button className="btn" disabled={busy} title="Open this project's Planner: develop the idea, break it into chunks and work through them" onClick={() => onGoto('planner')}>Plan this project</button>
           <button className="btn small ghost" type="button" disabled={busy} title={location ?? 'Uses the project folder from Settings'}
             onClick={() => void window.studio.projects.pickFolder().then((d) => { if (d) setLocation(d); })}>
             {folderLabel ? `Save in: ${folderLabel}` : 'Default folder · Choose…'}
           </button>
           {location && <button className="btn small ghost" type="button" aria-label="Use the default project folder" onClick={() => setLocation(null)}>✕</button>}
         </div>
-        <div className="btn-row">
-          <button className="btn small" disabled={planning || busy || !!plan} onClick={() => void window.studio.references.pick().then(setRefs).catch((e) => setError(errText(e)))}>Add reference files…</button>
-          {refs.map((r) => (
-            <span key={r.id} className="chip" title={`${r.kind} · ${formatBytes(r.bytes)}`}>
-              {r.name}
-              <button className="btn small ghost" type="button" aria-label={`Remove ${r.name}`} disabled={planning || busy}
-                onClick={() => void window.studio.references.remove(r.id).then(setRefs)}>✕</button>
-            </span>
-          ))}
-        </div>
-        <div className="asset-meta">{aiName} only plans first. Nothing is created, copied or paid until you approve{refs.length ? `; your ${refs.length} reference file${refs.length === 1 ? '' : 's'} stay where they are until then` : ''}.</div>
         {blank && (
           <form className="new-project" onSubmit={(e) => { e.preventDefault(); void createBlank('create'); }}>
             <input aria-label="New project name" placeholder="Project name" value={newName} maxLength={80} onChange={(e) => setNewName(e.target.value)} />
@@ -244,52 +184,6 @@ Needs: ${t.needs}` : ''}`, objective: t.description };
               ))}
             </ul>
             <p className="asset-meta">Your own templates: finish a workflow successfully, then Workflow tab → Templates → Save. They appear here while that project is open.</p>
-          </div>
-        )}
-        {plan && (
-          <div className="plan-card panel-card" role="region" aria-label="Claude's plan">
-            <h3>{aiName}'s plan</h3>
-            <div className="plan-fields">
-              <label className="plan-field">Project name
-                <input value={plan.name} maxLength={80} onChange={(e) => setPlan({ ...plan, name: e.target.value })} />
-              </label>
-              <label className="plan-field">Type
-                <select value={plan.kind} onChange={(e) => setPlan({ ...plan, kind: e.target.value as ProjectKind })}>
-                  {PROJECT_KINDS.map((k) => <option key={k.id} value={k.id}>{k.label}</option>)}
-                </select>
-              </label>
-            </div>
-            <p><strong>Finished result:</strong> {plan.finishedOutput}</p>
-            <p>{plan.summary}</p>
-            {plan.apps.length > 0 && <p><strong>Apps:</strong> {plan.apps.join(', ')}</p>}
-            {plan.aiTools.length > 0 && <p><strong>AI tools:</strong> {plan.aiTools.join('; ')} <span className="asset-meta">(every paid image shows its price and asks first)</span></p>}
-            {plan.template && templates.length >= 0 && (
-              <label className="plan-field"><span><input type="checkbox" checked={useRecommended} onChange={(e) => setUseRecommended(e.target.checked)} />{' '}
-                Start from Claude's recommended template: <strong>{plan.template.replace(/^builtin-/, '').replace(/-/g, ' ')}</strong> (you can edit it; nothing runs or bills on its own)</span></label>
-            )}
-            <label className="plan-field"><span><input type="checkbox" checked={alsoPlanner} onChange={(e) => setAlsoPlanner(e.target.checked)} />{' '}
-              Also keep these steps in the Planner as suggestions (nothing is added to a plan until you accept it there)</span></label>
-            {needsPicture && (
-              <fieldset className="plan-field" aria-label="Starting picture">
-                <legend>This plan starts from a picture, and you haven't added one. Do you want Claude to help you make one with AI?</legend>
-                <label><input type="radio" name="pic" checked={pictureChoice === 'generate'} onChange={() => setPictureChoice('generate')} /> Yes, generate a starting picture with AI (the AI Generate tab opens with it described; you see the price and approve it before anything is paid)</label>
-                <label><input type="radio" name="pic" checked={pictureChoice === 'own'} onChange={() => setPictureChoice('own')} /> No, I will add my own picture</label>
-              </fieldset>
-            )}
-            <ol className="plan-steps">{plan.steps.map((st, i) => <li key={i}>{st}</li>)}</ol>
-            {plan.questions.length > 0 && (
-              <div className="plan-questions">
-                <strong>Claude would like to know:</strong>
-                <ul>{plan.questions.map((qq, i) => <li key={i}>{qq}</li>)}</ul>
-                <textarea aria-label="Your answers" rows={2} maxLength={1000} placeholder="Your answers (optional)" value={answers} onChange={(e) => setAnswers(e.target.value)} />
-                <button className="btn small" disabled={planning || !answers.trim()} onClick={() => void makePlan()}>{planning ? 'Claude is thinking…' : 'Update the plan'}</button>
-              </div>
-            )}
-            {refs.length > 0 && <p className="asset-meta">On approval, {refs.length} reference file{refs.length === 1 ? '' : 's'} will be copied into the project's Assets/Originals (read-only, with checksum and origin).</p>}
-            <div className="btn-row">
-              <button className="btn primary" disabled={busy || planning || (needsPicture && !pictureChoice)} onClick={() => void approvePlan()}>Approve and create project</button>
-              <button className="btn" disabled={busy || planning} onClick={() => setPlan(null)}>Change my request</button>
-            </div>
           </div>
         )}
       </section>

@@ -32,7 +32,7 @@ export function ClaudePanel({ liveApi }: Props) {
   const setEngine = (next: 'claude' | AgentProviderId) => { setEngineState(next); try { window.sessionStorage.setItem('cs-engine', next); } catch { /* storage unavailable */ } };
   // Home picks the AI that builds an approved project: show that AI here.
   useEffect(() => {
-    const on = (e: Event) => { const v = (e as CustomEvent<string>).detail; if ((AGENT_PROVIDER_IDS as readonly string[]).includes(v)) setEngineState(v as AgentProviderId); };
+    const on = (e: Event) => { const v = (e as CustomEvent<string>).detail; if (v === 'claude' || (AGENT_PROVIDER_IDS as readonly string[]).includes(v)) setEngineState(v as 'claude' | AgentProviderId); };
     window.addEventListener('createcraft:engine', on);
     return () => window.removeEventListener('createcraft:engine', on);
   }, []);
