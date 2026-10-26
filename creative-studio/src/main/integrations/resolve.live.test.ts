@@ -54,6 +54,18 @@ describe.skipIf(!on)('DaVinci Resolve integration (real Resolve, same framework 
     console.log('RESOLVE INFO', JSON.stringify(info.data));
     const list = await m.execute(key, 'project.list');
     expect(list.ok).toBe(true);
+    if ((info.data as { via?: string } | undefined)?.via === 'bridge') {
+      // Free edition through the in-Resolve bridge: read-only checks plus a scratch TIMELINE is NOT created here (that would change the
+      // person's open project); creating projects is Studio-only. Inspect and export are safe: they never modify the project.
+      const ins = await m.execute(key, 'project.inspect');
+      expect(ins.ok).toBe(true);
+      console.log('RESOLVE BRIDGE INSPECT', JSON.stringify(ins.data));
+      if ((ins.data as { open?: boolean }).open) {
+        const exp = await m.execute(key, 'timeline.export', { file_name: 'CreateCraft Live Test', format: 'edl' });
+        console.log('RESOLVE BRIDGE EXPORT', JSON.stringify({ ok: exp.ok, error: exp.error?.message, outputs: exp.outputs.map((o) => o.bytes) }));
+      }
+      return;
+    }
     // Scratch project round trip: only a project named "CreateCraft Live Test" is created and removed.
     const name = 'CreateCraft Live Test';
     const open = (await m.execute(key, 'project.inspect')).data as { open?: boolean };

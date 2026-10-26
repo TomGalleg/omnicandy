@@ -5,9 +5,11 @@
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import http from 'node:http';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { ApprovalAnswer, Permission } from '@shared/integrations';
 import { IntegrationManager } from './index';
+import type { BridgeOptions } from './adapters/resolveBridge';
 import { createResolveFactory, findPythons, RESOLVE_MANIFEST } from './adapters/resolve';
 
 const FAKE_MODULE = `import json, os
@@ -91,7 +93,7 @@ describe.skipIf(!havePython)('DaVinci Resolve adapter (fake scripting module, re
   const write = async (s: unknown) => fs.writeFile(state, JSON.stringify(s));
   const read = async () => JSON.parse(await fs.readFile(state, 'utf8')) as { current: string | null; projects: Record<string, { timelines: string[] }> };
 
-  async function manager() {
+  async function manager(bridge?: BridgeOptions) {
     const m = new IntegrationManager({
       workDir: async (id) => path.join(tmp, 'work', id),
       permissions: { load: async () => grants, save: async (g) => { grants = g; } },
@@ -99,7 +101,7 @@ describe.skipIf(!havePython)('DaVinci Resolve adapter (fake scripting module, re
       discovery: { env: { ProgramFiles: 'C:\\x' }, exists: async (p) => p.toLowerCase() === exe.toLowerCase(), listDir: async () => [], run: async () => '' },
       userPaths: async () => [exe],
     });
-    m.register(createResolveFactory({ apiDir: api, libPath: path.join(path.dirname(exe), 'fusionscript.dll'), pythons: async () => pythons, isRunning: async () => running }));
+    m.register(createResolveFactory({ apiDir: api, libPath: path.join(path.dirname(exe), 'fusionscript.dll'), pythons: async () => pythons, isRunning: async () => running, bridge: bridge ?? { tokenPath: path.join(tmp, 'no-token') } }), { builtin: true });
     const scan = await m.scan();
     return { m, key: scan.apps[0]!.key, scan };
   }
@@ -144,6 +146,84 @@ describe.skipIf(!havePython)('DaVinci Resolve adapter (fake scripting module, re
     await expect(m.connect(key)).rejects.toThrow(/not reachable by scripting/i);
     expect((await m.list())[0]!.status).toBe('api-unavailable');
     expect((await m.list())[0]!.commands.length).toBeGreaterThan(0);
+  });
+
+  it('Free edition: still writes an EDL and an SRT while scripting is refused, and checks the clips', async () => {
+    await write({ current: null, projects: {}, refuse: true });
+    const { m, key } = await manager();
+    const edl = await m.execute(key, 'timeline.write_edl', { clips: JSON.stringify([{ file: 'a.mp4', duration_seconds: 2 }, { file: 'b.mp4', in_seconds: 1, duration_seconds: 1.4 }]), fps: 25 });
+    expect(edl.error).toBeUndefined();
+    const text = await fs.readFile(edl.outputs[0]!.path, 'utf8');
+    expect(text).toContain('00:00:00:00 00:00:02:00 01:00:00:00 01:00:02:00');
+    expect(text).toContain('00:00:01:00 00:00:02:10 01:00:02:00 01:00:03:10');
+    expect(text).toContain('* FROM CLIP NAME: b.mp4');
+    const srt = await m.execute(key, 'subtitles.write_srt', { cues: JSON.stringify([{ start: 0, end: 1.5, text: 'Hi' }, { start: 2, end: 3.25, text: 'There' }]) });
+    expect(srt.error).toBeUndefined();
+    expect(await fs.readFile(srt.outputs[0]!.path, 'utf8')).toContain('00:00:02,000 --> 00:00:03,250');
+    const bad = await m.execute(key, 'subtitles.write_srt', { cues: JSON.stringify([{ start: 2, end: 1, text: 'x' }]) });
+    expect(bad.error?.kind).toBe('invalid-params');
+    const bad2 = await m.execute(key, 'timeline.write_edl', { clips: JSON.stringify([]) });
+    expect(bad2.error?.kind).toBe('invalid-params');
+  });
+
+  it('Free edition: scripting refused, so it connects through the in-Resolve bridge (token required) and runs live commands', async () => {
+    await write({ current: null, projects: {}, refuse: true });
+    const token = 'a'.repeat(64);
+    const seen: Array<{ method: string; url: string; body: string }> = [];
+    const server = http.createServer((req, res) => {
+      let body = '';
+      req.on('data', (c) => { body += c; });
+      req.on('end', () => {
+        const send = (code: number, o: unknown) => { res.writeHead(code, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(o)); };
+        if (req.headers['x-omnicandy-token'] !== token) return send(403, { error: 'Forbidden' });
+        seen.push({ method: req.method!, url: req.url!, body });
+        const route = req.url!;
+        if (route === '/status') return send(200, { connected: true, product: 'DaVinci Resolve', version: '21.0.4.5' });
+        if (route === '/project') return send(200, { name: 'Free Film', timelineCount: 2, settings: { timelineFrameRate: '24', timelineResolutionWidth: '1920', timelineResolutionHeight: '1080' } });
+        if (route === '/mediapool') return send(200, { clips: [{ name: 'a' }, { name: 'b' }, { name: 'c' }] });
+        if (route === '/projects') return send(200, { projects: ['Free Film', 'Other'] });
+        if (route === '/timeline') return send(200, { name: 'Main' });
+        if (route === '/timeline/export') {
+          const b = JSON.parse(body) as { fileName: string; exportType: string };
+          if (b.exportType === 'FCPXML_1_10') return send(200, { error: "Resolve does not support export constant 'EXPORT_FCPXML_1_10'" });
+          return fs.writeFile(b.fileName, '<fcpxml/>').then(() => send(200, { success: true }));
+        }
+        if (route === '/media/import') return send(200, { success: true, imported: ['clip.mp4'] });
+        if (route === '/timeline/create') return send(200, { success: true, timeline: 'New' });
+        return send(404, { error: 'Unknown' });
+      });
+    });
+    await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
+    const url = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
+    const good = path.join(tmp, 'good.token'), bad = path.join(tmp, 'bad.token');
+    await fs.writeFile(good, token); await fs.writeFile(bad, 'b'.repeat(64));
+    try {
+      // Wrong token: stays blocked, with the scripting reason.
+      const wrong = await manager({ url, tokenPath: bad });
+      await expect(wrong.m.connect(wrong.key)).rejects.toThrow(/not reachable by scripting/i);
+
+      const { m, key } = await manager({ url, tokenPath: good });
+      await m.connect(key);
+      expect((await m.list())[0]!.status).not.toBe('api-unavailable');
+      const info = await m.execute(key, 'app.info');
+      expect(info).toMatchObject({ ok: true, verified: true });
+      expect(info.data).toMatchObject({ project: 'Free Film', via: 'bridge' });
+      expect((await m.execute(key, 'project.list')).data).toMatchObject({ count: 2 });
+      expect((await m.execute(key, 'project.inspect')).data).toMatchObject({ name: 'Free Film', clipCount: 3, width: '1920' });
+      const exp = await m.execute(key, 'timeline.export', { format: 'fcpxml' });
+      expect(exp.error).toBeUndefined();
+      expect(exp.outputs[0]!.path).toMatch(/\.fcpxml$/);
+      const tl = await m.execute(key, 'timeline.create', { name: 'New' });
+      expect(tl.error).toBeUndefined();
+      const media = path.join(tmp, 'clip.mp4'); await fs.writeFile(media, 'x');
+      expect((await m.execute(key, 'media.import', { paths: JSON.stringify([media]) })).error).toBeUndefined();
+      expect((await m.execute(key, 'media.import', { paths: JSON.stringify([path.join(tmp, 'missing.mp4')]) })).error?.kind).toBe('invalid-params');
+      expect((await m.execute(key, 'media.import', { paths: JSON.stringify(['relative.mp4']) })).error?.kind).toBe('invalid-params');
+      // Creating/deleting projects is scripting-only and says so; the file commands still work in bridge mode.
+      expect((await m.execute(key, 'project.create_scratch', { name: 'X' })).error?.kind).toBe('unsupported');
+      expect((await m.execute(key, 'subtitles.write_srt', { cues: JSON.stringify([{ start: 0, end: 1, text: 'Hi' }]) })).error).toBeUndefined();
+      expect(seen.every((s) => s.url !== '/projects/create' && s.url !== '/projects/delete')).toBe(true);
+    } finally { await new Promise((r) => server.close(r)); }
   });
 
   it('connects, reads info and inspects the open project without changing it', async () => {

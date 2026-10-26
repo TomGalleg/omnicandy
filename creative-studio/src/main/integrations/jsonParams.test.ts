@@ -134,6 +134,8 @@ describe('JSON parameters', () => {
     expect(m.isBuiltin('blender')).toBe(true);
     // Unreal passes tool arguments, call lists and script text as structured parameters; both adapters are built in, which the manager requires.
     expect(m.isBuiltin('unreal')).toBe(true);
-    for (const other of m.manifests().filter((x) => x.id !== 'blender' && x.id !== 'unreal')) expect(other.commands.some((c) => Object.values(c.params).some((p) => p.type === 'json'))).toBe(false);
+    // Resolve takes clip, cue and path lists the same way (EDL, SRT, media import).
+    expect(m.isBuiltin('davinci.resolve')).toBe(true);
+    for (const other of m.manifests().filter((x) => !['blender', 'unreal', 'davinci.resolve'].includes(x.id))) expect(other.commands.some((c) => Object.values(c.params).some((p) => p.type === 'json'))).toBe(false);
   });
 });

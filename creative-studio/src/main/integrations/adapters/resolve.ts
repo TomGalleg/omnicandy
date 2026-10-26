@@ -17,6 +17,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { ADAPTER_SDK_VERSION, type AdapterManifest, type CommandSpec, type DiscoveredApp } from '@shared/integrations';
 import { parseResultLine, runProcess, safeFileName, type RunResult } from '../process';
+import { BridgeError, bridgeCall, BRIDGE_START_HINT, readBridgeToken, type BridgeOptions } from './resolveBridge';
+import { buildEdl, buildSrt, EDL_FPS, validateResolveJson, type EdlClip, type SrtCue } from './resolveFiles';
 import { AdapterError, type AdapterFactory, type AdapterOutcome, type ExecuteContext, type ExternalAdapter, type HealthResult, type ProbeResult } from '../sdk';
 
 /** Only projects whose name starts with this may be created or deleted by OmniCandy. */
@@ -63,6 +65,38 @@ const COMMANDS: CommandSpec[] = [
     },
     permissions: ['read-project', 'write-files', 'execute-scripts'], idempotent: true, timeoutMs: 120_000,
   },
+  {
+    id: 'media.import', label: 'Import media into Resolve',
+    description: 'FREE EDITION ROUTE (needs the OmniCandy Resolve Bridge script running inside Resolve). Imports files into the open project\'s Media Pool. Files must exist on this PC; give full paths. Nothing is deleted or overwritten.',
+    params: { paths: { type: 'json', description: 'A JSON ARRAY of full file paths, e.g. ["C:\\\\Media\\\\shot1.mp4"].', required: true, maxChars: 40_000, maxDepth: 2 } },
+    permissions: ['open-files', 'modify-project'], idempotent: false, timeoutMs: 120_000,
+  },
+  {
+    id: 'timeline.create', label: 'Create an empty timeline in Resolve',
+    description: 'FREE EDITION ROUTE (needs the OmniCandy Resolve Bridge script running inside Resolve). Creates a new empty timeline in the open project. Existing timelines are not changed.',
+    params: { name: { type: 'string', description: 'Timeline name.', required: true } },
+    permissions: ['modify-project'], idempotent: false, timeoutMs: 60_000,
+  },
+  {
+    id: 'timeline.write_edl', label: 'Write a timeline for Resolve (EDL)',
+    description: 'FREE EDITION ROUTE, works with Resolve closed or Free. Writes an EDL cut list from clips in order (file name, optional in_seconds, duration_seconds). The person imports it in Resolve: put the media in the Media Pool first, then File > Import > Timeline > Import AAF, EDL, XML. Resolve matches clips by file name. Nothing in Resolve is touched.',
+    params: {
+      clips: { type: 'json', description: 'A JSON ARRAY [{"file": "shot1.mp4", "in_seconds": 0, "duration_seconds": 5}, ...] in timeline order.', required: true, maxChars: 60_000, maxDepth: 3 },
+      file_name: { type: 'string', description: 'Output file name (letters, digits, space, dash).', default: 'timeline' },
+      fps: { type: 'number', description: 'Frame rate: 23.976, 24, 25, 30, 50 or 60.', default: 24 },
+      with_audio: { type: 'boolean', description: 'Include the clips\' audio as well as video.', default: true },
+    },
+    permissions: ['write-files'], offline: true, idempotent: true, timeoutMs: 30_000,
+  },
+  {
+    id: 'subtitles.write_srt', label: 'Write subtitles for Resolve (SRT)',
+    description: 'FREE EDITION ROUTE, works with Resolve closed or Free. Writes an SRT subtitle file from timed cues. The person imports it in Resolve: right-click the subtitle track > Import Subtitle (or File > Import > Subtitle). Nothing in Resolve is touched.',
+    params: {
+      cues: { type: 'json', description: 'A JSON ARRAY [{"start": 0, "end": 2.5, "text": "Hello"}, ...] in seconds, in time order without overlap.', required: true, maxChars: 120_000, maxDepth: 3 },
+      file_name: { type: 'string', description: 'Output file name (letters, digits, space, dash).', default: 'subtitles' },
+    },
+    permissions: ['write-files'], offline: true, idempotent: true, timeoutMs: 30_000,
+  },
 ];
 
 export const RESOLVE_MANIFEST: AdapterManifest = {
@@ -72,7 +106,7 @@ export const RESOLVE_MANIFEST: AdapterManifest = {
   methods: ['scripting', 'file-exchange'],
   capabilities: ['detect', 'inspectCapabilities', 'connect', 'disconnect', 'healthCheck', 'executeCommand', 'cancelOperation', 'exportFile', 'dispose'],
   commands: COMMANDS,
-  notes: 'Needs Resolve to be running and External scripting set to Local (Preferences > System > General). Resolve\'s external scripting is a Studio-edition feature; with the Free edition this integration reports "Scripting not available". OmniCandy never starts Resolve or opens your projects; only projects named "OmniCandy ..." can be created or deleted.',
+  notes: 'Live control needs Resolve to be running and External scripting set to Local (Preferences > System > General). That is a Studio-edition feature; with the Free edition this integration reports "Scripting not available" for live commands, but live commands still work through the OmniCandy Resolve Bridge script (Workspace > Scripts > Utility), and EDL timelines and SRT subtitles can be written for you to import (Resolve does not have to be open). OmniCandy never starts Resolve or opens your projects; only projects named "OmniCandy ..." can be created or deleted.',
 };
 
 const PRELUDE = `import json, os, sys
@@ -229,7 +263,14 @@ export interface ResolveAdapterOptions {
   pythons?: () => Promise<string[]>;
   /** Replaces the tasklist check (tests). */
   isRunning?: () => Promise<boolean>;
+  /** The in-Resolve bridge used when Resolve refuses outside scripting (Free edition). */
+  bridge?: BridgeOptions;
 }
+
+/** Commands only the in-Resolve bridge provides. */
+const BRIDGE_ONLY = new Set(['media.import', 'timeline.create']);
+/** Commands that write a file and never talk to a running Resolve. */
+const FILE_ONLY = new Set(['timeline.write_edl', 'subtitles.write_srt']);
 
 /** Exit codes of a native crash (access violation, abort, segfault). */
 const CRASH_CODES = new Set([3221225477, -1073741819, 139, 134, 3221226356]);
@@ -245,6 +286,8 @@ class ResolveAdapter implements ExternalAdapter {
   private app: DiscoveredApp | null = null;
   private python: string | null = null;
   edition: 'studio' | 'free' | 'unknown' = 'unknown';
+  /** How live commands reach Resolve: its scripting API (Studio) or the bridge script inside it (Free). */
+  mode: 'scripting' | 'bridge' = 'scripting';
 
   constructor(private readonly o: ResolveAdapterOptions) {}
 
@@ -262,6 +305,27 @@ class ResolveAdapter implements ExternalAdapter {
   async disconnect(): Promise<void> { this.app = null; this.python = null; }
 
   async healthCheck(): Promise<HealthResult> {
+    const s = await this.scriptingHealth();
+    if (s.ok) { this.mode = 'scripting'; return s; }
+    if (s.state === 'not-running' || !this.app) return s;
+    // Scripting refused or unavailable: the bridge script inside Resolve may still be running (works on Free).
+    const b = await this.bridgeHealth();
+    if (b) { this.mode = 'bridge'; return b; }
+    const hasToken = !!(await readBridgeToken(this.o.bridge ?? {}));
+    return { ...s, detail: `${s.detail}${hasToken ? ` Free edition alternative: ${BRIDGE_START_HINT}` : ''}` };
+  }
+
+  private async bridgeHealth(): Promise<HealthResult | null> {
+    try {
+      const r = await bridgeCall(this.o.bridge ?? {}, 'GET', '/status', undefined, { timeoutMs: 8_000 });
+      if (r.connected !== true) return null;
+      const prod = String(r.product ?? 'DaVinci Resolve');
+      this.edition = /studio/i.test(prod) ? 'studio' : 'free';
+      return { ok: true, detail: `${prod} ${String(r.version ?? '')} answers through the OmniCandy Resolve Bridge (${this.edition} edition).` };
+    } catch { return null; }
+  }
+
+  private async scriptingHealth(): Promise<HealthResult> {
     if (!this.app) return { ok: false, detail: 'Not connected.' };
     if (!(await (this.o.isRunning ?? resolveIsRunning)())) {
       return { ok: false, state: 'not-running', detail: 'DaVinci Resolve is not running. Start Resolve (OmniCandy never starts it or opens your projects), then connect again.' };
@@ -320,7 +384,25 @@ class ResolveAdapter implements ExternalAdapter {
       return r.data;
     };
     const readEvidence = ['read from Resolve through its scripting API'];
+    if ((this.mode === 'bridge' && !FILE_ONLY.has(cmd.id)) || BRIDGE_ONLY.has(cmd.id)) return this.executeViaBridge(cmd, params, ctx);
     switch (cmd.id) {
+      case 'timeline.write_edl': {
+        const clips = JSON.parse(String(params.clips)) as EdlClip[];
+        const fps = Number(params.fps);
+        if (!(EDL_FPS as readonly number[]).includes(fps)) throw new AdapterError('invalid-params', `fps must be one of ${EDL_FPS.join(', ')}.`);
+        const file = safeFileName(String(params.file_name), '.edl');
+        const output = path.join(ctx.workDir, file);
+        await fs.writeFile(output, buildEdl(file.replace(/\.edl$/, ''), fps, clips, params.with_audio !== false));
+        const secs = clips.reduce((n, c) => n + c.duration_seconds, 0);
+        return { message: `Wrote ${file}: ${clips.length} clip(s), ${secs.toFixed(1)} s at ${fps} fps. In Resolve: add the media to the Media Pool, then File > Import > Timeline and choose this file.`, outputs: [output], data: { clips: clips.length, seconds: secs, fps }, evidence: ['written as a CMX3600 EDL for Resolve to import (not yet imported into Resolve)'] };
+      }
+      case 'subtitles.write_srt': {
+        const cues = JSON.parse(String(params.cues)) as SrtCue[];
+        const file = safeFileName(String(params.file_name), '.srt');
+        const output = path.join(ctx.workDir, file);
+        await fs.writeFile(output, buildSrt(cues));
+        return { message: `Wrote ${file} with ${cues.length} subtitle(s). In Resolve: right-click the subtitle track and choose Import Subtitle.`, outputs: [output], data: { cues: cues.length }, evidence: ['written as an SRT file for Resolve to import (not yet imported into Resolve)'] };
+      }
       case 'app.info': {
         const d = await go();
         return { message: `${String(d.product)} ${String(d.version)}${d.project ? `, project "${String(d.project)}" open` : ', no project open'}.`, outputs: [], data: d, verified: true, evidence: readEvidence };
@@ -365,11 +447,75 @@ class ResolveAdapter implements ExternalAdapter {
     throw new AdapterError('unsupported', `DaVinci Resolve cannot run "${cmd.id}".`);
   }
 
+  /** Live commands through the bridge script inside Resolve (Free edition). Same answers as the scripting versions. */
+  private async executeViaBridge(cmd: CommandSpec, params: Record<string, string | number | boolean>, ctx: ExecuteContext): Promise<AdapterOutcome> {
+    const call = async (method: 'GET' | 'POST', route: string, body?: unknown) => {
+      try { return await bridgeCall(this.o.bridge ?? {}, method, route, body, { signal: ctx.signal, timeoutMs: cmd.timeoutMs }); }
+      catch (e) { if (e instanceof BridgeError) throw new AdapterError('app-error', e.message); throw e; }
+    };
+    const optional = async (route: string) => { try { return await call('GET', route); } catch { return null; } };
+    const ev = ['read from Resolve through the OmniCandy Resolve Bridge'];
+    switch (cmd.id) {
+      case 'app.info': {
+        const st = await call('GET', '/status');
+        const proj = await optional('/project');
+        const product = String(st.product ?? ''), name = typeof proj?.name === 'string' ? proj.name : null;
+        const d = { product, version: st.version, studio: /studio/i.test(product), project: name, via: 'bridge' };
+        return { message: `${product} ${String(st.version)}${name ? `, project "${name}" open` : ', no project open'} (through the bridge).`, outputs: [], data: d, verified: true, evidence: ev };
+      }
+      case 'project.list': {
+        const r = await call('GET', '/projects');
+        const projects = Array.isArray(r.projects) ? r.projects : [];
+        return { message: `${projects.length} project(s) in the current Resolve folder.`, outputs: [], data: { projects, count: projects.length }, verified: true, evidence: ev };
+      }
+      case 'project.inspect': {
+        const proj = await optional('/project');
+        if (!proj || typeof proj.name !== 'string') return { message: 'No project is open in Resolve.', outputs: [], data: { open: false }, verified: true, evidence: ev };
+        const pool = await optional('/mediapool');
+        const settings = (proj.settings ?? {}) as Record<string, unknown>;
+        const clipCount = Array.isArray(pool?.clips) ? pool.clips.length : 0;
+        const d = { open: true, name: proj.name, frameRate: settings.timelineFrameRate, width: settings.timelineResolutionWidth, height: settings.timelineResolutionHeight, timelineCount: proj.timelineCount, clipCount, clipCountScope: 'current Media Pool folder' };
+        return { message: `"${proj.name}": ${String(proj.timelineCount)} timeline(s), ${clipCount} clip(s) in the current folder, ${String(d.width)}x${String(d.height)} at ${String(d.frameRate)} fps.`, outputs: [], data: d, verified: true, evidence: ev };
+      }
+      case 'timeline.export': {
+        const format = String(params.format).toLowerCase();
+        if (format !== 'fcpxml' && format !== 'edl') throw new AdapterError('invalid-params', 'format must be fcpxml or edl.');
+        const output = path.join(ctx.workDir, safeFileName(String(params.file_name), format === 'edl' ? '.edl' : '.fcpxml'));
+        ctx.progress('Exporting the timeline', 0.3);
+        const tl = await call('GET', '/timeline');
+        let last = 'Resolve reported that the export failed.';
+        for (const exportType of format === 'edl' ? ['EDL'] : ['FCPXML_1_10', 'FCPXML_1_9', 'FCPXML_1_8']) {
+          try {
+            const r = await call('POST', '/timeline/export', { fileName: output, exportType, exportSubtype: 'EXPORT_NONE' });
+            if (r.success === true) return { message: `Exported timeline "${String(tl.name)}" to ${path.basename(output)}.`, outputs: [output], data: { exported: true, timeline: tl.name, exportType }, evidence: ['exported by Resolve through the OmniCandy Resolve Bridge'] };
+          } catch (e) { last = e instanceof Error ? e.message : String(e); }
+        }
+        throw new AdapterError('app-error', last);
+      }
+      case 'media.import': {
+        const paths = JSON.parse(String(params.paths)) as string[];
+        for (const f of paths) if (!(await fs.stat(f).then((st) => st.isFile(), () => false))) throw new AdapterError('invalid-params', `File not found: ${f}`);
+        const r = await call('POST', '/media/import', { filePaths: paths });
+        const names = Array.isArray(r.imported) ? r.imported.map(String) : [];
+        if (r.success !== true || !names.length) throw new AdapterError('verification-failed', 'Resolve did not report any imported clips.');
+        return { message: `Imported ${names.length} clip(s) into the Media Pool: ${names.slice(0, 5).join(', ')}${names.length > 5 ? ', ...' : ''}.`, outputs: [], data: { imported: names }, verified: true, evidence: [`Resolve reported ${names.length} imported clip(s)`] };
+      }
+      case 'timeline.create': {
+        const name = String(params.name).replace(/[^A-Za-z0-9 _-]/g, '').trim().slice(0, 80);
+        if (!name) throw new AdapterError('invalid-params', 'The timeline name has no usable characters.');
+        const r = await call('POST', '/timeline/create', { name });
+        if (r.success !== true) throw new AdapterError('app-error', 'Resolve did not create the timeline.');
+        return { message: `Created the empty timeline "${name}".`, outputs: [], data: { timeline: name }, verified: true, evidence: [`Resolve reported creating "${name}"`] };
+      }
+    }
+    throw new AdapterError('unsupported', `"${cmd.id}" needs Resolve Studio's scripting; creating and deleting projects is not offered through the bridge. Everything else works on the Free edition.`);
+  }
+
   async dispose(): Promise<void> { this.app = null; this.python = null; }
 }
 
 export function createResolveFactory(o: ResolveAdapterOptions = {}): AdapterFactory {
-  return { manifest: RESOLVE_MANIFEST, create: () => new ResolveAdapter(o) };
+  return { manifest: RESOLVE_MANIFEST, create: () => new ResolveAdapter(o), validateJson: validateResolveJson };
 }
 
 export const resolveFactory: AdapterFactory = createResolveFactory();
