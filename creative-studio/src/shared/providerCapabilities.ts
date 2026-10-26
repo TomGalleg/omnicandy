@@ -69,10 +69,10 @@ export const STUDIO_PROVIDERS: StudioProvider[] = [
     note: 'Official API: "Authorization: Key <id>:<secret>" at api.higgsfield.ai, async (queued, in_progress, completed, failed, nsfw, canceled). The Higgsfield MCP (mcp.higgsfield.ai/mcp) is a different product: it signs in with the Higgsfield account and spends subscription credits, not the API balance.',
   },
   {
-    id: 'recraft', label: 'Recraft', kind: 'cloud-api', billable: true, availability: 'planned', discovery: 'docs-only',
+    id: 'recraft', label: 'Recraft', kind: 'cloud-api', billable: true, availability: 'wired', discovery: 'docs-only',
     cancel: 'Synchronous call: stops by timeout only.',
     costInfo: 'Published per-image prices; every response reports the API units it cost; GET /users/me returns the balance.',
-    note: 'Direct API at external.api.recraft.ai/v1 with a Bearer token; independent of Higgsfield. Result URLs expire after about 24 hours, so files must be saved at once.',
+    note: 'Direct API at external.api.recraft.ai/v1 with a Bearer token; independent of Higgsfield. Wired: the four V4.1 text-to-image models (raster and SVG); editing and tool endpoints are not connected yet. Result URLs expire after about 24 hours, so files must be saved at once.',
   },
   { id: 'local', label: 'Local engines', kind: 'local', billable: false, availability: 'planned', discovery: 'none-yet', cancel: 'Stoppable by the app (own process).', costInfo: 'Free.', note: 'Reserved for future local engines.' },
   { id: 'mock', label: 'Mock (offline, free)', kind: 'local', billable: false, availability: 'wired', discovery: 'none-yet', cancel: 'Instant.', costInfo: 'Free.' },
@@ -90,7 +90,7 @@ function shippedModels(): StudioModel[] {
 }
 
 const recraft = (id: string, label: string, output: OutputKind, fromUsd: number, note?: string): StudioModel => ({
-  providerId: 'recraft', id, label, output, availability: 'planned', source: RECRAFT_MODEL_DOC, fromUsd,
+  providerId: 'recraft', id, label, output, availability: 'wired', source: RECRAFT_MODEL_DOC, fromUsd,
   operations: ['text-to-image', 'image-to-image', 'styles', 'reference-images', 'color-palette'], ...(note ? { note } : {}),
 });
 

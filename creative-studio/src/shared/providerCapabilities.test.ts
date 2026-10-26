@@ -10,7 +10,7 @@ describe('provider capability registry', () => {
       expect(e).toMatchObject({ availability: 'wired', output: 'raster', source: 'in-app' });
       expect(e.operations).toContain('text-to-image');
     }
-    expect(STUDIO_MODELS.filter((m) => m.availability === 'wired')).toHaveLength(IMAGE_MODELS.length);
+    expect(STUDIO_MODELS.filter((m) => m.availability === 'wired' && m.providerId !== 'recraft')).toHaveLength(IMAGE_MODELS.length);
   });
 
   it('has unique ids per provider and only known providers', () => {
@@ -40,7 +40,7 @@ describe('provider capability registry', () => {
   });
 
   it('only offers wired models for generation today, and searches across providers', () => {
-    expect(findModels({ wiredOnly: true }).every((m) => ['gemini', 'openai', 'mock'].includes(m.providerId))).toBe(true);
+    expect(findModels({ wiredOnly: true }).every((m) => ['gemini', 'openai', 'mock', 'recraft'].includes(m.providerId))).toBe(true);
     expect(findModels({ search: 'nano banana' }).map((m) => m.id)).toEqual(['gemini-nano-banana-2.1']);
     expect(findModels({ search: 'soul' }).map((m) => m.providerId)).toEqual(['higgsfield']);
   });
@@ -49,6 +49,8 @@ describe('provider capability registry', () => {
     const hf = STUDIO_PROVIDERS.find((p) => p.id === 'higgsfield')!;
     expect(hf.note).toMatch(/MCP.*different/);
     expect(hf.cancel).toMatch(/queued/);
-    for (const p of STUDIO_PROVIDERS.filter((p) => ['higgsfield', 'recraft'].includes(p.id))) expect(p.availability).toBe('planned');
+    expect(STUDIO_PROVIDERS.find((p) => p.id === 'higgsfield')!.availability).toBe('planned');
+    // Recraft: only the four V4.1 generation models are connected; editing and tools stay planned.
+    expect(findModels({ providerId: 'recraft', wiredOnly: true }).map((m) => m.id)).toEqual(['recraftv4_1', 'recraftv4_1_vector', 'recraftv4_1_pro', 'recraftv4_1_pro_vector']);
   });
 });

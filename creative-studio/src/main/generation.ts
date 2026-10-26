@@ -83,7 +83,7 @@ export class GenerationService {
 
   async providerStatus() {
     const out: Array<{ id: ProviderId; configured: boolean; unreadable: boolean; meta: KeyMeta | null }> = [];
-    for (const p of ['openai', 'gemini', 'runway'] as const) {
+    for (const p of ['openai', 'gemini', 'runway', 'recraft'] as const) {
       const s = await this.d.vault.status(p);
       out.push({ id: p, configured: s.configured, unreadable: !!s.unreadable, meta: await this.d.vault.meta(p) });
     }
@@ -91,8 +91,9 @@ export class GenerationService {
   }
 
   /** Lists models with the saved key (free; no image is generated). */
-  async testConnection(provider: 'openai' | 'gemini' | 'runway'): Promise<KeyTest> {
+  async testConnection(provider: 'openai' | 'gemini' | 'runway' | 'recraft'): Promise<KeyTest> {
     if (provider === 'runway') return this.testRunway();
+    if (provider === 'recraft') return this.testRecraft();
     const at = new Date().toISOString();
     let test: KeyTest;
     try {
@@ -113,6 +114,25 @@ export class GenerationService {
       test = { ok: false, at, message: e instanceof Error ? e.message : String(e) };
     }
     await this.d.vault.setLastTest(provider, test);
+    return test;
+  }
+
+  /** Free: GET /users/me returns the account and its API units. No image is made. */
+  private async testRecraft(): Promise<KeyTest> {
+    const at = new Date().toISOString();
+    let test: KeyTest;
+    try {
+      const units = await this.d.vault.withKey('recraft', async (key) => {
+        const res = await this.d.fetch('https://external.api.recraft.ai/v1/users/me', { headers: { Authorization: `Bearer ${key}` }, signal: AbortSignal.timeout(30_000) });
+        if (!res.ok) throw await failure(res, 'Recraft');
+        const j = (await res.json()) as { credits?: unknown };
+        return typeof j.credits === 'number' ? j.credits : null;
+      });
+      test = { ok: true, at, models: [], message: units === null ? 'Connected to Recraft.' : `Connected. Recraft balance: ${units} API units (about $${(units / 1000).toFixed(2)}).` };
+    } catch (e) {
+      test = { ok: false, at, message: e instanceof Error ? e.message : String(e) };
+    }
+    await this.d.vault.setLastTest('recraft', test);
     return test;
   }
 

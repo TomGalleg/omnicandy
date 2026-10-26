@@ -55,6 +55,8 @@ import { setUnrealLiveHooks } from './integrations/adapters/unrealLive';
 import { setResolveLiveHooks } from './integrations/adapters/resolveLive';
 import { BLANK_FILES, EDITOR_APPS, type EditorAppId } from '@shared/appEditors';
 import { DeliverQueue } from './deliver';
+import { RecraftService } from './recraft';
+import { StudioJobStore } from './studioJobs';
 import { WorkflowSteps } from './workflowSteps';
 import type { EmbeddedApp } from './embeddedApp';
 import { LiveDesignCraft, LiveEffectCraft, LiveFilmCraft, LiveLightCraft, LiveSoundCraft, LiveVectorCraft, LiveWordCraft, LivePdfCraft, LiveGridCraft, LiveDeckCraft, LiveFigCraft, LiveCadCraft } from './liveApps';
@@ -533,7 +535,9 @@ export function registerIpc(d: IpcDeps): void {
       };
     });
   };
-  const keyProvider = z.enum(['openai', 'gemini', 'runway']);
+  const recraft = new RecraftService({ vault, store: d.project, approve: approveGeneration, fetch: globalThis.fetch.bind(globalThis) });
+  const studioJobs = new StudioJobStore(async () => (await d.project()).root);
+  const keyProvider = z.enum(['openai', 'gemini', 'runway', 'recraft']);
   handle(IPC.genProviders, none, () => providerStatus());
   handle(IPC.genPasteKey, z.tuple([keyProvider]), async (providerId) => {
     const copied = await clipboard.readText();
@@ -542,6 +546,24 @@ export function registerIpc(d: IpcDeps): void {
     await generation.testConnection(providerId); // free: lists models only
     return providerStatus();
   });
+  const recraftJobSchema = z.object({
+    modelId: z.string().min(1).max(64), prompt: z.string().min(1).max(10_000), count: z.number().int().min(1).max(4),
+    aspect: z.string().max(16), colors: z.array(z.string().max(7)).max(10), background: z.string().max(7),
+  });
+  handle(IPC.recraftRun, z.tuple([recraftJobSchema]), async (job) => {
+    const r = await recraft.generate(job, 'user');
+    const dto: GenerateResultDto = { assetIds: r.assets.map((a) => a.id), message: r.message, estimate: r.estimate, requestedBy: 'user' };
+    emitGenerated(dto);
+    return dto;
+  });
+  const studioJobSchema = z.object({
+    id: z.string().min(1).max(64), at: z.string().max(40), providerId: z.string().max(40), modelId: z.string().max(120), modelLabel: z.string().max(160),
+    prompt: z.string().max(10_000), settings: z.record(z.string().max(64), z.string().max(200)), count: z.number().int().min(1).max(6),
+    referenceAssetIds: z.array(z.string().max(128)).max(4), state: z.enum(['running', 'done', 'failed', 'canceled']),
+    message: z.string().max(2000).optional(), assetIds: z.array(z.string().max(128)).max(6).optional(), estimateUsd: z.number().optional(),
+  });
+  handle(IPC.studioJobs, none, () => studioJobs.list());
+  handle(IPC.studioJobsSave, z.tuple([z.array(studioJobSchema).max(50)]), (jobs) => studioJobs.save(jobs));
   handle(IPC.genRemoveKey, z.tuple([keyProvider]), async (providerId) => { await vault.remove(providerId); return providerStatus(); });
   handle(IPC.genTest, z.tuple([keyProvider]), async (providerId) => { await generation.testConnection(providerId); return providerStatus(); });
   handle(IPC.genKeyPage, z.tuple([keyProvider]), async (providerId) => {

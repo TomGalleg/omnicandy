@@ -9,7 +9,8 @@ const job = (o: Partial<ImageJob> = {}): ImageJob => ({ modelId: 'gpt-image-2.5-
 
 describe('existing image catalog is frozen', () => {
   it('providers', () => {
-    expect(PROVIDERS.map((p) => [p.id, p.billable, p.keyUrl])).toMatchInlineSnapshot(`
+    // Recraft was added later (AI Studio); the original four must stay exactly as they were.
+    expect(PROVIDERS.filter((p) => p.id !== 'recraft').map((p) => [p.id, p.billable, p.keyUrl])).toMatchInlineSnapshot(`
       [
         [
           "openai",

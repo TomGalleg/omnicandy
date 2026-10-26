@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { estimateCost, formatUsd, modelById } from '@shared/generation';
 import type { ProviderStatusDto } from '@shared/ipc';
 import type { Asset, ProjectManifest, WorkspaceId } from '@shared/types';
-import { addJob, cardState, loadJobs, parseDraft, SURPRISE_PROMPTS, updateJob, type StudioJob } from '@shared/aiStudio';
+import { addJob, cardState, parseDraft, SURPRISE_PROMPTS, updateJob, type StudioJob } from '@shared/aiStudio';
+import { estimateRecraft, recraftModel, RECRAFT_ASPECTS, RECRAFT_MAX_COUNT, type RecraftJob } from '@shared/recraft';
 import {
   findModels, STUDIO_PROVIDERS, studioProvider, type OutputKind, type StudioModel, type StudioOperation, type StudioProviderId,
 } from '@shared/providerCapabilities';
@@ -17,7 +18,6 @@ interface Props {
 }
 
 type Tab = 'explore' | 'create' | 'assets' | 'jobs';
-const JOBS_KEY = 'cs-studio-jobs';
 const DRAFT_KEY = 'cs-studio-draft';
 const REF_FORMATS = ['png', 'jpg', 'jpeg', 'webp'];
 const errText = (e: unknown) => (e instanceof Error ? e.message : String(e)).replace(/^Error invoking remote method '[^']+': (Error: )?/, '');
@@ -29,10 +29,6 @@ const OP_LABEL: Partial<Record<StudioOperation, string>> = {
 };
 const OUTPUTS: Array<{ id: OutputKind; label: string }> = [{ id: 'raster', label: 'Pictures' }, { id: 'svg', label: 'Real SVG' }, { id: 'video', label: 'Video' }];
 const FILTER_OPS: StudioOperation[] = ['text-to-image', 'image-to-image', 'styles', 'remove-background', 'upscale', 'vectorize'];
-
-function readJobs(): StudioJob[] {
-  try { return loadJobs(localStorage.getItem(JOBS_KEY)); } catch { return []; }
-}
 
 /** AI Studio: browse models across providers, create with the ready ones, see results and jobs.
  *  Generation goes through the same main-process service as the classic tab (approval dialog, spending limit,
@@ -49,7 +45,10 @@ export function AiStudio({ manifest, selected, onGoto, log }: Props) {
   const [settings, setSettings] = useState<Record<string, string>>({});
   const [count, setCount] = useState(1);
   const [refId, setRefId] = useState<string | null>(null);
-  const [jobs, setJobs] = useState<StudioJob[]>(readJobs);
+  const [jobs, setJobs] = useState<StudioJob[]>([]);
+  const [aspect, setAspect] = useState('auto');
+  const [colorsText, setColorsText] = useState('');
+  const [bgText, setBgText] = useState('');
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ text: string; error?: boolean } | null>(null);
 
@@ -73,9 +72,11 @@ export function AiStudio({ manifest, selected, onGoto, log }: Props) {
     setTab('create');
   }, []);
 
+  // Jobs are saved in the project (main process), so they survive restarts.
+  useEffect(() => { void window.studio.generate.studioJobs().then(setJobs).catch(() => undefined); }, []);
   const saveJobs = useCallback((next: StudioJob[]) => {
     setJobs(next);
-    try { localStorage.setItem(JOBS_KEY, JSON.stringify(next)); } catch { /* storage unavailable */ }
+    void window.studio.generate.studioJobsSave(next).catch(() => undefined);
   }, []);
 
   const configured = useMemo(() => new Set((providers ?? []).filter((p) => p.configured).map((p) => p.id as string)), [providers]);
@@ -90,19 +91,28 @@ export function AiStudio({ manifest, selected, onGoto, log }: Props) {
     if (!job) return null;
     try { return estimateCost({ ...job, prompt: job.prompt || 'x' }); } catch { return null; }
   }, [job?.modelId, job?.prompt, JSON.stringify(job?.settings), job?.count, job?.referenceAssetIds.length]); // eslint-disable-line react-hooks/exhaustive-deps
+  const rmodel = pick?.providerId === 'recraft' ? recraftModel(pick.id) : undefined;
+  const rjob: RecraftJob | null = rmodel ? {
+    modelId: rmodel.id, prompt, count: Math.min(count, RECRAFT_MAX_COUNT), aspect,
+    colors: colorsText.split(/[\s,]+/).filter(Boolean), background: bgText.trim(),
+  } : null;
+  const rcheck = useMemo(() => {
+    if (!rjob) return { estimate: null, error: null };
+    try { return { estimate: estimateRecraft({ ...rjob, prompt: rjob.prompt || 'x' }), error: null }; } catch (e) { return { estimate: null, error: errText(e) }; }
+  }, [rjob?.modelId, rjob?.count, rjob?.aspect, colorsText, bgText]); // eslint-disable-line react-hooks/exhaustive-deps
   const state = pick ? cardState(pick, configured) : null;
   const free = legacy?.provider === 'mock';
 
   const choose = (m: StudioModel) => { setPick(m); setSettings({}); setCount(1); setMsg(null); setTab('create'); };
 
-  const run = async (j: NonNullable<typeof job>, label: string, providerId: string) => {
+  const run = async (j: { modelId: string; prompt: string; settings: Record<string, string>; count: number; referenceAssetIds: string[] }, label: string, providerId: string, exec: () => Promise<{ assetIds: string[]; message: string; estimate: { amount: number } }>) => {
     const id = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
     const rec: StudioJob = { id, at: new Date().toISOString(), providerId, modelId: j.modelId, modelLabel: label, prompt: j.prompt, settings: j.settings, count: j.count, referenceAssetIds: j.referenceAssetIds, state: 'running' };
     let list = addJob(jobs, rec);
     saveJobs(list);
     setBusy(true); setMsg(null);
     try {
-      const r = await window.studio.generate.run(j);
+      const r = await exec();
       list = updateJob(list, id, { state: 'done', message: r.message, assetIds: r.assetIds, estimateUsd: r.estimate.amount });
       setMsg({ text: r.message });
       log('generate', r.message);
@@ -177,7 +187,7 @@ export function AiStudio({ manifest, selected, onGoto, log }: Props) {
             {!pick ? <div className="notice">Pick a model in <button className="btn small" onClick={() => setTab('explore')}>Explore</button> first.</div> : (
               <>
                 <div><strong>{pick.label}</strong> <span className="asset-meta">{studioProvider(pick.providerId)?.label}</span> <button className="btn small ghost" onClick={() => setTab('explore')}>Change</button></div>
-                {state === 'needs-key' && <div className="notice">Add your {studioProvider(pick.providerId)?.label} key in Settings → Integrations to use this model.</div>}
+                {state === 'needs-key' && <div className="notice">Add your {studioProvider(pick.providerId)?.label} key in Settings → Integrations (AI image providers) to use this model.</div>}
                 {state === 'soon' && <div className="notice">{studioProvider(pick.providerId)?.label} is verified in its official docs but not connected yet, so nothing can be sent. {studioProvider(pick.providerId)?.costInfo}</div>}
                 <label className="field">Prompt
                   <textarea aria-label="Prompt" value={prompt} maxLength={4000} placeholder="Describe the picture…" onChange={(e) => setPrompt(e.target.value)} />
@@ -205,13 +215,39 @@ export function AiStudio({ manifest, selected, onGoto, log }: Props) {
                     </label>
                   </div>
                 )}
+                {rmodel && rjob && (
+                  <div className="gen-settings">
+                    <label className="field">Shape
+                      <select value={aspect} onChange={(e) => setAspect(e.target.value)}>{RECRAFT_ASPECTS.map((a) => <option key={a} value={a}>{a === 'auto' ? 'Let Recraft choose' : a}</option>)}</select>
+                    </label>
+                    <label className="field">Images
+                      <select aria-label="Number of images" value={count} onChange={(e) => setCount(Number(e.target.value))}>{Array.from({ length: RECRAFT_MAX_COUNT }, (_, i) => <option key={i} value={i + 1}>{i + 1}</option>)}</select>
+                    </label>
+                    <label className="field">Colours (optional, up to 10, like #ff6600 #1a1a1a)
+                      <input value={colorsText} onChange={(e) => setColorsText(e.target.value)} placeholder="#ff6600 #1a1a1a" />
+                    </label>
+                    <label className="field">Background colour (optional)
+                      <input value={bgText} onChange={(e) => setBgText(e.target.value)} placeholder="#ffffff" />
+                    </label>
+                  </div>
+                )}
+                {rmodel && rcheck.error && <div className="wf-msg error">{rcheck.error}</div>}
+                {rmodel && rcheck.estimate && (
+                  <div className="estimate" aria-label="Cost estimate">
+                    <strong>≈ {formatUsd(rcheck.estimate.amount)}</strong>
+                    <span className="asset-meta">{rjob!.count} × {formatUsd(rcheck.estimate.perImage)} · {rcheck.estimate.basis}{rmodel.output === 'svg' ? ' The result is a real, editable SVG, not a picture.' : ''}</span>
+                  </div>
+                )}
                 {estimate && (
                   <div className="estimate" aria-label="Cost estimate">
                     <strong>{free ? 'Free' : `${estimate.approximate ? '≈ ' : ''}${formatUsd(estimate.amount)}`}</strong>
                     <span className="asset-meta">{free ? 'Offline test pattern. No network, no cost.' : `${job!.count} × ${formatUsd(estimate.perImage)} · ${estimate.basis}`}</span>
                   </div>
                 )}
-                <button className="btn primary" disabled={!job || state !== 'ready' || !prompt.trim() || busy} onClick={() => job && legacy && void run(job, legacy.label, legacy.provider)}>
+                <button className="btn primary" disabled={(!job && !(rjob && !rcheck.error)) || state !== 'ready' || !prompt.trim() || busy} onClick={() => {
+                  if (job && legacy) void run(job, legacy.label, legacy.provider, () => window.studio.generate.run(job));
+                  else if (rjob && rmodel) { const rj = rjob; void run({ modelId: rj.modelId, prompt: rj.prompt, count: rj.count, referenceAssetIds: [], settings: { shape: rj.aspect, ...(rj.colors.length ? { colors: rj.colors.join(' ') } : {}), ...(rj.background ? { background: rj.background } : {}) } }, rmodel.label, 'recraft', () => window.studio.generate.recraftRun(rj)); }
+                }}>
                   {busy ? 'Generating…' : free ? 'Generate (free)' : 'Generate… (asks you to approve)'}
                 </button>
                 {!free && state === 'ready' && <div className="asset-meta">You will see the price and must approve before anything is sent. Charges go to your own provider account. A failed paid request is never retried by itself.</div>}
@@ -236,7 +272,7 @@ export function AiStudio({ manifest, selected, onGoto, log }: Props) {
                 <button className="gen-thumb" onClick={() => onGoto('media', a.id)} aria-label={`View ${a.name}`}><img src={window.studio.assetUrl(a.id)} alt="" /></button>
                 <div className="gen-body">
                   <div className="gen-prompt" title={a.provenance.prompt}>{a.provenance.prompt}</div>
-                  <div className="asset-meta">{STUDIO_PROVIDERS.find((p) => p.id === a.provenance.provider)?.label ?? a.provenance.provider} · {modelById(a.provenance.model ?? '')?.label ?? a.provenance.model}{a.provenance.requestedBy === 'claude' ? ' · asked by Claude' : ''}</div>
+                  <div className="asset-meta">{STUDIO_PROVIDERS.find((p) => p.id === a.provenance.provider)?.label ?? a.provenance.provider} · {modelById(a.provenance.model ?? '')?.label ?? recraftModel(a.provenance.model ?? '')?.label ?? a.provenance.model}{a.provenance.requestedBy === 'claude' ? ' · asked by Claude' : ''}</div>
                   <div className="asset-meta">{Object.values(a.provenance.settings ?? {}).join(' · ')}{a.width ? ` · ${a.width}×${a.height}` : ''}</div>
                   <div className="btn-row">
                     <button className="btn small primary" onClick={() => onGoto('edit', a.id)}>Open in Edit</button>

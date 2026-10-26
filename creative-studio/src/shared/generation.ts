@@ -12,7 +12,7 @@
 // Model lists (free, no generation) are used for the connection test: GET /v1/models and
 // GET /v1beta/models.
 
-export type ProviderId = 'openai' | 'gemini' | 'runway' | 'mock';
+export type ProviderId = 'openai' | 'gemini' | 'runway' | 'recraft' | 'mock';
 export type GenCapability = 'text-to-image' | 'image-edit';
 
 export interface SettingOption { value: string; label: string }
@@ -41,6 +41,7 @@ export const PROVIDERS: ProviderInfo[] = [
   { id: 'openai', label: 'OpenAI', billable: true, keyUrl: 'https://platform.openai.com/api-keys', keyHint: 'OpenAI API key (starts with "sk-")' },
   { id: 'gemini', label: 'Google Gemini', billable: true, keyUrl: 'https://aistudio.google.com/apikey', keyHint: 'Gemini API key from Google AI Studio' },
   { id: 'runway', label: 'Runway (video)', billable: true, keyUrl: 'https://dev.runwayml.com/', keyHint: 'Runway API secret from dev.runwayml.com (needs prepaid credits)' },
+  { id: 'recraft', label: 'Recraft (pictures and SVG)', billable: true, keyUrl: 'https://www.recraft.ai/profile/api', keyHint: 'Recraft API token from your Recraft profile page (needs API units)' },
   { id: 'mock', label: 'Mock (offline, free)', billable: false, keyUrl: null, keyHint: '' },
 ];
 

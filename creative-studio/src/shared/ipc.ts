@@ -10,6 +10,8 @@ import type { BuildState, PlanUsage } from './buildSession';
 export type ProjectMeta = Pick<ProjectManifest, 'kind' | 'brief' | 'objective'>;
 export type ProjectMetaPatch = Pick<ProjectManifest, 'objective' | 'view'>;
 import type { CostEstimate, ImageJob, ProviderId } from './generation';
+import type { StudioJob } from './aiStudio';
+import type { RecraftJob } from './recraft';
 import type { LiveSnapshot, TimelineDto, TimelineEdit } from './live';
 import type { EditorAppId } from './appEditors';
 import type { DeliverJob, DeliverRecord } from './deliver';
@@ -147,6 +149,9 @@ export const IPC = {
   genSpendingSet: 'generate:spending-set',
   genKeyPage: 'generate:key-page',
   genEvent: 'generate:event',
+  studioJobs: 'studio:jobs',
+  studioJobsSave: 'studio:jobs-save',
+  recraftRun: 'studio:recraft-run',
   videoList: 'video:list',
   videoSubmit: 'video:submit',
   videoCancel: 'video:cancel',
@@ -486,6 +491,11 @@ export interface StudioApi {
     spending(): Promise<{ limitUsd: number | null; spentUsd: number; count: number }>;
     setSpendingLimit(limitUsd: number | null): Promise<{ limitUsd: number | null; spentUsd: number; count: number }>;
     openKeyPage(providerId: ProviderId): Promise<void>;
+    /** AI Studio: the saved job list of this project (jobs left 'running' by a closed app come back failed). */
+    studioJobs(): Promise<StudioJob[]>;
+    studioJobsSave(jobs: StudioJob[]): Promise<StudioJob[]>;
+    /** Recraft pictures/SVG: native approval for the shown price, then generates. */
+    recraftRun(job: RecraftJob): Promise<GenerateResultDto>;
     /** AI video (Google Veo): saved jobs of this project; running ones are tracked in the background. */
     videoJobs(): Promise<VideoJobRecord[]>;
     /** Asks for approval in a native dialog, then submits. Returns at once; the video arrives minutes later. */
