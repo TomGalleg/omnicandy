@@ -10,6 +10,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { ApprovalAnswer, Permission } from '@shared/integrations';
 import { IntegrationManager } from './index';
 import type { BridgeOptions } from './adapters/resolveBridge';
+import { resolveProcess, setResolveLiveHooks } from './adapters/resolveLive';
 import { createResolveFactory, findPythons, RESOLVE_MANIFEST } from './adapters/resolve';
 
 const FAKE_MODULE = `import json, os
@@ -88,6 +89,8 @@ describe.skipIf(!havePython)('DaVinci Resolve adapter (fake scripting module, re
   let answer: ApprovalAnswer = 'always';
   let grants: Record<string, Permission[]> = {};
   let running = true;
+  const launched: number[] = [];
+  const launchStarts = true;
   let pythons: string[] = find;
 
   const write = async (s: unknown) => fs.writeFile(state, JSON.stringify(s));
@@ -101,7 +104,7 @@ describe.skipIf(!havePython)('DaVinci Resolve adapter (fake scripting module, re
       discovery: { env: { ProgramFiles: 'C:\\x' }, exists: async (p) => p.toLowerCase() === exe.toLowerCase(), listDir: async () => [], run: async () => '' },
       userPaths: async () => [exe],
     });
-    m.register(createResolveFactory({ apiDir: api, libPath: path.join(path.dirname(exe), 'fusionscript.dll'), pythons: async () => pythons, isRunning: async () => running, bridge: bridge ?? { tokenPath: path.join(tmp, 'no-token') } }), { builtin: true });
+    m.register(createResolveFactory({ apiDir: api, libPath: path.join(path.dirname(exe), 'fusionscript.dll'), pythons: async () => pythons, isRunning: async () => running, launch: () => { launched.push(1); if (launchStarts) running = true; }, bridge: bridge ?? { tokenPath: path.join(tmp, 'no-token') } }), { builtin: true });
     const scan = await m.scan();
     return { m, key: scan.apps[0]!.key, scan };
   }
@@ -123,8 +126,8 @@ describe.skipIf(!havePython)('DaVinci Resolve adapter (fake scripting module, re
   it('registers through the same manifest validation as every adapter and is not Blender-specific', () => {
     expect(RESOLVE_MANIFEST.id).toBe('davinci.resolve');
     expect(RESOLVE_MANIFEST.methods[0]).toBe('scripting');
-    // No Resolve command asks to launch the program: it must already be running.
-    expect(RESOLVE_MANIFEST.commands.flatMap((c) => c.permissions)).not.toContain('launch');
+    // Only app.launch may start the program, and only with the person's approval; every other command needs it already running.
+    expect(RESOLVE_MANIFEST.commands.filter((c) => c.permissions.includes('launch')).map((c) => c.id)).toEqual(['app.launch']);
   });
 
   it('is detected with the same scan, and reports "not running" instead of failing generically', async () => {
@@ -146,6 +149,48 @@ describe.skipIf(!havePython)('DaVinci Resolve adapter (fake scripting module, re
     await expect(m.connect(key)).rejects.toThrow(/not reachable by scripting/i);
     expect((await m.list())[0]!.status).toBe('api-unavailable');
     expect((await m.list())[0]!.commands.length).toBeGreaterThan(0);
+  });
+
+  it('app.launch starts Resolve only when it is closed, asks first, and never opens a project', async () => {
+    await write({ current: null, projects: {} });
+    running = false; launched.length = 0; grants = {}; asked.length = 0;
+    const { m, key } = await manager();
+    const r = await m.execute(key, 'app.launch');
+    expect(r.error).toBeUndefined();
+    expect(r.data).toMatchObject({ started: true });
+    expect(launched).toHaveLength(1);
+    expect(asked.some((a) => a.cmd === 'app.launch')).toBe(true);
+    const again = await m.execute(key, 'app.launch');
+    expect(again.data).toMatchObject({ started: false });
+    expect(launched).toHaveLength(1);
+    running = true;
+  });
+
+  it('docks the running Resolve into OmniCandy after app.launch and on app.show, and says so when it cannot', async () => {
+    await write({ current: null, projects: {} });
+    const docked: number[] = [];
+    const realPid = resolveProcess.windowPid;
+    resolveProcess.windowPid = async () => (running ? 4242 : null);
+    try {
+      const { m, key } = await manager();
+      running = true;
+      // No host hooks (not Windows / no window): a clear 'unsupported', never a silent success.
+      setResolveLiveHooks(null);
+      expect((await m.execute(key, 'app.show')).error?.kind).toBe('unsupported');
+      setResolveLiveHooks({ onShow: (pid) => { docked.push(pid); } });
+      const shown = await m.execute(key, 'app.show');
+      expect(shown.error).toBeUndefined();
+      expect(docked).toEqual([4242]);
+      // Already running: app.launch starts nothing but still docks it.
+      launched.length = 0;
+      const again = await m.execute(key, 'app.launch');
+      expect(again.data).toMatchObject({ started: false, shown: true });
+      expect(launched).toHaveLength(0);
+      expect(docked).toEqual([4242, 4242]);
+      // Closed: nothing to show.
+      running = false;
+      expect((await m.execute(key, 'app.show')).error?.kind).toBe('app-error');
+    } finally { resolveProcess.windowPid = realPid; setResolveLiveHooks(null); running = true; }
   });
 
   it('Free edition: still writes an EDL and an SRT while scripting is refused, and checks the clips', async () => {

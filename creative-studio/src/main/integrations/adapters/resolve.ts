@@ -3,8 +3,8 @@
 //
 // Control method: Resolve's supported scripting API (Python, DaVinciResolveScript / fusionscript.dll).
 // What Resolve itself dictates, and the adapter reports instead of hiding:
-//  * Resolve must be RUNNING for a script to connect; this adapter never starts it, so it never
-//    touches a session the user did not start.
+//  * Resolve must be RUNNING for a script to connect. Only app.launch starts it, and only after the user approves,
+//    so a session the user did not start is never touched.
 //  * External scripting (what a program outside Resolve uses) is a Studio feature and must be set to
 //    Local in Preferences > System > General. A Free edition, or a disabled preference, makes the
 //    connection return nothing; that is reported as "Scripting not available", never as success.
@@ -12,11 +12,13 @@
 //    run in a child process, so a crash cannot reach OmniCandy; other interpreters are then tried.
 // Scripts are fixed templates; parameters travel in a JSON file and are never spliced into code.
 
+import { spawn } from 'node:child_process';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { ADAPTER_SDK_VERSION, type AdapterManifest, type CommandSpec, type DiscoveredApp } from '@shared/integrations';
 import { parseResultLine, runProcess, safeFileName, type RunResult } from '../process';
+import { resolveLive, resolveProcess } from './resolveLive';
 import { BridgeError, bridgeCall, BRIDGE_START_HINT, readBridgeToken, type BridgeOptions } from './resolveBridge';
 import { buildEdl, buildSrt, EDL_FPS, validateResolveJson, type EdlClip, type SrtCue } from './resolveFiles';
 import { AdapterError, type AdapterFactory, type AdapterOutcome, type ExecuteContext, type ExternalAdapter, type HealthResult, type ProbeResult } from '../sdk';
@@ -25,6 +27,16 @@ import { AdapterError, type AdapterFactory, type AdapterOutcome, type ExecuteCon
 export const SCRATCH_PREFIX = 'CreateCraft';
 
 const COMMANDS: CommandSpec[] = [
+  {
+    id: 'app.launch', label: 'Start DaVinci Resolve',
+    description: 'Starts Resolve if it is not already running and waits until it appears. It never opens or changes a project, and it cannot start the OmniCandy Resolve Bridge: after Resolve is up the person opens a project and runs Workspace > Scripts > Utility > OmniCandy Resolve Bridge (Free edition). Studio with External scripting set to Local needs no bridge.',
+    params: {}, permissions: ['launch'], offline: true, idempotent: true, timeoutMs: 120_000,
+  },
+  {
+    id: 'app.show', label: 'Show Resolve inside OmniCandy',
+    description: 'Docks the window of the running Resolve into OmniCandy (the Software tab) so you watch the work happen there instead of behind OmniCandy. app.launch does this by itself after it starts Resolve. It changes nothing in Resolve.',
+    params: {}, permissions: ['ui-automation'], offline: true, idempotent: true, timeoutMs: 30_000,
+  },
   {
     id: 'app.info', label: 'Check DaVinci Resolve',
     description: 'Reads the edition, version, current page and open project name from the running Resolve (read only).',
@@ -106,7 +118,7 @@ export const RESOLVE_MANIFEST: AdapterManifest = {
   methods: ['scripting', 'file-exchange'],
   capabilities: ['detect', 'inspectCapabilities', 'connect', 'disconnect', 'healthCheck', 'executeCommand', 'cancelOperation', 'exportFile', 'dispose'],
   commands: COMMANDS,
-  notes: 'Live control needs Resolve to be running and External scripting set to Local (Preferences > System > General). That is a Studio-edition feature; with the Free edition this integration reports "Scripting not available" for live commands, but live commands still work through the OmniCandy Resolve Bridge script (Workspace > Scripts > Utility), and EDL timelines and SRT subtitles can be written for you to import (Resolve does not have to be open). OmniCandy never starts Resolve or opens your projects; only projects named "OmniCandy ..." can be created or deleted.',
+  notes: 'Live control needs Resolve to be running and External scripting set to Local (Preferences > System > General). That is a Studio-edition feature; with the Free edition this integration reports "Scripting not available" for live commands, but live commands still work through the OmniCandy Resolve Bridge script (Workspace > Scripts > Utility), and EDL timelines and SRT subtitles can be written for you to import (Resolve does not have to be open). OmniCandy starts Resolve only through app.launch, which asks you first, and never opens your projects; only projects named "OmniCandy ..." can be created or deleted.',
 };
 
 const PRELUDE = `import json, os, sys
@@ -265,12 +277,14 @@ export interface ResolveAdapterOptions {
   isRunning?: () => Promise<boolean>;
   /** The in-Resolve bridge used when Resolve refuses outside scripting (Free edition). */
   bridge?: BridgeOptions;
+  /** Replaces starting Resolve (tests). */
+  launch?: (exePath: string) => void;
 }
 
 /** Commands only the in-Resolve bridge provides. */
 const BRIDGE_ONLY = new Set(['media.import', 'timeline.create']);
-/** Commands that write a file and never talk to a running Resolve. */
-const FILE_ONLY = new Set(['timeline.write_edl', 'subtitles.write_srt']);
+/** Commands that write a file or start the program and never talk to a running Resolve. */
+const FILE_ONLY = new Set(['timeline.write_edl', 'subtitles.write_srt', 'app.launch', 'app.show']);
 
 /** Exit codes of a native crash (access violation, abort, segfault). */
 const CRASH_CODES = new Set([3221225477, -1073741819, 139, 134, 3221226356]);
@@ -386,6 +400,29 @@ class ResolveAdapter implements ExternalAdapter {
     const readEvidence = ['read from Resolve through its scripting API'];
     if ((this.mode === 'bridge' && !FILE_ONLY.has(cmd.id)) || BRIDGE_ONLY.has(cmd.id)) return this.executeViaBridge(cmd, params, ctx);
     switch (cmd.id) {
+      case 'app.launch': {
+        const running = this.o.isRunning ?? resolveIsRunning;
+        if (await running()) {
+          const shown = await this.dock();
+          return { message: `DaVinci Resolve is already running; nothing was started.${shown ? ' Its window is now shown inside OmniCandy.' : ''}`, outputs: [], data: { started: false, shown }, verified: true, evidence: ['Resolve.exe is in the process list'] };
+        }
+        ctx.progress('Starting DaVinci Resolve', 0.1);
+        (this.o.launch ?? ((exe: string) => { spawn(exe, [], { detached: true, stdio: 'ignore', windowsHide: false }).unref(); }))(this.app.exePath);
+        const deadline = Date.now() + 90_000;
+        while (Date.now() < deadline && !ctx.signal.aborted) {
+          await new Promise((r) => setTimeout(r, 1500));
+          if (await running()) {
+            const shown = await this.dock();
+            return { message: `Started DaVinci Resolve${shown ? ' and showed its window inside OmniCandy' : ''}. Open a project, then (Free edition) run Workspace > Scripts > Utility > OmniCandy Resolve Bridge so OmniCandy can control it.`, outputs: [], data: { started: true, shown }, verified: true, evidence: ['Resolve.exe appeared in the process list after starting it'] };
+          }
+        }
+        throw new AdapterError('app-error', 'Resolve was started but did not appear within 90 seconds. Check whether it is still loading.');
+      }
+      case 'app.show': {
+        if (!resolveLive()?.onShow) throw new AdapterError('unsupported', "OmniCandy cannot show another program's window on this computer (Windows only); Resolve keeps its own window.");
+        if (!(await this.dock())) throw new AdapterError('app-error', 'Resolve is not running, so there is no window to show. Start it with app.launch.');
+        return { message: 'DaVinci Resolve is now shown inside OmniCandy (Software tab).', outputs: [], data: { shown: true }, verified: true, evidence: ['the running Resolve window was handed to the Software tab'] };
+      }
       case 'timeline.write_edl': {
         const clips = JSON.parse(String(params.clips)) as EdlClip[];
         const fps = Number(params.fps);
@@ -445,6 +482,16 @@ class ResolveAdapter implements ExternalAdapter {
       }
     }
     throw new AdapterError('unsupported', `DaVinci Resolve cannot run "${cmd.id}".`);
+  }
+
+  /** Hands the running Resolve to the host, which docks its window into the Software tab. False when it is not running or the host cannot dock. */
+  private async dock(): Promise<boolean> {
+    const hooks = resolveLive();
+    if (!hooks?.onShow) return false;
+    const pid = await resolveProcess.windowPid();
+    if (!pid) return false;
+    hooks.onShow(pid);
+    return true;
   }
 
   /** Live commands through the bridge script inside Resolve (Free edition). Same answers as the scripting versions. */

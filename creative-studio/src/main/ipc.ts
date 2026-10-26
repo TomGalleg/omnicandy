@@ -52,6 +52,7 @@ import { PhotoCraftCliAdapter } from './photocraftCli';
 import type { ProjectManager } from './projects';
 import { setBlenderLiveHooks } from './integrations/adapters/blenderLive';
 import { setUnrealLiveHooks } from './integrations/adapters/unrealLive';
+import { setResolveLiveHooks } from './integrations/adapters/resolveLive';
 import { BLANK_FILES, EDITOR_APPS, type EditorAppId } from '@shared/appEditors';
 import { DeliverQueue } from './deliver';
 import { WorkflowSteps } from './workflowSteps';
@@ -756,6 +757,12 @@ export function registerIpc(d: IpcDeps): void {
     onExit: (pid) => { if (liveExternal.pid === pid) { liveExternal = { name: 'Unreal Engine', pid: null }; emitLiveExternal(); } },
   });
   app.on('will-quit', () => setUnrealLiveHooks(null));
+  // And DaVinci Resolve: app.launch / app.show hand over the running Resolve, docked into the Software tab.
+  setResolveLiveHooks({
+    onShow: (pid) => { liveExternal = { name: 'DaVinci Resolve', pid }; d.embedded.attach(pid); emitLiveExternal(); },
+    onExit: (pid) => { if (liveExternal.pid === pid) { liveExternal = { name: 'DaVinci Resolve', pid: null }; emitLiveExternal(); } },
+  });
+  app.on('will-quit', () => setResolveLiveHooks(null));
   /**
    * Pictures, video and audio that an external program wrote (a Blender render, an exported clip) are added to the
    * library (Media tab) and the first picture or video opens in PhotoCraft / FilmCraft inside OmniCandy, ready to edit.
