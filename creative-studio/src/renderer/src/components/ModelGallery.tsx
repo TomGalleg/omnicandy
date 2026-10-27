@@ -23,6 +23,7 @@ import crispPoster from '../assets/previews/recraft-crisp-upscale.jpg';
 import editWidePoster from '../assets/previews/recraft-edit-wide.jpg';
 import v3VectorPoster from '../assets/previews/recraft-v3-vector-edit.jpg';
 import newBgPoster from '../assets/previews/recraft-new-background.jpg';
+import vectorBgPoster from '../assets/previews/recraft-v3-vector-background.jpg';
 import creativePoster from '../assets/previews/recraft-creative-upscale.jpg';
 import vectorizePoster from '../assets/previews/recraft-vectorize.jpg';
 import { STUDIO_PROVIDERS, studioProvider, type StudioModel, type StudioProviderId } from '@shared/providerCapabilities';
@@ -45,7 +46,7 @@ const PREVIEW_FILES: Record<string, string> = {
   'seedance-text.jpg': textPoster, 'seedance-text.mp4': textClip, 'seedance-picture.jpg': picturePoster, 'seedance-picture.mp4': pictureClip,
   'seedance-reference.jpg': referencePoster, 'seedance-reference.mp4': referenceClip, 'seedance-edit.jpg': editPoster, 'seedance-edit.mp4': editClip,
   'seedance-extend.jpg': extendPoster, 'seedance-extend.mp4': extendClip, 'seedance2.jpg': seedance2Poster, 'seedance2.mp4': seedance2Clip,
-  'genjutsu.jpg': genjutsuPoster, 'genjutsu.mp4': genjutsuClip, 'soul.jpg': soulPoster, 'gpt-image.jpg': gptPoster, 'recraft-remove-bg.jpg': removeBgPoster, 'recraft-crisp-upscale.jpg': crispPoster, 'recraft-edit-wide.jpg': editWidePoster, 'recraft-v3-vector-edit.jpg': v3VectorPoster, 'recraft-new-background.jpg': newBgPoster, 'recraft-creative-upscale.jpg': creativePoster,
+  'genjutsu.jpg': genjutsuPoster, 'genjutsu.mp4': genjutsuClip, 'soul.jpg': soulPoster, 'gpt-image.jpg': gptPoster, 'recraft-remove-bg.jpg': removeBgPoster, 'recraft-crisp-upscale.jpg': crispPoster, 'recraft-edit-wide.jpg': editWidePoster, 'recraft-v3-vector-edit.jpg': v3VectorPoster, 'recraft-new-background.jpg': newBgPoster, 'recraft-v3-vector-background.jpg': vectorBgPoster, 'recraft-creative-upscale.jpg': creativePoster,
   'recraft-vectorize.jpg': vectorizePoster,
 };
 const previewUrl = (name: string) => PREVIEW_FILES[name];
