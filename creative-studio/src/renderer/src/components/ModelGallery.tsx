@@ -1,6 +1,9 @@
 import { Fragment, useMemo, useRef, useState } from 'react';
 import type { Asset } from '@shared/types';
 import { cardState, type CardState } from '@shared/aiStudio';
+import { previewFor, type ModelPreview } from '@shared/studioPreviews';
+import seedancePoster from '../assets/previews/seedance-2-5.jpg';
+import seedanceClip from '../assets/previews/seedance-2-5.mp4';
 import { STUDIO_PROVIDERS, studioProvider, type StudioModel, type StudioProviderId } from '@shared/providerCapabilities';
 import {
   artSeed, BRAND, CATEGORIES, categoriesOf, compareRows, describeModel, exploreModels, favKey, OP_LABEL, outputLabel, priceInfo, settingsSummary,
@@ -16,6 +19,10 @@ interface Props {
   onOpenSettings?: () => void;
 }
 
+// Bundled example media (small copies of files the user supplied), by the file names listed in shared/studioPreviews.ts.
+const PREVIEW_FILES: Record<string, string> = { 'seedance-2-5.jpg': seedancePoster, 'seedance-2-5.mp4': seedanceClip };
+const previewUrl = (name: string) => PREVIEW_FILES[name];
+
 const STATE_TEXT: Record<CardState, string> = { ready: 'Ready', 'needs-key': 'Needs a key', soon: 'Coming soon' };
 const MAX_COMPARE = 3;
 
@@ -29,17 +36,23 @@ function coverFor(m: StudioModel, assets: Asset[]): Asset | null {
 }
 
 function Cover({ m, asset, big }: { m: StudioModel; asset: Asset | null; big?: boolean }) {
+  const preview: ModelPreview | null = asset ? null : previewFor(m);
+  const poster = preview ? previewUrl(preview.poster) : undefined;
+  const clip = preview?.video ? previewUrl(preview.video) : undefined;
   const ref = useRef<HTMLVideoElement>(null);
   const seed = artSeed(`${m.providerId}/${m.id}`);
   const brand = BRAND[m.providerId];
   return (
     <div className={`mg-cover${big ? ' big' : ''}`} style={{ ['--a' as string]: `hsl(${seed.a} 70% 45%)`, ['--b' as string]: `hsl(${seed.b} 75% 35%)`, ['--hue' as string]: brand.hue }}
       onMouseEnter={() => { void ref.current?.play().catch(() => undefined); }} onMouseLeave={() => { if (ref.current) { ref.current.pause(); ref.current.currentTime = 0; } }}>
-      {asset?.kind === 'video'
+      {preview && poster
+        ? <video ref={ref} poster={poster} src={clip} muted loop playsInline preload="none" aria-label={`Example for ${m.label}`} />
+        : asset?.kind === 'video'
         ? <video ref={ref} src={window.studio.assetUrl(asset.id)} muted loop playsInline preload="metadata" aria-label={`Example made with ${m.label}`} />
         : asset ? <img src={window.studio.assetUrl(asset.id)} alt={`Example made with ${m.label}`} loading="lazy" />
         : <div className="mg-placeholder" aria-hidden="true"><span className="mg-mark">{brand.mark}</span><span className="mg-kind">{outputLabel(m.output)}</span></div>}
       {asset && <span className="mg-yours">Made by you</span>}
+      {preview && poster && <span className="mg-yours">{preview.credit}</span>}
     </div>
   );
 }
