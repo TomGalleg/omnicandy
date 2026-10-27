@@ -5,13 +5,18 @@ export const DEFAULT_NAV_MODE: NavMode = 'simplified';
 
 export interface NavItem { id: WorkspaceId; label: string }
 
+/** Workspaces that exist but are hidden from the tabs (and from links, and from a saved "where I was"). */
+export const HIDDEN_WORKSPACES: WorkspaceId[] = ['workflow'];
+
+/** Where to land instead when something asks for a hidden workspace. */
+export const shownWorkspace = (w: WorkspaceId): WorkspaceId => (HIDDEN_WORKSPACES.includes(w) ? 'home' : w);
+
 /** Every workspace, in professional order (Advanced mode). */
 export const ADVANCED_NAV: NavItem[] = [
   { id: 'home', label: 'Home' },
   { id: 'media', label: 'Media' },
   { id: 'edit', label: 'Edit' },
   { id: 'generate', label: 'AI Generate' },
-  { id: 'workflow', label: 'Workflow' },
   { id: 'effects', label: 'Effects' },
   { id: 'color', label: 'Color' },
   { id: 'audio', label: 'Audio' },

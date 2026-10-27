@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Group, Panel, Separator, useDefaultLayout, usePanelRef, type PanelSize } from 'react-resizable-panels';
 import { EDITOR_APPS, type EditorAppId } from '@shared/appEditors';
 import type { IntegrationSnapshot } from '@shared/ipc';
-import { parseNavMode, type NavMode } from '@shared/navigation';
+import { parseNavMode, shownWorkspace, type NavMode } from '@shared/navigation';
 import { shouldShowTimeline } from '@shared/timeline';
 import type { AppProbeResult, Asset, ProjectManifest, WorkspaceId } from '@shared/types';
 import { AssetBrowser } from './components/AssetBrowser';
@@ -137,7 +137,7 @@ export function App() {
         const back = restore ? m.view : undefined;
         const asset = back?.assetId && m.assets.some((a) => a.id === back.assetId) ? back.assetId : null;
         setSelectedId(asset ?? m.assets[0]?.id ?? null);
-        if (back && back.workspace !== 'home') setWorkspace(back.workspace);
+        if (back && back.workspace !== 'home') setWorkspace(shownWorkspace(back.workspace));
         setError(null);
         setViewReady(true);
         addLog('project', `Loaded "${m.name}" (${m.assets.length} assets).`);
@@ -200,7 +200,7 @@ export function App() {
     setWorkspace(EDITOR_APPS[appId].tab);
     addLog('open', `Opening ${asset.name} in ${EDITOR_APPS[appId].name}.`);
   }, [addLog]);
-  const goto = useCallback((w: WorkspaceId, assetId?: string) => { if (assetId) setSelectedId(assetId); setWorkspace(w); }, []);
+  const goto = useCallback((w: WorkspaceId, assetId?: string) => { if (assetId) setSelectedId(assetId); setWorkspace(shownWorkspace(w)); }, []);
 
   const selected = useMemo(() => manifest?.assets.find((a) => a.id === selectedId) ?? null, [manifest, selectedId]);
 

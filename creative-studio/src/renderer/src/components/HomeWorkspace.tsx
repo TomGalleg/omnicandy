@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { PROJECT_KINDS, projectKindLabel, type ProjectKind } from '@shared/projectPlan';
 import type { ProjectManifest, ProjectSummary, WorkspaceId } from '@shared/types';
-import type { WorkflowGraph } from '@shared/workflow';
+import { HIDDEN_WORKSPACES } from '@shared/navigation';
 import type { WorkflowTemplate } from '@shared/workflowControl';
 import { formatBytes } from '../format';
 import { AGENT_PROVIDER_IDS, AGENT_PROVIDERS, DEFAULT_LOCAL_ENDPOINT, type AgentProviderId } from '@shared/agentProvider';
@@ -83,7 +83,7 @@ Needs: ${t.needs}` : ''}`, objective: t.description };
     setShowTemplates(false); setLocation(null);
     log('project', `Created "${t.name}" from a template. Import your files, pick them in the Files step, then run the workflow.`);
     onSwitched(key);
-    onGoto('workflow');
+    onGoto('media');
   });
   const [ai, setAi] = useState<'claude' | AgentProviderId>('claude');
   const [aiModel, setAiModel] = useState('');
@@ -150,7 +150,7 @@ Needs: ${t.needs}` : ''}`, objective: t.description };
           <button className="btn" disabled={busy} onClick={() => setBlank((v) => !v)}>New blank project</button>
           <button className="btn" disabled={busy}
             onClick={() => void run(async () => { const key = await window.studio.projects.openExisting(); if (key) { await window.studio.projects.open(key); onSwitched(key); } })}>Open existing project…</button>
-          <button className="btn" disabled={busy} aria-pressed={showTemplates} onClick={openTemplates}>Templates</button>
+          {!HIDDEN_WORKSPACES.includes('workflow') && <button className="btn" disabled={busy} aria-pressed={showTemplates} onClick={openTemplates}>Templates</button>}
           <button className="btn small ghost" type="button" disabled={busy} title={location ?? 'Uses the project folder from Settings'}
             onClick={() => void window.studio.projects.pickFolder().then((d) => { if (d) setLocation(d); })}>
             {folderLabel ? `Save in: ${folderLabel}` : 'Default folder · Choose…'}
@@ -249,10 +249,8 @@ Needs: ${t.needs}` : ''}`, objective: t.description };
 }
 
 function Overview({ manifest, projectKey, onGoto }: { manifest: ProjectManifest; projectKey: string; onGoto: Props['onGoto'] }) {
-  const [workflow, setWorkflow] = useState<WorkflowGraph | null>(null);
   const [exportsList, setExports] = useState<Array<{ name: string; bytes: number; modified: string }>>([]);
   useEffect(() => {
-    void window.studio.loadWorkflow().then(setWorkflow);
     void window.studio.listExports().then(setExports);
   }, [projectKey, manifest.updatedAt]);
 
@@ -342,11 +340,6 @@ function Overview({ manifest, projectKey, onGoto }: { manifest: ProjectManifest;
               </button>
             ))}
           </div>
-        </div>
-        <div className="panel-card">
-          <h3>Workflow</h3>
-          <div className="asset-meta">{workflow ? `${workflow.nodes.length} step${workflow.nodes.length === 1 ? '' : 's'}, ${workflow.edges.length} connection${workflow.edges.length === 1 ? '' : 's'}` : '…'}</div>
-          <button className="btn small" onClick={() => onGoto('workflow')}>Open workflow</button>
         </div>
         <div className="panel-card">
           <h3>Recent exports</h3>
