@@ -21,6 +21,7 @@
     "dist": "electron-vite build && node scripts/build-planner-mcp.mjs && node scripts/pack-source.mjs && node scripts/release-check.mjs resources && electron-builder",
     "smoke:installed": "node scripts/smoke-installed.mjs",
     "smoke:connect-hybrid": "electron-vite build && node scripts/smoke-connect-hybrid.mjs",
+    "catalog:check": "node scripts/catalog-check.mjs",
     "smoke": "electron-vite build && node scripts/smoke.mjs",
     "smoke:live": "electron-vite build && node scripts/smoke-live.mjs",
     "smoke:generate": "electron-vite build && node scripts/smoke-generate.mjs",
