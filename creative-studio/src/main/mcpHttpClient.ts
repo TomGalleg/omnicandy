@@ -105,10 +105,17 @@ export class McpHttpClient {
 
   /** Calls a tool; returns its text content (parsed as JSON when it is JSON). An `isError` result throws. */
   async callTool(name: string, args: JsonObj, timeoutMs?: number, signal?: AbortSignal): Promise<unknown> {
-    const r = (await this.request('tools/call', { name, arguments: args }, timeoutMs, signal)) as { isError?: boolean; content?: Array<{ type: string; text?: string }> };
-    const text = (r?.content ?? []).filter((c) => c.type === 'text').map((c) => c.text ?? '').join('\n');
-    if (r?.isError) throw new McpHttpError('tool', text || `${name} failed.`);
+    const content = await this.callToolContent(name, args, timeoutMs, signal);
+    const text = content.filter((c) => c.type === 'text').map((c) => c.text ?? '').join('\n');
     try { return JSON.parse(text); } catch { return text; }
+  }
+
+  /** Calls a tool; returns its raw content blocks (text, image, ...) for a tool whose answer is not plain text/JSON. */
+  async callToolContent(name: string, args: JsonObj, timeoutMs?: number, signal?: AbortSignal): Promise<Array<{ type: string; text?: string; data?: string; mimeType?: string }>> {
+    const r = (await this.request('tools/call', { name, arguments: args }, timeoutMs, signal)) as { isError?: boolean; content?: Array<{ type: string; text?: string; data?: string; mimeType?: string }> };
+    const content = r?.content ?? [];
+    if (r?.isError) throw new McpHttpError('tool', content.filter((c) => c.type === 'text').map((c) => c.text ?? '').join('\n') || `${name} failed.`);
+    return content;
   }
 
   async close(): Promise<void> {

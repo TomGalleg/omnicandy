@@ -1,5 +1,17 @@
 // The "Build" chat: a Claude Code session inside OmniCandy's own source, shown in a slide-out panel.
 
+export const BUILD_MODELS = [
+  { id: 'claude-opus-5-5', label: 'Opus 5.5' },
+  { id: 'claude-sonnet-5-5', label: 'Sonnet 5.5' },
+  { id: 'claude-haiku-5-5', label: 'Haiku 5.5' },
+] as const;
+export const BUILD_EFFORTS = ['low', 'medium', 'high'] as const;
+export type BuildEffort = (typeof BUILD_EFFORTS)[number];
+export const DEFAULT_BUILD_MODEL = 'claude-sonnet-5-5';
+
+/** A picture pasted into the chat. */
+export interface BuildImage { mediaType: string; data: string }
+
 export interface BuildItem {
   id: number;
   kind: 'user' | 'claude' | 'tool' | 'error';
@@ -34,6 +46,8 @@ export interface BuildState {
   approval: BuildApproval | null;
   usage: BuildUsage;
   workspace: WorkspaceState;
+  model: string;
+  effort: BuildEffort;
   /** Why the chat cannot start (Claude Code missing, source not found), or null. */
   unavailable: string | null;
 }

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import type { BuildState, BuildUsage, WorkspaceState, PlanUsage, PlanUsageBar } from '@shared/buildSession';
+import { BUILD_EFFORTS, BUILD_MODELS, type BuildImage, type BuildState, type BuildUsage, type WorkspaceState, type PlanUsage, type PlanUsageBar } from '@shared/buildSession';
 
 const errText = (e: unknown) => (e instanceof Error ? e.message : String(e)).replace(/^Error invoking remote method '[^']+': (Error: )?/, '');
 const tokens = (n: number) => (n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)}M` : n >= 1000 ? `${Math.round(n / 1000)}k` : String(n));
@@ -20,10 +20,9 @@ function Usage({ u, plan }: { u: BuildUsage; plan: PlanUsage | null }) {
   const bars: Array<[string, PlanUsageBar | null]> = plan && !plan.error ? [['Session limit', plan.session], ['Weekly · all models', plan.weekly], ['Weekly · Opus', plan.weeklyOpus], ['Weekly · Sonnet', plan.weeklySonnet]] : [];
   const ctx = u.contextWindow ? Math.min(1, u.contextTokens / u.contextWindow) : null;
   return (
-    <div className="build-usage" aria-label="Usage">
+    <div className="build-usage-pop" role="dialog" aria-label="Usage">
       <div className="build-usage-row"><span>Conversation size</span><strong>{tokens(u.contextTokens)}{u.contextWindow ? ` of ${tokens(u.contextWindow)}` : ''}</strong></div>
       {ctx !== null && <div className="build-meter" role="progressbar" aria-label="Conversation size" aria-valuenow={Math.round(ctx * 100)} aria-valuemin={0} aria-valuemax={100}><span style={{ width: `${ctx * 100}%` }} /></div>}
-      <div className="build-usage-row"><span>This chat</span><strong>{tokens(u.inputTokens + u.cachedTokens)} in · {tokens(u.outputTokens)} out · ≈ ${u.costUsd.toFixed(2)}</strong></div>
       {plan && !plan.error ? (
         <>
           {bars.filter((x): x is [string, PlanUsageBar] => x[1] !== null).map(([label, b]) => <Meter key={label} label={label} percent={b.percent} right={`${Math.round(b.percent)}% used${resets(b.resetsAt)}`} />)}
@@ -35,7 +34,6 @@ function Usage({ u, plan }: { u: BuildUsage; plan: PlanUsage | null }) {
           {u.limits.map((lim) => <Meter key={lim.kind} label={LIMIT_NAME[lim.kind] ?? 'Plan limit'} percent={Math.round((lim.used ?? 0) * 100)} right={lim.status === 'rejected' ? 'reached' : lim.used !== null ? `${Math.round(lim.used * 100)}% used${resets(lim.resetsAt)}` : 'ok'} />)}
         </>
       )}
-      <small>The dollar figure is what this chat would cost at API prices. A Claude subscription is not billed per message.</small>
     </div>
   );
 }
@@ -82,7 +80,8 @@ export function BuildPanel({ onClose }: { onClose: () => void }) {
   const [st, setSt] = useState<BuildState | null>(null);
   const [draft, setDraft] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const [showUsage, setShowUsage] = useState(true);
+  const [usageOpen, setUsageOpen] = useState(false);
+  const [images, setImages] = useState<BuildImage[]>([]);
   const [plan, setPlan] = useState<PlanUsage | null>(null);
   const chatRef = useRef<HTMLDivElement>(null);
   const boxRef = useRef<HTMLTextAreaElement>(null);
@@ -99,9 +98,9 @@ export function BuildPanel({ onClose }: { onClose: () => void }) {
     let live = true;
     const load = () => { void window.studio.build.planUsage().then((p) => { if (live) setPlan(p); }).catch(() => undefined); };
     load();
-    const t = setInterval(load, 60_000);
+    const t = setInterval(load, 180_000);
     return () => { live = false; clearInterval(t); };
-  }, [working0]);
+  }, [working0, usageOpen]);
   useEffect(() => {
     const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
     document.addEventListener('keydown', esc);
@@ -112,27 +111,39 @@ export function BuildPanel({ onClose }: { onClose: () => void }) {
   const canChat = st?.workspace.state === 'ready';
   const send = () => {
     const text = draft.trim();
-    if (!text || working) return;
+    if ((!text && !images.length) || working) return;
+    const pics = images;
     setDraft('');
+    setImages([]);
     setError(null);
-    window.studio.build.send(text).catch((e) => setError(errText(e)));
+    window.studio.build.send(text, pics).catch((e) => setError(errText(e)));
   };
+  // Pictures pasted from the clipboard (a screenshot, a copied image) travel with the message, like in Claude Code.
+  const paste = (e: React.ClipboardEvent) => {
+    const files = [...e.clipboardData.items].filter((i) => i.kind === 'file' && /^image\/(png|jpeg|gif|webp)$/.test(i.type)).map((i) => i.getAsFile()).filter((f): f is File => !!f);
+    if (!files.length) return;
+    e.preventDefault();
+    for (const f of files) {
+      const r = new FileReader();
+      r.onload = () => { const m = /^data:([^;]+);base64,(.*)$/.exec(String(r.result)); if (m) setImages((cur) => (cur.length < 8 ? [...cur, { mediaType: m[1]!, data: m[2]! }] : cur)); };
+      r.readAsDataURL(f);
+    }
+  };
+  const ring = plan && !plan.error && plan.session ? plan.session.percent : st?.usage.contextWindow ? Math.min(100, (st.usage.contextTokens / st.usage.contextWindow) * 100) : 0;
 
   return (
     <aside className="build-panel" aria-label="Build with Claude Code">
       <div className="build-head">
         <strong>Build with Claude Code</strong>
         <span className="build-head-actions">
-          <button className="btn small ghost" aria-pressed={showUsage} onClick={() => setShowUsage((v) => !v)}>Usage</button>
           <button className="btn small ghost" disabled={!st?.items.length && !working} onClick={() => { void window.studio.build.reset(); }}>New chat</button>
           <button className="btn small ghost" aria-label="Close Build panel" onClick={onClose}>✕</button>
         </span>
       </div>
-      {showUsage && st && <Usage u={st.usage} plan={plan} />}
       {st && <Workspace w={st.workspace} onError={setError} onAskFix={(text) => { setError(null); window.studio.build.send(text).catch((e) => setError(errText(e))); }} />}
       <div className="build-chat" ref={chatRef}>
         {st && !st.items.length && !st.unavailable && (
-          <div className="msg system">Tell Claude what to change in OmniCandy or which app to connect. For example: &quot;Add a button to the Home tab that opens my projects folder&quot; or &quot;Connect Affinity Photo&quot;. It can read the code freely and asks you before it changes anything.</div>
+          <div className="msg system">Tell Claude what to change in OmniCandy or which app to connect. For example: &quot;Add a button to the Home tab that opens my projects folder&quot; or &quot;Connect Affinity Photo&quot;. Paste pictures straight into the box. Claude works directly on the code, like regular Claude Code.</div>
         )}
         {st?.unavailable && <div className="msg error">{st.unavailable}</div>}
         {st?.items.map((i) => <div key={i.id} className={`msg ${i.kind === 'claude' ? 'assistant' : i.kind === 'tool' ? 'activity' : i.kind}`}>{i.text}</div>)}
@@ -149,14 +160,35 @@ export function BuildPanel({ onClose }: { onClose: () => void }) {
         )}
       </div>
       {error && <div className="msg error" role="alert">{error}</div>}
+      {images.length > 0 && (
+        <div className="build-images">
+          {images.map((im, n) => (
+            <span key={n} className="build-image"><img alt={`Pasted picture ${n + 1}`} src={`data:${im.mediaType};base64,${im.data}`} />
+              <button aria-label={`Remove picture ${n + 1}`} onClick={() => setImages((cur) => cur.filter((_, k) => k !== n))}>✕</button></span>
+          ))}
+        </div>
+      )}
       <div className="build-input">
-        <textarea ref={boxRef} rows={3} disabled={!canChat} value={draft} placeholder="What should Claude build or change?" aria-label="Message to Claude"
-          onChange={(e) => setDraft(e.target.value)}
+        <textarea ref={boxRef} rows={3} disabled={!canChat} value={draft} placeholder="What should Claude build or change? You can paste pictures." aria-label="Message to Claude"
+          onChange={(e) => setDraft(e.target.value)} onPaste={paste}
           onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } }} />
         {working
           ? <button className="btn" onClick={() => { void window.studio.build.stop(); }}>Stop</button>
-          : <button className="btn primary" disabled={!draft.trim() || !canChat} onClick={send}>Send</button>}
+          : <button className="btn primary" disabled={(!draft.trim() && !images.length) || !canChat} onClick={send}>Send</button>}
       </div>
+      {st && (
+        <div className="build-foot">
+          <select aria-label="Model" value={st.model} onChange={(e) => { void window.studio.build.setModel(e.target.value); }}>
+            {BUILD_MODELS.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
+          </select>
+          <select aria-label="Effort" value={st.effort} onChange={(e) => { void window.studio.build.setEffort(e.target.value); }}>
+            {BUILD_EFFORTS.map((x) => <option key={x} value={x}>{x[0]!.toUpperCase() + x.slice(1)}</option>)}
+          </select>
+          <button className="build-ring" aria-label="Usage" aria-expanded={usageOpen} title="Usage" onClick={() => setUsageOpen((v) => !v)}
+            style={{ background: `conic-gradient(${ring >= 80 ? 'var(--danger)' : 'var(--accent)'} ${ring * 3.6}deg, var(--border) 0)` }}><span /></button>
+          {usageOpen && <Usage u={st.usage} plan={plan} />}
+        </div>
+      )}
     </aside>
   );
 }

@@ -33,6 +33,18 @@ const FC = [{ exeNames: ['FreeCADCmd.exe'], displayNames: ['^FreeCAD'] }];
 const onWindows = process.platform === 'win32';
 
 describe.skipIf(!onWindows)('discovery of programs in custom locations', () => {
+  it('finds Fusion in Autodesk web deploy, where only an icon file is recorded (the real Fusion case)', async () => {
+    const deploy = 'C:\\Users\\a\\AppData\\Local\\Autodesk\\webdeploy\\production';
+    const env = fakeEnv({
+      files: [`${deploy}\\a3178f\\Fusion360.exe`],
+      dirs: { [deploy]: ['6a0c96', 'a3178f'] },
+      uninstall: [{ DisplayName: 'Autodesk Fusion', DisplayIcon: `${deploy}\\6a0c96\\Fusion360.ico`, InstallLocation: '' }],
+    });
+    env.env.LOCALAPPDATA = 'C:\\Users\\a\\AppData\\Local';
+    const found = await discoverApps([{ exeNames: ['Fusion360.exe'], displayNames: ['^Autodesk Fusion'] }], env);
+    expect(found.map((a) => a.exePath)).toEqual([`${deploy}\\a3178f\\Fusion360.exe`]);
+  });
+
   it('parses the program out of an uninstall command', () => {
     expect(programOf('"E:\\FreeCAD 1.1\\Uninstall.exe" /S')).toBe('E:\\FreeCAD 1.1\\Uninstall.exe');
     expect(programOf('D:\\Tools\\unins000.exe /SILENT')).toBe('D:\\Tools\\unins000.exe');

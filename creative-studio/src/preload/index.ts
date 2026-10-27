@@ -61,7 +61,9 @@ const api: StudioApi = {
   revealExport: (name) => ipcRenderer.invoke(IPC.revealExport, name),
   build: {
     state: () => ipcRenderer.invoke(IPC.buildState),
-    send: (message) => ipcRenderer.invoke(IPC.buildSend, message),
+    send: (message, images) => ipcRenderer.invoke(IPC.buildSend, message, images ?? []),
+    setModel: (id) => ipcRenderer.invoke(IPC.buildModel, id),
+    setEffort: (e) => ipcRenderer.invoke(IPC.buildEffort, e),
     stop: () => ipcRenderer.invoke(IPC.buildStop),
     reset: () => ipcRenderer.invoke(IPC.buildReset),
     planUsage: () => ipcRenderer.invoke(IPC.buildPlanUsage),

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="1200" height="600" viewBox="0 0 1200 600">
+  <title>VOLTERRA X1 Logo</title>
+  <g id="Layer_1" data-name="Layer 1">
+    <path d="M0 0 L1200 0 L1200 600 L0 600 Z" fill="#05070d"/>
+    <path d="M300 70 L180 320 L265 320 L215 530 L390 260 L300 260 L360 70 Z" fill="#22b8ff" stroke="#bfeaff" stroke-width="3" stroke-miterlimit="10"/>
+    <path d="M450 360 L1090 360 L1090 366 L450 366 Z" fill="#22b8ff"/>
+    <text transform="matrix(1 0 0 1 450 300)" x="0" y="0" xml:space="preserve" font-family="Arial" font-size="120" font-weight="bold" fill="#e8f4ff"><tspan x="0" y="0">VOLTERRA</tspan></text>
+    <text transform="matrix(1 0 0 1 450 470)" x="0" y="0" xml:space="preserve" font-family="Arial" font-size="110" font-weight="bold" fill="#22b8ff"><tspan x="0" y="0">X1</tspan></text>
+    <text transform="matrix(1 0 0 1 640 450)" x="0" y="0" xml:space="preserve" font-family="Arial" font-size="36" fill="#8fa6bd"><tspan x="0" y="0">ELECTRIC HYPERCAR</tspan></text>
+  </g>
+</svg>

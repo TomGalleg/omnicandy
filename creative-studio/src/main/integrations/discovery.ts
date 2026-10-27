@@ -152,6 +152,18 @@ export async function discoverApps(targets: DiscoveryTarget[], d: DiscoveryEnv =
     }
   }
 
+  // 3b. Autodesk web deploy (Fusion): the program sits in a folder named by a build hash, which no registry entry points to.
+  if (d.env.LOCALAPPDATA) {
+    const deploy = path.join(d.env.LOCALAPPDATA, 'Autodesk', 'webdeploy', 'production');
+    for (const l1 of await d.listDir(deploy)) {
+      if (!l1.dir) continue;
+      for (const e of wantedExe) {
+        const exe = path.join(deploy, l1.name, orig(e));
+        if (await d.exists(exe)) add({ name: path.basename(exe, '.exe'), publisher: 'Autodesk', version: null, exePath: exe, installType: 'installed', source: 'common-dir' });
+      }
+    }
+  }
+
   // 4. PATH.
   for (const dir of (d.env.PATH ?? d.env.Path ?? '').split(path.delimiter).filter(Boolean)) {
     for (const e of wantedExe) {

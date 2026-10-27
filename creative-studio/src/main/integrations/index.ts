@@ -1,4 +1,5 @@
 import { blenderFactory } from './adapters/blender';
+import { fusionFactory } from './adapters/fusion';
 import { resolveFactory } from './adapters/resolve';
 import { unrealFactory } from './adapters/unreal';
 import { vendorStubs } from './adapters/vendors';
@@ -14,6 +15,7 @@ export function createIntegrationManager(deps: ManagerDeps): IntegrationManager 
   m.register(blenderFactory, { builtin: true });
   m.register(resolveFactory, { builtin: true });
   m.register(unrealFactory, { builtin: true });
+  m.register(fusionFactory, { builtin: true });
   for (const s of vendorStubs) m.register(s, { builtin: true });
   return m;
 }

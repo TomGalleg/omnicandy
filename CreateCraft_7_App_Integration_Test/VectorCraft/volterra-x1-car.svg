@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="1920" height="1080" viewBox="0 0 1920 1080">
+  <defs>
+    <linearGradient id="linear-gradient-1" x1="0" y1="540" x2="1920" y2="540" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#02030a"/>
+      <stop offset="0.7" stop-color="#0a1830"/>
+      <stop offset="1" stop-color="#050914"/>
+    </linearGradient>
+    <radialGradient id="radial-gradient-1" cx="1000" cy="830" r="850" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#1a8fff" stop-opacity="0.55"/>
+      <stop offset="1" stop-color="#1a8fff" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="linear-gradient-2" x1="330" y1="644.966" x2="1650.753" y2="644.966" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#cfd9e6"/>
+      <stop offset="0.35" stop-color="#4f6f95"/>
+      <stop offset="0.7" stop-color="#15233a"/>
+      <stop offset="1" stop-color="#070b14"/>
+    </linearGradient>
+    <linearGradient id="linear-gradient-3" x1="640" y1="559.953" x2="1245" y2="559.953" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#0b2a55"/>
+      <stop offset="1" stop-color="#02060f"/>
+    </linearGradient>
+    <radialGradient id="radial-gradient-2" cx="560" cy="790" r="60" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#d7f1ff"/>
+      <stop offset="1" stop-color="#2a6fb0"/>
+    </radialGradient>
+    <radialGradient id="radial-gradient-3" cx="1380" cy="790" r="60" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#d7f1ff"/>
+      <stop offset="1" stop-color="#2a6fb0"/>
+    </radialGradient>
+  </defs>
+  <title>VOLTERRA X1 car illustration</title>
+  <g id="Layer_1" data-name="Layer 1">
+    <path d="M0 0 L1920 0 L1920 1080 L0 1080 Z" fill="url(#linear-gradient-1)"/>
+    <path d="M150 830 C150 796.863 530.558 770 1000 770 C1469.442 770 1850 796.863 1850 830 C1850 863.137 1469.442 890 1000 890 C530.558 890 150 863.137 150 830 Z" fill="url(#radial-gradient-1)"/>
+    <path d="M330 790 L330 705 C345 660 430 640 520 628 C640 560 780 505 960 500 C1120 498 1230 540 1320 600 C1420 625 1560 650 1620 700 C1655 730 1655 765 1645 790 Z" fill="url(#linear-gradient-2)" stroke="#7fd0ff" stroke-width="2" stroke-miterlimit="10"/>
+    <path d="M640 600 C720 548 820 522 960 520 C1090 518 1170 548 1245 600 Z" fill="url(#linear-gradient-3)" stroke="#9bd8ff" stroke-width="1.5" stroke-miterlimit="10"/>
+    <path d="M360 690 C600 668 1000 660 1300 668 C1450 672 1560 690 1620 712" fill="none" stroke="#33c4ff" stroke-width="5" stroke-miterlimit="10"/>
+    <path d="M1540 676 L1632 700 L1636 712 L1530 690 Z" fill="#e8fbff"/>
+    <path d="M330 690 L344 690 L344 730 L330 730 Z" fill="#ff2a4a"/>
+    <path d="M440 790 C440 723.726 493.726 670 560 670 C626.274 670 680 723.726 680 790 C680 856.274 626.274 910 560 910 C493.726 910 440 856.274 440 790 Z" fill="#03050a"/>
+    <path d="M462 790 C462 735.876 505.876 692 560 692 C614.124 692 658 735.876 658 790 C658 844.124 614.124 888 560 888 C505.876 888 462 844.124 462 790 Z" fill="#0c0f16" stroke="#222a38" stroke-width="6" stroke-miterlimit="10"/>
+    <path d="M500 790 C500 756.863 526.863 730 560 730 C593.137 730 620 756.863 620 790 C620 823.137 593.137 850 560 850 C526.863 850 500 823.137 500 790 Z" fill="url(#radial-gradient-2)" stroke="#bfeaff" stroke-width="3" stroke-miterlimit="10"/>
+    <path d="M546 790 C546 782.268 552.268 776 560 776 C567.732 776 574 782.268 574 790 C574 797.732 567.732 804 560 804 C552.268 804 546 797.732 546 790 Z" fill="#05070d"/>
+    <path d="M1260 790 C1260 723.726 1313.726 670 1380 670 C1446.274 670 1500 723.726 1500 790 C1500 856.274 1446.274 910 1380 910 C1313.726 910 1260 856.274 1260 790 Z" fill="#03050a"/>
+    <path d="M1282 790 C1282 735.876 1325.876 692 1380 692 C1434.124 692 1478 735.876 1478 790 C1478 844.124 1434.124 888 1380 888 C1325.876 888 1282 844.124 1282 790 Z" fill="#0c0f16" stroke="#222a38" stroke-width="6" stroke-miterlimit="10"/>
+    <path d="M1320 790 C1320 756.863 1346.863 730 1380 730 C1413.137 730 1440 756.863 1440 790 C1440 823.137 1413.137 850 1380 850 C1346.863 850 1320 823.137 1320 790 Z" fill="url(#radial-gradient-3)" stroke="#bfeaff" stroke-width="3" stroke-miterlimit="10"/>
+    <path d="M1366 790 C1366 782.268 1372.268 776 1380 776 C1387.732 776 1394 782.268 1394 790 C1394 797.732 1387.732 804 1380 804 C1372.268 804 1366 797.732 1366 790 Z" fill="#05070d"/>
+  </g>
+</svg>

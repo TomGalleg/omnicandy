@@ -1,7 +1,7 @@
 // The "Build" chat (slide panel): a Claude Code session inside OmniCandy's own source, primed to know the app.
 // This is how apps get added and the interface gets changed, by chatting.
 import type { EditWorkspace } from './editWorkspace';
-import { EMPTY_BUILD_USAGE, type BuildApproval, type BuildItem, type BuildState, type BuildUsage } from '@shared/buildSession';
+import { BUILD_EFFORTS, BUILD_MODELS, DEFAULT_BUILD_MODEL, EMPTY_BUILD_USAGE, type BuildApproval, type BuildEffort, type BuildImage, type BuildItem, type BuildState, type BuildUsage } from '@shared/buildSession';
 
 export const DEV_SESSION_PROMPT = [
   'You are working inside OmniCandy\'s own source code (the folder you were started in). The person talking to you uses OmniCandy and is chatting with you from its Build panel, which shows your messages and asks them to approve edits and commands.',
@@ -42,12 +42,14 @@ export class BuildSession {
   private abort: AbortController | null = null;
   private sessionId: string | null = null;
   private unavailable: string | null = null;
+  private model: string = DEFAULT_BUILD_MODEL;
+  private effort: BuildEffort = 'medium';
 
   constructor(private d: BuildDeps) {}
 
   state(): BuildState {
     const a = this.approval ? { id: this.approval.id, tool: this.approval.tool, summary: this.approval.summary } : null;
-    return { status: this.status, items: this.items, approval: a, usage: this.usage, workspace: this.d.workspace.state(), unavailable: this.unavailable };
+    return { status: this.status, items: this.items, approval: a, usage: this.usage, workspace: this.d.workspace.state(), model: this.model, effort: this.effort, unavailable: this.unavailable };
   }
 
   /** Re-reads the workspace from disk and sends the state out. */
@@ -66,7 +68,10 @@ export class BuildSession {
     this.publish();
   }
 
-  async send(message: string): Promise<void> {
+  setModel(id: string) { if (BUILD_MODELS.some((m) => m.id === id)) { this.model = id; this.publish(); } }
+  setEffort(e: string) { if ((BUILD_EFFORTS as readonly string[]).includes(e)) { this.effort = e as BuildEffort; this.publish(); } }
+
+  async send(message: string, images: BuildImage[] = []): Promise<void> {
     if (this.status === 'working') throw new Error('Claude is still working. Wait for it or press Stop.');
     const cwd = await this.d.workspace.sourceRoot();
     if (!cwd) {
@@ -77,7 +82,8 @@ export class BuildSession {
       return;
     }
     this.unavailable = null;
-    this.add('user', message);
+    this.add('user', images.length ? `${message}
+(+${images.length} pasted image${images.length > 1 ? 's' : ''})`.trim() : message);
     this.status = 'working';
     this.publish();
     const abort = new AbortController();
@@ -85,12 +91,26 @@ export class BuildSession {
     try {
       const { query } = await import('@anthropic-ai/claude-agent-sdk');
       const q = query({
-        prompt: message,
+        prompt: images.length
+          ? (async function* () {
+            yield {
+              type: 'user' as const, parent_tool_use_id: null, session_id: '',
+              message: { role: 'user' as const, content: [
+                ...(message ? [{ type: 'text' as const, text: message }] : []),
+                ...images.map((i) => ({ type: 'image' as const, source: { type: 'base64' as const, media_type: i.mediaType as 'image/png', data: i.data } })),
+              ] },
+            };
+          })()
+          : message,
         options: {
           systemPrompt: { type: 'preset', preset: 'claude_code', append: DEV_SESSION_PROMPT },
           tools: { type: 'preset', preset: 'claude_code' },
-          settingSources: ['project'],
-          permissionMode: 'default',
+          // Like regular Claude Code with its prompts turned off: the person's own Claude settings and CLAUDE.md apply, and nothing waits for a click.
+          settingSources: ['user', 'project', 'local'],
+          permissionMode: 'bypassPermissions',
+          allowDangerouslySkipPermissions: true,
+          model: this.model,
+          effort: this.effort,
           cwd,
           abortController: abort,
           maxTurns: 200,

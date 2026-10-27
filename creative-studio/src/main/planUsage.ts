@@ -33,6 +33,17 @@ export function parsePlanUsage(json: unknown, plan: string | null, now = Date.no
 
 const failed = (error: string, plan: string | null = null): PlanUsage => ({ plan, fetchedAt: Date.now(), error, session: null, weekly: null, weeklyOpus: null, weeklySonnet: null, credits: null });
 
+let lastGood: PlanUsage | null = null;
+const FRESH_MS = 90_000;
+
+/** Cached wrapper: Anthropic rate-limits this endpoint, so a result under 90 seconds old is reused, and a failure keeps showing the last good numbers. */
+export async function planUsageCached(o: Parameters<typeof fetchPlanUsage>[0] = {}): Promise<PlanUsage> {
+  if (lastGood && Date.now() - lastGood.fetchedAt < FRESH_MS) return lastGood;
+  const r = await fetchPlanUsage(o);
+  if (!r.error) { lastGood = r; return r; }
+  return lastGood ?? r;
+}
+
 export async function fetchPlanUsage(o: { configDir?: string; fetchImpl?: typeof fetch } = {}): Promise<PlanUsage> {
   const dir = o.configDir ?? process.env.CLAUDE_CONFIG_DIR ?? path.join(os.homedir(), '.claude');
   let oauth: { accessToken?: string; expiresAt?: number; subscriptionType?: string } | undefined;

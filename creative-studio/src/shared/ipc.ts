@@ -5,7 +5,7 @@ import type { InstalledProgram } from './builder';
 import type { ClaudeAuthMode, ClaudeBilling, ClaudeState } from './claude';
 import type { AgentUiState } from './agentHarness';
 import type { ProjectPlan } from './projectPlan';
-import type { BuildState, PlanUsage } from './buildSession';
+import type { BuildImage, BuildState, PlanUsage } from './buildSession';
 
 export type ProjectMeta = Pick<ProjectManifest, 'kind' | 'brief' | 'objective'>;
 export type ProjectMetaPatch = Pick<ProjectManifest, 'objective' | 'view'>;
@@ -73,6 +73,8 @@ export const IPC = {
   buildRebuild: 'build:rebuild',
   buildRestore: 'build:restore',
   buildInstallNode: 'build:install-node',
+  buildModel: 'build:model',
+  buildEffort: 'build:effort',
   liveState: 'live:state',
   liveOpen: 'live:open',
   liveRun: 'live:run',
@@ -351,7 +353,9 @@ export interface StudioApi {
   /** The Build chat: Claude Code working in OmniCandy's own source (slide panel). */
   build: {
     state(): Promise<BuildState>;
-    send(message: string): Promise<void>;
+    send(message: string, images?: BuildImage[]): Promise<void>;
+    setModel(id: string): Promise<void>;
+    setEffort(effort: string): Promise<void>;
     stop(): Promise<void>;
     reset(): Promise<void>;
     /** The plan limits Claude Code's /usage shows, read live. */

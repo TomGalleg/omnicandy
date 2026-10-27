@@ -21,7 +21,7 @@ import { IMPORTABLE_EXTENSIONS, kindForExtension } from './media';
 import { AppEditors } from './appEditors';
 import { BuildSession } from './devSession';
 import { EditWorkspace } from './editWorkspace';
-import { fetchPlanUsage } from './planUsage';
+import { planUsageCached } from './planUsage';
 import { showApprovalCard } from './approvalWindow';
 import { randomUUID } from 'node:crypto';
 import { ClaudePartner, defaultClaudeCli, type PlanReference } from './claudePartner';
@@ -52,6 +52,7 @@ import { PhotoCraftCliAdapter } from './photocraftCli';
 import type { ProjectManager } from './projects';
 import { setBlenderLiveHooks } from './integrations/adapters/blenderLive';
 import { setUnrealLiveHooks } from './integrations/adapters/unrealLive';
+import { setFusionLiveHooks } from './integrations/adapters/fusionLive';
 import { setResolveLiveHooks } from './integrations/adapters/resolveLive';
 import { BLANK_FILES, EDITOR_APPS, type EditorAppId } from '@shared/appEditors';
 import { DeliverQueue } from './deliver';
@@ -811,6 +812,12 @@ export function registerIpc(d: IpcDeps): void {
     onExit: (pid) => { if (liveExternal.pid === pid) { liveExternal = { name: 'Unreal Engine', pid: null }; emitLiveExternal(); } },
   });
   app.on('will-quit', () => setUnrealLiveHooks(null));
+  // And for Fusion: app.launch / app.show dock the running Fusion into the Software tab.
+  setFusionLiveHooks({
+    onShow: (pid) => { liveExternal = { name: 'Fusion', pid }; d.embedded.attach(pid); emitLiveExternal(); },
+    onExit: (pid) => { if (liveExternal.pid === pid) { liveExternal = { name: 'Fusion', pid: null }; emitLiveExternal(); } },
+  });
+  app.on('will-quit', () => setFusionLiveHooks(null));
   // And DaVinci Resolve: app.launch / app.show hand over the running Resolve, docked into the Software tab.
   setResolveLiveHooks({
     onShow: (pid) => { liveExternal = { name: 'DaVinci Resolve', pid }; d.embedded.attach(pid); emitLiveExternal(); },
@@ -1687,10 +1694,16 @@ export function registerIpc(d: IpcDeps): void {
   handle(IPC.buildRebuild, none, () => editWorkspace.rebuildAndRestart());
   handle(IPC.buildRestore, none, () => editWorkspace.restoreOriginal());
   handle(IPC.buildInstallNode, none, () => editWorkspace.installNode());
-  handle(IPC.buildSend, z.tuple([z.string().min(1).max(20000)]), (message) => build.send(message));
+  const buildImage = z.object({ mediaType: z.enum(['image/png', 'image/jpeg', 'image/gif', 'image/webp']), data: z.string().max(12_000_000) });
+  handle(IPC.buildSend, z.tuple([z.string().max(200_000), z.array(buildImage).max(8)]), (message, images) => {
+    if (!message.trim() && !images.length) throw new Error('Write a message or paste a picture.');
+    return build.send(message, images);
+  });
+  handle(IPC.buildModel, z.tuple([z.string().max(60)]), (id) => build.setModel(id));
+  handle(IPC.buildEffort, z.tuple([z.string().max(10)]), (e) => build.setEffort(e));
   handle(IPC.buildStop, none, () => build.stop());
   handle(IPC.buildReset, none, () => build.reset());
-  handle(IPC.buildPlanUsage, none, async () => ((await claudeAuth.mode()) === 'api-key' ? { plan: null, fetchedAt: Date.now(), error: 'Plan limits only apply when Claude is signed in with a Claude subscription, not an API key.', session: null, weekly: null, weeklyOpus: null, weeklySonnet: null, credits: null } : fetchPlanUsage()));
+  handle(IPC.buildPlanUsage, none, async () => ((await claudeAuth.mode()) === 'api-key' ? { plan: null, fetchedAt: Date.now(), error: 'Plan limits only apply when Claude is signed in with a Claude subscription, not an API key.', session: null, weekly: null, weeklyOpus: null, weeklySonnet: null, credits: null } : planUsageCached()));
   handle(IPC.buildAnswer, z.tuple([z.string().max(40), z.boolean()]), (id, allow) => build.answer(id, allow));
   handle(IPC.projectsRevealDefault, none, async () => { await shell.openPath((await d.projects.storageInfo()).defaultDir); });
   handle(IPC.projectsRename, z.tuple([projectKey, z.string().min(1).max(80)]), (key, name) => d.projects.rename(key, name));
