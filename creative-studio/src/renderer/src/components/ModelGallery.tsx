@@ -19,6 +19,7 @@ import genjutsuClip from '../assets/previews/genjutsu.mp4';
 import soulPoster from '../assets/previews/soul.jpg';
 import gptPoster from '../assets/previews/gpt-image.jpg';
 import removeBgPoster from '../assets/previews/recraft-remove-bg.jpg';
+import crispPoster from '../assets/previews/recraft-crisp-upscale.jpg';
 import vectorizePoster from '../assets/previews/recraft-vectorize.jpg';
 import { STUDIO_PROVIDERS, studioProvider, type StudioModel, type StudioProviderId } from '@shared/providerCapabilities';
 import {
@@ -40,7 +41,7 @@ const PREVIEW_FILES: Record<string, string> = {
   'seedance-text.jpg': textPoster, 'seedance-text.mp4': textClip, 'seedance-picture.jpg': picturePoster, 'seedance-picture.mp4': pictureClip,
   'seedance-reference.jpg': referencePoster, 'seedance-reference.mp4': referenceClip, 'seedance-edit.jpg': editPoster, 'seedance-edit.mp4': editClip,
   'seedance-extend.jpg': extendPoster, 'seedance-extend.mp4': extendClip, 'seedance2.jpg': seedance2Poster, 'seedance2.mp4': seedance2Clip,
-  'genjutsu.jpg': genjutsuPoster, 'genjutsu.mp4': genjutsuClip, 'soul.jpg': soulPoster, 'gpt-image.jpg': gptPoster, 'recraft-remove-bg.jpg': removeBgPoster,
+  'genjutsu.jpg': genjutsuPoster, 'genjutsu.mp4': genjutsuClip, 'soul.jpg': soulPoster, 'gpt-image.jpg': gptPoster, 'recraft-remove-bg.jpg': removeBgPoster, 'recraft-crisp-upscale.jpg': crispPoster,
   'recraft-vectorize.jpg': vectorizePoster,
 };
 const previewUrl = (name: string) => PREVIEW_FILES[name];
