@@ -35,6 +35,7 @@ describe('model card previews', () => {
     expect(previewFor(studioModel('recraft', 'recraft-tool/vectorize')!)?.poster).toBe('recraft-vectorize.jpg');
     expect(previewFor(studioModel('recraft', 'recraft-tool/removeBackground')!)?.poster).toBe('recraft-remove-bg.jpg');
     expect(previewFor(studioModel('recraft', 'recraft-tool/crispUpscale')!)?.poster).toBe('recraft-crisp-upscale.jpg');
+    expect(previewFor(studioModel('recraft', 'recraft-tool/creativeUpscale')!)?.poster).toBe('recraft-creative-upscale.jpg');
     expect(previewFor(studioModel('gemini', 'gemini-nano-banana-2.1')!)).toBeNull();
   });
 });

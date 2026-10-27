@@ -33,6 +33,7 @@ export const MODEL_PREVIEWS: Record<string, ModelPreview> = {
   'recraft/recraft-tool/removeBackground': { poster: 'recraft-remove-bg.jpg', credit: 'Sample image (background removed)', aspect: 638 / 447 },
   // A soft picture the user supplied to show what Crisp upscale is for.
   'recraft/recraft-tool/crispUpscale': { poster: 'recraft-crisp-upscale.jpg', credit: 'Sample: a soft picture to upscale', aspect: 1536 / 1024 },
+  'recraft/recraft-tool/creativeUpscale': { poster: 'recraft-creative-upscale.jpg', credit: 'Sample: a soft picture to upscale', aspect: 1536 / 1024 },
   // The file the user supplied is labelled GPT Image 2.0, so the card says so.
   'openai/gpt-image-2.5-flare': { poster: 'gpt-image.jpg', credit: 'Sample image (GPT Image 2.0)', aspect: 1744 / 2336 },
   'openai/gpt-image-2.5-sunburst': { poster: 'gpt-image.jpg', credit: 'Sample image (GPT Image 2.0)', aspect: 1744 / 2336 },
