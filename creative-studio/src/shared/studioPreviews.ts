@@ -37,6 +37,8 @@ export const MODEL_PREVIEWS: Record<string, ModelPreview> = {
   'recraft/recraft-tool/imageToImageVector': { poster: 'recraft-v3-vector-edit.jpg', credit: 'Sample image', aspect: 1 },
   // A vector-style illustration the user supplied for "V3 Vector · New background".
   'recraft/recraft-tool/replaceBackgroundVector': { poster: 'recraft-v3-vector-background.jpg', credit: 'Sample image', aspect: 910 / 824 },
+  // A picture the user supplied for the Recraft masked editing card (that card is not connected yet).
+  'recraft/recraft-mask-tools': { poster: 'recraft-masked-editing.jpg', credit: 'Sample image', aspect: 3 / 2 },
   // The cowboy dog in a new city background, supplied by the user for Recraft V3 New background.
   'recraft/recraft-tool/replaceBackground': { poster: 'recraft-new-background.jpg', credit: 'Sample image', aspect: 1013 / 667 },
   // A wide picture the user supplied for "Edit with a prompt".
