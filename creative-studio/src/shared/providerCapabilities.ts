@@ -40,6 +40,8 @@ export interface StudioModel {
   /** USD per image/clip at the cheapest documented configuration, when the docs publish one. */
   fromUsd?: number;
   note?: string;
+  /** One plain sentence for the model card, when the registry source has one. */
+  blurb?: string;
 }
 
 export interface StudioProvider {
@@ -129,7 +131,7 @@ const RECRAFT_MODELS: StudioModel[] = [
 const HIGGSFIELD_MODELS: StudioModel[] = [
   ...HF_MODELS.map((m): StudioModel => ({
     providerId: 'higgsfield', id: m.id, label: m.label, output: m.output === 'video' ? 'video' : 'raster', operations: m.operations,
-    availability: 'wired', source: m.source, ...(m.note ? { note: m.note } : {}),
+    availability: 'wired', source: m.source, blurb: m.blurb, ...(m.note ? { note: m.note } : {}),
   })),
   {
     providerId: 'higgsfield', id: 'higgsfield-ai/soul/v2/standard', label: 'Higgsfield Soul', output: 'raster', availability: 'planned',

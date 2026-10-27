@@ -83,3 +83,57 @@ export const SURPRISE_PROMPTS = [
   'An isometric cutaway of a cozy treehouse workshop',
   'Bold flat-colour poster of a lighthouse in a storm',
 ];
+
+// ---- One list for every provider's jobs ----
+// Gemini, OpenAI and Recraft run while the window waits (StudioJob). Higgsfield jobs are asynchronous and saved by the main
+// process (HfJobRecord). The Jobs tab shows both through this one shape so every provider looks and behaves the same.
+import { hfModel, HF_ACTIVE, type HfJobRecord, type HfJobState } from './higgsfield';
+
+export type ViewState = 'queued' | 'running' | 'done' | 'failed' | 'canceled' | 'moderated';
+
+export interface JobView {
+  id: string;
+  at: string;
+  providerId: string;
+  modelId: string;
+  modelLabel: string;
+  prompt: string;
+  settings: Record<string, string>;
+  count: number;
+  referenceAssetIds: string[];
+  state: ViewState;
+  message?: string;
+  assetIds: string[];
+  estimateUsd?: number;
+  /** Only a Higgsfield request that is still queued can be cancelled. */
+  cancellable: boolean;
+  source: 'studio' | 'higgsfield';
+}
+
+const HF_VIEW: Record<HfJobState, ViewState> = { submitting: 'queued', queued: 'queued', running: 'running', downloading: 'running', done: 'done', failed: 'failed', canceled: 'canceled', moderated: 'moderated' };
+
+export function viewFromStudio(j: StudioJob): JobView {
+  return {
+    id: j.id, at: j.at, providerId: j.providerId, modelId: j.modelId, modelLabel: j.modelLabel, prompt: j.prompt, settings: j.settings, count: j.count,
+    referenceAssetIds: j.referenceAssetIds, state: j.state, assetIds: j.assetIds ?? [], cancellable: false, source: 'studio',
+    ...(j.message ? { message: j.message } : {}), ...(j.estimateUsd !== undefined ? { estimateUsd: j.estimateUsd } : {}),
+  };
+}
+
+export function viewFromHiggsfield(r: HfJobRecord): JobView {
+  const settings: Record<string, string> = {};
+  for (const [k, v] of Object.entries(r.job.params)) settings[k] = String(v);
+  return {
+    id: `hf-${r.id}`, at: r.createdAt, providerId: 'higgsfield', modelId: r.job.modelId, modelLabel: hfModel(r.job.modelId)?.label ?? r.job.modelId,
+    prompt: r.job.prompt, settings, count: 1, referenceAssetIds: Object.values(r.job.inputs).flat(), state: HF_VIEW[r.state], assetIds: r.assetIds,
+    cancellable: r.state === 'queued' && !!r.requestId, source: 'higgsfield', message: r.message,
+  };
+}
+
+export const isActive = (v: JobView) => v.state === 'queued' || v.state === 'running';
+export { HF_ACTIVE };
+
+/** Newest first, both sources together. */
+export function mergeJobs(studio: StudioJob[], hf: HfJobRecord[]): JobView[] {
+  return [...studio.map(viewFromStudio), ...hf.map(viewFromHiggsfield)].sort((a, b) => b.at.localeCompare(a.at));
+}
