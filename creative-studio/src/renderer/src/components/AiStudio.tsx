@@ -6,7 +6,7 @@ import type { Asset, ProjectManifest, WorkspaceId } from '@shared/types';
 import { addJob, cardState, mergeJobs, parseDraft, updateJob, type JobView, type StudioJob } from '@shared/aiStudio';
 import { recraftModel } from '@shared/recraft';
 import { findModels, STUDIO_PROVIDERS, type StudioModel, type StudioProviderId } from '@shared/providerCapabilities';
-import { parseFavs, toggleFav } from '@shared/studioCatalog';
+import { isShown, parseFavs, toggleFav } from '@shared/studioCatalog';
 import { CreateWorkspace, type CreateSeed, type RunFn } from './CreateWorkspace';
 import { ModelGallery } from './ModelGallery';
 import { importDropped, isFileDrag, LIBRARY_CHANGED, uploadWithPicker } from '../importFiles';
@@ -145,7 +145,7 @@ export function AiStudio({ manifest, selected, onGoto, log, onProjectChanged }: 
   };
 
   const made = (manifest?.assets ?? []).filter((a) => a.provenance.origin === 'generated' && (a.kind === 'image' || a.kind === 'vector' || a.kind === 'video')).slice().reverse();
-  const readyCount = findModels({ wiredOnly: true }).filter((m) => cardState(m, configured) === 'ready').length;
+  const readyCount = findModels({ wiredOnly: true }).filter(isShown).filter((m) => cardState(m, configured) === 'ready').length;
   const activeJobs = views.filter((v) => v.state === 'queued' || v.state === 'running').length;
   const finished = views.some((v) => v.state !== 'queued' && v.state !== 'running');
 

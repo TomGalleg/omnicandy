@@ -35,6 +35,10 @@ export const CATEGORIES: Category[] = [
 
 export const categoriesOf = (m: StudioModel): CategoryId[] => CATEGORIES.filter((c) => c.match(m)).map((c) => c.id);
 
+/** Providers that exist for testing and are not shown to people (the offline Mock image). They stay in the registry, so tests and the classic screen still work. */
+const HIDDEN_PROVIDERS: StudioProviderId[] = ['mock'];
+export const isShown = (m: Pick<StudioModel, 'providerId'>) => !HIDDEN_PROVIDERS.includes(m.providerId);
+
 /** Brand colour and a short mark. Recognisable without shipping anyone's logo file. */
 export const BRAND: Record<StudioProviderId, { hue: string; mark: string }> = {
   gemini: { hue: '#4f8bff', mark: 'G' }, openai: { hue: '#16a37f', mark: 'O' }, higgsfield: { hue: '#ff5f8a', mark: 'H' },
@@ -99,7 +103,7 @@ export const task = (id: string) => TASKS.find((t) => t.id === id);
 
 /** Models for a task: ready-to-wire ones first, planned ones after (shown greyed, never selectable). */
 export function modelsForTask(t: Task): { wired: StudioModel[]; planned: StudioModel[] } {
-  const all = findModels({}).filter(t.filter);
+  const all = findModels({}).filter(isShown).filter(t.filter);
   return { wired: all.filter((m) => m.availability === 'wired'), planned: all.filter((m) => m.availability !== 'wired') };
 }
 
@@ -146,6 +150,7 @@ export interface ExploreFilter {
 export function exploreModels(f: ExploreFilter, favs: string[], ready: (m: StudioModel) => boolean): StudioModel[] {
   const cat = f.category ? CATEGORIES.find((c) => c.id === f.category) : null;
   return findModels({ ...(f.providerId ? { providerId: f.providerId } : {}), search: f.search })
+    .filter(isShown)
     .filter((m) => (!cat || cat.match(m)) && (!f.favoritesOnly || favs.includes(favKey(m))) && (!f.readyOnly || ready(m)));
 }
 

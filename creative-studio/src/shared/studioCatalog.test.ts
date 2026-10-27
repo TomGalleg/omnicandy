@@ -83,6 +83,16 @@ describe('one job list for every provider', () => {
   });
 });
 
+describe('hidden test models', () => {
+  it('keeps the offline Mock image out of every list people see, but not out of the registry', () => {
+    expect(studioModel('mock', 'mock-image')).toBeDefined();
+    const none = { category: null, providerId: null, search: '', favoritesOnly: false, readyOnly: false } as const;
+    expect(exploreModels(none, [], () => true).some((x) => x.providerId === 'mock')).toBe(false);
+    expect(exploreModels({ ...none, search: 'mock' }, [], () => true)).toEqual([]);
+    expect(modelsForTask(TASKS.find((t) => t.id === 'image')!).wired.some((x) => x.providerId === 'mock')).toBe(false);
+  });
+});
+
 describe('settings summary', () => {
   it('reads the same catalogs the forms use', async () => {
     const { settingsSummary } = await import('./studioCatalog');

@@ -148,7 +148,7 @@ export function ModelGallery({ assets, configured, favs, onToggleFav, onCreate, 
         ))}
       </div>
       <div className="mg-bar">
-        {STUDIO_PROVIDERS.filter((p) => p.id !== 'local').map((p) => (
+        {STUDIO_PROVIDERS.filter((p) => p.id !== 'local' && p.id !== 'mock').map((p) => (
           <button key={p.id} className={`chip chip-btn mg-prov${providerId === p.id ? ' on' : ''}`} style={{ ['--hue' as string]: BRAND[p.id].hue }} aria-pressed={providerId === p.id} onClick={() => setProviderId(providerId === p.id ? null : p.id)}>
             <i>{BRAND[p.id].mark}</i>{p.label}
           </button>
