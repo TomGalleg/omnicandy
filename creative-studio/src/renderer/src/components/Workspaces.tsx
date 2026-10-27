@@ -1,7 +1,9 @@
+import { useRef, useState } from 'react';
 import { appsForFormat, type EditorAppId } from '@shared/appEditors';
 import type { IntegrationSnapshot } from '@shared/ipc';
 import type { AppProbeResult, Asset, ProjectManifest, WorkspaceId } from '@shared/types';
 import { formatBytes, formatDims } from '../format';
+import { importDropped, isFileDrag, uploadWithPicker } from '../importFiles';
 import type { LiveApi } from '../useLive';
 import { AssetThumb, KIND_LABEL } from './AssetBrowser';
 import { DeliverWorkspace } from './DeliverWorkspace';
@@ -35,7 +37,7 @@ interface Props {
 export function WorkspaceView(p: Props) {
   switch (p.workspace) {
     case 'home': return <HomeWorkspace manifest={p.manifest} projectKey={p.projectKey} onSwitched={p.onSwitched} onGoto={p.onGoto} log={p.log} />;
-    case 'media': return <MediaWorkspace manifest={p.manifest} asset={p.selected} onSelect={p.onSelectAsset} onOpenIn={p.onOpenIn} />;
+    case 'media': return <MediaWorkspace manifest={p.manifest} asset={p.selected} onSelect={p.onSelectAsset} onOpenIn={p.onOpenIn} onProjectChanged={p.onProjectChanged} log={p.log} />;
     case 'edit': return <EditWorkspace manifest={p.manifest} selected={p.selected} liveApi={p.liveApi} onProjectChanged={p.onProjectChanged} onSelectAsset={p.onSelectAsset} chosenApp={p.chosenApp} log={p.log} onGoto={p.onGoto} />;
     case 'generate': return <GenerateHub manifest={p.manifest} selected={p.selected} onGoto={p.onGoto} log={p.log} onProjectChanged={p.onProjectChanged} />;
     case 'workflow': return <WorkflowEditor manifest={p.manifest} integrations={p.integrations} colorMode={p.resolvedTheme} log={p.log} onProjectChanged={p.onProjectChanged} />;
@@ -53,7 +55,18 @@ function renditionOf(manifest: ProjectManifest | null, asset: Asset): Asset | un
   return manifest?.assets.find((x) => x.parentId === asset.id && x.kind === 'image');
 }
 
-function MediaWorkspace({ manifest, asset, onSelect, onOpenIn }: { manifest: ProjectManifest | null; asset: Asset | null; onSelect: (id: string) => void; onOpenIn: (a: Asset, app: EditorAppId) => void }) {
+function MediaWorkspace({ manifest, asset, onSelect, onOpenIn, onProjectChanged, log }: { manifest: ProjectManifest | null; asset: Asset | null; onSelect: (id: string) => void; onOpenIn: (a: Asset, app: EditorAppId) => void; onProjectChanged: () => void; log: (source: string, msg: string) => void }) {
+  const [dragging, setDragging] = useState(false);
+  const [note, setNote] = useState<{ text: string; error: boolean } | null>(null);
+  const depth = useRef(0);
+  // Files added by the button or a drop: reload the project's list, show what happened, and select the first new file.
+  const done = (r: { text: string; error: boolean; result: { imported: Asset[] } }) => {
+    setNote({ text: r.text, error: r.error });
+    for (const a of r.result.imported) log('import', `Imported ${a.name}; original copied read-only.`);
+    onProjectChanged();
+    if (r.result.imported[0]) onSelect(r.result.imported[0].id);
+  };
+  const fail = (e: unknown) => setNote({ text: (e instanceof Error ? e.message : String(e)).replace(/^Error invoking remote method '[^']+': (Error: )?/, ''), error: true });
   let preview = <MediaPreview asset={asset} />;
   if (asset?.sourceFormat === 'pcraft') {
     const r = manifest && renditionOf(manifest, asset);
@@ -61,10 +74,23 @@ function MediaWorkspace({ manifest, asset, onSelect, onOpenIn }: { manifest: Pro
   }
   const assets = manifest?.assets ?? [];
   return (
-    <div className="media-screen">
+    <div
+      className="media-screen"
+      style={{ position: 'relative' }}
+      onDragEnter={(e) => { if (isFileDrag(e)) { depth.current++; setDragging(true); } }}
+      onDragOver={(e) => { if (isFileDrag(e)) e.preventDefault(); }}
+      onDragLeave={(e) => { if (isFileDrag(e) && --depth.current <= 0) { depth.current = 0; setDragging(false); } }}
+      onDrop={(e) => { depth.current = 0; setDragging(false); if (!isFileDrag(e)) return; e.preventDefault(); void importDropped(e.dataTransfer.files).then(done).catch(fail); }}
+    >
+      {dragging && <div className="as-drop" aria-hidden="true"><strong>Drop to add to your library</strong><span>Pictures, videos and sounds are copied in. Your originals are never changed.</span></div>}
       <div className="media-list" role="list" aria-label="All media in this project">
         <h3>All media · {assets.length}</h3>
-        {assets.length === 0 && <p className="asset-meta">No media yet. Use Import in the media panel.</p>}
+        <div className="btn-row">
+          <button className="btn small primary" onClick={() => { void uploadWithPicker().then(done).catch(fail); }} title="Choose files from your computer, or drag and drop them anywhere on this screen">⬆ Upload media</button>
+          <span className="asset-meta">or drag files here</span>
+        </div>
+        {note && <div className={`wf-msg${note.error ? ' error' : ''}`} role="status">{note.text} <button className="btn small ghost" onClick={() => setNote(null)}>Dismiss</button></div>}
+        {assets.length === 0 && <p className="asset-meta">No media yet. Upload files or drop them here.</p>}
         {assets.map((a) => {
           const apps = appsForFormat(a.sourceFormat);
           return (
