@@ -29,6 +29,8 @@ export const MODEL_PREVIEWS: Record<string, ModelPreview> = {
   'higgsfield/higgsfield/genjutsu/motion-transfer/v1.0': { poster: 'genjutsu.jpg', video: 'genjutsu.mp4', credit: CREDIT, aspect: 480 / 854 },
   // Soul is not connected yet: its card shows this picture, still greyed as "coming soon".
   'higgsfield/higgsfield-ai/soul/v2/standard': { poster: 'soul.jpg', credit: 'Image from Higgsfield', aspect: 2048 / 1152 },
+  // A cut-out the user supplied as the example of Recraft's remove-background tool.
+  'recraft/recraft-tool/removeBackground': { poster: 'recraft-remove-bg.jpg', credit: 'Sample image (background removed)', aspect: 638 / 447 },
   // The file the user supplied is labelled GPT Image 2.0, so the card says so.
   'openai/gpt-image-2.5-flare': { poster: 'gpt-image.jpg', credit: 'Sample image (GPT Image 2.0)', aspect: 1744 / 2336 },
   'openai/gpt-image-2.5-sunburst': { poster: 'gpt-image.jpg', credit: 'Sample image (GPT Image 2.0)', aspect: 1744 / 2336 },

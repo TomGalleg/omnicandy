@@ -33,6 +33,7 @@ describe('model card previews', () => {
     expect(previewFor(studioModel('higgsfield', 'higgsfield-ai/soul/v2/standard')!)?.video).toBeUndefined(); // a still
     expect(previewFor(studioModel('openai', 'gpt-image-2.5-flare')!)?.credit).toMatch(/GPT Image 2\.0/);
     expect(previewFor(studioModel('recraft', 'recraft-tool/vectorize')!)?.poster).toBe('recraft-vectorize.jpg');
+    expect(previewFor(studioModel('recraft', 'recraft-tool/removeBackground')!)?.poster).toBe('recraft-remove-bg.jpg');
     expect(previewFor(studioModel('gemini', 'gemini-nano-banana-2.1')!)).toBeNull();
   });
 });
