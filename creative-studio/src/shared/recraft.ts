@@ -4,19 +4,24 @@
 //   https://www.recraft.ai/docs/api-reference/endpoints.md        POST /images/generations params (prompt, model, n 1-6, size,
 //       response_format url|b64_json, image_format webp|png, controls.colors <=10, controls.background_color)
 //   https://www.recraft.ai/docs/api-reference/models/recraft-v4-1.md  model ids and per-image prices
-// Not wired (their docs were not confirmed well enough): V4.1 Flash id, Utility, V3 editing, tool endpoints.
+//   https://www.recraft.ai/docs/api-reference/models/{recraft-v4-1-flash,recraft-v3}.md  Flash and V3 ids, prices ($0.007, $0.04, $0.08),
+//       n 1-6, prompt limits (Flash 10,000; V3 1,000), colours and background supported, image_format ignored for vector
+// The picture tools and V3 editing live in recraftTools.ts. Not wired: Utility, styles, masked editing.
 
 import type { CostEstimate } from './generation';
 
 export const RECRAFT_BASE = 'https://external.api.recraft.ai/v1';
 
-export interface RecraftModel { id: string; label: string; output: 'raster' | 'svg'; usd: number; note: string }
+export interface RecraftModel { id: string; label: string; output: 'raster' | 'svg'; usd: number; note: string; /** Longest prompt the model accepts. */ maxPrompt: number }
 
 export const RECRAFT_MODELS: RecraftModel[] = [
-  { id: 'recraftv4_1', label: 'Recraft V4.1', output: 'raster', usd: 0.035, note: 'Default model, 1K pictures' },
-  { id: 'recraftv4_1_vector', label: 'Recraft V4.1 Vector', output: 'svg', usd: 0.08, note: 'Genuine editable SVG' },
-  { id: 'recraftv4_1_pro', label: 'Recraft V4.1 Pro', output: 'raster', usd: 0.21, note: '2K pictures, finer detail' },
-  { id: 'recraftv4_1_pro_vector', label: 'Recraft V4.1 Pro Vector', output: 'svg', usd: 0.30, note: 'Genuine editable SVG, finer detail' },
+  { id: 'recraftv4_1', label: 'Recraft V4.1', output: 'raster', usd: 0.035, note: 'Default model, 1K pictures', maxPrompt: 10_000 },
+  { id: 'recraftv4_1_vector', label: 'Recraft V4.1 Vector', output: 'svg', usd: 0.08, note: 'Genuine editable SVG', maxPrompt: 10_000 },
+  { id: 'recraftv4_1_pro', label: 'Recraft V4.1 Pro', output: 'raster', usd: 0.21, note: '2K pictures, finer detail', maxPrompt: 10_000 },
+  { id: 'recraftv4_1_pro_vector', label: 'Recraft V4.1 Pro Vector', output: 'svg', usd: 0.30, note: 'Genuine editable SVG, finer detail', maxPrompt: 10_000 },
+  { id: 'recraftv4_1_flash', label: 'Recraft V4.1 Flash', output: 'raster', usd: 0.007, note: 'Fastest and cheapest, 1K pictures. No styles', maxPrompt: 10_000 },
+  { id: 'recraftv3', label: 'Recraft V3', output: 'raster', usd: 0.04, note: 'The previous generation, still popular for its look', maxPrompt: 1000 },
+  { id: 'recraftv3_vector', label: 'Recraft V3 Vector', output: 'svg', usd: 0.08, note: 'Genuine editable SVG from V3', maxPrompt: 1000 },
 ];
 
 export const recraftModel = (id: string) => RECRAFT_MODELS.find((m) => m.id === id);
@@ -45,7 +50,7 @@ export function normalizeRecraftJob(job: RecraftJob): RecraftJob {
   if (!m) throw new Error(`Unknown Recraft model "${job.modelId}".`);
   const prompt = job.prompt.trim();
   if (!prompt) throw new Error('Write a prompt first.');
-  if (prompt.length > RECRAFT_MAX_PROMPT) throw new Error(`Prompt is too long (max ${RECRAFT_MAX_PROMPT} characters).`);
+  if (prompt.length > m.maxPrompt) throw new Error(`Prompt is too long for ${m.label} (max ${m.maxPrompt.toLocaleString('en-US')} characters).`);
   if (!Number.isInteger(job.count) || job.count < 1 || job.count > RECRAFT_MAX_COUNT) throw new Error(`Count must be 1–${RECRAFT_MAX_COUNT}.`);
   if (!(RECRAFT_ASPECTS as readonly string[]).includes(job.aspect)) throw new Error(`Shape "${job.aspect}" is not available.`);
   if (job.colors.length > 10) throw new Error('Use at most 10 colours.');

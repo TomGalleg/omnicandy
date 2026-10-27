@@ -23,10 +23,12 @@ describe('provider capability registry', () => {
   it('never claims what the docs do not', () => {
     expect(supports('openai', 'gpt-image-2.5-flare', 'inpaint')).toBe(false);
     expect(supports('gemini', 'gemini-nano-banana-2.1', 'vectorize')).toBe(false);
+    // Styles are documented for some Recraft models but not connected, so the registry does not offer them anywhere.
     expect(supports('recraft', 'recraftv4_1_flash', 'styles')).toBe(false);
-    expect(supports('recraft', 'recraftv4_1', 'styles')).toBe(true);
+    expect(supports('recraft', 'recraftv4_1', 'styles')).toBe(false);
     expect(supports('recraft', 'recraftv4_1', 'inpaint')).toBe(false);
-    expect(supports('recraft', 'recraftv3', 'inpaint')).toBe(true);
+    expect(supports('recraft', 'recraftv3', 'inpaint')).toBe(false);
+    expect(supports('recraft', 'recraft-mask-tools', 'inpaint')).toBe(true);
     expect(findModels({ providerId: 'recraft', operation: 'text-to-video' })).toEqual([]);
     expect(supports('recraft', 'does-not-exist', 'text-to-image')).toBe(false);
   });
@@ -57,7 +59,7 @@ describe('provider capability registry', () => {
     expect(findModels({ providerId: 'higgsfield', operation: 'video-extend' }).map((m) => m.id)).toEqual(['bytedance/seedance-2.5/video-extend']);
     expect(findModels({ providerId: 'higgsfield' }).every((m) => m.output === 'raster' || m.output === 'video')).toBe(true);
     // Recraft: the four V4.1 generation models and the picture tools are connected; masked editing stays planned.
-    expect(findModels({ providerId: 'recraft', wiredOnly: true }).map((m) => m.id)).toEqual(['recraftv4_1', 'recraftv4_1_vector', 'recraftv4_1_pro', 'recraftv4_1_pro_vector', ...['vectorize', 'removeBackground', 'crispUpscale', 'creativeUpscale', 'imageToImage', 'imageToImageVector', 'replaceBackground', 'replaceBackgroundVector'].map((t) => `recraft-tool/${t}`)]);
+    expect(findModels({ providerId: 'recraft', wiredOnly: true }).map((m) => m.id)).toEqual(['recraftv4_1', 'recraftv4_1_vector', 'recraftv4_1_pro', 'recraftv4_1_pro_vector', 'recraftv4_1_flash', 'recraftv3', 'recraftv3_vector', ...['vectorize', 'removeBackground', 'crispUpscale', 'creativeUpscale', 'imageToImage', 'imageToImageVector', 'replaceBackground', 'replaceBackgroundVector'].map((t) => `recraft-tool/${t}`)]);
     expect(findModels({ providerId: 'recraft', operation: 'inpaint', wiredOnly: true })).toEqual([]);
   });
 });

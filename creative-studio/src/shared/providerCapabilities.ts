@@ -79,7 +79,7 @@ export const STUDIO_PROVIDERS: StudioProvider[] = [
     id: 'recraft', label: 'Recraft', kind: 'cloud-api', billable: true, availability: 'wired', discovery: 'docs-only',
     cancel: 'Synchronous call: stops by timeout only.',
     costInfo: 'Published per-image prices; every response reports the API units it cost.',
-    note: 'Direct API at external.api.recraft.ai/v1 with a Bearer token; independent of Higgsfield. Wired: the four V4.1 text-to-image models (raster and SVG) and the picture tools (vectorize, cut out, upscale, V3 edit and new background); masked editing is not connected yet. Result URLs expire after about 24 hours, so files must be saved at once.',
+    note: 'Direct API at external.api.recraft.ai/v1 with a Bearer token; independent of Higgsfield. Wired: the V4.1 (Flash, standard, Pro), V3 and Vector text-to-image models and the picture tools (vectorize, cut out, upscale, V3 edit and new background); masked editing is not connected yet. Result URLs expire after about 24 hours, so files must be saved at once.',
   },
   { id: 'local', label: 'Local engines', kind: 'local', billable: false, availability: 'planned', discovery: 'none-yet', cancel: 'Stoppable by the app (own process).', costInfo: 'Free.', note: 'Reserved for future local engines.' },
   { id: 'mock', label: 'Mock (offline, free)', kind: 'local', billable: false, availability: 'wired', discovery: 'none-yet', cancel: 'Instant.', costInfo: 'Free.' },
@@ -96,9 +96,11 @@ function shippedModels(): StudioModel[] {
   }));
 }
 
-const recraft = (id: string, label: string, output: OutputKind, fromUsd: number, note?: string): StudioModel => ({
-  providerId: 'recraft', id, label, output, availability: 'wired', source: RECRAFT_MODEL_DOC, fromUsd,
-  operations: ['text-to-image', 'image-to-image', 'styles', 'reference-images', 'color-palette'], ...(note ? { note } : {}),
+// What the app does with these models: pictures or SVG from a prompt, with a colour palette. Styles and reference pictures are
+// documented for some of them but not connected, so they are not listed here.
+const recraft = (id: string, label: string, output: OutputKind, fromUsd: number, note?: string, source = RECRAFT_MODEL_DOC): StudioModel => ({
+  providerId: 'recraft', id, label, output, availability: 'wired', source, fromUsd,
+  operations: ['text-to-image', 'color-palette'], ...(note ? { note } : {}),
 });
 
 const RECRAFT_MODELS: StudioModel[] = [
@@ -106,18 +108,9 @@ const RECRAFT_MODELS: StudioModel[] = [
   recraft('recraftv4_1_vector', 'Recraft V4.1 Vector', 'svg', 0.08, 'Genuine editable SVG.'),
   recraft('recraftv4_1_pro', 'Recraft V4.1 Pro', 'raster', 0.21, '2K, finer detail.'),
   recraft('recraftv4_1_pro_vector', 'Recraft V4.1 Pro Vector', 'svg', 0.30, 'Genuine editable SVG.'),
-  {
-    // Flash: documented as raster only and without styles or style references.
-    providerId: 'recraft', id: 'recraftv4_1_flash', label: 'Recraft V4.1 Flash', output: 'raster', availability: 'planned',
-    source: 'https://www.recraft.ai/docs/api-reference/getting-started.md', fromUsd: 0.007,
-    operations: ['text-to-image', 'color-palette'], note: 'Fastest and cheapest. No styles.',
-  },
-  {
-    // Inpaint, outpaint and background replacement are only documented for V3 (overview page).
-    providerId: 'recraft', id: 'recraftv3', label: 'Recraft V3', output: 'raster', availability: 'planned',
-    source: 'https://www.recraft.ai/docs/api-reference/models/overview.md', fromUsd: 0.04,
-    operations: ['text-to-image', 'image-to-image', 'inpaint', 'outpaint', 'replace-background', 'styles'],
-  },
+  recraft('recraftv4_1_flash', 'Recraft V4.1 Flash', 'raster', 0.007, 'Fastest and cheapest, 1K. No styles.', 'https://www.recraft.ai/docs/api-reference/models/recraft-v4-1-flash.md'),
+  recraft('recraftv3', 'Recraft V3', 'raster', 0.04, 'The previous generation. Prompts up to 1,000 characters.', 'https://www.recraft.ai/docs/api-reference/models/recraft-v3.md'),
+  recraft('recraftv3_vector', 'Recraft V3 Vector', 'svg', 0.08, 'Genuine editable SVG from V3. Prompts up to 1,000 characters.', 'https://www.recraft.ai/docs/api-reference/models/recraft-v3.md'),
   // Picture tools, wired from ./recraftTools (each read in full from its docs page). Masked editing is not connected: the app has no mask painter.
   ...RECRAFT_TOOLS.map((t): StudioModel => ({
     providerId: 'recraft', id: toolModelId(t.id), label: t.label, output: t.output, availability: 'wired', source: t.source, fromUsd: t.usd, blurb: t.blurb,

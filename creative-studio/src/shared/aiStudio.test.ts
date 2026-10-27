@@ -12,7 +12,7 @@ describe('card state', () => {
     expect(cardState(studioModel('mock', 'mock-image')!, new Set())).toBe('ready');
     expect(cardState(studioModel('recraft', 'recraftv4_1')!, new Set(['recraft']))).toBe('ready');
     expect(cardState(studioModel('recraft', 'recraftv4_1')!, new Set())).toBe('needs-key');
-    expect(cardState(studioModel('recraft', 'recraftv3')!, new Set(['recraft']))).toBe('soon');
+    expect(cardState(studioModel('recraft', 'recraft-mask-tools')!, new Set(['recraft']))).toBe('soon');
     expect(cardState(studioModel('higgsfield', 'higgsfield-ai/soul/v2/standard')!, new Set(['higgsfield']))).toBe('soon');
   });
 });

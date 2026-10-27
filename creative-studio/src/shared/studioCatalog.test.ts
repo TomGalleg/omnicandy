@@ -42,7 +42,7 @@ describe('plain-language text and prices', () => {
 describe('tasks', () => {
   it('offers only connected models for a task and lists the rest as planned', () => {
     const vec = modelsForTask(TASKS.find((t) => t.id === 'vector')!);
-    expect(vec.wired.map((x) => x.id)).toEqual(['recraftv4_1_vector', 'recraftv4_1_pro_vector']);
+    expect(vec.wired.map((x) => x.id)).toEqual(['recraftv4_1_vector', 'recraftv4_1_pro_vector', 'recraftv3_vector']);
     const ext = modelsForTask(TASKS.find((t) => t.id === 'extend')!);
     expect(ext.wired.map((x) => x.id)).toEqual(['bytedance/seedance-2.5/video-edit', 'bytedance/seedance-2.5/video-extend']);
     expect(taskFor(m('higgsfield', 'bytedance/seedance-2.5/image-to-video')).id).toBe('animate');
@@ -89,6 +89,6 @@ describe('settings summary', () => {
     expect(settingsSummary(m('higgsfield', 'bytedance/seedance-2.5/video-edit')).join('|')).toMatch(/Source video \(MP4\): 1 \(needed\)/);
     expect(settingsSummary(m('gemini', 'gemini-nano-banana-2.1')).join('|')).toMatch(/Resolution: 1K, 2K, 4K/);
     expect(settingsSummary(m('recraft', 'recraftv4_1')).join('|')).toMatch(/up to 4/);
-    expect(settingsSummary(m('recraft', 'recraftv3'))).toEqual([]);
+    expect(settingsSummary(m('recraft', 'recraft-mask-tools'))).toEqual([]);
   });
 });
