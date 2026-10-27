@@ -19,16 +19,19 @@ describe('model card previews', () => {
       expect(p.credit.length).toBeGreaterThan(0);
       expect(p.aspect).toBeGreaterThan(0.3);
     }
-    for (const id of Object.keys(MODEL_PREVIEWS)) expect(HF_MODELS.some((m) => m.id === id), `${id} is a real Higgsfield model`).toBe(true);
+    for (const key of Object.keys(MODEL_PREVIEWS)) expect(studioModel(key.slice(0, key.indexOf('/')), key.slice(key.indexOf('/') + 1)), `${key} is a real registry model`).toBeDefined();
     for (const family of Object.keys(FAMILY_PREVIEWS)) expect(HF_MODELS.some((m) => m.family === family), `${family} is a real family`).toBe(true);
   });
 
-  it('gives every Seedance 2.5 card the preview, and nothing else yet', () => {
+  it('gives every Seedance 2.5 card its own preview, plus the other cards that have one', () => {
     const sd = HF_MODELS.filter((m) => m.family === 'Seedance 2.5');
     expect(sd).toHaveLength(5);
     for (const m of sd) expect(previewFor(studioModel('higgsfield', m.id)!)?.poster, m.id).toMatch(/^seedance-.*\.jpg$/);
     expect(new Set(sd.map((m) => previewFor(studioModel('higgsfield', m.id)!)?.poster)).size).toBe(5);
-    expect(previewFor(studioModel('higgsfield', 'bytedance/seedance-2.0/reference-to-video')!)).toBeNull();
+    expect(previewFor(studioModel('higgsfield', 'bytedance/seedance-2.0/reference-to-video')!)?.video).toBe('seedance2.mp4');
+    expect(previewFor(studioModel('higgsfield', 'higgsfield/genjutsu/motion-transfer/v1.0')!)?.aspect).toBeLessThan(1); // a tall clip
+    expect(previewFor(studioModel('higgsfield', 'higgsfield-ai/soul/v2/standard')!)?.video).toBeUndefined(); // a still
+    expect(previewFor(studioModel('openai', 'gpt-image-2.5-flare')!)?.credit).toMatch(/GPT Image 2\.0/);
     expect(previewFor(studioModel('gemini', 'gemini-nano-banana-2.1')!)).toBeNull();
   });
 });

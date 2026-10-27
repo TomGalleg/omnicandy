@@ -12,6 +12,12 @@ import editPoster from '../assets/previews/seedance-edit.jpg';
 import editClip from '../assets/previews/seedance-edit.mp4';
 import extendPoster from '../assets/previews/seedance-extend.jpg';
 import extendClip from '../assets/previews/seedance-extend.mp4';
+import seedance2Poster from '../assets/previews/seedance2.jpg';
+import seedance2Clip from '../assets/previews/seedance2.mp4';
+import genjutsuPoster from '../assets/previews/genjutsu.jpg';
+import genjutsuClip from '../assets/previews/genjutsu.mp4';
+import soulPoster from '../assets/previews/soul.jpg';
+import gptPoster from '../assets/previews/gpt-image.jpg';
 import { STUDIO_PROVIDERS, studioProvider, type StudioModel, type StudioProviderId } from '@shared/providerCapabilities';
 import {
   artSeed, BRAND, CATEGORIES, categoriesOf, compareRows, describeModel, exploreModels, favKey, OP_LABEL, outputLabel, priceInfo, settingsSummary,
@@ -31,7 +37,8 @@ interface Props {
 const PREVIEW_FILES: Record<string, string> = {
   'seedance-text.jpg': textPoster, 'seedance-text.mp4': textClip, 'seedance-picture.jpg': picturePoster, 'seedance-picture.mp4': pictureClip,
   'seedance-reference.jpg': referencePoster, 'seedance-reference.mp4': referenceClip, 'seedance-edit.jpg': editPoster, 'seedance-edit.mp4': editClip,
-  'seedance-extend.jpg': extendPoster, 'seedance-extend.mp4': extendClip,
+  'seedance-extend.jpg': extendPoster, 'seedance-extend.mp4': extendClip, 'seedance2.jpg': seedance2Poster, 'seedance2.mp4': seedance2Clip,
+  'genjutsu.jpg': genjutsuPoster, 'genjutsu.mp4': genjutsuClip, 'soul.jpg': soulPoster, 'gpt-image.jpg': gptPoster,
 };
 const previewUrl = (name: string) => PREVIEW_FILES[name];
 
@@ -68,7 +75,9 @@ function Cover({ m, asset, big }: { m: StudioModel; asset: Asset | null; big?: b
   return (
     <div className={`mg-cover${big ? ' big' : ''}`} style={{ ['--a' as string]: `hsl(${seed.a} 70% 45%)`, ['--b' as string]: `hsl(${seed.b} 75% 35%)`, ['--hue' as string]: brand.hue }}
       onMouseEnter={() => { void ref.current?.play().catch(() => undefined); }} onMouseLeave={() => { if (ref.current) { ref.current.pause(); ref.current.currentTime = 0; } }}>
-      {preview && poster
+      {preview && poster && !clip
+        ? <img src={poster} alt={`Example for ${m.label}`} loading="lazy" />
+        : preview && poster
         ? <video ref={ref} poster={poster} src={clip} muted loop playsInline preload="none" aria-label={`Example for ${m.label}`} />
         : asset?.kind === 'video'
         ? <video ref={ref} src={window.studio.assetUrl(asset.id)} muted loop playsInline preload="metadata" aria-label={`Example made with ${m.label}`} />
