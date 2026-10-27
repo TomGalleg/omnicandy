@@ -173,7 +173,7 @@ export function ModelGallery({ assets, configured, favs, onToggleFav, onCreate, 
                   <p className="mg-desc">{describeModel(m)}</p>
                   <div className="mg-foot">
                     <span className={`mg-price${price.known ? '' : ' unknown'}`}>{price.text}</span>
-                    <button className="btn small primary" disabled={st === 'soon'} tabIndex={-1} onClick={() => onCreate(m)}>{st === 'soon' ? 'Not connected' : 'Create with this model'}</button>
+                    <button className="btn small primary" disabled={st === 'soon'} tabIndex={-1} onClick={() => onCreate(m)}>{st === 'soon' ? 'Not connected' : 'Create'}</button>
                   </div>
                 </div>
               </article>
@@ -201,7 +201,7 @@ export function ModelGallery({ assets, configured, favs, onToggleFav, onCreate, 
             {state(open) === 'needs-key' && <div className="notice">Add your {studioProvider(open.providerId)?.label} key in Settings → Integrations to use it. {onOpenSettings && <button className="btn small" onClick={onOpenSettings}>Open Settings</button>}</div>}
             {state(open) === 'soon' && <div className="notice">Documented by {studioProvider(open.providerId)?.label} but not connected yet, so nothing can be sent.</div>}
             <div className="btn-row">
-              <button className="btn primary" disabled={state(open) === 'soon'} onClick={() => onCreate(open)}>Create with this model</button>
+              <button className="btn primary" disabled={state(open) === 'soon'} onClick={() => onCreate(open)}>Create</button>
               <button className="btn" onClick={() => onToggleFav(favKey(open))}>{favs.includes(favKey(open)) ? '♥ Favourite' : '♡ Add to favourites'}</button>
               <button className="btn" disabled={!compare.includes(favKey(open)) && compare.length >= MAX_COMPARE} onClick={() => toggleCompare(favKey(open))}>{compare.includes(favKey(open)) ? 'Remove from comparison' : 'Compare'}</button>
             </div>
@@ -222,7 +222,7 @@ export function ModelGallery({ assets, configured, favs, onToggleFav, onCreate, 
           {compared.map((m) => <div key={favKey(m)} className="mg-ch"><i className="mg-logo" style={{ background: BRAND[m.providerId].hue }}>{BRAND[m.providerId].mark}</i><strong>{m.label}</strong></div>)}
           {compareRows(compared).map((r) => (<Fragment key={r.label}><div className="mg-rl">{r.label}</div>{r.values.map((v, i) => <div key={`${r.label}${i}`}>{v}</div>)}</Fragment>))}
           <div />
-          {compared.map((m) => <div key={`go${favKey(m)}`}><button className="btn small primary" disabled={state(m) === 'soon'} onClick={() => onCreate(m)}>Create with this</button></div>)}
+          {compared.map((m) => <div key={`go${favKey(m)}`}><button className="btn small primary" disabled={state(m) === 'soon'} onClick={() => onCreate(m)}>Create</button></div>)}
         </div>
       )}
     </div>
