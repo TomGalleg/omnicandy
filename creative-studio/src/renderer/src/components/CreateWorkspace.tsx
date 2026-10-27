@@ -6,7 +6,8 @@ import { estimateRecraft, recraftModel, RECRAFT_ASPECTS, RECRAFT_MAX_COUNT, type
 import { studioProvider, type StudioModel } from '@shared/providerCapabilities';
 import { BRAND, CATEGORIES, categoriesOf, describeModel, modelsForTask, OP_LABEL, outputLabel, priceInfo, settingsSummary, task, taskFor, TASKS } from '@shared/studioCatalog';
 import type { Asset, ProjectManifest, WorkspaceId } from '@shared/types';
-import { ASSET_MIME, HiggsfieldForm } from './HiggsfieldForm';
+import { estimateTool, normalizeToolJob, recraftToolByModelId, type RecraftToolJob } from '@shared/recraftTools';
+import { ASSET_MIME, HiggsfieldForm, MediaSlot } from './HiggsfieldForm';
 
 export interface CreateSeed { key: number; model?: StudioModel; prompt?: string; settings?: Record<string, string>; count?: number; refId?: string | null; hf?: HiggsfieldJob }
 
@@ -79,6 +80,8 @@ export function CreateWorkspace(p: Props) {
   const [aspect, setAspect] = useState('auto');
   const [colorsText, setColorsText] = useState('');
   const [bgText, setBgText] = useState('');
+  const [strength, setStrength] = useState(0.5);
+  const [stacking, setStacking] = useState<'hierarchical' | 'cut_out'>('hierarchical');
   const [hfParams, setHfParams] = useState<Record<string, HfParamValue>>({});
   const [hfInputs, setHfInputs] = useState<Record<string, string[]>>({});
   const [viewId, setViewId] = useState<string | null>(null);
@@ -122,6 +125,12 @@ export function CreateWorkspace(p: Props) {
   const lest = useMemo(() => { if (!lj) return null; try { return estimateCost({ ...lj, prompt: lj.prompt || 'x' }); } catch { return null; } }, [lj?.modelId, lj?.prompt, JSON.stringify(lj?.settings), lj?.count, lj?.referenceAssetIds.length]); // eslint-disable-line react-hooks/exhaustive-deps
   const rj: RecraftJob | null = rmodel ? { modelId: rmodel.id, prompt, count: Math.min(count, RECRAFT_MAX_COUNT), aspect, colors: colorsText.split(/[\s,]+/).filter(Boolean), background: bgText.trim() } : null;
   const rcheck = useMemo(() => { if (!rj) return { estimate: null, error: null as string | null }; try { return { estimate: estimateRecraft({ ...rj, prompt: rj.prompt || 'x' }), error: null }; } catch (e) { return { estimate: null, error: e instanceof Error ? e.message : String(e) }; } }, [rj?.modelId, rj?.count, rj?.aspect, colorsText, bgText]); // eslint-disable-line react-hooks/exhaustive-deps
+  const rtool = model?.providerId === 'recraft' ? recraftToolByModelId(model.id) : undefined;
+  const tj: RecraftToolJob | null = rtool ? { toolId: rtool.id, assetId: refId ?? '', prompt, strength, count: Math.min(count, 4), shapeStacking: stacking } : null;
+  const tcheck = useMemo(() => {
+    if (!tj) return { estimate: null, error: null as string | null };
+    try { normalizeToolJob({ ...tj, assetId: tj.assetId || 'x', prompt: tj.prompt || (rtool!.needsPrompt ? '' : 'x') }); return { estimate: estimateTool({ ...tj, assetId: tj.assetId || 'x', prompt: tj.prompt || 'x' }), error: null }; } catch (e) { return { estimate: null, error: e instanceof Error ? e.message : String(e) }; }
+  }, [tj?.toolId, tj?.prompt, tj?.strength, tj?.count, tj?.shapeStacking]); // eslint-disable-line react-hooks/exhaustive-deps
   const hj: HiggsfieldJob | null = hf ? { modelId: hf.id, prompt, params: hfParams, inputs: hfInputs } : null;
   const hcheck = useMemo(() => { if (!hj) return null; try { normalizeHiggsfieldJob(hj); return null; } catch (e) { return e instanceof Error ? e.message : String(e); } }, [hj?.modelId, prompt, hfParams, hfInputs]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -133,13 +142,16 @@ export function CreateWorkspace(p: Props) {
     if (!showAll && !(pick && w.some((m) => m.providerId === pick.providerId && m.id === pick.id))) { const first = w.find((m) => cardState(m, configured) === 'ready') ?? w[0]; if (first) chooseModel(first); else setPick(null); }
   };
 
-  const promptOk = hf ? hf.prompt === 'optional' || prompt.trim().length > 0 : prompt.trim().length > 0;
-  const ready = state === 'ready' && promptOk && !busy && (lj ? true : rj ? !rcheck.error : hj ? !hcheck : false);
+  const promptOk = hf ? hf.prompt === 'optional' || prompt.trim().length > 0 : rtool ? !rtool.needsPrompt || prompt.trim().length > 0 : prompt.trim().length > 0;
+  const ready = state === 'ready' && promptOk && !busy && (lj ? true : rj ? !rcheck.error : tj ? !!refId && !tcheck.error : hj ? !hcheck : false);
   const generate = () => {
     if (lj && legacy) void p.run(lj, legacy.label, legacy.provider, () => window.studio.generate.run(lj));
     else if (rj && rmodel) {
       const r = rj;
       void p.run({ modelId: r.modelId, prompt: r.prompt, count: r.count, referenceAssetIds: [], settings: { shape: r.aspect, ...(r.colors.length ? { colors: r.colors.join(' ') } : {}), ...(r.background ? { background: r.background } : {}) } }, rmodel.label, 'recraft', () => window.studio.generate.recraftRun(r));
+    } else if (tj && rtool) {
+      const t = tj;
+      void p.run({ modelId: model!.id, prompt: t.prompt || rtool.blurb, count: rtool.perImage ? t.count : 1, referenceAssetIds: [t.assetId], settings: { tool: rtool.label, ...(rtool.hasStrength ? { strength: String(t.strength) } : {}) } }, rtool.label, 'recraft', () => window.studio.generate.recraftToolRun(t));
     } else if (hj) void p.submitHiggsfield(hj);
   };
 
@@ -200,10 +212,27 @@ export function CreateWorkspace(p: Props) {
 
             {model && (
               <>
-                <label className="field">{hf?.prompt === 'optional' ? 'Prompt (optional)' : 'Prompt'}
-                  <textarea aria-label="Prompt" value={prompt} maxLength={hf ? 10000 : 4000} placeholder={model.output === 'video' ? 'Describe the motion and the scene…' : 'Describe the picture…'} onChange={(e) => setPrompt(e.target.value)} />
-                </label>
-                <button className="btn small" onClick={() => setPrompt(SURPRISE_PROMPTS[Math.floor(Math.random() * SURPRISE_PROMPTS.length)]!)}>Surprise me</button>
+                {rtool && (
+                  <>
+                    <MediaSlot spec={{ key: 'source', kind: 'image', label: 'Picture to work on', many: false, max: 1, required: true }} accept={rtool.formats} ids={refId ? [refId] : []} assets={assets} selected={selected} onChange={(ids) => setRefId(ids[0] ?? null)} />
+                    <div className="asset-meta">Needs {rtool.formats.map((f) => f.toUpperCase()).join(', ')}, each side {rtool.minSide}–{rtool.maxSide} pixels. Your original is never changed: the result is a new file.</div>
+                  </>
+                )}
+                {!(rtool && !rtool.needsPrompt) && (
+                  <>
+                    <label className="field">{hf?.prompt === 'optional' ? 'Prompt (optional)' : rtool ? 'What should change?' : 'Prompt'}
+                      <textarea aria-label="Prompt" value={prompt} maxLength={hf ? 10000 : rtool ? 1000 : 4000} placeholder={model.output === 'video' ? 'Describe the motion and the scene…' : rtool ? 'e.g. make it autumn, golden light…' : 'Describe the picture…'} onChange={(e) => setPrompt(e.target.value)} />
+                    </label>
+                    {!rtool && <button className="btn small" onClick={() => setPrompt(SURPRISE_PROMPTS[Math.floor(Math.random() * SURPRISE_PROMPTS.length)]!)}>Surprise me</button>}
+                  </>
+                )}
+                {rtool && (
+                  <div className="gen-settings">
+                    {rtool.hasStrength && <label className="field">How much to change ({Math.round(strength * 100)}%)<input type="range" min={0} max={1} step={0.05} value={strength} onChange={(e) => setStrength(Number(e.target.value))} /><small className="asset-meta">Low stays close to your picture; high is least similar.</small></label>}
+                    {rtool.perImage && <label className="field">Results<select aria-label="Number of results" value={count} onChange={(e) => setCount(Number(e.target.value))}>{[1, 2, 3, 4].map((n) => <option key={n} value={n}>{n}</option>)}</select></label>}
+                    {rtool.id === 'vectorize' && <label className="field">Shapes<select value={stacking} onChange={(e) => setStacking(e.target.value as 'hierarchical' | 'cut_out')}><option value="hierarchical">Layered (default)</option><option value="cut_out">Not overlapping (cutters, plotters, screen printing)</option></select></label>}
+                  </div>
+                )}
 
                 {legacy?.capabilities.includes('image-edit') && (
                   <div className="field">Reference picture (optional)
@@ -237,6 +266,8 @@ export function CreateWorkspace(p: Props) {
                 {hf && <HiggsfieldForm model={hf} params={hfParams} inputs={hfInputs} assets={assets} selected={selected} setParams={setHfParams} setInputs={setHfInputs} />}
 
                 {rcheck.error && <div className="wf-msg error">{rcheck.error}</div>}
+                {tj && tcheck.error && (refId || prompt.trim()) && <div className="asset-meta">{tcheck.error}</div>}
+                {tcheck.estimate && tj && <div className="estimate" aria-label="Cost estimate"><strong>≈ {formatUsd(tcheck.estimate.amount)}</strong><span className="asset-meta">{rtool!.perImage ? `${tj.count} × ${formatUsd(tcheck.estimate.perImage)} · ` : ''}{tcheck.estimate.basis}{rtool!.output === 'svg' ? ' The result is a real, editable SVG.' : ''}</span></div>}
                 {hcheck && prompt.trim() && <div className="asset-meta">{hcheck}</div>}
                 {rcheck.estimate && rj && <div className="estimate" aria-label="Cost estimate"><strong>≈ {formatUsd(rcheck.estimate.amount)}</strong><span className="asset-meta">{rj.count} × {formatUsd(rcheck.estimate.perImage)} · {rcheck.estimate.basis}{rmodel!.output === 'svg' ? ' The result is a real, editable SVG, not a picture.' : ''}</span></div>}
                 {lest && lj && <div className="estimate" aria-label="Cost estimate"><strong>{free ? 'Free' : `${lest.approximate ? '≈ ' : ''}${formatUsd(lest.amount)}`}</strong><span className="asset-meta">{free ? 'Offline test pattern. No network, no cost.' : `${lj.count} × ${formatUsd(lest.perImage)} · ${lest.basis}`}</span></div>}

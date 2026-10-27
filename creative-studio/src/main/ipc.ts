@@ -568,6 +568,20 @@ export function registerIpc(d: IpcDeps): void {
     modelId: z.string().min(1).max(64), prompt: z.string().min(1).max(10_000), count: z.number().int().min(1).max(4),
     aspect: z.string().max(16), colors: z.array(z.string().max(7)).max(10), background: z.string().max(7),
   });
+  const recraftToolSchema = z.object({
+    toolId: z.string().min(1).max(40),
+    assetId: z.string().min(1).max(128),
+    prompt: z.string().max(1000),
+    strength: z.number().min(0).max(1),
+    count: z.number().int().min(1).max(4),
+    shapeStacking: z.enum(['hierarchical', 'cut_out']),
+  });
+  handle(IPC.recraftToolRun, z.tuple([recraftToolSchema]), async (job) => {
+    const r = await recraft.tool(job, 'user');
+    const dto: GenerateResultDto = { assetIds: r.assets.map((a) => a.id), message: r.message, estimate: r.estimate, requestedBy: 'user' };
+    emitGenerated(dto);
+    return dto;
+  });
   handle(IPC.recraftRun, z.tuple([recraftJobSchema]), async (job) => {
     const r = await recraft.generate(job, 'user');
     const dto: GenerateResultDto = { assetIds: r.assets.map((a) => a.id), message: r.message, estimate: r.estimate, requestedBy: 'user' };

@@ -12,6 +12,7 @@ export type ProjectMetaPatch = Pick<ProjectManifest, 'objective' | 'view'>;
 import type { CostEstimate, ImageJob, ProviderId } from './generation';
 import type { StudioJob } from './aiStudio';
 import type { RecraftJob } from './recraft';
+import type { RecraftToolJob } from './recraftTools';
 import type { HfJobRecord, HiggsfieldJob } from './higgsfield';
 import type { LiveSnapshot, TimelineDto, TimelineEdit } from './live';
 import type { EditorAppId } from './appEditors';
@@ -153,6 +154,7 @@ export const IPC = {
   studioJobs: 'studio:jobs',
   studioJobsSave: 'studio:jobs-save',
   recraftRun: 'studio:recraft-run',
+  recraftToolRun: 'studio:recraft-tool-run',
   higgsfieldJobs: 'studio:higgsfield-jobs',
   higgsfieldRun: 'studio:higgsfield-run',
   higgsfieldCancel: 'studio:higgsfield-cancel',
@@ -501,6 +503,8 @@ export interface StudioApi {
     studioJobsSave(jobs: StudioJob[]): Promise<StudioJob[]>;
     /** Recraft pictures/SVG: native approval for the shown price, then generates. */
     recraftRun(job: RecraftJob): Promise<GenerateResultDto>;
+    /** Recraft picture tools (vectorize, cut out, upscale, edit, new background): the source picture is never changed. */
+    recraftToolRun(job: RecraftToolJob): Promise<GenerateResultDto>;
     /** Higgsfield (async): saved jobs, submit (native approval first; resolves once Higgsfield accepted it), queued-only cancel, live updates. */
     higgsfieldJobs(): Promise<HfJobRecord[]>;
     higgsfieldRun(job: HiggsfieldJob): Promise<HfJobRecord>;

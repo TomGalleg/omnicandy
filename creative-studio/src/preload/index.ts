@@ -190,6 +190,7 @@ const api: StudioApi = {
     studioJobs: () => ipcRenderer.invoke(IPC.studioJobs),
     studioJobsSave: (jobs) => ipcRenderer.invoke(IPC.studioJobsSave, jobs),
     recraftRun: (job) => ipcRenderer.invoke(IPC.recraftRun, job),
+    recraftToolRun: (job) => ipcRenderer.invoke(IPC.recraftToolRun, job),
     higgsfieldJobs: () => ipcRenderer.invoke(IPC.higgsfieldJobs),
     higgsfieldRun: (job) => ipcRenderer.invoke(IPC.higgsfieldRun, job),
     higgsfieldCancel: (id) => ipcRenderer.invoke(IPC.higgsfieldCancel, id),

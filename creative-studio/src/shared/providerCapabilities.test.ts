@@ -54,7 +54,8 @@ describe('provider capability registry', () => {
     expect(findModels({ providerId: 'higgsfield', output: 'raster' }).every((m) => m.availability === 'planned')).toBe(true);
     expect(findModels({ providerId: 'higgsfield', operation: 'video-extend' }).map((m) => m.id)).toEqual(['bytedance/seedance-2.5/video-extend']);
     expect(findModels({ providerId: 'higgsfield' }).every((m) => m.output === 'raster' || m.output === 'video')).toBe(true);
-    // Recraft: only the four V4.1 generation models are connected; editing and tools stay planned.
-    expect(findModels({ providerId: 'recraft', wiredOnly: true }).map((m) => m.id)).toEqual(['recraftv4_1', 'recraftv4_1_vector', 'recraftv4_1_pro', 'recraftv4_1_pro_vector']);
+    // Recraft: the four V4.1 generation models and the picture tools are connected; masked editing stays planned.
+    expect(findModels({ providerId: 'recraft', wiredOnly: true }).map((m) => m.id)).toEqual(['recraftv4_1', 'recraftv4_1_vector', 'recraftv4_1_pro', 'recraftv4_1_pro_vector', ...['vectorize', 'removeBackground', 'crispUpscale', 'creativeUpscale', 'imageToImage', 'imageToImageVector', 'replaceBackground', 'replaceBackgroundVector'].map((t) => `recraft-tool/${t}`)]);
+    expect(findModels({ providerId: 'recraft', operation: 'inpaint', wiredOnly: true })).toEqual([]);
   });
 });

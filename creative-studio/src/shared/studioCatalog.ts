@@ -85,6 +85,7 @@ export interface Task {
 export const TASKS: Task[] = [
   { id: 'image', label: 'Generate image', hint: 'A picture from a description.', filter: (m) => m.output === 'raster' && has(m, 'text-to-image') },
   { id: 'vector', label: 'Create vector art', hint: 'Real SVG you can edit in VectorCraft.', filter: (m) => m.output === 'svg' && has(m, 'text-to-image') },
+  { id: 'vectorize', label: 'Picture to SVG', hint: 'Turn an existing picture into editable SVG.', filter: (m) => has(m, 'vectorize') },
   { id: 'animate', label: 'Animate image', hint: 'Bring a still picture to life.', filter: (m) => has(m, 'image-to-video') },
   { id: 'video', label: 'Generate video', hint: 'A clip from text or references.', filter: (m) => m.output === 'video' && has(m, 'text-to-video', 'reference-to-video') },
   { id: 'edit', label: 'Edit image', hint: 'Change part of a picture.', filter: (m) => has(m, 'edit', 'inpaint', 'outpaint', 'replace-background') },

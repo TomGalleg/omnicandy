@@ -12,6 +12,7 @@
 
 import { IMAGE_MODELS } from './generation';
 import { HF_MODELS } from './higgsfield';
+import { RECRAFT_TOOLS, toolModelId } from './recraftTools';
 
 export type StudioProviderId = 'gemini' | 'openai' | 'higgsfield' | 'recraft' | 'local' | 'mock';
 
@@ -74,8 +75,8 @@ export const STUDIO_PROVIDERS: StudioProvider[] = [
   {
     id: 'recraft', label: 'Recraft', kind: 'cloud-api', billable: true, availability: 'wired', discovery: 'docs-only',
     cancel: 'Synchronous call: stops by timeout only.',
-    costInfo: 'Published per-image prices; every response reports the API units it cost; GET /users/me returns the balance.',
-    note: 'Direct API at external.api.recraft.ai/v1 with a Bearer token; independent of Higgsfield. Wired: the four V4.1 text-to-image models (raster and SVG); editing and tool endpoints are not connected yet. Result URLs expire after about 24 hours, so files must be saved at once.',
+    costInfo: 'Published per-image prices; every response reports the API units it cost.',
+    note: 'Direct API at external.api.recraft.ai/v1 with a Bearer token; independent of Higgsfield. Wired: the four V4.1 text-to-image models (raster and SVG) and the picture tools (vectorize, cut out, upscale, V3 edit and new background); masked editing is not connected yet. Result URLs expire after about 24 hours, so files must be saved at once.',
   },
   { id: 'local', label: 'Local engines', kind: 'local', billable: false, availability: 'planned', discovery: 'none-yet', cancel: 'Stoppable by the app (own process).', costInfo: 'Free.', note: 'Reserved for future local engines.' },
   { id: 'mock', label: 'Mock (offline, free)', kind: 'local', billable: false, availability: 'wired', discovery: 'none-yet', cancel: 'Instant.', costInfo: 'Free.' },
@@ -114,15 +115,15 @@ const RECRAFT_MODELS: StudioModel[] = [
     source: 'https://www.recraft.ai/docs/api-reference/models/overview.md', fromUsd: 0.04,
     operations: ['text-to-image', 'image-to-image', 'inpaint', 'outpaint', 'replace-background', 'styles'],
   },
+  // Picture tools, wired from ./recraftTools (each read in full from its docs page). Masked editing is not connected: the app has no mask painter.
+  ...RECRAFT_TOOLS.map((t): StudioModel => ({
+    providerId: 'recraft', id: toolModelId(t.id), label: t.label, output: t.output, availability: 'wired', source: t.source, fromUsd: t.usd, blurb: t.blurb,
+    operations: t.operation === 'edit' ? ['edit', 'image-to-image'] : [t.operation],
+  })),
   {
-    // Model-independent tool endpoints (no model choice); prices from the endpoints page.
-    providerId: 'recraft', id: 'recraft-tools', label: 'Recraft image tools', output: 'raster', availability: 'planned',
-    source: RECRAFT_ENDPOINTS, fromUsd: 0.002,
-    operations: ['remove-background', 'upscale', 'erase-region'], note: 'Crisp upscale $0.004, creative upscale $0.25, remove background $0.01, erase region $0.002.',
-  },
-  {
-    providerId: 'recraft', id: 'recraft-vectorize', label: 'Recraft Vectorize', output: 'svg', availability: 'planned',
-    source: RECRAFT_ENDPOINTS, fromUsd: 0.01, operations: ['vectorize'], note: 'Turns a raster picture into a genuine SVG.',
+    providerId: 'recraft', id: 'recraft-mask-tools', label: 'Recraft masked editing', output: 'raster', availability: 'planned',
+    source: RECRAFT_ENDPOINTS, fromUsd: 0.002, operations: ['inpaint', 'outpaint', 'erase-region'],
+    note: 'Inpaint, outpaint, erase region and generate background need a pixel-exact black and white mask. Not connected until OmniCandy has a mask painter.',
   },
 ];
 

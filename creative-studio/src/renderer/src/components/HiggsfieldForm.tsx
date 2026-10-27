@@ -15,6 +15,8 @@ function Thumb({ a, kind }: { a: Asset; kind: HfInputKind }) {
 
 interface InputProps {
   spec: HfInput;
+  /** File extensions this slot takes, when they differ from the kind's usual list (Recraft tools take SVG, not GIF). */
+  accept?: string[];
   ids: string[];
   assets: Asset[];
   selected: Asset | null;
@@ -22,16 +24,17 @@ interface InputProps {
 }
 
 /** One media input (a picture, a video, a sound). Assets are chosen from the project library or dragged in from the strip. */
-function InputSlot({ spec, ids, assets, selected, onChange }: InputProps) {
+export function MediaSlot({ spec, accept, ids, assets, selected, onChange }: InputProps) {
+  const fits = (a: Asset) => (accept ? accept.includes(a.sourceFormat.toLowerCase()) : fitsKind(a, spec.kind));
   const chosen = ids.map((id) => assets.find((a) => a.id === id)).filter((a): a is Asset => !!a);
-  const candidates = assets.filter((a) => fitsKind(a, spec.kind) && !ids.includes(a.id)).slice(-24).reverse();
+  const candidates = assets.filter((a) => fits(a) && !ids.includes(a.id)).slice(-24).reverse();
   const room = ids.length < spec.max;
   const add = (id: string) => { if (!room || ids.includes(id)) return; onChange(spec.many ? [...ids, id] : [id]); };
   return (
     <div className="field hf-slot">
       <span>{spec.label}{spec.required ? ' *' : ''} <small className="asset-meta">{spec.many ? `${ids.length}/${spec.max}` : ''}</small></span>
       <div className="hf-drop" onDragOver={(e) => { if (e.dataTransfer.types.includes(ASSET_MIME)) e.preventDefault(); }}
-        onDrop={(e) => { const id = e.dataTransfer.getData(ASSET_MIME); if (id) { e.preventDefault(); const a = assets.find((x) => x.id === id); if (a && fitsKind(a, spec.kind)) add(a.id); } }}>
+        onDrop={(e) => { const id = e.dataTransfer.getData(ASSET_MIME); if (id) { e.preventDefault(); const a = assets.find((x) => x.id === id); if (a && fits(a)) add(a.id); } }}>
         {chosen.length === 0 && <span className="asset-meta">Drop a file from the strip below, or click one.</span>}
         {chosen.map((a) => (
           <span key={a.id} className="hf-chosen">
@@ -40,7 +43,7 @@ function InputSlot({ spec, ids, assets, selected, onChange }: InputProps) {
           </span>
         ))}
       </div>
-      {room && selected && fitsKind(selected, spec.kind) && !ids.includes(selected.id) && <button className="btn small" onClick={() => add(selected.id)}>Use selected: {selected.name}</button>}
+      {room && selected && fits(selected) && !ids.includes(selected.id) && <button className="btn small" onClick={() => add(selected.id)}>Use selected: {selected.name}</button>}
       {room && (candidates.length > 0
         ? <div className="hf-strip" role="list" aria-label={`Library files for ${spec.label}`}>
           {candidates.map((a) => (
@@ -94,7 +97,7 @@ export function HiggsfieldForm({ model, params, inputs, assets, selected, setPar
   return (
     <>
       {model.inputs.map((spec) => (
-        <InputSlot key={spec.key} spec={spec} ids={inputs[spec.key] ?? []} assets={assets} selected={selected} onChange={(ids) => setInputs({ ...inputs, [spec.key]: ids })} />
+        <MediaSlot key={spec.key} spec={spec} ids={inputs[spec.key] ?? []} assets={assets} selected={selected} onChange={(ids) => setInputs({ ...inputs, [spec.key]: ids })} />
       ))}
       {model.anyOf && <div className="asset-meta">Add at least one of: {model.anyOf.map((k) => model.inputs.find((i) => i.key === k)!.label.toLowerCase()).join(', ')}.</div>}
       <div className="gen-settings">{basic.map((p) => <ParamField key={p.key} p={p} value={params[p.key]} onChange={(v) => set(p.key, v)} />)}</div>
