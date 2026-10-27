@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { HF_MODELS, hfModel, higgsfieldBody, isHiggsfieldApiUrl, normalizeHiggsfieldJob, parseHfStatus, type HiggsfieldJob } from './higgsfield';
+import { HF_MODELS, hfModel, higgsfieldBody, isHiggsfieldApiUrl, normalizeHiggsfieldJob, parseHfStatus, parseHfStyles, type HiggsfieldJob } from './higgsfield';
 
 const job = (modelId: string, o: Partial<HiggsfieldJob> = {}): HiggsfieldJob => ({ modelId, prompt: 'A fox', params: {}, inputs: {}, ...o });
 
@@ -26,8 +26,26 @@ describe('Higgsfield catalog', () => {
     expect(() => normalizeHiggsfieldJob({ modelId: 'recraft/v4.1/text-to-image', prompt: 'x', params: { background_color: '#fff000 #000fff' }, inputs: {} })).toThrow(/one colour/);
     expect(() => normalizeHiggsfieldJob({ modelId: 'recraft/v4.1/text-to-image', prompt: 'x', params: { aspect_ratio: '7:5' }, inputs: {} })).toThrow(/not allowed/);
   });
-  it('does not list Soul, whose endpoint the docs state two ways', () => {
-    expect(HF_MODELS.some((m) => /soul/.test(m.id))).toBe(false);
+  it('offers the three Soul models with their own documented settings', () => {
+    const soul = HF_MODELS.filter((m) => /soul/.test(m.id));
+    expect(soul.map((m) => m.id)).toEqual(['higgsfield-ai/soul/v2/standard', 'higgsfield-ai/soul/standard', 'higgsfield-ai/soul/cinema']);
+    expect(hfModel('higgsfield-ai/soul/v2/standard')!.params.some((p) => p.key === 'style_strength')).toBe(false); // accepted but has no effect on V2
+    expect(hfModel('higgsfield-ai/soul/standard')!.params.find((p) => p.key === 'style_strength')).toMatchObject({ min: 0, max: 1 });
+    expect(hfModel('higgsfield-ai/soul/cinema')!.params.some((p) => p.type === 'style')).toBe(false); // fixed look
+    expect(hfModel('higgsfield-ai/soul/standard')!.inputs.map((i) => i.key)).toEqual(['image_reference_url']);
+    for (const m of soul) expect(m.params.find((p) => p.key === 'batch_size')!.options).toEqual([1, 4]);
+    const body = higgsfieldBody({ modelId: 'higgsfield-ai/soul/v2/standard', prompt: 'A quiet portrait', params: { aspect_ratio: '3:4', resolution: '1080p', batch_size: 4, seed: 42, style_id: '3db34ab5-3439-4317-9e03-08dc30852e69' }, inputs: {} }, {});
+    expect(body).toEqual({ prompt: 'A quiet portrait', aspect_ratio: '3:4', resolution: '1080p', batch_size: 4, seed: 42, style_id: '3db34ab5-3439-4317-9e03-08dc30852e69' });
+    expect(() => normalizeHiggsfieldJob({ modelId: 'higgsfield-ai/soul/v2/standard', prompt: 'x', params: { batch_size: 2 }, inputs: {} })).toThrow(/not allowed/);
+    expect(() => normalizeHiggsfieldJob({ modelId: 'higgsfield-ai/soul/v2/standard', prompt: 'x', params: { style_id: 'not-a-uuid' }, inputs: {} })).toThrow(/styles in the list/);
+    expect(() => normalizeHiggsfieldJob({ modelId: 'higgsfield-ai/soul/v2/standard', prompt: 'x', params: { seed: 0 }, inputs: {} })).toThrow(/between 1 and 1000000/);
+  });
+  it('reads the styles list in either shape and drops entries without a real id', () => {
+    const one = { id: '464ea177-8d40-4940-8d9d-b438bab269c7', name: 'General', description: 'Plain', preview_url: 'https://x/p.png' };
+    expect(parseHfStyles([one, { id: 'nope', name: 'bad' }])).toEqual([{ id: one.id, name: 'General', description: 'Plain', previewUrl: 'https://x/p.png' }]);
+    expect(parseHfStyles({ styles: [one] })).toHaveLength(1);
+    expect(parseHfStyles({ data: [one] })).toHaveLength(1);
+    expect(parseHfStyles('nothing')).toEqual([]);
   });
 });
 

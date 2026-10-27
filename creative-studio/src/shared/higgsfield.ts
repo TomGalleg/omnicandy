@@ -11,7 +11,9 @@
 //   https://docs.higgsfield.ai/docs/openapi.json   (supplementary spec; Kling 2.5 Turbo and Hailuo 2.3 come only from here)
 //   https://docs.higgsfield.ai/docs/models/{recraft-v4-1/text-to-image, recraft-v4-1-pro/generate, recraft-v4-1-utility/text-to-image,
 //       recraft-v4-1-utility-pro/text-to-image}.md   (public pages that the docs index does not link; found by following related-page links)
-// Not wired: Soul (the docs name two different endpoints: soul/v2/standard and soul/standard), Seedance 2.0 text/image/edit/extend,
+//   https://docs.higgsfield.ai/docs/models/{soul-2/generate,soul-standard/generate,soul-cinema/generate,soul-id/create-character}.md
+//       (Soul V2, Soul and Soul Cinema are three separate models; Soul ID trains a character and is not connected yet)
+// Not wired: Soul ID characters, Seedance 2.0 text/image/edit/extend,
 // Wan 2.6/2.7, Hailuo image-to-video, Kling 3 and anything else whose page was not read.
 
 import type { StudioOperation } from './providerCapabilities';
@@ -28,7 +30,8 @@ export interface HfInput { key: string; kind: HfInputKind; label: string; many: 
 
 export interface HfParam {
   /** 'colors' = up to 10 #rrggbb colours (sent as [{rgb:[r,g,b]}]); 'color' = one #rrggbb colour (sent as {rgb:[r,g,b]}). */
-  key: string; label: string; type: 'enum' | 'int' | 'number' | 'bool' | 'text' | 'colors' | 'color';
+  /** 'style' = a Soul style id (uuid) chosen from the list Higgsfield returns for the key. */
+  key: string; label: string; type: 'enum' | 'int' | 'number' | 'bool' | 'text' | 'colors' | 'color' | 'style';
   options?: Array<string | number>; default?: HfParamValue; min?: number; max?: number; step?: number;
 }
 
@@ -48,6 +51,8 @@ export interface HfModel {
   /** Most media files the endpoint accepts in total, when the docs say so. */
   maxTotalInputs?: number;
   params: HfParam[];
+  /** Where the key lists the styles this model accepts (Soul). */
+  stylesPath?: string;
   source: string;
   note?: string;
 }
@@ -171,6 +176,55 @@ HF_MODELS.push(
   recraftModel('recraft/v4.1/utility/pro/text-to-image', 'Recraft V4.1 Utility Pro · via Higgsfield', 'Recraft V4.1 Utility Pro pictures (2K), paid from your Higgsfield balance.', `${RECRAFT}/recraft-v4-1-utility-pro/text-to-image.md`, 'Higgsfield does not explain how Utility differs from the standard model. 2K.'),
 );
 
+// Soul: Higgsfield's portrait and editorial picture models. Each request makes 1 or 4 pictures; every picture is charged.
+const SOUL = 'https://docs.higgsfield.ai/docs/models';
+const SOUL_ASPECTS = ['9:16', '16:9', '4:3', '3:4', '1:1', '2:3', '3:2'];
+const soulParams = (aspectDefault: string, before: HfParam[] = []): HfParam[] => [
+  ...before,
+  { key: 'aspect_ratio', label: 'Shape', type: 'enum', options: SOUL_ASPECTS, default: aspectDefault },
+  { key: 'resolution', label: 'Resolution', type: 'enum', options: ['720p', '1080p'], default: '720p' },
+  { key: 'batch_size', label: 'Pictures (each is charged)', type: 'enum', options: [1, 4], default: 1 },
+  { key: 'enhance_prompt', label: 'Improve my prompt', type: 'bool', default: false },
+  { key: 'seed', label: 'Seed (optional, 1 to 1,000,000)', type: 'int', min: 1, max: 1_000_000 },
+];
+HF_MODELS.push(
+  {
+    id: 'higgsfield-ai/soul/v2/standard', label: 'Soul V2 · Text to image', family: 'Soul V2', output: 'image', operations: ['text-to-image', 'styles'], prompt: 'required', inputs: [],
+    blurb: 'Higgsfield Soul V2: portraits, fashion and editorial pictures in a style you pick.',
+    params: soulParams('1:1', [{ key: 'style_id', label: 'Style', type: 'style' }]), stylesPath: '/v1/text2image/soul-styles/v2',
+    source: `${SOUL}/soul-2/generate.md`, note: 'Style strength is accepted by Higgsfield but has no effect on V2, so it is not offered.',
+  },
+  {
+    id: 'higgsfield-ai/soul/standard', label: 'Soul · Text to image', family: 'Soul', output: 'image', operations: ['text-to-image', 'styles', 'reference-images'], prompt: 'required',
+    inputs: [{ key: 'image_reference_url', kind: 'image', label: 'Reference picture (optional)', many: false, max: 1 }],
+    blurb: 'The original Higgsfield Soul, with selectable styles and an adjustable style strength.',
+    params: soulParams('4:3', [{ key: 'style_id', label: 'Style', type: 'style' }, { key: 'style_strength', label: 'Style strength', type: 'number', min: 0, max: 1, step: 0.05, default: 1 }]),
+    stylesPath: '/v1/text2image/soul-styles', source: `${SOUL}/soul-standard/generate.md`, note: 'A reference picture only guides prompt enhancement; it is not copied.',
+  },
+  {
+    id: 'higgsfield-ai/soul/cinema', label: 'Soul Cinema · Text to image', family: 'Soul Cinema', output: 'image', operations: ['text-to-image'], prompt: 'required', inputs: [],
+    blurb: 'Soul Cinema: pictures with a fixed cinematic look.', params: soulParams('1:1'),
+    source: `${SOUL}/soul-cinema/generate.md`, note: 'The look is fixed, so there is no style to choose.',
+  },
+);
+
+/** One style from the list Higgsfield returns (the preview is a small picture fetched by OmniCandy, since the window cannot load other sites). */
+export interface HfStyle { id: string; name: string; description: string; preview: string | null }
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** Reads the styles list: a bare array, or an object holding one. Anything without a real id is dropped. */
+export function parseHfStyles(json: unknown): Array<{ id: string; name: string; description: string; previewUrl: string }> {
+  const o = json as Record<string, unknown> | unknown[] | null;
+  const arr = Array.isArray(o) ? o : o && typeof o === 'object' ? ((['styles', 'data', 'items', 'results'] as const).map((k) => (o as Record<string, unknown>)[k]).find(Array.isArray) as unknown[] | undefined) ?? [] : [];
+  const out: Array<{ id: string; name: string; description: string; previewUrl: string }> = [];
+  for (const s of arr) {
+    const r = s as { id?: unknown; name?: unknown; description?: unknown; preview_url?: unknown };
+    if (typeof r?.id !== 'string' || !UUID.test(r.id)) continue;
+    out.push({ id: r.id, name: typeof r.name === 'string' ? r.name.slice(0, 80) : r.id, description: typeof r.description === 'string' ? r.description.slice(0, 300) : '', previewUrl: typeof r.preview_url === 'string' ? r.preview_url : '' });
+  }
+  return out;
+}
+
 export const hfModel = (id: string) => HF_MODELS.find((m) => m.id === id);
 
 export const HF_PRICE_UNKNOWN = "Higgsfield publishes no price for this model, so OmniCandy can't show one. It is charged to your Higgsfield API balance; failed, moderated and still-queued cancelled requests are not charged.";
@@ -198,7 +252,10 @@ export function normalizeHiggsfieldJob(raw: HiggsfieldJob): HiggsfieldJob {
     const p = m.params.find((x) => x.key === k);
     if (!p) throw new Error(`"${k}" is not a setting of ${m.label}.`);
     if (v === '' || v === undefined) continue;
-    if (p.type === 'colors' || p.type === 'color') {
+    if (p.type === 'style') {
+      if (typeof v !== 'string' || !UUID.test(v)) throw new Error(`${p.label} must be one of the styles in the list.`);
+    }
+    else if (p.type === 'colors' || p.type === 'color') {
       if (typeof v !== 'string') throw new Error(`${p.label} must be text like #ff6600.`);
       const list = v.split(/[\s,]+/).filter(Boolean);
       if (p.type === 'color' && list.length !== 1) throw new Error(`${p.label}: give one colour like #ffffff.`);

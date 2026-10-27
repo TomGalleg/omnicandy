@@ -124,17 +124,11 @@ const RECRAFT_MODELS: StudioModel[] = [
 ];
 
 // Higgsfield publishes no model-list endpoint, so the catalog in ./higgsfield (docs-verified entries only) is the source.
-// Soul stays planned: the docs name two different endpoints for it (soul/v2/standard and soul/standard).
 const HIGGSFIELD_MODELS: StudioModel[] = [
   ...HF_MODELS.map((m): StudioModel => ({
     providerId: 'higgsfield', id: m.id, label: m.label, output: m.output === 'video' ? 'video' : 'raster', operations: m.operations,
     availability: 'wired', source: m.source, blurb: m.blurb, ...(m.note ? { note: m.note } : {}),
   })),
-  {
-    providerId: 'higgsfield', id: 'higgsfield-ai/soul/v2/standard', label: 'Higgsfield Soul', output: 'raster', availability: 'planned',
-    source: 'https://docs.higgsfield.ai/docs/openapi.json', operations: ['text-to-image'],
-    note: 'Not connected: the official docs list two different endpoints for Soul, so it needs a check before it is offered.',
-  },
 ];
 
 export const STUDIO_MODELS: StudioModel[] = [...shippedModels(), ...RECRAFT_MODELS, ...HIGGSFIELD_MODELS];

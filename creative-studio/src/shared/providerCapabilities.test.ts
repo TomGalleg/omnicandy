@@ -44,7 +44,7 @@ describe('provider capability registry', () => {
   it('only offers wired models for generation today, and searches across providers', () => {
     expect(findModels({ wiredOnly: true }).every((m) => ['gemini', 'openai', 'mock', 'recraft', 'higgsfield'].includes(m.providerId))).toBe(true);
     expect(findModels({ search: 'nano banana' }).map((m) => m.id)).toEqual(['gemini-nano-banana-2.1']);
-    expect(findModels({ search: 'soul' }).map((m) => `${m.providerId}:${m.availability}`)).toEqual(['higgsfield:planned']);
+    expect(findModels({ search: 'soul' }).map((m) => `${m.providerId}:${m.availability}`)).toEqual(['higgsfield:wired', 'higgsfield:wired', 'higgsfield:wired']);
     expect(findModels({ search: 'seedance', wiredOnly: true }).length).toBeGreaterThanOrEqual(6);
   });
 
@@ -53,8 +53,8 @@ describe('provider capability registry', () => {
     expect(hf.note).toMatch(/MCP.*different/);
     expect(hf.cancel).toMatch(/queued/);
     expect(hf.availability).toBe('wired');
-    // Soul is the only Higgsfield picture model that is not connected; the Recraft ones are.
-    expect(findModels({ providerId: 'higgsfield', output: 'raster' }).filter((m) => m.availability === 'planned').map((m) => m.id)).toEqual(['higgsfield-ai/soul/v2/standard']);
+    // Every Higgsfield picture model is connected: Soul (three models) and Recraft.
+    expect(findModels({ providerId: 'higgsfield', output: 'raster' }).filter((m) => m.availability === 'planned')).toEqual([]);
     expect(findModels({ providerId: 'higgsfield', search: 'recraft', wiredOnly: true }).map((m) => m.id)).toEqual(['recraft/v4.1/text-to-image', 'recraft/v4.1/pro/text-to-image', 'recraft/v4.1/utility/text-to-image', 'recraft/v4.1/utility/pro/text-to-image']);
     expect(findModels({ providerId: 'higgsfield', operation: 'video-extend' }).map((m) => m.id)).toEqual(['bytedance/seedance-2.5/video-extend']);
     expect(findModels({ providerId: 'higgsfield' }).every((m) => m.output === 'raster' || m.output === 'video')).toBe(true);

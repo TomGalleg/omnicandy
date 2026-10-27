@@ -8,8 +8,8 @@ import { randomUUID } from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import {
-  HF_ACTIVE, HF_PRICE_UNKNOWN, HIGGSFIELD_BASE, hfModel, higgsfieldBody, isHiggsfieldApiUrl, normalizeHiggsfieldJob, parseHfStatus,
-  type HfInputKind, type HfJobRecord, type HfStatus, type HiggsfieldJob,
+  HF_ACTIVE, HF_PRICE_UNKNOWN, HIGGSFIELD_BASE, hfModel, higgsfieldBody, isHiggsfieldApiUrl, normalizeHiggsfieldJob, parseHfStatus, parseHfStyles,
+  type HfInputKind, type HfJobRecord, type HfStatus, type HfStyle, type HiggsfieldJob,
 } from '@shared/higgsfield';
 import { redact } from './credentialVault';
 import { GenerationCancelled, type GenerationDeps } from './generation';
@@ -198,6 +198,41 @@ export class HiggsfieldService {
       await this.update(store, rec.id, { state: 'failed', message: `${msg} Nothing was retried.` });
       throw e;
     }
+  }
+
+  private styleCache = new Map<string, { at: number; list: HfStyle[] }>();
+
+  /** The styles a Soul model accepts. A free read with the key; small preview pictures are fetched here (no key sent to them) and returned inline. */
+  async styles(modelId: string): Promise<HfStyle[]> {
+    const m = hfModel(modelId);
+    if (!m?.stylesPath) return [];
+    const hit = this.styleCache.get(modelId);
+    if (hit && Date.now() - hit.at < 10 * 60_000) return hit.list;
+    const st = await this.d.vault.status('higgsfield');
+    if (!st.configured) throw new Error('Add your Higgsfield API key first (Settings → Integrations).');
+    const raw = await this.d.vault.withKey('higgsfield', async (key) => {
+      const res = await this.api(key, `${HIGGSFIELD_BASE}${m.stylesPath}`);
+      if (!res.ok) throw await failure(res);
+      return parseHfStyles(await res.json());
+    });
+    const list: HfStyle[] = raw.slice(0, 60).map((s) => ({ id: s.id, name: s.name, description: s.description, preview: null }));
+    let next = 0;
+    const worker = async () => {
+      for (let i = next++; i < raw.length && i < list.length; i = next++) {
+        const url = raw[i]!.previewUrl;
+        if (!/^https:\/\//.test(url)) continue;
+        try {
+          const res = await this.d.fetch(url, { redirect: 'follow', signal: AbortSignal.timeout(15_000) });
+          if (!res.ok) continue;
+          const buf = Buffer.from(await res.arrayBuffer());
+          const kind = buf.length <= 250 * 1024 ? sniffMedia(buf) : null;
+          if (kind === 'png' || kind === 'jpg' || kind === 'webp' || kind === 'gif') list[i]!.preview = `data:image/${kind === 'jpg' ? 'jpeg' : kind};base64,${buf.toString('base64')}`;
+        } catch { /* a missing preview just means the style shows its name only */ }
+      }
+    };
+    await Promise.all(Array.from({ length: 6 }, worker));
+    this.styleCache.set(modelId, { at: Date.now(), list });
+    return list;
   }
 
   /** Only a request that is still queued can be cancelled (a refund follows). Once it runs it cannot be stopped. */

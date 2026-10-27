@@ -13,7 +13,7 @@ import type { CostEstimate, ImageJob, ProviderId } from './generation';
 import type { StudioJob } from './aiStudio';
 import type { RecraftJob } from './recraft';
 import type { RecraftToolJob } from './recraftTools';
-import type { HfJobRecord, HiggsfieldJob } from './higgsfield';
+import type { HfJobRecord, HfStyle, HiggsfieldJob } from './higgsfield';
 import type { LiveSnapshot, TimelineDto, TimelineEdit } from './live';
 import type { EditorAppId } from './appEditors';
 import type { DeliverJob, DeliverRecord } from './deliver';
@@ -160,6 +160,7 @@ export const IPC = {
   higgsfieldJobs: 'studio:higgsfield-jobs',
   higgsfieldRun: 'studio:higgsfield-run',
   higgsfieldCancel: 'studio:higgsfield-cancel',
+  higgsfieldStyles: 'studio:higgsfield-styles',
   higgsfieldEvent: 'studio:higgsfield-event',
   videoList: 'video:list',
   videoSubmit: 'video:submit',
@@ -513,6 +514,8 @@ export interface StudioApi {
     higgsfieldJobs(): Promise<HfJobRecord[]>;
     higgsfieldRun(job: HiggsfieldJob): Promise<HfJobRecord>;
     higgsfieldCancel(id: string): Promise<HfJobRecord>;
+    /** The styles a Soul model accepts (a free read with the saved key). */
+    higgsfieldStyles(modelId: string): Promise<HfStyle[]>;
     onHiggsfield(cb: (r: HfJobRecord) => void): () => void;
     /** AI video (Google Veo): saved jobs of this project; running ones are tracked in the background. */
     videoJobs(): Promise<VideoJobRecord[]>;

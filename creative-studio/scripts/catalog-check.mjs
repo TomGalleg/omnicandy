@@ -23,7 +23,6 @@ const norm = (s) => s.toLowerCase().replace(/(\d)\.0(?!\d)/g, '$1').replace(/[^a
 // Known and deliberately not wired (each with its reason), so a run only speaks up about what is NEW.
 const KNOWN = [
   { match: /wan-2-6|wan-2-7/, why: 'Wan 2.6 and 2.7 pages not read yet' },
-  { match: /higgsfield-ai\/soul/, why: 'Soul: the docs name two different endpoints' },
   { match: /hailuo-2\.3\/standard\/image-to-video/, why: 'Hailuo picture-to-video: parameters not read yet' },
 ];
 const known = (s) => KNOWN.find((k) => k.match.test(s));

@@ -156,3 +156,10 @@
 .mg-grid.mosaic .mg-empty { column-span: all; }
 .as-link { text-decoration: none; margin-left: auto; display: inline-block; }
 .as-link:hover { border-color: var(--accent); }
+
+.hf-styles { display: grid; grid-template-columns: repeat(auto-fill, minmax(76px, 1fr)); gap: 6px; max-height: 240px; overflow: auto; padding: 2px; }
+.hf-style { border: 2px solid transparent; background: var(--surface); color: var(--text); border-radius: 10px; padding: 3px; cursor: pointer; display: grid; gap: 3px; font: inherit; text-align: center; }
+.hf-style.on { border-color: var(--accent); }
+.hf-style small { font-size: 0.7rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hf-style-pic { aspect-ratio: 3 / 4; border-radius: 7px; overflow: hidden; background: var(--border); display: grid; place-items: center; font-size: 0.75rem; }
+.hf-style-pic img { width: 100%; height: 100%; object-fit: cover; display: block; }

@@ -36,17 +36,21 @@ const i2v = (o: Partial<HiggsfieldJob> = {}): HiggsfieldJob => ({ modelId: 'klin
 
 interface Calls { url: string; init: RequestInit | undefined }
 /** statuses = the answers to successive status polls. */
-function rig(opts: { statuses?: unknown[]; submit?: unknown; download?: () => Response; approve?: boolean } = {}) {
+function rig(opts: { statuses?: unknown[]; submit?: unknown; download?: () => Response; approve?: boolean; styleList?: unknown } = {}) {
   const calls: Calls[] = [];
   const statuses = [...(opts.statuses ?? [{ status: 'in_progress' }, { status: 'completed', video: { url: 'https://cdn.example/out.mp4' } }])];
   const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
     calls.push({ url, init });
     if (url === `${API}/files/generate-upload-url`) return json({ public_url: 'https://cdn.example/u.png', upload_url: 'https://storage.example/put', upload_headers: { 'x-amz-meta': 'a' } });
     if (url === 'https://storage.example/put') return new Response(null, { status: 200 });
-    if (init?.method === 'POST' && url.startsWith(`${API}/kling-video`)) return json(opts.submit ?? { status: 'queued', request_id: 'req1', status_url: `${API}/requests/req1/status`, cancel_url: `${API}/requests/req1/cancel` });
+    if (init?.method === 'POST' && url.startsWith(API) && !url.includes('/files/') && !url.endsWith('/cancel')) return json(opts.submit ?? { status: 'queued', request_id: 'req1', status_url: `${API}/requests/req1/status`, cancel_url: `${API}/requests/req1/cancel` });
     if (url.endsWith('/cancel')) return new Response(null, { status: 202 });
     if (url.includes('/status')) return json(statuses.length > 1 ? statuses.shift() : statuses[0]);
+    const pic = /^https:\/\/cdn\.example\/pic(\d)\.png$/.exec(url);
+    if (pic) return new Response(new Uint8Array(testPattern(8, 8, Number(pic[1]) + 10)), { status: 200 });
     if (url === 'https://cdn.example/out.mp4') return opts.download ? opts.download() : new Response(new Uint8Array(MP4), { status: 200 });
+    if (url.startsWith(`${API}/v1/text2image/`)) return json(opts.styleList ?? []);
+    if (url.startsWith('https://styles.example/')) return url.endsWith('big.png') ? new Response(new Uint8Array(Buffer.alloc(300 * 1024, 1)), { status: 200 }) : url.endsWith('bad.png') ? new Response('<html>no</html>'.padEnd(50), { status: 200 }) : new Response(new Uint8Array(testPattern(8, 8, 3)), { status: 200 });
     return json({}, 404);
   });
   const approveMock = vi.fn(async (_r: ApprovalRequest) => opts.approve ?? true);
@@ -191,6 +195,52 @@ describe('HiggsfieldService', () => {
     expect(t.ok).toBe(true);
     expect(good.approveMock).not.toHaveBeenCalled();
     expect(good.fetchMock.mock.calls.every((c) => (c[1] as RequestInit).method !== 'POST')).toBe(true);
+  });
+});
+
+describe('Soul', () => {
+  const SOUL_JOB: HiggsfieldJob = { modelId: 'higgsfield-ai/soul/v2/standard', prompt: 'A quiet portrait', params: { batch_size: 4, aspect_ratio: '3:4' }, inputs: {} };
+
+  it('sends the documented body and saves every picture of a batch as its own new asset', async () => {
+    await vault.save('higgsfield', KEY);
+    const a = rig({ statuses: [{ status: 'completed', images: [1, 2, 3, 4].map((n) => ({ url: `https://cdn.example/pic${n}.png` })) }] });
+    const rec = await a.svc.submit(SOUL_JOB, 'user');
+    expect(a.approveMock.mock.calls[0]![0]).toMatchObject({ kind: 'image', settings: { batch_size: '4' }, priceUnknown: expect.stringMatching(/no price/) });
+    const done = await until(a.svc, (r) => r.state === 'done');
+    expect(done.assetIds).toHaveLength(4);
+    const post = a.calls.find((c) => c.init?.method === 'POST' && c.url === `${API}/higgsfield-ai/soul/v2/standard`)!;
+    expect(JSON.parse(post.init!.body as string)).toEqual({ prompt: 'A quiet portrait', batch_size: 4, aspect_ratio: '3:4' });
+    expect(rec.requestId).toBe('req1');
+    expect((await store.loadManifest()).assets.filter((x) => x.kind === 'image' && x.provenance.provider === 'higgsfield')).toHaveLength(4);
+  });
+
+  it('lists styles with the key, fetches small previews without it, and skips what is not a picture', async () => {
+    await vault.save('higgsfield', KEY);
+    const id = (n: number) => `00000000-0000-4000-8000-00000000000${n}`;
+    const a = rig({ styleList: [
+      { id: id(1), name: 'General', description: 'Plain', preview_url: 'https://styles.example/a.png' },
+      { id: id(2), name: 'Heavy', description: '', preview_url: 'https://styles.example/big.png' },
+      { id: id(3), name: 'Broken', description: '', preview_url: 'https://styles.example/bad.png' },
+      { id: id(4), name: 'Insecure', description: '', preview_url: 'http://styles.example/a.png' },
+    ] });
+    const list = await a.svc.styles('higgsfield-ai/soul/v2/standard');
+    expect(list.map((s) => [s.name, s.preview?.slice(0, 22) ?? null])).toEqual([['General', 'data:image/png;base64,'], ['Heavy', null], ['Broken', null], ['Insecure', null]]);
+    const listCall = a.calls.find((c) => c.url === `${API}/v1/text2image/soul-styles/v2`)!;
+    expect((listCall.init!.headers as Record<string, string>).Authorization).toBe(`Key ${KEY}`);
+    for (const c of a.calls.filter((x) => x.url.startsWith('https://styles.example/'))) expect((c.init?.headers as Record<string, string> | undefined)?.Authorization, c.url).toBeUndefined();
+    expect(a.calls.some((c) => c.url.startsWith('http://styles.example'))).toBe(false);
+    await a.svc.styles('higgsfield-ai/soul/v2/standard'); // cached: no second list call
+    expect(a.calls.filter((c) => c.url === `${API}/v1/text2image/soul-styles/v2`)).toHaveLength(1);
+    expect((await a.svc.styles('higgsfield-ai/soul/cinema'))).toEqual([]); // a fixed look has no styles
+    const b = rig();
+    await b.svc.styles('higgsfield-ai/soul/standard');
+    expect(b.calls[0]!.url).toBe(`${API}/v1/text2image/soul-styles`); // the original Soul has its own list
+  });
+
+  it('asks for the key before listing styles', async () => {
+    const a = rig();
+    await expect(a.svc.styles('higgsfield-ai/soul/v2/standard')).rejects.toThrow(/Higgsfield API key first/);
+    expect(a.fetchMock).not.toHaveBeenCalled();
   });
 });
 

@@ -555,6 +555,7 @@ export function registerIpc(d: IpcDeps): void {
   handle(IPC.higgsfieldJobs, none, () => higgsfield.list());
   handle(IPC.higgsfieldRun, z.tuple([higgsfieldJobSchema]), (job) => higgsfield.submit(job, 'user'));
   handle(IPC.higgsfieldCancel, z.tuple([z.string().min(1).max(64)]), (id) => higgsfield.cancel(id));
+  handle(IPC.higgsfieldStyles, z.tuple([z.string().min(1).max(100)]), (modelId) => higgsfield.styles(modelId));
   const studioJobs = new StudioJobStore(async () => (await d.project()).root);
   const keyProvider = z.enum(['openai', 'gemini', 'runway', 'recraft', 'higgsfield']);
   handle(IPC.genProviders, none, () => providerStatus());

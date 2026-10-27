@@ -1,5 +1,6 @@
+import { useEffect, useState } from 'react';
 import type { Asset } from '@shared/types';
-import type { HfInput, HfInputKind, HfModel, HfParam, HfParamValue } from '@shared/higgsfield';
+import type { HfInput, HfInputKind, HfModel, HfParam, HfParamValue, HfStyle } from '@shared/higgsfield';
 
 export const ASSET_MIME = 'application/x-omnicandy-asset';
 
@@ -57,8 +58,43 @@ export function MediaSlot({ spec, accept, ids, assets, selected, onChange }: Inp
   );
 }
 
-function ParamField({ p, value, onChange }: { p: HfParam; value: HfParamValue | undefined; onChange: (v: HfParamValue | undefined) => void }) {
+const STYLE_CACHE = new Map<string, HfStyle[]>();
+
+/** Soul styles: loaded from Higgsfield with the saved key (free), shown as small pictures. No choice means Higgsfield's default style. */
+function StylePicker({ modelId, value, onChange }: { modelId: string; value: string | undefined; onChange: (v: string | undefined) => void }) {
+  const [styles, setStyles] = useState<HfStyle[] | null>(STYLE_CACHE.get(modelId) ?? null);
+  const [error, setError] = useState('');
+  useEffect(() => {
+    if (STYLE_CACHE.has(modelId)) { setStyles(STYLE_CACHE.get(modelId)!); return; }
+    let live = true;
+    setStyles(null); setError('');
+    window.studio.generate.higgsfieldStyles(modelId)
+      .then((l) => { STYLE_CACHE.set(modelId, l); if (live) setStyles(l); })
+      .catch((e: unknown) => { if (live) setError((e instanceof Error ? e.message : String(e)).replace(/^Error invoking remote method '[^']+': (Error: )?/, '')); });
+    return () => { live = false; };
+  }, [modelId]);
+  return (
+    <div className="field">Style
+      {error && <span className="asset-meta">Could not load the styles ({error}). Higgsfield's default style will be used.</span>}
+      {!error && !styles && <span className="asset-meta"><span className="as-spin" />Loading styles from Higgsfield…</span>}
+      {styles && styles.length === 0 && <span className="asset-meta">Higgsfield returned no styles. Its default style will be used.</span>}
+      {styles && styles.length > 0 && (
+        <div className="hf-styles" role="listbox" aria-label="Style">
+          <button role="option" aria-selected={!value} className={`hf-style${!value ? ' on' : ''}`} onClick={() => onChange(undefined)}><span className="hf-style-pic hf-style-none">Default</span><small>Default</small></button>
+          {styles.map((s) => (
+            <button key={s.id} role="option" aria-selected={value === s.id} className={`hf-style${value === s.id ? ' on' : ''}`} title={s.description || s.name} onClick={() => onChange(s.id)}>
+              <span className="hf-style-pic">{s.preview ? <img src={s.preview} alt="" loading="lazy" /> : s.name.slice(0, 2)}</span><small>{s.name}</small>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ParamField({ p, value, modelId, onChange }: { p: HfParam; value: HfParamValue | undefined; modelId: string; onChange: (v: HfParamValue | undefined) => void }) {
   const v = value ?? p.default;
+  if (p.type === 'style') return <StylePicker modelId={modelId} value={typeof value === 'string' ? value : undefined} onChange={onChange} />;
   if (p.type === 'bool') return <label className="field hf-check"><input type="checkbox" checked={v === true} onChange={(e) => onChange(e.target.checked)} />{p.label}</label>;
   if (p.type === 'enum') {
     return (
@@ -92,18 +128,21 @@ interface FormProps {
 /** Settings and media inputs for a Higgsfield model, built from the model's documented parameters (nothing hand-coded per model). */
 export function HiggsfieldForm({ model, params, inputs, assets, selected, setParams, setInputs }: FormProps) {
   const set = (k: string, v: HfParamValue | undefined) => { const n = { ...params }; if (v === undefined) delete n[k]; else n[k] = v; setParams(n); };
-  const basic = model.params.slice(0, 3);
-  const more = model.params.slice(3);
+  const styleParam = model.params.find((p) => p.type === 'style');
+  const others = model.params.filter((p) => p.type !== 'style');
+  const basic = others.slice(0, 3);
+  const more = others.slice(3);
   return (
     <>
       {model.inputs.map((spec) => (
         <MediaSlot key={spec.key} spec={spec} ids={inputs[spec.key] ?? []} assets={assets} selected={selected} onChange={(ids) => setInputs({ ...inputs, [spec.key]: ids })} />
       ))}
       {model.anyOf && <div className="asset-meta">Add at least one of: {model.anyOf.map((k) => model.inputs.find((i) => i.key === k)!.label.toLowerCase()).join(', ')}.</div>}
-      <div className="gen-settings">{basic.map((p) => <ParamField key={p.key} p={p} value={params[p.key]} onChange={(v) => set(p.key, v)} />)}</div>
+      {styleParam && <ParamField p={styleParam} value={params[styleParam.key]} modelId={model.id} onChange={(v) => set(styleParam.key, v)} />}
+      <div className="gen-settings">{basic.map((p) => <ParamField key={p.key} p={p} value={params[p.key]} modelId={model.id} onChange={(v) => set(p.key, v)} />)}</div>
       {more.length > 0 && (
         <details className="hf-adv"><summary>Advanced settings</summary>
-          <div className="gen-settings">{more.map((p) => <ParamField key={p.key} p={p} value={params[p.key]} onChange={(v) => set(p.key, v)} />)}</div>
+          <div className="gen-settings">{more.map((p) => <ParamField key={p.key} p={p} value={params[p.key]} modelId={model.id} onChange={(v) => set(p.key, v)} />)}</div>
         </details>
       )}
       {model.note && <div className="asset-meta">{model.note}</div>}

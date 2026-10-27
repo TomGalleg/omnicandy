@@ -196,6 +196,7 @@ const api: StudioApi = {
     higgsfieldJobs: () => ipcRenderer.invoke(IPC.higgsfieldJobs),
     higgsfieldRun: (job) => ipcRenderer.invoke(IPC.higgsfieldRun, job),
     higgsfieldCancel: (id) => ipcRenderer.invoke(IPC.higgsfieldCancel, id),
+    higgsfieldStyles: (modelId) => ipcRenderer.invoke(IPC.higgsfieldStyles, modelId),
     onHiggsfield: (cb) => {
       const listener = (_e: unknown, r: Parameters<typeof cb>[0]) => cb(r);
       ipcRenderer.on(IPC.higgsfieldEvent, listener);
