@@ -35,6 +35,8 @@ export const MODEL_PREVIEWS: Record<string, ModelPreview> = {
   'recraft/recraft-tool/crispUpscale': { poster: 'recraft-crisp-upscale.jpg', credit: 'Sample: a soft picture to upscale', aspect: 1536 / 1024 },
   // An illustration the user supplied for Recraft V3 Vector.
   'recraft/recraftv3_vector': { poster: 'recraft-v3-vector.jpg', credit: 'Sample image', aspect: 1 },
+  // The cowboy dog in a new city background, supplied by the user for Recraft V3 New background.
+  'recraft/recraft-tool/replaceBackground': { poster: 'recraft-new-background.jpg', credit: 'Sample image', aspect: 1013 / 667 },
   // A wide picture the user supplied for "Edit with a prompt".
   'recraft/recraft-tool/imageToImage': { poster: 'recraft-edit-wide.jpg', credit: 'Sample image', aspect: 1005 / 421 },
   'recraft/recraft-tool/creativeUpscale': { poster: 'recraft-creative-upscale.jpg', credit: 'Sample: a soft picture to upscale', aspect: 1536 / 1024 },

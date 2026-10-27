@@ -36,6 +36,7 @@ describe('model card previews', () => {
     expect(previewFor(studioModel('recraft', 'recraft-tool/removeBackground')!)?.poster).toBe('recraft-remove-bg.jpg');
     expect(previewFor(studioModel('recraft', 'recraft-tool/crispUpscale')!)?.poster).toBe('recraft-crisp-upscale.jpg');
     expect(previewFor(studioModel('recraft', 'recraftv3_vector')!)?.poster).toBe('recraft-v3-vector.jpg');
+    expect(previewFor(studioModel('recraft', 'recraft-tool/replaceBackground')!)?.poster).toBe('recraft-new-background.jpg');
     expect(previewFor(studioModel('recraft', 'recraft-tool/imageToImage')!)?.poster).toBe('recraft-edit-wide.jpg');
     expect(previewFor(studioModel('recraft', 'recraft-tool/creativeUpscale')!)?.poster).toBe('recraft-creative-upscale.jpg');
     expect(previewFor(studioModel('gemini', 'gemini-nano-banana-2.1')!)).toBeNull();
