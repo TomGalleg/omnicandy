@@ -57,6 +57,12 @@ function coverFor(m: StudioModel, assets: Asset[]): Asset | null {
   return null;
 }
 
+/** The card takes the shape of the picture or clip it shows (kept within sensible limits so one extreme file cannot dominate the page). */
+function shapeOf(a: Asset): number {
+  const r = a.width && a.height ? a.width / a.height : a.kind === 'video' ? 16 / 9 : 4 / 3;
+  return Math.min(2.5, Math.max(0.5, r));
+}
+
 function Cover({ m, asset, big }: { m: StudioModel; asset: Asset | null; big?: boolean }) {
   const preview: ModelPreview | null = asset ? null : previewFor(m);
   const poster = preview ? previewUrl(preview.poster) : undefined;
@@ -158,7 +164,7 @@ export function ModelGallery({ assets, configured, favs, onToggleFav, onCreate, 
             const cover = coverFor(m, assets);
             const price = priceInfo(m);
             return (
-              <article key={k} className={`mg-card ${st}${openKey === k ? ' open' : ''}`} style={{ ['--hue' as string]: BRAND[m.providerId].hue, ...(!cover && previewFor(m) ? { ['--ar' as string]: previewFor(m)!.aspect } : {}) }}>
+              <article key={k} className={`mg-card ${st}${openKey === k ? ' open' : ''}`} style={{ ['--hue' as string]: BRAND[m.providerId].hue, ...(cover ? { ['--ar' as string]: shapeOf(cover) } : previewFor(m) ? { ['--ar' as string]: previewFor(m)!.aspect } : {}) }}>
                 <button className="mg-hit" onClick={() => setOpenKey(openKey === k ? null : k)} aria-label={`${m.label}, ${studioProvider(m.providerId)?.label}. Show details`} aria-pressed={openKey === k} />
                 <Cover m={m} asset={cover} />
                 <div className="mg-tags">
