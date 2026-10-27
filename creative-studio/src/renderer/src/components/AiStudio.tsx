@@ -53,7 +53,11 @@ export function AiStudio({ manifest, selected, onGoto, log }: Props) {
     const d = parseDraft(raw);
     if (!d) return;
     const m = d.providerId && d.modelId ? findModels({}).find((x) => x.providerId === d.providerId && x.id === d.modelId) : undefined;
-    setSeed({ key: 1, ...(m ? { model: m } : {}), ...(d.prompt ? { prompt: d.prompt } : {}), ...(d.referenceAssetId ? { refId: d.referenceAssetId } : {}) });
+    setSeed({
+      key: 1, ...(m ? { model: m } : {}), ...(d.prompt ? { prompt: d.prompt } : {}), ...(d.referenceAssetId ? { refId: d.referenceAssetId } : {}),
+      ...(m && m.providerId === 'higgsfield' ? { hf: { modelId: m.id, prompt: d.prompt ?? '', params: {}, inputs: d.hfInputs ?? {} } } : {}),
+    });
+    if (d.from) setMsg({ text: `Opened from ${d.from === 'photocraft' ? 'PhotoCraft' : d.from === 'filmcraft' ? 'FilmCraft' : d.from}'s Quick AI with your prompt, model and files. Adjust anything, then generate.` });
     setTab('create');
   }, []);
 

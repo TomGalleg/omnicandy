@@ -1,9 +1,11 @@
 import { useEffect, useLayoutEffect, useRef } from 'react';
 import { appForTab, EDITOR_APPS, type EditorApp, type EditorAppId } from '@shared/appEditors';
-import type { Asset, ProjectManifest } from '@shared/types';
+import type { Asset, ProjectManifest, WorkspaceId } from '@shared/types';
 import { useOverlayOpen } from '../overlay';
 import type { LiveApi } from '../useLive';
 import { isTaskActive } from './live/LiveParts';
+import { quickHost } from '@shared/quickAi';
+import { QuickAiPanel } from './QuickAiPanel';
 
 interface Props {
   manifest: ProjectManifest | null;
@@ -14,6 +16,8 @@ interface Props {
   /** App picked from the Media screen for the selected file; used when it fits this tab and the file type. */
   chosenApp?: EditorAppId | null;
   log: (source: string, msg: string) => void;
+  /** Switches tab (and selects a file), used by Quick AI to open results and the full AI Studio. */
+  onGoto: (w: WorkspaceId, assetId?: string) => void;
 }
 
 type Tab = EditorApp['tab'];
@@ -35,7 +39,7 @@ export function EditWorkspace(p: Props) {
  * right here in the big area, where you work with the app's own tools. "Open in its own window"
  * pops the app out. The library file itself is never changed; saving makes a new version.
  */
-export function AppWorkspace({ selected, liveApi, onProjectChanged, tab, chosenApp }: Props & { tab: Tab }) {
+export function AppWorkspace({ manifest, selected, liveApi, onProjectChanged, tab, chosenApp, log, onGoto }: Props & { tab: Tab }) {
   const { live, busy, act } = liveApi;
   const picked = chosenApp ? EDITOR_APPS[chosenApp] : null;
   const app = selected
@@ -110,6 +114,7 @@ export function AppWorkspace({ selected, liveApi, onProjectChanged, tab, chosenA
         <div className="edit-stage" ref={stageRef}>
           <Stage asset={selected} app={app} tab={tab} live={liveApi.live} showingThis={!!showingThis} />
         </div>
+        {showingThis && app && quickHost(app.id) && <QuickAiPanel appId={app.id} manifest={manifest} open={selected} selected={null} onGoto={onGoto} log={log} />}
       </div>
     </div>
   );

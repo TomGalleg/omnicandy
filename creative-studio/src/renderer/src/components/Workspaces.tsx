@@ -36,12 +36,12 @@ export function WorkspaceView(p: Props) {
   switch (p.workspace) {
     case 'home': return <HomeWorkspace manifest={p.manifest} projectKey={p.projectKey} onSwitched={p.onSwitched} onGoto={p.onGoto} log={p.log} />;
     case 'media': return <MediaWorkspace manifest={p.manifest} asset={p.selected} onSelect={p.onSelectAsset} onOpenIn={p.onOpenIn} />;
-    case 'edit': return <EditWorkspace manifest={p.manifest} selected={p.selected} liveApi={p.liveApi} onProjectChanged={p.onProjectChanged} onSelectAsset={p.onSelectAsset} chosenApp={p.chosenApp} log={p.log} />;
+    case 'edit': return <EditWorkspace manifest={p.manifest} selected={p.selected} liveApi={p.liveApi} onProjectChanged={p.onProjectChanged} onSelectAsset={p.onSelectAsset} chosenApp={p.chosenApp} log={p.log} onGoto={p.onGoto} />;
     case 'generate': return <GenerateHub manifest={p.manifest} selected={p.selected} onGoto={p.onGoto} log={p.log} />;
     case 'workflow': return <WorkflowEditor manifest={p.manifest} integrations={p.integrations} colorMode={p.resolvedTheme} log={p.log} onProjectChanged={p.onProjectChanged} />;
-    case 'effects': return <AppWorkspace tab="effects" manifest={p.manifest} selected={p.selected} liveApi={p.liveApi} onProjectChanged={p.onProjectChanged} onSelectAsset={p.onSelectAsset} chosenApp={p.chosenApp} log={p.log} />;
-    case 'color': return <AppWorkspace tab="color" manifest={p.manifest} selected={p.selected} liveApi={p.liveApi} onProjectChanged={p.onProjectChanged} onSelectAsset={p.onSelectAsset} chosenApp={p.chosenApp} log={p.log} />;
-    case 'audio': return <AppWorkspace tab="audio" manifest={p.manifest} selected={p.selected} liveApi={p.liveApi} onProjectChanged={p.onProjectChanged} onSelectAsset={p.onSelectAsset} chosenApp={p.chosenApp} log={p.log} />;
+    case 'effects': return <AppWorkspace tab="effects" manifest={p.manifest} selected={p.selected} liveApi={p.liveApi} onProjectChanged={p.onProjectChanged} onSelectAsset={p.onSelectAsset} chosenApp={p.chosenApp} log={p.log} onGoto={p.onGoto} />;
+    case 'color': return <AppWorkspace tab="color" manifest={p.manifest} selected={p.selected} liveApi={p.liveApi} onProjectChanged={p.onProjectChanged} onSelectAsset={p.onSelectAsset} chosenApp={p.chosenApp} log={p.log} onGoto={p.onGoto} />;
+    case 'audio': return <AppWorkspace tab="audio" manifest={p.manifest} selected={p.selected} liveApi={p.liveApi} onProjectChanged={p.onProjectChanged} onSelectAsset={p.onSelectAsset} chosenApp={p.chosenApp} log={p.log} onGoto={p.onGoto} />;
     case 'software': return <SoftwareWorkspace apps={p.apps} />;
     case 'planner': return <PlannerWorkspace manifest={p.manifest} projectKey={p.projectKey} />;
     case 'deliver': return <DeliverWorkspace manifest={p.manifest} selected={p.selected} liveApi={p.liveApi} onSelectAsset={p.onSelectAsset} log={p.log} />;

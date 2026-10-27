@@ -58,7 +58,13 @@ export const addJob = (jobs: StudioJob[], job: StudioJob): StudioJob[] => [job, 
 export const updateJob = (jobs: StudioJob[], id: string, patch: Partial<StudioJob>): StudioJob[] => jobs.map((j) => (j.id === id ? { ...j, ...patch } : j));
 
 /** Draft handed over by another screen (e.g. a Quick AI panel) so the studio opens with the same choices. */
-export interface StudioDraft { providerId?: string; modelId?: string; prompt?: string; referenceAssetId?: string }
+export interface StudioDraft {
+  providerId?: string; modelId?: string; prompt?: string; referenceAssetId?: string;
+  /** The app the draft came from (Quick AI), shown as a note. */
+  from?: string;
+  /** Higgsfield media inputs by key (asset ids), so the full form opens with the same files. */
+  hfInputs?: Record<string, string[]>;
+}
 
 export function parseDraft(raw: string | null): StudioDraft | null {
   if (!raw) return null;
@@ -71,6 +77,15 @@ export function parseDraft(raw: string | null): StudioDraft | null {
     if (modelId) out.modelId = modelId;
     if (prompt) out.prompt = prompt;
     if (referenceAssetId) out.referenceAssetId = referenceAssetId;
+    const from = s(d.from, 40);
+    if (from) out.from = from;
+    if (d.hfInputs && typeof d.hfInputs === 'object' && !Array.isArray(d.hfInputs)) {
+      const inputs: Record<string, string[]> = {};
+      for (const [k, v] of Object.entries(d.hfInputs as Record<string, unknown>).slice(0, 10)) {
+        if (k.length <= 40 && Array.isArray(v)) inputs[k] = v.filter((x): x is string => typeof x === 'string' && x.length <= 128).slice(0, 50);
+      }
+      if (Object.keys(inputs).length) out.hfInputs = inputs;
+    }
     return Object.keys(out).length ? out : null;
   } catch { return null; }
 }
