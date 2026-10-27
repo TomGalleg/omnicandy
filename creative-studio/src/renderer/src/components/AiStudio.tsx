@@ -142,6 +142,7 @@ export function AiStudio({ manifest, selected, onGoto, log }: Props) {
               {label}{id === 'assets' && made.length ? <span className="as-count">{made.length}</span> : null}{id === 'jobs' && views.length ? <span className="as-count">{activeJobs ? `${activeJobs} running` : views.length}</span> : null}
             </button>
           ))}
+          <a className="as-tab as-link" href="https://open.higgsfield.ai/dashboard" target="_blank" rel="noreferrer" title="Opens your Higgsfield dashboard in your browser">Higgsfield dashboard ↗</a>
         </div>
       </div>
 

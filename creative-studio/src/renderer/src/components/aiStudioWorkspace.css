@@ -154,3 +154,5 @@
 .mg-grid.mosaic { display: block; column-width: 300px; column-gap: 0; }
 .mg-grid.mosaic .mg-card { aspect-ratio: var(--ar, 4 / 3); width: 100%; break-inside: avoid; margin: 0; }
 .mg-grid.mosaic .mg-empty { column-span: all; }
+.as-link { text-decoration: none; margin-left: auto; display: inline-block; }
+.as-link:hover { border-color: var(--accent); }
