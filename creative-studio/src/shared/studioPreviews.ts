@@ -32,6 +32,8 @@ export const MODEL_PREVIEWS: Record<string, ModelPreview> = {
   // The file the user supplied is labelled GPT Image 2.0, so the card says so.
   'openai/gpt-image-2.5-flare': { poster: 'gpt-image.jpg', credit: 'Sample image (GPT Image 2.0)', aspect: 1744 / 2336 },
   'openai/gpt-image-2.5-sunburst': { poster: 'gpt-image.jpg', credit: 'Sample image (GPT Image 2.0)', aspect: 1744 / 2336 },
+  // A panda photo turned into SVG with Recraft Vectorize (supplied by the user).
+  'recraft/recraft-tool/vectorize': { poster: 'recraft-vectorize.jpg', credit: 'Sample: photo vectorized with Recraft', aspect: 1018 / 578 },
 };
 
 /** One preview shared by every model of a Higgsfield family (see HfModel.family). */
