@@ -70,7 +70,7 @@ function ParamField({ p, value, onChange }: { p: HfParam; value: HfParamValue | 
       </label>
     );
   }
-  if (p.type === 'text') return <label className="field">{p.label}<input value={String(v ?? '')} maxLength={2000} onChange={(e) => onChange(e.target.value)} /></label>;
+  if (p.type === 'text' || p.type === 'colors' || p.type === 'color') return <label className="field">{p.label}<input value={String(v ?? '')} maxLength={2000} placeholder={p.type === 'colors' ? '#ff6600 #1a1a1a' : p.type === 'color' ? '#ffffff' : undefined} onChange={(e) => onChange(e.target.value)} /></label>;
   return (
     <label className="field">{p.label}{p.min !== undefined && p.max !== undefined ? <small className="asset-meta"> {p.min}–{p.max}</small> : null}
       <input type="number" min={p.min} max={p.max} step={p.step ?? 1} value={v === undefined ? '' : Number(v)} placeholder={p.default === undefined ? 'Default' : undefined}

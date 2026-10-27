@@ -9,6 +9,8 @@
 //   https://docs.higgsfield.ai/docs/models/{seedance-2-5/{text-to-video,image-to-video,reference-to-video,video-edit,video-extend},
 //       seedance-2/reference-to-video,wan-3/reference-to-video,genjutsu/motion-transfer}.md
 //   https://docs.higgsfield.ai/docs/openapi.json   (supplementary spec; Kling 2.5 Turbo and Hailuo 2.3 come only from here)
+//   https://docs.higgsfield.ai/docs/models/{recraft-v4-1/text-to-image, recraft-v4-1-pro/generate, recraft-v4-1-utility/text-to-image,
+//       recraft-v4-1-utility-pro/text-to-image}.md   (public pages that the docs index does not link; found by following related-page links)
 // Not wired: Soul (the docs name two different endpoints: soul/v2/standard and soul/standard), Seedance 2.0 text/image/edit/extend,
 // Wan 2.6/2.7, Hailuo image-to-video, Kling 3 and anything else whose page was not read.
 
@@ -25,7 +27,8 @@ export type HfInputKind = 'image' | 'video' | 'audio';
 export interface HfInput { key: string; kind: HfInputKind; label: string; many: boolean; max: number; required?: boolean }
 
 export interface HfParam {
-  key: string; label: string; type: 'enum' | 'int' | 'number' | 'bool' | 'text';
+  /** 'colors' = up to 10 #rrggbb colours (sent as [{rgb:[r,g,b]}]); 'color' = one #rrggbb colour (sent as {rgb:[r,g,b]}). */
+  key: string; label: string; type: 'enum' | 'int' | 'number' | 'bool' | 'text' | 'colors' | 'color';
   options?: Array<string | number>; default?: HfParamValue; min?: number; max?: number; step?: number;
 }
 
@@ -149,6 +152,25 @@ export const HF_MODELS: HfModel[] = [
   },
 ];
 
+const RECRAFT = 'https://docs.higgsfield.ai/docs/models';
+const RECRAFT_ASPECTS = ['1:1', '2:1', '1:2', '3:2', '2:3', '4:3', '3:4', '5:4', '4:5', '6:10', '14:10', '10:14', '16:9', '9:16'];
+const recraftParams: HfParam[] = [
+  { key: 'aspect_ratio', label: 'Shape', type: 'enum', options: RECRAFT_ASPECTS, default: '1:1' },
+  { key: 'output_format', label: 'File type', type: 'enum', options: ['jpg', 'png', 'webp'], default: 'jpg' },
+  { key: 'colors', label: 'Preferred colours (like #ff6600 #1a1a1a)', type: 'colors' },
+  { key: 'background_color', label: 'Background colour (like #ffffff)', type: 'color' },
+];
+// Recraft V4.1 as Higgsfield hosts it: text to image only, one picture per request, pictures (no SVG, no editing tools).
+const recraftModel = (id: string, label: string, blurb: string, source: string, note?: string): HfModel => ({
+  id, label, family: 'Recraft V4.1 (Higgsfield)', blurb, output: 'image', operations: ['text-to-image', 'color-palette'], prompt: 'required', inputs: [], params: recraftParams, source, ...(note ? { note } : {}),
+});
+HF_MODELS.push(
+  recraftModel('recraft/v4.1/text-to-image', 'Recraft V4.1 · via Higgsfield', 'Recraft V4.1 pictures, paid from your Higgsfield balance (1K).', `${RECRAFT}/recraft-v4-1/text-to-image.md`, 'Pictures only: Higgsfield lists no SVG or editing tools for Recraft.'),
+  recraftModel('recraft/v4.1/pro/text-to-image', 'Recraft V4.1 Pro · via Higgsfield', 'Recraft V4.1 Pro: finer detail at 2K, paid from your Higgsfield balance.', `${RECRAFT}/recraft-v4-1-pro/generate.md`, 'Pictures only. 2K.'),
+  recraftModel('recraft/v4.1/utility/text-to-image', 'Recraft V4.1 Utility · via Higgsfield', 'Recraft V4.1 Utility pictures (1K), paid from your Higgsfield balance.', `${RECRAFT}/recraft-v4-1-utility/text-to-image.md`, 'Higgsfield does not explain how Utility differs from the standard model.'),
+  recraftModel('recraft/v4.1/utility/pro/text-to-image', 'Recraft V4.1 Utility Pro · via Higgsfield', 'Recraft V4.1 Utility Pro pictures (2K), paid from your Higgsfield balance.', `${RECRAFT}/recraft-v4-1-utility-pro/text-to-image.md`, 'Higgsfield does not explain how Utility differs from the standard model. 2K.'),
+);
+
 export const hfModel = (id: string) => HF_MODELS.find((m) => m.id === id);
 
 export const HF_PRICE_UNKNOWN = "Higgsfield publishes no price for this model, so OmniCandy can't show one. It is charged to your Higgsfield API balance; failed, moderated and still-queued cancelled requests are not charged.";
@@ -176,7 +198,15 @@ export function normalizeHiggsfieldJob(raw: HiggsfieldJob): HiggsfieldJob {
     const p = m.params.find((x) => x.key === k);
     if (!p) throw new Error(`"${k}" is not a setting of ${m.label}.`);
     if (v === '' || v === undefined) continue;
-    if (p.type === 'bool') { if (typeof v !== 'boolean') throw new Error(`${p.label} must be on or off.`); }
+    if (p.type === 'colors' || p.type === 'color') {
+      if (typeof v !== 'string') throw new Error(`${p.label} must be text like #ff6600.`);
+      const list = v.split(/[\s,]+/).filter(Boolean);
+      if (p.type === 'color' && list.length !== 1) throw new Error(`${p.label}: give one colour like #ffffff.`);
+      if (list.length > 10) throw new Error(`${p.label}: use at most 10 colours.`);
+      for (const c of list) if (!/^#[0-9a-fA-F]{6}$/.test(c)) throw new Error(`"${c}" is not a colour like #ff6600.`);
+      if (!list.length) continue;
+    }
+    else if (p.type === 'bool') { if (typeof v !== 'boolean') throw new Error(`${p.label} must be on or off.`); }
     else if (p.type === 'text') { if (typeof v !== 'string') throw new Error(`${p.label} must be text.`); if (v.length > 2000) throw new Error(`${p.label} is too long.`); }
     else if (p.type === 'enum') { if (!p.options?.some((o) => o === v)) throw new Error(`${p.label}: "${String(v)}" is not allowed.`); }
     else {
@@ -208,7 +238,12 @@ export function normalizeHiggsfieldJob(raw: HiggsfieldJob): HiggsfieldJob {
 export function higgsfieldBody(raw: HiggsfieldJob, urls: Record<string, string[]>): Record<string, unknown> {
   const job = normalizeHiggsfieldJob(raw);
   const m = hfModel(job.modelId)!;
-  const body: Record<string, unknown> = { ...(job.prompt ? { prompt: job.prompt } : {}), ...job.params };
+  const body: Record<string, unknown> = { ...(job.prompt ? { prompt: job.prompt } : {}) };
+  const rgb = (h: string) => ({ rgb: [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)] });
+  for (const [k, v] of Object.entries(job.params)) {
+    const type = m.params.find((x) => x.key === k)?.type;
+    body[k] = type === 'colors' ? String(v).split(/[\s,]+/).filter(Boolean).map(rgb) : type === 'color' ? rgb(String(v).trim()) : v;
+  }
   for (const spec of m.inputs) {
     const list = urls[spec.key];
     if (!list?.length) continue;

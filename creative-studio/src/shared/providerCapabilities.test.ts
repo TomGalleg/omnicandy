@@ -51,7 +51,9 @@ describe('provider capability registry', () => {
     expect(hf.note).toMatch(/MCP.*different/);
     expect(hf.cancel).toMatch(/queued/);
     expect(hf.availability).toBe('wired');
-    expect(findModels({ providerId: 'higgsfield', output: 'raster' }).every((m) => m.availability === 'planned')).toBe(true);
+    // Soul is the only Higgsfield picture model that is not connected; the Recraft ones are.
+    expect(findModels({ providerId: 'higgsfield', output: 'raster' }).filter((m) => m.availability === 'planned').map((m) => m.id)).toEqual(['higgsfield-ai/soul/v2/standard']);
+    expect(findModels({ providerId: 'higgsfield', search: 'recraft', wiredOnly: true }).map((m) => m.id)).toEqual(['recraft/v4.1/text-to-image', 'recraft/v4.1/pro/text-to-image', 'recraft/v4.1/utility/text-to-image', 'recraft/v4.1/utility/pro/text-to-image']);
     expect(findModels({ providerId: 'higgsfield', operation: 'video-extend' }).map((m) => m.id)).toEqual(['bytedance/seedance-2.5/video-extend']);
     expect(findModels({ providerId: 'higgsfield' }).every((m) => m.output === 'raster' || m.output === 'video')).toBe(true);
     // Recraft: the four V4.1 generation models and the picture tools are connected; masked editing stays planned.

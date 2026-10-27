@@ -29,7 +29,7 @@ beforeEach(async () => {
   await fs.writeFile(f, testPattern(8, 8, 3));
   imageId = (await store.addGeneratedFile(f, { name: 'start.png', provenance: { source: 'test', prompt: 'p', provider: 'mock', model: 'm', settings: {}, requestedBy: 'user' } })).asset.id;
 });
-afterEach(async () => { await fs.rm(tmp, { recursive: true, force: true }); });
+afterEach(async () => { await fs.rm(tmp, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 }); });
 
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
 const i2v = (o: Partial<HiggsfieldJob> = {}): HiggsfieldJob => ({ modelId: 'kling-video/v2.5-turbo/pro/image-to-video', prompt: 'The lighthouse beam turns', params: { duration: 5 }, inputs: { image_url: [imageId] }, ...o });
@@ -55,8 +55,9 @@ function rig(opts: { statuses?: unknown[]; submit?: unknown; download?: () => Re
   return { svc: new HiggsfieldService({ ...deps, pollMs: 1, onChange: (r) => changes.push(r) }), gen: new GenerationService(deps), fetchMock, approveMock, calls, changes };
 }
 async function until(svc: HiggsfieldService, ok: (r: HfJobRecord) => boolean): Promise<HfJobRecord> {
-  for (let i = 0; i < 400; i++) { const r = (await svc.list())[0]; if (r && ok(r)) return r; await new Promise((x) => setTimeout(x, 5)); }
-  throw new Error('timed out');
+  let last: HfJobRecord | undefined;
+  for (let i = 0; i < 400; i++) { last = (await svc.list())[0]; if (last && ok(last)) return last; await new Promise((x) => setTimeout(x, 5)); }
+  throw new Error(`timed out; last record: ${JSON.stringify(last)}`);
 }
 
 describe('HiggsfieldService', () => {

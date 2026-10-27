@@ -66,7 +66,14 @@ export class HiggsfieldService {
 
   private async file(store: ProjectStore) { return path.join(await store.workDir('higgsfield'), 'jobs.json'); }
 
-  private async read(store: ProjectStore): Promise<HfJobRecord[]> {
+  /** Reads wait their turn behind any write: on Windows a rename fails while a reader holds the file, even our own. */
+  private read(store: ProjectStore): Promise<HfJobRecord[]> {
+    const p = this.writes.then(() => this.readRaw(store), () => this.readRaw(store));
+    this.writes = p.then(() => undefined, () => undefined);
+    return p;
+  }
+
+  private async readRaw(store: ProjectStore): Promise<HfJobRecord[]> {
     try {
       const j = JSON.parse(await fs.readFile(await this.file(store), 'utf8')) as { jobs?: HfJobRecord[] };
       return Array.isArray(j.jobs) ? j.jobs : [];
@@ -75,7 +82,7 @@ export class HiggsfieldService {
 
   private update(store: ProjectStore, id: string, patch: Partial<HfJobRecord> | HfJobRecord): Promise<HfJobRecord | null> {
     const run = async () => {
-      const jobs = await this.read(store);
+      const jobs = await this.readRaw(store);
       const i = jobs.findIndex((x) => x.id === id);
       const next = i < 0 ? ('job' in patch ? (patch as HfJobRecord) : null) : { ...jobs[i]!, ...patch, updatedAt: new Date().toISOString() };
       if (!next) return null;
@@ -86,7 +93,7 @@ export class HiggsfieldService {
       for (let attempt = 0; ; attempt++) { // Windows may briefly lock the target (scanner, reader)
         try { await fs.rename(tmp, f); break; } catch (e) {
           const code = (e as NodeJS.ErrnoException).code;
-          if (attempt >= 8 || (code !== 'EPERM' && code !== 'EBUSY' && code !== 'EACCES')) throw e;
+          if (attempt >= 20 || (code !== 'EPERM' && code !== 'EBUSY' && code !== 'EACCES')) throw e;
           await new Promise((r) => setTimeout(r, 15 * (attempt + 1)));
         }
       }

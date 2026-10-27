@@ -16,6 +16,16 @@ describe('Higgsfield catalog', () => {
     expect(HF_MODELS.filter((m) => m.family === 'Seedance 2.5').map((m) => m.id.split('/').pop())).toEqual(['text-to-video', 'image-to-video', 'reference-to-video', 'video-edit', 'video-extend']);
     expect(hfModel('bytedance/seedance-2.5/video-edit')!.params.some((p) => p.key === 'duration')).toBe(false); // the docs say never send duration
   });
+  it('offers Recraft V4.1 through Higgsfield as pictures only, with the documented settings', () => {
+    const r = HF_MODELS.filter((m) => m.family === 'Recraft V4.1 (Higgsfield)');
+    expect(r.map((m) => m.id)).toEqual(['recraft/v4.1/text-to-image', 'recraft/v4.1/pro/text-to-image', 'recraft/v4.1/utility/text-to-image', 'recraft/v4.1/utility/pro/text-to-image']);
+    for (const m of r) { expect(m.output).toBe('image'); expect(m.inputs).toEqual([]); expect(m.params.find((p) => p.key === 'aspect_ratio')!.options).toHaveLength(14); }
+    const body = higgsfieldBody({ modelId: 'recraft/v4.1/text-to-image', prompt: 'A fox', params: { aspect_ratio: '16:9', output_format: 'png', colors: '#ff6600, #1a1a1a', background_color: '#ffffff' }, inputs: {} }, {});
+    expect(body).toEqual({ prompt: 'A fox', aspect_ratio: '16:9', output_format: 'png', colors: [{ rgb: [255, 102, 0] }, { rgb: [26, 26, 26] }], background_color: { rgb: [255, 255, 255] } });
+    expect(() => normalizeHiggsfieldJob({ modelId: 'recraft/v4.1/text-to-image', prompt: 'x', params: { colors: 'red' }, inputs: {} })).toThrow(/not a colour/);
+    expect(() => normalizeHiggsfieldJob({ modelId: 'recraft/v4.1/text-to-image', prompt: 'x', params: { background_color: '#fff000 #000fff' }, inputs: {} })).toThrow(/one colour/);
+    expect(() => normalizeHiggsfieldJob({ modelId: 'recraft/v4.1/text-to-image', prompt: 'x', params: { aspect_ratio: '7:5' }, inputs: {} })).toThrow(/not allowed/);
+  });
   it('does not list Soul, whose endpoint the docs state two ways', () => {
     expect(HF_MODELS.some((m) => /soul/.test(m.id))).toBe(false);
   });
