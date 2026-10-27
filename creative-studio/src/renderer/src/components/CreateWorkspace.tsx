@@ -335,6 +335,7 @@ export function CreateWorkspace(p: Props) {
                 <div className="as-badges">{categoriesOf(model).map((c) => <span key={c} className="as-badge">{CATEGORIES.find((x) => x.id === c)!.label}</span>)}</div>
                 <p className={price?.known ? '' : 'asset-meta'}>{price?.text}. {studioProvider(model.providerId)?.costInfo}</p>
                 <p className="asset-meta">Stopping a job: {studioProvider(model.providerId)?.cancel}</p>
+                {studioProvider(model.providerId)?.connection && <p className="asset-meta">{studioProvider(model.providerId)?.connection}</p>}
                 {settingsSummary(model).length > 0 && <details className="hf-adv"><summary>What you can change</summary><ul className="mg-list">{settingsSummary(model).map((s) => <li key={s}>{s}</li>)}</ul></details>}
               </>
             ) : <p className="asset-meta">Choose a model to see what it can do, what it costs and how it bills.</p>}

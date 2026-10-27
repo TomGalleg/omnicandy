@@ -58,6 +58,8 @@ export interface StudioProvider {
   /** How the app learns the cost before a paid request. */
   costInfo: string;
   note?: string;
+  /** A plain-words line for the model panels about what is and is not connected for this provider. */
+  connection?: string;
 }
 
 const RECRAFT_MODEL_DOC = 'https://www.recraft.ai/docs/api-reference/models/recraft-v4-1.md';
@@ -70,6 +72,7 @@ export const STUDIO_PROVIDERS: StudioProvider[] = [
     id: 'higgsfield', label: 'Higgsfield', kind: 'cloud-api', billable: true, availability: 'wired', discovery: 'docs-only',
     cancel: 'Only while the request is still queued (cancel_url); once in_progress it cannot be stopped.',
     costInfo: 'Charged to your Higgsfield API balance. No price list or estimate endpoint is documented, so the price is shown as unknown. Failed, moderated and cancelled-while-queued requests are not charged.',
+    connection: "Connected through Higgsfield's API with your API key (billed to your Higgsfield API balance). Higgsfield's separate account connection (MCP, signed in with your Higgsfield account and using subscription credits) is not connected: it needs a remote sign-in that OmniCandy's MCP client does not support, which would be a security decision of its own.",
     note: 'Official API: "Authorization: Key <id>:<secret>" at api.higgsfield.ai, async (queued, in_progress, completed, failed, nsfw, canceled). The Higgsfield MCP (mcp.higgsfield.ai/mcp) is a different product: it signs in with the Higgsfield account and spends subscription credits, not the API balance.',
   },
   {

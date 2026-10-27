@@ -150,6 +150,7 @@ export function ModelGallery({ assets, configured, favs, onToggleFav, onCreate, 
             <h4>Cost and billing</h4>
             <p className={priceInfo(open).known ? '' : 'asset-meta'}>{priceInfo(open).text}. {studioProvider(open.providerId)?.costInfo}</p>
             <p className="asset-meta">Stopping a job: {studioProvider(open.providerId)?.cancel}</p>
+            {studioProvider(open.providerId)?.connection && <p className="asset-meta">{studioProvider(open.providerId)?.connection}</p>}
             {open.source !== 'in-app' && <p className="asset-meta">Checked against <a href={open.source} target="_blank" rel="noreferrer">the official documentation</a>.</p>}
             {state(open) === 'needs-key' && <div className="notice">Add your {studioProvider(open.providerId)?.label} key in Settings → Integrations to use it. {onOpenSettings && <button className="btn small" onClick={onOpenSettings}>Open Settings</button>}</div>}
             {state(open) === 'soon' && <div className="notice">Documented by {studioProvider(open.providerId)?.label} but not connected yet, so nothing can be sent.</div>}
