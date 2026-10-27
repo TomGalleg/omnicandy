@@ -11,12 +11,13 @@
 //              https://higgsfield.ai/creator-hub/help-center/integrations/{what-is-the-higgsfield-api,how-do-i-connect-higgsfield-to-ai-agent}
 
 import { IMAGE_MODELS } from './generation';
+import { HF_MODELS } from './higgsfield';
 
 export type StudioProviderId = 'gemini' | 'openai' | 'higgsfield' | 'recraft' | 'local' | 'mock';
 
 export type StudioOperation =
   | 'text-to-image' | 'image-to-image' | 'edit' | 'inpaint' | 'outpaint' | 'replace-background'
-  | 'text-to-video' | 'image-to-video' | 'video-enhance'
+  | 'text-to-video' | 'image-to-video' | 'video-enhance' | 'video-edit' | 'video-extend' | 'reference-to-video' | 'motion-transfer'
   | 'upscale' | 'remove-background' | 'vectorize' | 'erase-region'
   | 'styles' | 'color-palette' | 'reference-images';
 
@@ -63,9 +64,9 @@ export const STUDIO_PROVIDERS: StudioProvider[] = [
   { id: 'gemini', label: 'Google Gemini', kind: 'cloud-api', billable: true, availability: 'wired', discovery: 'api-list', cancel: 'Synchronous call: stops by timeout only.', costInfo: "Estimated locally from Google's published per-image prices." },
   { id: 'openai', label: 'OpenAI GPT Image', kind: 'cloud-api', billable: true, availability: 'wired', discovery: 'api-list', cancel: 'Synchronous call: stops by timeout only.', costInfo: "Estimated locally from OpenAI's token calculator." },
   {
-    id: 'higgsfield', label: 'Higgsfield', kind: 'cloud-api', billable: true, availability: 'planned', discovery: 'docs-only',
+    id: 'higgsfield', label: 'Higgsfield', kind: 'cloud-api', billable: true, availability: 'wired', discovery: 'docs-only',
     cancel: 'Only while the request is still queued (cancel_url); once in_progress it cannot be stopped.',
-    costInfo: 'Fixed published rates per model (prepaid USD balance); failed requests are not charged. No estimate endpoint is documented.',
+    costInfo: 'Charged to your Higgsfield API balance. No price list or estimate endpoint is documented, so the price is shown as unknown. Failed, moderated and cancelled-while-queued requests are not charged.',
     note: 'Official API: "Authorization: Key <id>:<secret>" at api.higgsfield.ai, async (queued, in_progress, completed, failed, nsfw, canceled). The Higgsfield MCP (mcp.higgsfield.ai/mcp) is a different product: it signs in with the Higgsfield account and spends subscription credits, not the API balance.',
   },
   {
@@ -123,13 +124,17 @@ const RECRAFT_MODELS: StudioModel[] = [
   },
 ];
 
-// Higgsfield publishes no model-list endpoint, so only models whose page was read are registered.
-// More are added as their docs are checked; a model missing here is simply not offered.
+// Higgsfield publishes no model-list endpoint, so the catalog in ./higgsfield (docs-verified entries only) is the source.
+// Soul stays planned: the docs name two different endpoints for it (soul/v2/standard and soul/standard).
 const HIGGSFIELD_MODELS: StudioModel[] = [
+  ...HF_MODELS.map((m): StudioModel => ({
+    providerId: 'higgsfield', id: m.id, label: m.label, output: m.output === 'video' ? 'video' : 'raster', operations: m.operations,
+    availability: 'wired', source: m.source, ...(m.note ? { note: m.note } : {}),
+  })),
   {
-    providerId: 'higgsfield', id: 'higgsfield-ai/soul/v2/standard', label: 'Higgsfield Soul 2 Standard', output: 'raster', availability: 'planned',
-    source: 'https://docs.higgsfield.ai/docs/index.md', operations: ['text-to-image'],
-    note: 'Example model from the official docs. Other models need their own docs page checked first.',
+    providerId: 'higgsfield', id: 'higgsfield-ai/soul/v2/standard', label: 'Higgsfield Soul', output: 'raster', availability: 'planned',
+    source: 'https://docs.higgsfield.ai/docs/openapi.json', operations: ['text-to-image'],
+    note: 'Not connected: the official docs list two different endpoints for Soul, so it needs a check before it is offered.',
   },
 ];
 

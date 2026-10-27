@@ -12,6 +12,7 @@ export type ProjectMetaPatch = Pick<ProjectManifest, 'objective' | 'view'>;
 import type { CostEstimate, ImageJob, ProviderId } from './generation';
 import type { StudioJob } from './aiStudio';
 import type { RecraftJob } from './recraft';
+import type { HfJobRecord, HiggsfieldJob } from './higgsfield';
 import type { LiveSnapshot, TimelineDto, TimelineEdit } from './live';
 import type { EditorAppId } from './appEditors';
 import type { DeliverJob, DeliverRecord } from './deliver';
@@ -152,6 +153,10 @@ export const IPC = {
   studioJobs: 'studio:jobs',
   studioJobsSave: 'studio:jobs-save',
   recraftRun: 'studio:recraft-run',
+  higgsfieldJobs: 'studio:higgsfield-jobs',
+  higgsfieldRun: 'studio:higgsfield-run',
+  higgsfieldCancel: 'studio:higgsfield-cancel',
+  higgsfieldEvent: 'studio:higgsfield-event',
   videoList: 'video:list',
   videoSubmit: 'video:submit',
   videoCancel: 'video:cancel',
@@ -496,6 +501,11 @@ export interface StudioApi {
     studioJobsSave(jobs: StudioJob[]): Promise<StudioJob[]>;
     /** Recraft pictures/SVG: native approval for the shown price, then generates. */
     recraftRun(job: RecraftJob): Promise<GenerateResultDto>;
+    /** Higgsfield (async): saved jobs, submit (native approval first; resolves once Higgsfield accepted it), queued-only cancel, live updates. */
+    higgsfieldJobs(): Promise<HfJobRecord[]>;
+    higgsfieldRun(job: HiggsfieldJob): Promise<HfJobRecord>;
+    higgsfieldCancel(id: string): Promise<HfJobRecord>;
+    onHiggsfield(cb: (r: HfJobRecord) => void): () => void;
     /** AI video (Google Veo): saved jobs of this project; running ones are tracked in the background. */
     videoJobs(): Promise<VideoJobRecord[]>;
     /** Asks for approval in a native dialog, then submits. Returns at once; the video arrives minutes later. */

@@ -56,6 +56,7 @@ import { setResolveLiveHooks } from './integrations/adapters/resolveLive';
 import { BLANK_FILES, EDITOR_APPS, type EditorAppId } from '@shared/appEditors';
 import { DeliverQueue } from './deliver';
 import { RecraftService } from './recraft';
+import { HiggsfieldService } from './higgsfield';
 import { StudioJobStore } from './studioJobs';
 import { WorkflowSteps } from './workflowSteps';
 import type { EmbeddedApp } from './embeddedApp';
@@ -505,16 +506,16 @@ export function registerIpc(d: IpcDeps): void {
     return showApprovalCard(win, {
       title: isVideo ? 'Approve paid video generation' : 'Approve paid image generation',
       heading: `${approvalAsker(r)} ${isVideo ? 'a' : r.count} ${many} with ${r.provider} · ${r.model}?`,
-      cost: `${r.estimate.approximate ? '≈ ' : ''}${formatUsd(r.estimate.amount)} USD`,
-      costNote: `${r.estimate.basis} Charged to your ${r.provider} account.`,
+      cost: r.priceUnknown ? 'Price not published' : `${r.estimate.approximate ? '≈ ' : ''}${formatUsd(r.estimate.amount)} USD`,
+      costNote: r.priceUnknown ? `${r.priceUnknown} Charged to your ${r.provider} account.` : `${r.estimate.basis} Charged to your ${r.provider} account.`,
       rows: [
         ['Prompt', prompt],
         ['Settings', Object.entries(r.settings).map(([k, v]) => `${k} ${v}`).join(', ')],
         ['References', r.references.length ? `Sent to ${r.provider}: ${r.references.join(', ')}` : ''],
         ['Limit', r.limitUsd != null ? `Project spending limit $${r.limitUsd.toFixed(2)} (about $${(r.spentUsd ?? 0).toFixed(2)} estimated so far).` : ''],
       ],
-      footnote: isVideo ? 'Nothing is sent until you click Make video. Video can take several minutes and cannot be cancelled once Google has it.' : 'Nothing is sent until you click Generate.',
-      confirmLabel: `${isVideo ? 'Make video' : 'Generate'} (${r.estimate.approximate ? '~' : ''}${formatUsd(r.estimate.amount)})`,
+      footnote: r.footnote ?? (isVideo ? 'Nothing is sent until you click Make video. Video can take several minutes and cannot be cancelled once Google has it.' : 'Nothing is sent until you click Generate.'),
+      confirmLabel: r.priceUnknown ? `${isVideo ? 'Make video' : 'Generate'} (price unknown)` : `${isVideo ? 'Make video' : 'Generate'} (${r.estimate.approximate ? '~' : ''}${formatUsd(r.estimate.amount)})`,
     });
   };
   const generation = new GenerationService({ vault, store: d.project, approve: approveGeneration, fetch: globalThis.fetch.bind(globalThis) });
@@ -536,8 +537,25 @@ export function registerIpc(d: IpcDeps): void {
     });
   };
   const recraft = new RecraftService({ vault, store: d.project, approve: approveGeneration, fetch: globalThis.fetch.bind(globalThis) });
+  const higgsfield = new HiggsfieldService({
+    vault, store: d.project, approve: approveGeneration, fetch: globalThis.fetch.bind(globalThis),
+    onChange: (r) => {
+      for (const w of BrowserWindow.getAllWindows()) if (!w.isDestroyed()) w.webContents.send(IPC.higgsfieldEvent, r);
+      // Finished files are new library assets: same event as a finished image so the Media list refreshes.
+      if (r.state === 'done' && r.assetIds.length) emitGenerated({ assetIds: r.assetIds, message: r.message, estimate: { amount: 0, perImage: 0, currency: 'USD', approximate: true, basis: 'Higgsfield publishes no price.' }, requestedBy: r.requestedBy });
+    },
+  });
+  const higgsfieldJobSchema = z.object({
+    modelId: z.string().min(1).max(100),
+    prompt: z.string().max(10_000),
+    params: z.record(z.string().max(40), z.union([z.string().max(2000), z.number(), z.boolean()])),
+    inputs: z.record(z.string().max(40), z.array(z.string().min(1).max(128)).max(50)),
+  });
+  handle(IPC.higgsfieldJobs, none, () => higgsfield.list());
+  handle(IPC.higgsfieldRun, z.tuple([higgsfieldJobSchema]), (job) => higgsfield.submit(job, 'user'));
+  handle(IPC.higgsfieldCancel, z.tuple([z.string().min(1).max(64)]), (id) => higgsfield.cancel(id));
   const studioJobs = new StudioJobStore(async () => (await d.project()).root);
-  const keyProvider = z.enum(['openai', 'gemini', 'runway', 'recraft']);
+  const keyProvider = z.enum(['openai', 'gemini', 'runway', 'recraft', 'higgsfield']);
   handle(IPC.genProviders, none, () => providerStatus());
   handle(IPC.genPasteKey, z.tuple([keyProvider]), async (providerId) => {
     const copied = await clipboard.readText();

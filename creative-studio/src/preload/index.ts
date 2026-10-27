@@ -190,6 +190,14 @@ const api: StudioApi = {
     studioJobs: () => ipcRenderer.invoke(IPC.studioJobs),
     studioJobsSave: (jobs) => ipcRenderer.invoke(IPC.studioJobsSave, jobs),
     recraftRun: (job) => ipcRenderer.invoke(IPC.recraftRun, job),
+    higgsfieldJobs: () => ipcRenderer.invoke(IPC.higgsfieldJobs),
+    higgsfieldRun: (job) => ipcRenderer.invoke(IPC.higgsfieldRun, job),
+    higgsfieldCancel: (id) => ipcRenderer.invoke(IPC.higgsfieldCancel, id),
+    onHiggsfield: (cb) => {
+      const listener = (_e: unknown, r: Parameters<typeof cb>[0]) => cb(r);
+      ipcRenderer.on(IPC.higgsfieldEvent, listener);
+      return () => ipcRenderer.removeListener(IPC.higgsfieldEvent, listener);
+    },
     videoJobs: () => ipcRenderer.invoke(IPC.videoList),
     videoSubmit: (job) => ipcRenderer.invoke(IPC.videoSubmit, job),
     videoCancel: (id) => ipcRenderer.invoke(IPC.videoCancel, id),

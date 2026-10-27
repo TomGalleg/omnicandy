@@ -11,6 +11,7 @@ import {
 } from './imageApis';
 import type { Asset } from '@shared/types';
 import { redact, type KeyMeta, type KeyTest, type SafeStorageVault } from './credentialVault';
+import { HIGGSFIELD_BASE } from '@shared/higgsfield';
 import { testPattern } from './png';
 import type { ProjectStore } from './projectStore';
 
@@ -42,6 +43,10 @@ export interface ApprovalRequest {
   /** This project's limit and what is already estimated as spent (USD); null limit = none. */
   limitUsd?: number | null;
   spentUsd?: number;
+  /** Set when the provider publishes no price: the card then says so instead of showing $0. Value = the explanation. */
+  priceUnknown?: string;
+  /** Replaces the default footnote (for providers with their own cancel rules). */
+  footnote?: string;
 }
 
 export interface GenerationDeps {
@@ -83,7 +88,7 @@ export class GenerationService {
 
   async providerStatus() {
     const out: Array<{ id: ProviderId; configured: boolean; unreadable: boolean; meta: KeyMeta | null }> = [];
-    for (const p of ['openai', 'gemini', 'runway', 'recraft'] as const) {
+    for (const p of ['openai', 'gemini', 'runway', 'recraft', 'higgsfield'] as const) {
       const s = await this.d.vault.status(p);
       out.push({ id: p, configured: s.configured, unreadable: !!s.unreadable, meta: await this.d.vault.meta(p) });
     }
@@ -91,8 +96,9 @@ export class GenerationService {
   }
 
   /** Lists models with the saved key (free; no image is generated). */
-  async testConnection(provider: 'openai' | 'gemini' | 'runway' | 'recraft'): Promise<KeyTest> {
+  async testConnection(provider: 'openai' | 'gemini' | 'runway' | 'recraft' | 'higgsfield'): Promise<KeyTest> {
     if (provider === 'runway') return this.testRunway();
+    if (provider === 'higgsfield') return this.testHiggsfield();
     if (provider === 'recraft') return this.testRecraft();
     const at = new Date().toISOString();
     let test: KeyTest;
@@ -133,6 +139,24 @@ export class GenerationService {
       test = { ok: false, at, message: e instanceof Error ? e.message : String(e) };
     }
     await this.d.vault.setLastTest('recraft', test);
+    return test;
+  }
+
+  /** Free. Higgsfield documents no balance or model-list call, so this reads the status of a request id that cannot exist: a rejected key answers 401/403, an accepted one a plain "not found". */
+  private async testHiggsfield(): Promise<KeyTest> {
+    const at = new Date().toISOString();
+    let test: KeyTest;
+    try {
+      await this.d.vault.withKey('higgsfield', async (key) => {
+        const res = await this.d.fetch(`${HIGGSFIELD_BASE}/requests/00000000-0000-0000-0000-000000000000/status`, { headers: { Authorization: `Key ${key}` }, signal: AbortSignal.timeout(30_000) });
+        if (res.status === 401 || res.status === 403) throw await failure(res, 'Higgsfield');
+        if (res.status >= 500) throw await failure(res, 'Higgsfield');
+      });
+      test = { ok: true, at, models: [], message: 'Higgsfield accepted the key. It has no free balance check, so the balance is not shown; see console.higgsfield.ai.' };
+    } catch (e) {
+      test = { ok: false, at, message: e instanceof Error ? e.message : String(e) };
+    }
+    await this.d.vault.setLastTest('higgsfield', test);
     return test;
   }
 
