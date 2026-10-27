@@ -2,8 +2,16 @@ import { Fragment, useMemo, useRef, useState } from 'react';
 import type { Asset } from '@shared/types';
 import { cardState, type CardState } from '@shared/aiStudio';
 import { previewFor, type ModelPreview } from '@shared/studioPreviews';
-import seedancePoster from '../assets/previews/seedance-2-5.jpg';
-import seedanceClip from '../assets/previews/seedance-2-5.mp4';
+import textPoster from '../assets/previews/seedance-text.jpg';
+import textClip from '../assets/previews/seedance-text.mp4';
+import picturePoster from '../assets/previews/seedance-picture.jpg';
+import pictureClip from '../assets/previews/seedance-picture.mp4';
+import referencePoster from '../assets/previews/seedance-reference.jpg';
+import referenceClip from '../assets/previews/seedance-reference.mp4';
+import editPoster from '../assets/previews/seedance-edit.jpg';
+import editClip from '../assets/previews/seedance-edit.mp4';
+import extendPoster from '../assets/previews/seedance-extend.jpg';
+import extendClip from '../assets/previews/seedance-extend.mp4';
 import { STUDIO_PROVIDERS, studioProvider, type StudioModel, type StudioProviderId } from '@shared/providerCapabilities';
 import {
   artSeed, BRAND, CATEGORIES, categoriesOf, compareRows, describeModel, exploreModels, favKey, OP_LABEL, outputLabel, priceInfo, settingsSummary,
@@ -20,7 +28,11 @@ interface Props {
 }
 
 // Bundled example media (small copies of files the user supplied), by the file names listed in shared/studioPreviews.ts.
-const PREVIEW_FILES: Record<string, string> = { 'seedance-2-5.jpg': seedancePoster, 'seedance-2-5.mp4': seedanceClip };
+const PREVIEW_FILES: Record<string, string> = {
+  'seedance-text.jpg': textPoster, 'seedance-text.mp4': textClip, 'seedance-picture.jpg': picturePoster, 'seedance-picture.mp4': pictureClip,
+  'seedance-reference.jpg': referencePoster, 'seedance-reference.mp4': referenceClip, 'seedance-edit.jpg': editPoster, 'seedance-edit.mp4': editClip,
+  'seedance-extend.jpg': extendPoster, 'seedance-extend.mp4': extendClip,
+};
 const previewUrl = (name: string) => PREVIEW_FILES[name];
 
 const STATE_TEXT: Record<CardState, string> = { ready: 'Ready', 'needs-key': 'Needs a key', soon: 'Coming soon' };
@@ -64,7 +76,7 @@ export function ModelGallery({ assets, configured, favs, onToggleFav, onCreate, 
   const [search, setSearch] = useState('');
   const [favoritesOnly, setFavoritesOnly] = useState(false);
   const [readyOnly, setReadyOnly] = useState(false);
-  const [list, setList] = useState(false);
+  const [view, setView] = useState<'grid' | 'list' | 'mosaic'>('mosaic');
   const [openKey, setOpenKey] = useState<string | null>(null);
   const [compare, setCompare] = useState<string[]>([]);
   const [showCompare, setShowCompare] = useState(false);
@@ -87,8 +99,7 @@ export function ModelGallery({ assets, configured, favs, onToggleFav, onCreate, 
         <button className={`chip chip-btn${favoritesOnly ? ' on' : ''}`} aria-pressed={favoritesOnly} onClick={() => setFavoritesOnly(!favoritesOnly)}>♥ Favourites{favs.length ? ` (${favs.length})` : ''}</button>
         <button className={`chip chip-btn${readyOnly ? ' on' : ''}`} aria-pressed={readyOnly} onClick={() => setReadyOnly(!readyOnly)}>Ready to use</button>
         <span className="mg-views" role="group" aria-label="View">
-          <button className={`chip chip-btn${!list ? ' on' : ''}`} aria-pressed={!list} onClick={() => setList(false)}>Grid</button>
-          <button className={`chip chip-btn${list ? ' on' : ''}`} aria-pressed={list} onClick={() => setList(true)}>List</button>
+          {(['mosaic', 'grid', 'list'] as const).map((v) => <button key={v} className={`chip chip-btn${view === v ? ' on' : ''}`} aria-pressed={view === v} onClick={() => setView(v)}>{v === 'mosaic' ? 'Mosaic' : v === 'grid' ? 'Grid' : 'List'}</button>)}
         </span>
       </div>
 
@@ -110,7 +121,7 @@ export function ModelGallery({ assets, configured, favs, onToggleFav, onCreate, 
       {activeCat && <div className="asset-meta">{activeCat.blurb}</div>}
 
       <div className={`mg-layout${open ? ' with-detail' : ''}`}>
-        <div className={`mg-grid${list ? ' list' : ''}`}>
+        <div className={`mg-grid${view === 'list' ? ' list' : view === 'mosaic' ? ' mosaic' : ''}`}>
           {models.length === 0 && (
             <div className="mg-empty">
               <strong>{activeCat && all.filter(activeCat.match).length === 0 ? activeCat.empty : favoritesOnly && !favs.length ? 'No favourites yet. Tap ♥ on a model to keep it here.' : 'No model matches.'}</strong>
@@ -124,7 +135,7 @@ export function ModelGallery({ assets, configured, favs, onToggleFav, onCreate, 
             const cover = coverFor(m, assets);
             const price = priceInfo(m);
             return (
-              <article key={k} className={`mg-card ${st}${openKey === k ? ' open' : ''}`} style={{ ['--hue' as string]: BRAND[m.providerId].hue }}>
+              <article key={k} className={`mg-card ${st}${openKey === k ? ' open' : ''}`} style={{ ['--hue' as string]: BRAND[m.providerId].hue, ...(!cover && previewFor(m) ? { ['--ar' as string]: previewFor(m)!.aspect } : {}) }}>
                 <button className="mg-hit" onClick={() => setOpenKey(openKey === k ? null : k)} aria-label={`${m.label}, ${studioProvider(m.providerId)?.label}. Show details`} aria-pressed={openKey === k} />
                 <Cover m={m} asset={cover} />
                 <div className="mg-tags">
