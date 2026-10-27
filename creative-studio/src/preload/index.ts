@@ -1,6 +1,6 @@
 // Sandboxed preload: exposes exactly the StudioApi, nothing else. No Node APIs reach the renderer.
 
-import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron';
+import { contextBridge, ipcRenderer, webUtils, type IpcRendererEvent } from 'electron';
 import { ASSET_SCHEME, IPC, type StudioApi } from '@shared/ipc';
 import type { ClaudeState } from '@shared/claude';
 import type { BuildState } from '@shared/buildSession';
@@ -15,6 +15,8 @@ const api: StudioApi = {
   setAppearance: (s) => ipcRenderer.invoke(IPC.setAppearance, s),
   loadProject: () => ipcRenderer.invoke(IPC.loadProject),
   importAssets: () => ipcRenderer.invoke(IPC.importAssets),
+  pathForFile: (file) => webUtils.getPathForFile(file),
+  importPaths: (paths) => ipcRenderer.invoke(IPC.importPaths, paths),
   references: {
     pick: () => ipcRenderer.invoke(IPC.refsPick),
     remove: (id) => ipcRenderer.invoke(IPC.refsRemove, id),

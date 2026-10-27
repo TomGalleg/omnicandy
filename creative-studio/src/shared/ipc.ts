@@ -36,6 +36,7 @@ export const IPC = {
   setAppearance: 'appearance:set',
   loadProject: 'project:load',
   importAssets: 'project:import',
+  importPaths: 'project:import-paths',
   setAssetRating: 'project:rate',
   loadWorkflow: 'workflow:load',
   saveWorkflow: 'workflow:save',
@@ -304,6 +305,10 @@ export interface StudioApi {
   loadProject(): Promise<ProjectManifest>;
   /** Opens a native file dialog in main; the renderer never supplies paths. */
   importAssets(): Promise<ImportResult>;
+  /** The path of a file the user dropped on the window (only the preload may read it). */
+  pathForFile(file: File): string;
+  /** Copies dropped files into the project: same safe import as importAssets, without the file picker. */
+  importPaths(paths: string[]): Promise<ImportResult>;
   /**
    * Reference files for a new project, chosen on Home. Main keeps the paths (the renderer never
    * supplies them); nothing is copied until `import` runs after the user approves the plan.

@@ -8,6 +8,8 @@ interface Props {
   selected: Asset | null;
   onGoto: (w: WorkspaceId, assetId?: string) => void;
   log: (source: string, msg: string) => void;
+  /** Reloads the project's file list (after files were added). */
+  onProjectChanged?: () => void;
 }
 
 const KEY = 'cs-generate-view';

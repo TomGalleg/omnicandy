@@ -57,6 +57,7 @@ import { setResolveLiveHooks } from './integrations/adapters/resolveLive';
 import { BLANK_FILES, EDITOR_APPS, type EditorAppId } from '@shared/appEditors';
 import { DeliverQueue } from './deliver';
 import { RecraftService } from './recraft';
+import { importPathsInto } from './importPaths';
 import { HiggsfieldService } from './higgsfield';
 import { StudioJobStore } from './studioJobs';
 import { WorkflowSteps } from './workflowSteps';
@@ -197,6 +198,7 @@ export function registerIpc(d: IpcDeps): void {
     }
     return result;
   });
+  handle(IPC.importPaths, z.tuple([z.array(z.string().min(1).max(1024)).min(1).max(200)]), async (paths): Promise<ImportResult> => importPathsInto(await d.project(), paths));
   const opts: Electron.OpenDialogOptions = {
     title: 'Import into project (originals are copied, never modified)',
     properties: ['openFile', 'multiSelections'],

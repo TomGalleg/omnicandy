@@ -7,6 +7,7 @@ import { studioProvider, type StudioModel } from '@shared/providerCapabilities';
 import { BRAND, CATEGORIES, categoriesOf, describeModel, modelsForTask, OP_LABEL, outputLabel, priceInfo, settingsSummary, task, taskFor, TASKS } from '@shared/studioCatalog';
 import type { Asset, ProjectManifest, WorkspaceId } from '@shared/types';
 import { estimateTool, normalizeToolJob, recraftToolByModelId, type RecraftToolJob } from '@shared/recraftTools';
+import { importDropped, isFileDrag } from '../importFiles';
 import { ASSET_MIME, HiggsfieldForm, MediaSlot } from './HiggsfieldForm';
 
 export interface CreateSeed { key: number; model?: StudioModel; prompt?: string; settings?: Record<string, string>; count?: number; refId?: string | null; hf?: HiggsfieldJob }
@@ -237,7 +238,10 @@ export function CreateWorkspace(p: Props) {
                 {legacy?.capabilities.includes('image-edit') && (
                   <div className="field">Reference picture (optional)
                     {refAsset ? <div className="ref-pick"><span className="thumb"><img src={window.studio.assetUrl(refAsset.id)} alt="" /></span><span>{refAsset.name}</span><button className="btn small ghost" onClick={() => setRefId(null)}>Clear</button></div>
-                      : <div className="hf-drop" onDragOver={(e) => { if (e.dataTransfer.types.includes(ASSET_MIME)) e.preventDefault(); }} onDrop={(e) => { const id = e.dataTransfer.getData(ASSET_MIME); const a = assets.find((x) => x.id === id); if (a && REF_FORMATS.includes(a.sourceFormat)) { e.preventDefault(); setRefId(a.id); } }}><span className="asset-meta">Select a PNG, JPEG or WebP in the library, or drag one here from Recent results.</span></div>}
+                      : <div className="hf-drop" onDragOver={(e) => { if (e.dataTransfer.types.includes(ASSET_MIME) || isFileDrag(e)) e.preventDefault(); }} onDrop={(e) => {
+                        if (isFileDrag(e)) { e.preventDefault(); e.stopPropagation(); void importDropped(e.dataTransfer.files).then((r) => { const a = r.result.imported.find((x) => REF_FORMATS.includes(x.sourceFormat.toLowerCase())); const dup = r.result.duplicates.map((d) => d.duplicateOf)[0]; if (a) setRefId(a.id); else if (dup) setRefId(dup); }).catch(() => undefined); return; }
+                        const id = e.dataTransfer.getData(ASSET_MIME); const a = assets.find((x) => x.id === id); if (a && REF_FORMATS.includes(a.sourceFormat)) { e.preventDefault(); setRefId(a.id); }
+                      }}><span className="asset-meta">Drop a PNG, JPEG or WebP here from your computer, pick one in the library, or drag one from Recent results.</span></div>}
                     {selected && selected.id !== refAsset?.id && REF_FORMATS.includes(selected.sourceFormat) && <button className="btn small" onClick={() => setRefId(selected.id)}>Use selected: {selected.name}</button>}
                   </div>
                 )}

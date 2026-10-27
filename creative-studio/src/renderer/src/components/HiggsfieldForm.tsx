@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { Asset } from '@shared/types';
 import type { HfInput, HfInputKind, HfModel, HfParam, HfParamValue, HfStyle } from '@shared/higgsfield';
+import { importDropped, isFileDrag } from '../importFiles';
 
 export const ASSET_MIME = 'application/x-omnicandy-asset';
 
@@ -30,13 +31,27 @@ export function MediaSlot({ spec, accept, ids, assets, selected, onChange }: Inp
   const chosen = ids.map((id) => assets.find((a) => a.id === id)).filter((a): a is Asset => !!a);
   const candidates = assets.filter((a) => fits(a) && !ids.includes(a.id)).slice(-24).reverse();
   const room = ids.length < spec.max;
+  const [dropMsg, setDropMsg] = useState('');
   const add = (id: string) => { if (!room || ids.includes(id)) return; onChange(spec.many ? [...ids, id] : [id]); };
   return (
     <div className="field hf-slot">
       <span>{spec.label}{spec.required ? ' *' : ''} <small className="asset-meta">{spec.many ? `${ids.length}/${spec.max}` : ''}</small></span>
-      <div className="hf-drop" onDragOver={(e) => { if (e.dataTransfer.types.includes(ASSET_MIME)) e.preventDefault(); }}
-        onDrop={(e) => { const id = e.dataTransfer.getData(ASSET_MIME); if (id) { e.preventDefault(); const a = assets.find((x) => x.id === id); if (a && fits(a)) add(a.id); } }}>
-        {chosen.length === 0 && <span className="asset-meta">Drop a file from the strip below, or click one.</span>}
+      <div className="hf-drop" onDragOver={(e) => { if (e.dataTransfer.types.includes(ASSET_MIME) || isFileDrag(e)) e.preventDefault(); }}
+        onDrop={(e) => {
+          if (isFileDrag(e)) {
+            // Files from the computer: copied into the library, then used right here.
+            e.preventDefault(); e.stopPropagation();
+            void importDropped(e.dataTransfer.files).then((r) => {
+              const found = [...r.result.imported.filter(fits).map((a) => a.id), ...r.result.duplicates.map((d) => d.duplicateOf).filter((id) => { const a = assets.find((x) => x.id === id); return !a || fits(a); })];
+              const next = spec.many ? [...ids, ...found.filter((id) => !ids.includes(id))].slice(0, spec.max) : found.slice(0, 1);
+              if (next.length) onChange(next);
+              setDropMsg(found.length ? r.text : `${r.text} None of them fit "${spec.label}".`);
+            }).catch((err: unknown) => setDropMsg(err instanceof Error ? err.message : String(err)));
+            return;
+          }
+          const id = e.dataTransfer.getData(ASSET_MIME); if (id) { e.preventDefault(); const a = assets.find((x) => x.id === id); if (a && fits(a)) add(a.id); }
+        }}>
+        {chosen.length === 0 && <span className="asset-meta">Drop a file here from your computer or from the strip below, or click one.</span>}
         {chosen.map((a) => (
           <span key={a.id} className="hf-chosen">
             <Thumb a={a} kind={spec.kind} /><span className="hf-name" title={a.name}>{a.name}</span>
@@ -44,6 +59,7 @@ export function MediaSlot({ spec, accept, ids, assets, selected, onChange }: Inp
           </span>
         ))}
       </div>
+      {dropMsg && <span className="asset-meta" role="status">{dropMsg}</span>}
       {room && selected && fits(selected) && !ids.includes(selected.id) && <button className="btn small" onClick={() => add(selected.id)}>Use selected: {selected.name}</button>}
       {room && (candidates.length > 0
         ? <div className="hf-strip" role="list" aria-label={`Library files for ${spec.label}`}>

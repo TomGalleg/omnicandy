@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { formatUsd, modelById } from '@shared/generation';
 import type { HfJobRecord, HiggsfieldJob } from '@shared/higgsfield';
 import type { ProviderStatusDto } from '@shared/ipc';
@@ -9,6 +9,7 @@ import { findModels, STUDIO_PROVIDERS, type StudioModel, type StudioProviderId }
 import { parseFavs, toggleFav } from '@shared/studioCatalog';
 import { CreateWorkspace, type CreateSeed, type RunFn } from './CreateWorkspace';
 import { ModelGallery } from './ModelGallery';
+import { importDropped, isFileDrag, LIBRARY_CHANGED, uploadWithPicker } from '../importFiles';
 import { PROVIDERS_CHANGED } from './ProvidersCard';
 import './aiStudio.css';
 import './aiStudioWorkspace.css';
@@ -18,6 +19,7 @@ interface Props {
   selected: Asset | null;
   onGoto: (w: WorkspaceId, assetId?: string) => void;
   log: (source: string, msg: string) => void;
+  onProjectChanged?: () => void;
 }
 
 type Tab = 'explore' | 'create' | 'assets' | 'jobs';
@@ -29,7 +31,7 @@ const STATE_LABEL: Record<JobView['state'], string> = { queued: 'Queued', runnin
 /** AI Studio: browse models across providers, create with the ready ones, see results and jobs.
  *  Generation goes through the same main-process services as the classic tab (approval dialog, spending limit,
  *  keys that never reach this window). Providers that are only documented, not connected, cannot generate. */
-export function AiStudio({ manifest, selected, onGoto, log }: Props) {
+export function AiStudio({ manifest, selected, onGoto, log, onProjectChanged }: Props) {
   const [tab, setTab] = useState<Tab>('explore');
   const [providers, setProviders] = useState<ProviderStatusDto[] | null>(null);
   const [jobs, setJobs] = useState<StudioJob[]>([]);
@@ -37,6 +39,9 @@ export function AiStudio({ manifest, selected, onGoto, log }: Props) {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ text: string; error?: boolean } | null>(null);
   const [seed, setSeed] = useState<CreateSeed>({ key: 0 });
+  const [dragging, setDragging] = useState(false);
+  const [note, setNote] = useState<{ text: string; error: boolean } | null>(null);
+  const depth = useRef(0);
   const [favs, setFavs] = useState<string[]>(() => { try { return parseFavs(localStorage.getItem(FAV_KEY)); } catch { return []; } });
 
   useEffect(() => {
@@ -60,6 +65,19 @@ export function AiStudio({ manifest, selected, onGoto, log }: Props) {
     if (d.from) setMsg({ text: `Opened from ${d.from === 'photocraft' ? 'PhotoCraft' : d.from === 'filmcraft' ? 'FilmCraft' : d.from}'s Quick AI with your prompt, model and files. Adjust anything, then generate.` });
     setTab('create');
   }, []);
+
+  // Files added from here (button or drop) or from a slot in Create: reload the project's list so they appear everywhere.
+  useEffect(() => {
+    const reload = () => { onProjectChanged?.(); };
+    window.addEventListener(LIBRARY_CHANGED, reload);
+    return () => window.removeEventListener(LIBRARY_CHANGED, reload);
+  }, [onProjectChanged]);
+
+  const report = (r: { text: string; error: boolean; result: { imported: Array<{ name: string }> } }) => {
+    setNote({ text: r.text, error: r.error });
+    for (const a of r.result.imported) log('import', `Imported ${a.name} (AI Studio).`);
+  };
+  const upload = () => { void uploadWithPicker().then(report).catch((e: unknown) => setNote({ text: errText(e), error: true })); };
 
   // Jobs are saved in the project (main process), so they survive restarts. Higgsfield jobs resume polling when listed.
   useEffect(() => { void window.studio.generate.studioJobs().then(setJobs).catch(() => undefined); }, []);
@@ -132,7 +150,15 @@ export function AiStudio({ manifest, selected, onGoto, log }: Props) {
   const finished = views.some((v) => v.state !== 'queued' && v.state !== 'running');
 
   return (
-    <div className="aistudio">
+    <div
+      className="aistudio"
+      onDragEnter={(e) => { if (isFileDrag(e)) { depth.current++; setDragging(true); } }}
+      onDragOver={(e) => { if (isFileDrag(e)) e.preventDefault(); }}
+      onDragLeave={(e) => { if (isFileDrag(e) && --depth.current <= 0) { depth.current = 0; setDragging(false); } }}
+      onDropCapture={() => { depth.current = 0; setDragging(false); }}
+      onDrop={(e) => { if (!isFileDrag(e)) return; e.preventDefault(); void importDropped(e.dataTransfer.files).then(report).catch((err: unknown) => setNote({ text: errText(err), error: true })); }}
+    >
+      {dragging && <div className="as-drop" aria-hidden="true"><strong>Drop to add to your library</strong><span>Pictures, videos and sounds are copied in. Your originals are never changed.</span></div>}
       <div className="as-hero">
         <h2>AI Studio</h2>
         <span className="asset-meta">One place for every AI model: explore what each can do, pick one, and make pictures, real SVG art and video. {readyCount} model{readyCount === 1 ? ' is' : 's are'} ready to use right now; the others are shown so you can see what is coming. {favs.length ? `${favs.length} favourite${favs.length === 1 ? '' : 's'} saved.` : ''}</span>
@@ -142,10 +168,13 @@ export function AiStudio({ manifest, selected, onGoto, log }: Props) {
               {label}{id === 'assets' && made.length ? <span className="as-count">{made.length}</span> : null}{id === 'jobs' && views.length ? <span className="as-count">{activeJobs ? `${activeJobs} running` : views.length}</span> : null}
             </button>
           ))}
+          <button className="as-tab as-upload" onClick={upload} title="Choose files from your computer (you can also drag and drop them anywhere on this screen)">⬆ Upload media</button>
           <a className="as-tab as-link" href="https://www.recraft.ai/app/api" target="_blank" rel="noreferrer" title="Opens your Recraft API page in your browser">Recraft dashboard ↗</a>
           <a className="as-tab as-link" href="https://open.higgsfield.ai/dashboard" target="_blank" rel="noreferrer" title="Opens your Higgsfield dashboard in your browser">Higgsfield dashboard ↗</a>
         </div>
       </div>
+
+      {note && <div className={`wf-msg${note.error ? ' error' : ''}`} role="status">{note.text} <button className="btn small ghost" onClick={() => setNote(null)}>Dismiss</button></div>}
 
       {tab === 'explore' && <ModelGallery assets={manifest?.assets ?? []} configured={configured} favs={favs} onToggleFav={toggleFavourite} onCreate={create} />}
 

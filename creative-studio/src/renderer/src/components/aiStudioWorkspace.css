@@ -155,7 +155,10 @@
 .mg-grid.mosaic .mg-card { aspect-ratio: var(--ar, 4 / 3); width: 100%; break-inside: avoid; margin: 0; }
 .mg-grid.mosaic .mg-empty { column-span: all; }
 .as-link { text-decoration: none; display: inline-block; }
-.as-tabs .as-link:first-of-type { margin-left: auto; }
+.as-upload { margin-left: auto; }
+.aistudio { position: relative; }
+.as-drop { position: absolute; inset: 0; z-index: 50; display: grid; place-content: center; justify-items: center; gap: 6px; text-align: center; border: 3px dashed var(--accent); border-radius: 16px; background: color-mix(in srgb, var(--bg) 80%, var(--accent) 20%); pointer-events: none; }
+.as-drop strong { font-size: 1.3rem; }
 .as-link:hover { border-color: var(--accent); }
 
 .hf-styles { display: grid; grid-template-columns: repeat(auto-fill, minmax(76px, 1fr)); gap: 6px; max-height: 240px; overflow: auto; padding: 2px; }
