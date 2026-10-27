@@ -33,6 +33,8 @@ export const MODEL_PREVIEWS: Record<string, ModelPreview> = {
   'recraft/recraft-tool/removeBackground': { poster: 'recraft-remove-bg.jpg', credit: 'Sample image (background removed)', aspect: 638 / 447 },
   // A soft picture the user supplied to show what Crisp upscale is for.
   'recraft/recraft-tool/crispUpscale': { poster: 'recraft-crisp-upscale.jpg', credit: 'Sample: a soft picture to upscale', aspect: 1536 / 1024 },
+  // An illustration the user supplied for Recraft V3 Vector.
+  'recraft/recraftv3_vector': { poster: 'recraft-v3-vector.jpg', credit: 'Sample image', aspect: 1 },
   // A wide picture the user supplied for "Edit with a prompt".
   'recraft/recraft-tool/imageToImage': { poster: 'recraft-edit-wide.jpg', credit: 'Sample image', aspect: 1005 / 421 },
   'recraft/recraft-tool/creativeUpscale': { poster: 'recraft-creative-upscale.jpg', credit: 'Sample: a soft picture to upscale', aspect: 1536 / 1024 },
