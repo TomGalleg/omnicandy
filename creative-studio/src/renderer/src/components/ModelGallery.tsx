@@ -1,4 +1,4 @@
-import { Fragment, useMemo, useRef, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import type { Asset } from '@shared/types';
 import { cardState, type CardState } from '@shared/aiStudio';
 import { previewFor, type ModelPreview } from '@shared/studioPreviews';
@@ -51,6 +51,17 @@ function Cover({ m, asset, big }: { m: StudioModel; asset: Asset | null; big?: b
   const preview: ModelPreview | null = asset ? null : previewFor(m);
   const poster = preview ? previewUrl(preview.poster) : undefined;
   const clip = preview?.video ? previewUrl(preview.video) : undefined;
+  // The card's click button covers the picture, so hovering must be read from the whole card, not the picture alone.
+  useEffect(() => {
+    const v = ref.current;
+    const card = v?.closest('.mg-card');
+    if (!v || !card) return;
+    const start = () => { void v.play().catch(() => undefined); };
+    const stop = () => { v.pause(); v.currentTime = 0; };
+    card.addEventListener('mouseenter', start); card.addEventListener('mouseleave', stop);
+    card.addEventListener('focusin', start); card.addEventListener('focusout', stop);
+    return () => { card.removeEventListener('mouseenter', start); card.removeEventListener('mouseleave', stop); card.removeEventListener('focusin', start); card.removeEventListener('focusout', stop); };
+  }, [clip, asset]);
   const ref = useRef<HTMLVideoElement>(null);
   const seed = artSeed(`${m.providerId}/${m.id}`);
   const brand = BRAND[m.providerId];
