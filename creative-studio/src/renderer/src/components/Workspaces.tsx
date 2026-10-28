@@ -7,6 +7,7 @@ import { importDropped, isFileDrag, uploadWithPicker } from '../importFiles';
 import type { LiveApi } from '../useLive';
 import { AssetThumb, KIND_LABEL } from './AssetBrowser';
 import { DeliverWorkspace } from './DeliverWorkspace';
+import { SampleMedia } from './SampleMedia';
 import { AppWorkspace, EditWorkspace } from './EditWorkspace';
 import { GenerateHub } from './GenerateHub';
 import { HomeWorkspace } from './HomeWorkspace';
@@ -57,6 +58,7 @@ function renditionOf(manifest: ProjectManifest | null, asset: Asset): Asset | un
 
 function MediaWorkspace({ manifest, asset, onSelect, onOpenIn, onProjectChanged, log }: { manifest: ProjectManifest | null; asset: Asset | null; onSelect: (id: string) => void; onOpenIn: (a: Asset, app: EditorAppId) => void; onProjectChanged: () => void; log: (source: string, msg: string) => void }) {
   const [dragging, setDragging] = useState(false);
+  const [samples, setSamples] = useState(false);
   const [note, setNote] = useState<{ text: string; error: boolean } | null>(null);
   const depth = useRef(0);
   // Files added by the button or a drop: reload the project's list, show what happened, and select the first new file.
@@ -82,11 +84,13 @@ function MediaWorkspace({ manifest, asset, onSelect, onOpenIn, onProjectChanged,
       onDragLeave={(e) => { if (isFileDrag(e) && --depth.current <= 0) { depth.current = 0; setDragging(false); } }}
       onDrop={(e) => { depth.current = 0; setDragging(false); if (!isFileDrag(e)) return; e.preventDefault(); void importDropped(e.dataTransfer.files).then(done).catch(fail); }}
     >
+      {samples && <SampleMedia onClose={() => setSamples(false)} onAdded={(r) => { done(r); }} />}
       {dragging && <div className="as-drop" aria-hidden="true"><strong>Drop to add to your library</strong><span>Pictures, videos and sounds are copied in. Your originals are never changed.</span></div>}
       <div className="media-list" role="list" aria-label="All media in this project">
         <h3>All media · {assets.length}</h3>
         <div className="btn-row">
           <button className="btn small primary" onClick={() => { void uploadWithPicker().then(done).catch(fail); }} title="Choose files from your computer, or drag and drop them anywhere on this screen">⬆ Upload media</button>
+          <button className="btn small" onClick={() => setSamples(true)} title="Pictures, real SVG drawings and clips that come with OmniCandy, to add to your project and try the tools on">Sample media</button>
           <span className="asset-meta">or drag files here</span>
         </div>
         {note && <div className={`wf-msg${note.error ? ' error' : ''}`} role="status">{note.text} <button className="btn small ghost" onClick={() => setNote(null)}>Dismiss</button></div>}

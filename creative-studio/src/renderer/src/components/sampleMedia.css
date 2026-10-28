@@ -1,0 +1,18 @@
+/* Sample media: a panel over the Media screen. Theme variables only. */
+.sm { position: absolute; inset: 0; z-index: 40; overflow: auto; padding: 16px; display: grid; gap: 12px; align-content: start; background: var(--bg); }
+.sm-head { display: flex; gap: 12px; justify-content: space-between; align-items: flex-start; }
+.sm-head h2 { margin: 0 0 4px; }
+.sm-bar { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; justify-content: space-between; }
+.sm-filters { display: flex; gap: 6px; flex-wrap: wrap; }
+.sm-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 12px; }
+.sm-card { border: 1px solid var(--border); border-radius: 12px; overflow: hidden; background: var(--surface); display: grid; grid-template-rows: auto 1fr; }
+.sm-pic { position: relative; height: 150px; overflow: hidden; background: repeating-conic-gradient(var(--border) 0 25%, transparent 0 50%) 0 0 / 16px 16px; display: grid; place-items: center; }
+.sm-pic img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; display: block; }
+.sm-nopic { font-weight: 700; opacity: 0.6; }
+.sm-kind { position: absolute; top: 8px; left: 8px; font-size: 0.68rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; padding: 3px 8px; border-radius: 8px; color: #fff; background: rgb(15 17 23 / 0.7); }
+.sm-kind.k-video { background: color-mix(in srgb, #ff5f8a 70%, #000); }
+.sm-kind.k-vector { background: color-mix(in srgb, #c04fff 70%, #000); }
+.sm-play { position: absolute; right: 8px; bottom: 8px; color: #fff; background: rgb(0 0 0 / 0.6); border-radius: 999px; width: 26px; height: 26px; display: grid; place-items: center; font-size: 0.75rem; }
+.sm-body { padding: 10px; display: grid; gap: 4px; align-content: start; }
+.sm-body strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sm-blurb { font-size: 0.78rem; }

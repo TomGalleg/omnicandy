@@ -37,6 +37,8 @@ export const IPC = {
   loadProject: 'project:load',
   importAssets: 'project:import',
   importPaths: 'project:import-paths',
+  samplesList: 'project:samples',
+  samplesAdd: 'project:samples-add',
   setAssetRating: 'project:rate',
   loadWorkflow: 'workflow:load',
   saveWorkflow: 'workflow:save',
@@ -293,6 +295,11 @@ export interface ExternalEditDto {
 
 export interface PendingReference { id: string; name: string; kind: string; bytes: number }
 
+/** One item of the Sample media pack that ships with OmniCandy (thumb is a small inline picture). */
+export interface SampleDto {
+  id: string; name: string; kind: 'image' | 'vector' | 'video'; format: string; blurb: string; model: string; prompt: string; bytes: number; thumb: string | null;
+}
+
 export interface ImportResult {
   imported: Asset[];
   duplicates: Array<{ name: string; duplicateOf: string }>;
@@ -309,6 +316,9 @@ export interface StudioApi {
   pathForFile(file: File): string;
   /** Copies dropped files into the project: same safe import as importAssets, without the file picker. */
   importPaths(paths: string[]): Promise<ImportResult>;
+  /** The Sample media pack that ships with the app, and copying chosen samples into the open project. */
+  listSamples(): Promise<SampleDto[]>;
+  addSamples(ids: string[]): Promise<ImportResult>;
   /**
    * Reference files for a new project, chosen on Home. Main keeps the paths (the renderer never
    * supplies them); nothing is copied until `import` runs after the user approves the plan.

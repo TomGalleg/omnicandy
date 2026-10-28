@@ -24,6 +24,9 @@ extraResources:
     filter: ['*.ccadapter', 'catalog.json']
   - from: resources/trust
     to: trust
+  # Sample media people can add to a project and play with (Media tab > Sample media).
+  - from: resources/samples
+    to: samples
   # The planner's MCP server: one file that runs with OmniCandy's own runtime (ELECTRON_RUN_AS_NODE=1), so AI clients can launch it.
   - from: out/planner-mcp.cjs
     to: planner-mcp.cjs

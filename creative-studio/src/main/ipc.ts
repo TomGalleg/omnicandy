@@ -58,6 +58,7 @@ import { BLANK_FILES, EDITOR_APPS, type EditorAppId } from '@shared/appEditors';
 import { DeliverQueue } from './deliver';
 import { RecraftService } from './recraft';
 import { importPathsInto } from './importPaths';
+import { addSamples, listSamples } from './samples';
 import { HiggsfieldService } from './higgsfield';
 import { StudioJobStore } from './studioJobs';
 import { WorkflowSteps } from './workflowSteps';
@@ -199,6 +200,10 @@ export function registerIpc(d: IpcDeps): void {
     return result;
   });
   handle(IPC.importPaths, z.tuple([z.array(z.string().min(1).max(1024)).min(1).max(200)]), async (paths): Promise<ImportResult> => importPathsInto(await d.project(), paths));
+  /** The sample pack sits next to the installed app (resources/samples); while developing it is in the project's resources folder. */
+  const samplesDir = app.isPackaged ? path.join(process.resourcesPath, 'samples') : path.join(app.getAppPath(), 'resources', 'samples');
+  handle(IPC.samplesList, none, () => listSamples(samplesDir));
+  handle(IPC.samplesAdd, z.tuple([z.array(z.string().regex(/^sample-\d{2,3}$/)).min(1).max(200)]), async (ids): Promise<ImportResult> => addSamples(await d.project(), samplesDir, ids));
   const opts: Electron.OpenDialogOptions = {
     title: 'Import into project (originals are copied, never modified)',
     properties: ['openFile', 'multiSelections'],

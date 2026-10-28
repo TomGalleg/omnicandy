@@ -128,10 +128,10 @@ export class ProjectStore implements AssetRepository {
    * Copies `sourcePath` into originals/. The source is only read. Exact duplicates (same SHA-256)
    * are not copied again; the existing asset is returned with `duplicateOf` set.
    */
-  async importFile(sourcePath: string, provenance?: Partial<AssetProvenance>): Promise<{ asset: Asset; duplicateOf?: string }> {
+  async importFile(sourcePath: string, provenance?: Partial<AssetProvenance>, name?: string): Promise<{ asset: Asset; duplicateOf?: string }> {
     return this.storeFile(sourcePath, {
       folder: 'originals',
-      name: path.basename(sourcePath),
+      name: name ?? path.basename(sourcePath),
       move: false,
       provenance: { origin: 'imported', source: 'Imported by user', ...provenance },
     });

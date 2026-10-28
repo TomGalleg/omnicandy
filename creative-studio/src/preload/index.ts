@@ -17,6 +17,8 @@ const api: StudioApi = {
   importAssets: () => ipcRenderer.invoke(IPC.importAssets),
   pathForFile: (file) => webUtils.getPathForFile(file),
   importPaths: (paths) => ipcRenderer.invoke(IPC.importPaths, paths),
+  listSamples: () => ipcRenderer.invoke(IPC.samplesList),
+  addSamples: (ids) => ipcRenderer.invoke(IPC.samplesAdd, ids),
   references: {
     pick: () => ipcRenderer.invoke(IPC.refsPick),
     remove: (id) => ipcRenderer.invoke(IPC.refsRemove, id),
