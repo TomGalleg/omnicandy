@@ -50,8 +50,8 @@ describe('model card previews', () => {
     expect(previewFor(studioModel('recraft', 'recraft-mask-tools')!)?.poster).toBe('recraft-masked-editing.jpg');
   });
 
-  it('leaves exactly one card without an example today (it needs a result made in the sample project)', () => {
+  it('leaves no card without an example', () => {
     const blank = STUDIO_MODELS.filter(isShown).filter((m) => !previewFor(m)).map((m) => `${m.providerId}/${m.id}`);
-    expect(blank).toEqual(['gemini/gemini-nano-banana-2.1']);
+    expect(blank).toEqual([]);
   });
 });

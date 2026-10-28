@@ -4,7 +4,7 @@
 // by an AI model in that project), shrinks them to sample size and writes resources/samples/ (files/, thumbs/, samples.json).
 // ONE file per AI model card: the newest result you made with each model (those are the files that fill the cards).
 // Left out on purpose, and listed in the report so you can change the rules below:
-//   * the Dragon Burger branding set, files whose prompt names a trademark (NFL), the offline Mock picture, app documents,
+//   * files whose prompt names a trademark (NFL), the offline Mock picture, app documents,
 //   * files that were imported from outside (unknown origin), unless --include-imported is given.
 // It ALSO writes the model-card examples from the same files (src/renderer/src/assets/previews/cards + studioPreviews.generated.ts),
 // so the AI tab's cards and the Sample media pack always show the same results.
@@ -23,8 +23,7 @@ const includeImported = process.argv.includes('--include-imported');
 if (!project || !existsSync(path.join(project, 'project.json'))) { console.error('usage: node scripts/build-samples.mjs "<project folder>" [--include-imported]'); process.exit(2); }
 
 // ---- the rules (edit here) ----
-const EXCLUDE_NAME = /^polished-promotional-food-photograph/i;           // the Dragon Burger branding test
-const EXCLUDE_PROMPT = /\b(nfl|star wars|jedi|disney|marvel|pokemon|nintendo|harry potter|lego|mario|batman|spider-?man|dragon burger)\b/i;
+const EXCLUDE_PROMPT = /\b(nfl|star wars|jedi|disney|marvel|pokemon|nintendo|harry potter|lego|mario|batman|spider-?man)\b/i;
 const EXCLUDE_MODEL = /^mock-image$/;
 const MAX_IMAGE_SIDE = 1600;
 const MAX_VIDEO_SECONDS = 10;
@@ -57,7 +56,7 @@ for (const a of manifest.assets) {
     !['image', 'vector', 'video'].includes(a.kind) ? 'an app document' :
     p.origin === 'imported' && !includeImported ? 'imported from outside (unknown origin)' :
     p.origin !== 'generated' && p.origin !== 'imported' ? `origin ${p.origin}` :
-    EXCLUDE_NAME.test(a.name) ? 'Dragon Burger branding set' :
+    !p.provider || !p.model ? 'an edited copy or app file (no AI model recorded, so it cannot stand for a model card)' :
     EXCLUDE_PROMPT.test(p.prompt ?? '') ? 'the prompt names a trademark' :
     EXCLUDE_MODEL.test(p.model ?? '') ? 'offline Mock picture' : '';
   if (why) { skipped.push(`${a.kind.padEnd(6)} ${a.name.slice(0, 50)}  <- ${why}`); continue; }

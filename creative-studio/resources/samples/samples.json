@@ -31,6 +31,18 @@
       "thumb": "thumbs/sample-03.jpg",
       "kind": "image",
       "format": "jpg",
+      "name": "Polished promotional food photograph for a restaurant…",
+      "blurb": "Made with Nano Banana 2.1 (Google Gemini). Open it in PhotoCraft to edit, or use it in AI Generate as a reference or to upscale and cut out.",
+      "model": "Nano Banana 2.1",
+      "prompt": "Polished promotional food photograph for a restaurant brand called \"Dragon Burger\". A towering gourmet burger in the center: toasted brioche bun with sesame seeds, thick charred beef patty, melted cheddar dripping, crisp lettuce, tomato, re",
+      "bytes": 139351
+    },
+    {
+      "id": "sample-04",
+      "file": "files/sample-04.jpg",
+      "thumb": "thumbs/sample-04.jpg",
+      "kind": "image",
+      "format": "jpg",
       "name": "Retro-futuristic diner on Mars, neon rain, 35mm…",
       "blurb": "Made with Gemini 3.1 Flash Lite Image (Google Gemini). Open it in PhotoCraft to edit, or use it in AI Generate as a reference or to upscale and cut out.",
       "model": "Gemini 3.1 Flash Lite Image",
@@ -38,9 +50,9 @@
       "bytes": 210643
     },
     {
-      "id": "sample-04",
-      "file": "files/sample-04.jpg",
-      "thumb": "thumbs/sample-04.jpg",
+      "id": "sample-05",
+      "file": "files/sample-05.jpg",
+      "thumb": "thumbs/sample-05.jpg",
       "kind": "image",
       "format": "jpg",
       "name": "A paper-cut fox leaping across a moonlit…",
@@ -50,9 +62,9 @@
       "bytes": 175982
     },
     {
-      "id": "sample-05",
-      "file": "files/sample-05.jpg",
-      "thumb": "thumbs/sample-05.jpg",
+      "id": "sample-06",
+      "file": "files/sample-06.jpg",
+      "thumb": "thumbs/sample-06.jpg",
       "kind": "image",
       "format": "jpg",
       "name": "A Bee sitting down for dinner",
@@ -62,9 +74,9 @@
       "bytes": 139416
     },
     {
-      "id": "sample-06",
-      "file": "files/sample-06.jpg",
-      "thumb": "thumbs/sample-06.jpg",
+      "id": "sample-07",
+      "file": "files/sample-07.jpg",
+      "thumb": "thumbs/sample-07.jpg",
       "kind": "image",
       "format": "jpg",
       "name": "A cat getting ready to play football",
@@ -74,9 +86,9 @@
       "bytes": 223834
     },
     {
-      "id": "sample-07",
-      "file": "files/sample-07.svg",
-      "thumb": "thumbs/sample-07.jpg",
+      "id": "sample-08",
+      "file": "files/sample-08.svg",
+      "thumb": "thumbs/sample-08.jpg",
       "kind": "vector",
       "format": "svg",
       "name": "A paper cut image of a group…",
@@ -86,9 +98,9 @@
       "bytes": 102375
     },
     {
-      "id": "sample-08",
-      "file": "files/sample-08.jpg",
-      "thumb": "thumbs/sample-08.jpg",
+      "id": "sample-09",
+      "file": "files/sample-09.jpg",
+      "thumb": "thumbs/sample-09.jpg",
       "kind": "image",
       "format": "jpg",
       "name": "A breathtaking fantasy castle built into the…",
@@ -98,9 +110,9 @@
       "bytes": 315281
     },
     {
-      "id": "sample-09",
-      "file": "files/sample-09.svg",
-      "thumb": "thumbs/sample-09.jpg",
+      "id": "sample-10",
+      "file": "files/sample-10.svg",
+      "thumb": "thumbs/sample-10.jpg",
       "kind": "vector",
       "format": "svg",
       "name": "Create an extraordinary retro-futuristic illustration of a…",
@@ -110,9 +122,9 @@
       "bytes": 2483926
     },
     {
-      "id": "sample-10",
-      "file": "files/sample-10.jpg",
-      "thumb": "thumbs/sample-10.jpg",
+      "id": "sample-11",
+      "file": "files/sample-11.jpg",
+      "thumb": "thumbs/sample-11.jpg",
       "kind": "image",
       "format": "jpg",
       "name": "An unbelievably adorable miniature woodland bakery run…",
@@ -122,9 +134,9 @@
       "bytes": 245346
     },
     {
-      "id": "sample-11",
-      "file": "files/sample-11.jpg",
-      "thumb": "thumbs/sample-11.jpg",
+      "id": "sample-12",
+      "file": "files/sample-12.jpg",
+      "thumb": "thumbs/sample-12.jpg",
       "kind": "image",
       "format": "jpg",
       "name": "A space station on mars with all…",
@@ -134,9 +146,9 @@
       "bytes": 258581
     },
     {
-      "id": "sample-12",
-      "file": "files/sample-12.svg",
-      "thumb": "thumbs/sample-12.jpg",
+      "id": "sample-13",
+      "file": "files/sample-13.svg",
+      "thumb": "thumbs/sample-13.jpg",
       "kind": "vector",
       "format": "svg",
       "name": "A whimsical retro-futuristic vector illustration of an…",
@@ -146,9 +158,9 @@
       "bytes": 114424
     },
     {
-      "id": "sample-13",
-      "file": "files/sample-13.jpg",
-      "thumb": "thumbs/sample-13.jpg",
+      "id": "sample-14",
+      "file": "files/sample-14.jpg",
+      "thumb": "thumbs/sample-14.jpg",
       "kind": "image",
       "format": "jpg",
       "name": "Make it daytime",
@@ -158,9 +170,9 @@
       "bytes": 451873
     },
     {
-      "id": "sample-14",
-      "file": "files/sample-14.svg",
-      "thumb": "thumbs/sample-14.jpg",
+      "id": "sample-15",
+      "file": "files/sample-15.svg",
+      "thumb": "thumbs/sample-15.jpg",
       "kind": "vector",
       "format": "svg",
       "name": "Remove the fox",
@@ -170,9 +182,9 @@
       "bytes": 2265830
     },
     {
-      "id": "sample-15",
-      "file": "files/sample-15.jpg",
-      "thumb": "thumbs/sample-15.jpg",
+      "id": "sample-16",
+      "file": "files/sample-16.jpg",
+      "thumb": "thumbs/sample-16.jpg",
       "kind": "image",
       "format": "jpg",
       "name": "Make it a sci fi neon punk…",
@@ -182,9 +194,9 @@
       "bytes": 346489
     },
     {
-      "id": "sample-16",
-      "file": "files/sample-16.svg",
-      "thumb": "thumbs/sample-16.jpg",
+      "id": "sample-17",
+      "file": "files/sample-17.svg",
+      "thumb": "thumbs/sample-17.jpg",
       "kind": "vector",
       "format": "svg",
       "name": "Make it a winsical town",
@@ -194,9 +206,9 @@
       "bytes": 1016095
     },
     {
-      "id": "sample-17",
-      "file": "files/sample-17.mp4",
-      "thumb": "thumbs/sample-17.jpg",
+      "id": "sample-18",
+      "file": "files/sample-18.mp4",
+      "thumb": "thumbs/sample-18.jpg",
       "kind": "video",
       "format": "mp4",
       "name": "A tiny, fluffy baby panda with oversized…",
@@ -206,9 +218,9 @@
       "bytes": 358118
     },
     {
-      "id": "sample-18",
-      "file": "files/sample-18.mp4",
-      "thumb": "thumbs/sample-18.jpg",
+      "id": "sample-19",
+      "file": "files/sample-19.mp4",
+      "thumb": "thumbs/sample-19.jpg",
       "kind": "video",
       "format": "mp4",
       "name": "Animate this picture",
@@ -218,9 +230,9 @@
       "bytes": 656469
     },
     {
-      "id": "sample-19",
-      "file": "files/sample-19.mp4",
-      "thumb": "thumbs/sample-19.jpg",
+      "id": "sample-20",
+      "file": "files/sample-20.mp4",
+      "thumb": "thumbs/sample-20.jpg",
       "kind": "video",
       "format": "mp4",
       "name": "The bubble pops and he cutly falls…",
@@ -230,9 +242,9 @@
       "bytes": 390790
     },
     {
-      "id": "sample-20",
-      "file": "files/sample-20.mp4",
-      "thumb": "thumbs/sample-20.jpg",
+      "id": "sample-21",
+      "file": "files/sample-21.mp4",
+      "thumb": "thumbs/sample-21.jpg",
       "kind": "video",
       "format": "mp4",
       "name": "Eating his meal",
@@ -242,9 +254,9 @@
       "bytes": 143127
     },
     {
-      "id": "sample-21",
-      "file": "files/sample-21.mp4",
-      "thumb": "thumbs/sample-21.jpg",
+      "id": "sample-22",
+      "file": "files/sample-22.mp4",
+      "thumb": "thumbs/sample-22.jpg",
       "kind": "video",
       "format": "mp4",
       "name": "A tiny, fluffy baby dragon with oversized…",
@@ -254,9 +266,9 @@
       "bytes": 1426008
     },
     {
-      "id": "sample-22",
-      "file": "files/sample-22.mp4",
-      "thumb": "thumbs/sample-22.jpg",
+      "id": "sample-23",
+      "file": "files/sample-23.mp4",
+      "thumb": "thumbs/sample-23.jpg",
       "kind": "video",
       "format": "mp4",
       "name": "Make them working getting ready to open",
@@ -266,9 +278,9 @@
       "bytes": 723065
     },
     {
-      "id": "sample-23",
-      "file": "files/sample-23.mp4",
-      "thumb": "thumbs/sample-23.jpg",
+      "id": "sample-24",
+      "file": "files/sample-24.mp4",
+      "thumb": "thumbs/sample-24.jpg",
       "kind": "video",
       "format": "mp4",
       "name": "Animat this image make it look like…",
@@ -278,9 +290,9 @@
       "bytes": 556380
     },
     {
-      "id": "sample-24",
-      "file": "files/sample-24.mp4",
-      "thumb": "thumbs/sample-24.jpg",
+      "id": "sample-25",
+      "file": "files/sample-25.mp4",
+      "thumb": "thumbs/sample-25.jpg",
       "kind": "video",
       "format": "mp4",
       "name": "A tiny, round, fluffy orange kitten wearing…",
@@ -290,9 +302,9 @@
       "bytes": 935468
     },
     {
-      "id": "sample-25",
-      "file": "files/sample-25.jpg",
-      "thumb": "thumbs/sample-25.jpg",
+      "id": "sample-26",
+      "file": "files/sample-26.jpg",
+      "thumb": "thumbs/sample-26.jpg",
       "kind": "image",
       "format": "jpg",
       "name": "An unbelievably adorable pastel-pink axolotl running a…",
@@ -302,9 +314,9 @@
       "bytes": 331425
     },
     {
-      "id": "sample-26",
-      "file": "files/sample-26.jpg",
-      "thumb": "thumbs/sample-26.jpg",
+      "id": "sample-27",
+      "file": "files/sample-27.jpg",
+      "thumb": "thumbs/sample-27.jpg",
       "kind": "image",
       "format": "jpg",
       "name": "An irresistibly adorable baby firefly exploring an…",
@@ -314,9 +326,9 @@
       "bytes": 621540
     },
     {
-      "id": "sample-27",
-      "file": "files/sample-27.jpg",
-      "thumb": "thumbs/sample-27.jpg",
+      "id": "sample-28",
+      "file": "files/sample-28.jpg",
+      "thumb": "thumbs/sample-28.jpg",
       "kind": "image",
       "format": "jpg",
       "name": "An unbelievably adorable fantasy creature called a…",
@@ -326,9 +338,9 @@
       "bytes": 304529
     },
     {
-      "id": "sample-28",
-      "file": "files/sample-28.jpg",
-      "thumb": "thumbs/sample-28.jpg",
+      "id": "sample-29",
+      "file": "files/sample-29.jpg",
+      "thumb": "thumbs/sample-29.jpg",
       "kind": "image",
       "format": "jpg",
       "name": "An ultra-photorealistic cinematic scene set in a…",
@@ -338,9 +350,9 @@
       "bytes": 757558
     },
     {
-      "id": "sample-29",
-      "file": "files/sample-29.jpg",
-      "thumb": "thumbs/sample-29.jpg",
+      "id": "sample-30",
+      "file": "files/sample-30.jpg",
+      "thumb": "thumbs/sample-30.jpg",
       "kind": "image",
       "format": "jpg",
       "name": "A wildly imaginative, whimsical fantasy world inspired…",
@@ -350,9 +362,9 @@
       "bytes": 599567
     },
     {
-      "id": "sample-30",
-      "file": "files/sample-30.jpg",
-      "thumb": "thumbs/sample-30.jpg",
+      "id": "sample-31",
+      "file": "files/sample-31.jpg",
+      "thumb": "thumbs/sample-31.jpg",
       "kind": "image",
       "format": "jpg",
       "name": "An epic, ultra-photorealistic cinematic scene set in…",

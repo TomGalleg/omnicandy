@@ -67,7 +67,7 @@ describe('the pack that ships', () => {
 
   it('is valid, small, complete on disk, and has one file per model', async () => {
     const list = await loadSamples(real);
-    expect(list.length).toBeGreaterThanOrEqual(25);
+    expect(list.length).toBeGreaterThanOrEqual(30);
     expect(new Set(list.map((s) => s.id)).size).toBe(list.length);
     expect(new Set(list.map((s) => s.model)).size).toBe(list.length); // one per AI model card
     let total = 0;
@@ -84,9 +84,9 @@ describe('the pack that ships', () => {
     for (const s of list) expect(models.has(s.model), `${s.model} is a real model`).toBe(true);
   });
 
-  it('keeps out the Dragon Burger branding set and trademark prompts', async () => {
+  it('keeps out trademark prompts', async () => {
     for (const s of await loadSamples(real)) {
-      expect(`${s.name} ${s.prompt}`, s.id).not.toMatch(/dragon burger|\bnfl\b|star wars|jedi/i);
+      expect(`${s.name} ${s.prompt}`, s.id).not.toMatch(/\bnfl\b|star wars|jedi|disney|marvel|pokemon/i);
     }
   });
 });
