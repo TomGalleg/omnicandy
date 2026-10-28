@@ -916,6 +916,19 @@ export function registerIpc(d: IpcDeps): void {
   handle(IPC.extScan, none, async () => { await restored; return external.scan(); });
   handle(IPC.extLiveState, none, async () => liveExternal);
   handle(IPC.extLiveShow, none, async () => { if (liveExternal.pid) d.embedded.attach(liveExternal.pid); });
+  /** "Open in OmniCandy" for a detected program: its own start/show command, so the window is docked the same way as when Claude opens it. */
+  handle(IPC.extOpen, z.tuple([z.string().min(1).max(600)]), async (key): Promise<string> => {
+    await restored;
+    const info = (await external.list()).find((a) => a.key === key);
+    if (!info) throw new Error('That program was not found. Use "Rescan applications" in Connections and setup.');
+    const name = info.adapterName ?? info.name;
+    const ids = info.commands.map((c) => c.id);
+    const cmd = ['app.launch', 'app.show', 'editor.show'].find((c) => ids.includes(c));
+    if (!cmd) return `${name} opens inside OmniCandy when Claude works in it: ask Claude to open it. (It has no start button of its own yet.)`;
+    if (info.status !== 'connected' && info.status !== 'limited') await external.connect(key);
+    await external.execute(key, cmd, {});
+    return `Opening ${name} inside OmniCandy… its window appears here in a few seconds.`;
+  });
   handle(IPC.extList, none, async () => { await restored; return external.list(); });
   handle(IPC.extConnect, z.tuple([z.string().min(1).max(600)]), (k) => external.connect(k));
   handle(IPC.extDisconnect, z.tuple([z.string().min(1).max(600)]), (k) => external.disconnect(k));

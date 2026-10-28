@@ -245,6 +245,7 @@ const api: StudioApi = {
     list: () => ipcRenderer.invoke(IPC.extList),
     liveState: () => ipcRenderer.invoke(IPC.extLiveState),
     liveShow: () => ipcRenderer.invoke(IPC.extLiveShow),
+    open: (key) => ipcRenderer.invoke(IPC.extOpen, key),
     onLive: (cb) => {
       const listener = (_e: IpcRendererEvent, s: { name: string; pid: number | null }) => cb(s);
       ipcRenderer.on(IPC.extLive, listener);

@@ -175,6 +175,7 @@ export const IPC = {
   extLive: 'ext:live',
   extLiveState: 'ext:live-state',
   extLiveShow: 'ext:live-show',
+  extOpen: 'ext:open',
   extConnect: 'ext:connect',
   extDisconnect: 'ext:disconnect',
   extRepair: 'ext:repair',
@@ -568,6 +569,8 @@ export interface StudioApi {
     liveState(): Promise<ExternalLiveState>;
     /** Brings the open program's window back into the Software tab (after another app was shown). */
     liveShow(): Promise<void>;
+    /** Opens a detected third-party program inside OmniCandy through its own start/show command (a native approval may appear). Resolves with a plain sentence. */
+    open(key: string): Promise<string>;
     onLive(cb: (s: ExternalLiveState) => void): () => void;
     connect(key: string): Promise<ExternalAppInfo>;
     disconnect(key: string): Promise<ExternalAppInfo | null>;

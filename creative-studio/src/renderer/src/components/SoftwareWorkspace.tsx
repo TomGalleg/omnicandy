@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { ExternalLiveState } from '@shared/ipc';
+import { STATUS_LABEL, type ExternalAppInfo } from '@shared/integrations';
 import { useOverlayOpen } from '../overlay';
 import { EDITOR_APPS } from '@shared/appEditors';
 import type { AppProbeResult } from '@shared/types';
@@ -43,6 +44,16 @@ export function SoftwareWorkspace({ apps }: { apps: AppProbeResult[] }) {
     try { await window.studio.launchApp(id, inOmniCandy); setMsg({ text: inOmniCandy ? `Opening ${name} inside OmniCandy… its window appears here in a few seconds.` : `Opening ${name} in its own window…` }); } catch (e) { setMsg({ text: (e instanceof Error ? e.message : String(e)).replace(/^Error invoking remote method '[^']+': (Error: )?/, ''), error: true }); }
   };
   const probe = (id: string) => apps.find((a) => a.appId === id);
+  const [others, setOthers] = useState<ExternalAppInfo[]>([]);
+  const [pick, setPick] = useState('');
+  useEffect(() => {
+    const load = async () => { let l = await window.studio.external.list().catch(() => [] as ExternalAppInfo[]); if (!l.length) l = (await window.studio.external.scan().catch(() => null))?.apps ?? []; setOthers(l); };
+    void load();
+  }, []);
+  const openOther = async (key: string) => {
+    setMsg(null);
+    try { setMsg({ text: await window.studio.external.open(key) }); } catch (e) { setMsg({ text: (e instanceof Error ? e.message : String(e)).replace(/^Error invoking remote method '[^']+': (Error: )?/, ''), error: true }); }
+  };
   const [live, setLive] = useState<ExternalLiveState | null>(null);
   const [showList, setShowList] = useState(false);
   useEffect(() => {
@@ -54,37 +65,41 @@ export function SoftwareWorkspace({ apps }: { apps: AppProbeResult[] }) {
     <div className="software-screen">
       {live?.pid && <div className="btn-row"><button className="btn small primary" onClick={() => setShowList(false)}>Back to {live.name}</button></div>}
       <h2>Software</h2>
-      <p className="asset-meta">Every program connected to OmniCandy. <strong>Open in OmniCandy</strong> starts it and shows its window right here, so you can start using it without leaving. Programs found on this PC come first.</p>
+      <p className="asset-meta">Every program connected to OmniCandy, in one list. Choose one and press <strong>Open in OmniCandy</strong>: it starts and its window appears right here, so you can start using it.</p>
+      {msg && <div className={`wf-msg${msg.error ? ' error' : ''}`} role={msg.error ? 'alert' : 'status'}>{msg.text}</div>}
+      {(() => {
+        const art = Object.values(EDITOR_APPS).slice().sort((x, y) => Number(!!probe(y.id)?.installed) - Number(!!probe(x.id)?.installed));
+        const chosen = pick.startsWith('art:') ? art.find((a) => `art:${a.id}` === pick) : undefined;
+        const chosenOther = pick.startsWith('ext:') ? others.find((o) => `ext:${o.key}` === pick) : undefined;
+        const installedChosen = !!chosen && !!probe(chosen.id)?.installed;
+        return (
+          <div className="software-pick">
+            <label className="field">Program
+              <select aria-label="Program" value={pick} onChange={(e) => { setPick(e.target.value); setMsg(null); }}>
+                <option value="">Choose a program…</option>
+                <optgroup label={`ArtCraft apps · ${installed} of ${art.length} installed`}>
+                  {art.map((a) => <option key={a.id} value={`art:${a.id}`}>{a.name}{probe(a.id)?.installed ? '' : ' (not installed)'}</option>)}
+                </optgroup>
+                <optgroup label={`Other programs · ${others.length} found on this PC`}>
+                  {others.map((o) => <option key={o.key} value={`ext:${o.key}`}>{o.adapterName ?? o.name}{o.version ? ` ${o.version}` : ''} ({STATUS_LABEL[o.status].toLowerCase()})</option>)}
+                </optgroup>
+              </select>
+            </label>
+            {chosen && <div className="asset-meta">{chosen.blurb}{probe(chosen.id)?.version ? ` · ${probe(chosen.id)?.version}` : ''}{installedChosen ? '' : `. ${chosen.name} is not installed on this PC.`}</div>}
+            {chosenOther && <div className="asset-meta">{chosenOther.statusDetail}{chosenOther.notes ? ` ${chosenOther.notes}` : ''}</div>}
+            <div className="btn-row">
+              <button className="btn primary" disabled={!(installedChosen || chosenOther)} onClick={() => { if (chosen) void launch(chosen.id, chosen.name, true); else if (chosenOther) void openOther(chosenOther.key); }}>Open in OmniCandy</button>
+              <button className="btn" disabled={!installedChosen} onClick={() => chosen && void launch(chosen.id, chosen.name, false)} title="Opens it as its own window instead">Open in its own window</button>
+            </div>
+            {others.length === 0 && <div className="asset-meta">No other programs (Blender, Unreal, Fusion, Resolve…) were found yet. Open <em>Connections and setup</em> below and press Rescan, or Add application location for a portable copy.</div>}
+          </div>
+        );
+      })()}
 
-      <div className="field">
-        <span className="menu-label">ArtCraft apps · {installed} of {Object.keys(EDITOR_APPS).length} installed</span>
-        {msg && <div className={`wf-msg${msg.error ? ' error' : ''}`} role={msg.error ? 'alert' : 'status'}>{msg.text}</div>}
-        <div className="software-grid">
-          {Object.values(EDITOR_APPS).slice().sort((x, y) => Number(!!probe(y.id)?.installed) - Number(!!probe(x.id)?.installed)).map((app) => {
-            const p = probe(app.id);
-            const state = p?.connected ? 'Open now' : p?.installed ? 'Installed' : 'Not installed';
-            return (
-              <div key={app.id} className="software-card" aria-label={`${app.name}: ${state}`}>
-                <div className="provider-head">
-                  <strong>{app.name}</strong>
-                  <span className={`chip ${p?.connected ? 'ok' : p?.installed ? 'real' : 'off'}`}><span className="dot" />{state}</span>
-                </div>
-                <div className="asset-meta">{app.blurb}{p?.version ? ` · ${p.version}` : ''}</div>
-                {p?.installed
-                  ? (
-                    <div className="btn-row">
-                      <button className="btn small primary" onClick={() => void launch(app.id, app.name, true)}>Open in OmniCandy</button>
-                      <button className="btn small ghost" onClick={() => void launch(app.id, app.name, false)} title="Opens it as its own window">Own window</button>
-                    </div>
-                  )
-                  : <div className="asset-meta">Install {app.name} to use it here.</div>}
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      <ExternalApps />
+      <details className="software-setup">
+        <summary>Connections and setup (find, connect or repair programs)</summary>
+        <ExternalApps />
+      </details>
     </div>
   );
 }
