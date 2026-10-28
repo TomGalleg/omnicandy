@@ -52,7 +52,7 @@ export function HomeWorkspace({ manifest, projectKey, onSwitched, onGoto, log }:
     log('project', `Opened "${p.name}".`);
     onSwitched(p.id);
   });
-  /** `idea`: the Planner opens first, so the project starts as an idea. `create`: a blank workspace. Either way the Planner stays available. */
+  /** `idea`: OmniTown opens first, so the project starts as an idea. `create`: a blank workspace. Either way OmniTown stays available. */
   const createBlank = (start: 'idea' | 'create') => run(async () => {
     const name = newName.trim() || 'Untitled project';
     const key = await window.studio.projects.create(name, location ?? undefined, { kind: blankKind });
@@ -61,10 +61,10 @@ export function HomeWorkspace({ manifest, projectKey, onSwitched, onGoto, log }:
     onSwitched(key);
     if (start === 'idea') {
       await window.studio.planner.startPlan({ title: name });
-      log('project', `Created and opened "${name}". Its Planner is open: start with your idea.`);
+      log('project', `Created and opened "${name}". Its OmniTown is open: start with your idea.`);
       onGoto('planner');
     } else {
-      log('project', `Created and opened "${name}". Import files to get started. Its Planner is always under More.`);
+      log('project', `Created and opened "${name}". Import files to get started. Its OmniTown is always one click away in the tab bar.`);
     }
   });
 
@@ -163,7 +163,7 @@ Needs: ${t.needs}` : ''}`, objective: t.description };
             <select aria-label="Project type" value={blankKind} onChange={(e) => setBlankKind(e.target.value as ProjectKind)}>
               {PROJECT_KINDS.map((k) => <option key={k.id} value={k.id}>{k.label}</option>)}
             </select>
-            <button className="btn primary" type="button" disabled={busy} title="Opens the project's Planner so you can develop the idea with an AI" onClick={() => void createBlank('idea')}>Start with an idea</button>
+            <button className="btn primary" type="button" disabled={busy} title="Opens the project's OmniTown so you can develop the idea with an AI" onClick={() => void createBlank('idea')}>Start with an idea</button>
             <button className="btn" type="submit" disabled={busy} title="Opens a blank workspace">Start creating</button>
           </form>
         )}

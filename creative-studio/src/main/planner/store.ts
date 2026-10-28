@@ -2,13 +2,18 @@
 //   <root>/projects/<id>/project.json     the whole current state (written atomically, never edited in place)
 //   <root>/projects/<id>/history.jsonl    append-only activity log (who did what, at which revision)
 //   <root>/projects/<id>/raw/<reportId>.txt   the original pasted response of an imported report
-// Every change is read-modify-write under a lock file, so a connection and the app can never overwrite each other.
+//   <root>/projects/<id>/chat.json        the planning conversation (+ chat.prev.json, the copy from before the last write)
+//   <root>/projects/<id>/town.json        the project's town: team, businesses, workplaces, meetings (people and places, never the state of the work)
+//   <root>/projects/<id>/canvas.json      where the cards sit (presentation only; never part of the plan, never touches a revision)
+// Every change to the plan is read-modify-write under a lock file, so a connection and the app can never overwrite each other.
 // A crash leaves either the old or the new project.json; the activity log is appended after the write and may lag by one entry.
 
 import { randomBytes } from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { type ActivityEntry, type Actor, canonical, type PlannerProject, type ProjectSummary, snapshotOf, summarize } from '@shared/planner';
+import { defaultTown, townStateSchema, type TownState } from '@shared/town';
+import { applyCanvasPatch, canvasLayoutSchema, CanvasLimitError, type CanvasLayout, type CanvasPatch, emptyCanvas } from '@shared/plannerCanvas';
 
 export class PlannerError extends Error {
   constructor(readonly code: 'not_found' | 'forbidden' | 'conflict' | 'invalid' | 'claimed' | 'duplicate' | 'blocked' | 'stale', message: string, readonly details?: unknown) {
@@ -22,6 +27,23 @@ const ID_RE = /^plan_[a-z0-9]{6,20}$/;
 
 export interface LogFn { (kind: string, summary: string, opts?: { targetId?: string; planAffecting?: boolean }): void }
 
+/** What the store tells a listener after it has written something (the event hub turns these into events for the windows). */
+export type StoreWrite =
+  | { kind: 'plan'; planId: string; revision: number; planRevision: number }
+  | { kind: 'canvas'; planId: string; layoutRev: number }
+  | { kind: 'chat'; planId: string; messages: number }
+  | { kind: 'town'; planId: string; rev: number }
+  | { kind: 'recovered'; planId: string; what: 'canvas' | 'chat' | 'town'; note: string };
+export interface StoreOptions { onWrite?: (w: StoreWrite) => void }
+
+export interface ChatMessage { role: 'user' | 'assistant'; text: string }
+export interface ChatFile { messages: ChatMessage[]; provider?: string; model?: string; savedAt?: string }
+
+/** The planning conversation keeps the newest messages only; each is cut to a bounded length. */
+export const CHAT_KEEP_MESSAGES = 48;
+export const CHAT_MAX_CHARS = 6000;
+const KEEP_CORRUPT = 3;
+
 async function writeJsonAtomic(file: string, data: unknown): Promise<void> {
   const tmp = `${file}.${process.pid}.${randomBytes(3).toString('hex')}.tmp`;
   await fs.writeFile(tmp, JSON.stringify(data, null, 2), 'utf8');
@@ -30,14 +52,61 @@ async function writeJsonAtomic(file: string, data: unknown): Promise<void> {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+/** Windows reports EPERM/EBUSY/EACCES for a moment while another process holds a file; a few short retries ride that out. */
+async function writeJsonRetry(file: string, data: unknown): Promise<void> {
+  for (let i = 0; ; i++) {
+    try { return await writeJsonAtomic(file, data); } catch (e) {
+      if (i >= 5 || !['EPERM', 'EBUSY', 'EACCES'].includes((e as NodeJS.ErrnoException).code ?? '')) throw e;
+      await sleep(10 + i * 10);
+    }
+  }
+}
+
+const exists = (f: string) => fs.stat(f).then(() => true, () => false);
+
+/** Sets a damaged file aside (never deletes it) and keeps only the newest few. */
+async function setAside(file: string, stamp: string): Promise<string> {
+  const dir = path.dirname(file);
+  const base = path.basename(file, '.json');
+  const to = path.join(dir, `${base}.corrupt-${stamp}.json`);
+  await fs.rename(file, to).catch(() => undefined);
+  const old = (await fs.readdir(dir).catch(() => [] as string[])).filter((n) => n.startsWith(`${base}.corrupt-`)).sort();
+  for (const n of old.slice(0, Math.max(0, old.length - KEEP_CORRUPT))) await fs.rm(path.join(dir, n), { force: true }).catch(() => undefined);
+  return to;
+}
+
+function parseChat(text: string): ChatFile | null {
+  let j: { messages?: unknown; provider?: unknown; model?: unknown; savedAt?: unknown };
+  try { j = JSON.parse(text) as typeof j; } catch { return null; }
+  if (!j || typeof j !== 'object' || (j.messages !== undefined && !Array.isArray(j.messages))) return null;
+  const messages = (Array.isArray(j.messages) ? j.messages : [])
+    .filter((m): m is ChatMessage => !!m && typeof m === 'object' && ((m as { role?: unknown }).role === 'user' || (m as { role?: unknown }).role === 'assistant') && typeof (m as { text?: unknown }).text === 'string')
+    .slice(-CHAT_KEEP_MESSAGES);
+  return { messages, ...(typeof j.provider === 'string' ? { provider: j.provider.slice(0, 80) } : {}), ...(typeof j.model === 'string' ? { model: j.model.slice(0, 80) } : {}), ...(typeof j.savedAt === 'string' ? { savedAt: j.savedAt } : {}) };
+}
+
 export class PlannerStore {
-  constructor(readonly root: string, private readonly now: () => Date = () => new Date()) {}
+  private readonly queues = new Map<string, Promise<unknown>>();
+  constructor(readonly root: string, private readonly now: () => Date = () => new Date(), private readonly opts: StoreOptions = {}) {}
 
   dir(id: string): string {
     if (!ID_RE.test(id)) throw new PlannerError('invalid', 'That is not a project id.');
     return path.join(this.root, 'projects', id);
   }
   private file(id: string) { return path.join(this.dir(id), 'project.json'); }
+
+  /** A listener must never be able to break a write that already happened. */
+  private told(w: StoreWrite) { try { this.opts.onWrite?.(w); } catch { /* a listener's problem is not the store's */ } }
+
+  /** One at a time per key inside this process (a file written by two parts of the app at once would lose one of the writes). */
+  private serial<T>(key: string, fn: () => Promise<T>): Promise<T> {
+    const prev = this.queues.get(key) ?? Promise.resolve();
+    const run = prev.then(fn, fn);
+    const tail = run.catch(() => undefined);
+    this.queues.set(key, tail);
+    void tail.then(() => { if (this.queues.get(key) === tail) this.queues.delete(key); });
+    return run;
+  }
 
   private async withLock<T>(id: string, fn: () => Promise<T>): Promise<T> {
     const lock = path.join(this.dir(id), 'project.lock');
@@ -90,6 +159,7 @@ export class PlannerStore {
       await writeJsonAtomic(this.file(project.id), project);
       await this.append(project.id, [{ seq: 1, at: project.createdAt, actor, kind: 'project.created', summary: first, revision: 1, planAffecting: true }]);
     });
+    this.told({ kind: 'plan', planId: project.id, revision: project.revision, planRevision: project.planRevision });
     return project;
   }
 
@@ -103,7 +173,8 @@ export class PlannerStore {
    * revision bumps only when the accepted plan (its snapshot) actually changed, and that version is kept.
    */
   async mutate<T>(id: string, actor: Actor, fn: (p: PlannerProject, log: LogFn, now: Date) => T): Promise<T> {
-    return this.withLock(id, async () => {
+    let wrote: { revision: number; planRevision: number } | null = null;
+    const result = await this.withLock(id, async () => {
       const p = await this.read(id);
       const before = canonical(snapshotOf(p));
       const draft: PlannerProject = JSON.parse(JSON.stringify(p));
@@ -121,8 +192,11 @@ export class PlannerStore {
       const log: ActivityEntry[] = entries.map((e) => ({ ...e, seq: ++draft.counters.activity, at: draft.updatedAt, actor, revision: draft.revision }));
       await writeJsonAtomic(this.file(id), draft);
       await this.append(id, log);
+      wrote = { revision: draft.revision, planRevision: draft.planRevision };
       return result;
     });
+    if (wrote) this.told({ kind: 'plan', planId: id, ...(wrote as { revision: number; planRevision: number }) });
+    return result;
   }
 
   async history(id: string, sinceRevision = 0, limit = 500): Promise<ActivityEntry[]> {
@@ -135,17 +209,134 @@ export class PlannerStore {
     return all.slice(-limit);
   }
 
-  /** The planning conversation, kept with the plan so it is there when the project is opened again. */
-  async readChat(id: string): Promise<{ messages: Array<{ role: 'user' | 'assistant'; text: string }>; provider?: string; model?: string; savedAt?: string }> {
-    try {
-      const j = JSON.parse(await fs.readFile(path.join(this.dir(id), 'chat.json'), 'utf8')) as { messages?: unknown; provider?: unknown; model?: unknown; savedAt?: unknown };
-      const messages = Array.isArray(j.messages) ? j.messages.filter((m): m is { role: 'user' | 'assistant'; text: string } => !!m && typeof m === 'object' && ((m as { role?: unknown }).role === 'user' || (m as { role?: unknown }).role === 'assistant') && typeof (m as { text?: unknown }).text === 'string').slice(-48) : [];
-      return { messages, ...(typeof j.provider === 'string' ? { provider: j.provider } : {}), ...(typeof j.model === 'string' ? { model: j.model } : {}), ...(typeof j.savedAt === 'string' ? { savedAt: j.savedAt } : {}) };
-    } catch { return { messages: [] }; }
+  // ---- the planning conversation ---------------------------------------------------------------------------------
+  /**
+   * The planning conversation, kept with the plan so it is there when the project is opened again. An older file (no version) loads as it is.
+   * A damaged file is set aside and the copy from before the last write is used; with neither, the conversation starts empty.
+   */
+  async readChat(id: string): Promise<ChatFile> {
+    const file = path.join(this.dir(id), 'chat.json');
+    const prev = path.join(this.dir(id), 'chat.prev.json');
+    let text: string | null = null;
+    try { text = await fs.readFile(file, 'utf8'); } catch { /* none yet */ }
+    if (text !== null) {
+      const ok = parseChat(text);
+      if (ok) return ok;
+      await setAside(file, this.now().toISOString().replace(/[:.]/g, '-'));
+      this.told({ kind: 'recovered', planId: id, what: 'chat', note: 'The saved conversation was damaged and has been set aside.' });
+    }
+    const back = await fs.readFile(prev, 'utf8').then(parseChat, () => null);
+    return back ?? { messages: [] };
   }
-  async writeChat(id: string, chat: { messages: Array<{ role: 'user' | 'assistant'; text: string }>; provider?: string; model?: string }): Promise<void> {
-    await fs.mkdir(this.dir(id), { recursive: true });
-    await writeJsonAtomic(path.join(this.dir(id), 'chat.json'), { messages: chat.messages.slice(-48).map((m) => ({ role: m.role, text: m.text.slice(0, 6000) })), provider: chat.provider, model: chat.model, savedAt: this.now().toISOString() });
+
+  async writeChat(id: string, chat: { messages: ChatMessage[]; provider?: string; model?: string }): Promise<void> {
+    await this.serial(`chat:${id}`, async () => {
+      const dir = this.dir(id);
+      await fs.mkdir(dir, { recursive: true });
+      const file = path.join(dir, 'chat.json');
+      if (await exists(file)) await fs.copyFile(file, path.join(dir, 'chat.prev.json')).catch(() => undefined);
+      const messages = chat.messages.slice(-CHAT_KEEP_MESSAGES).map((m) => ({ role: m.role, text: m.text.slice(0, CHAT_MAX_CHARS) }));
+      await writeJsonRetry(file, { version: 2, messages, provider: chat.provider?.slice(0, 80), model: chat.model?.slice(0, 80), savedAt: this.now().toISOString() });
+      this.told({ kind: 'chat', planId: id, messages: messages.length });
+    });
+  }
+
+  /** Adds messages to the saved conversation (read, add, trim, write, one at a time), so a message is never lost to a stale full copy. */
+  async appendChat(id: string, req: { messages: ChatMessage[]; provider?: string; model?: string }): Promise<{ stored: number }> {
+    return this.serial(`chatappend:${id}`, async () => {
+      const cur = await this.readChat(id);
+      const messages = [...cur.messages, ...req.messages].slice(-CHAT_KEEP_MESSAGES);
+      await this.writeChat(id, { messages, provider: req.provider ?? cur.provider, model: req.model ?? cur.model });
+      return { stored: messages.length };
+    });
+  }
+
+  // ---- the canvas -----------------------------------------------------------------------------------------------------
+  private canvasFile(id: string) { return path.join(this.dir(id), 'canvas.json'); }
+
+  /** Where the cards sit. A missing file is an empty layout (nothing is written); a damaged or newer-format file is set aside, never overwritten blindly. */
+  async readCanvas(id: string): Promise<{ layout: CanvasLayout; recovered: boolean }> {
+    const file = this.canvasFile(id);
+    let text: string;
+    try { text = await fs.readFile(file, 'utf8'); } catch { return { layout: emptyCanvas(this.now()), recovered: false }; }
+    let parsed: unknown;
+    try { parsed = JSON.parse(text); } catch { parsed = undefined; }
+    const ok = canvasLayoutSchema.safeParse(parsed);
+    if (ok.success) return { layout: ok.data, recovered: false };
+    const v = (parsed as { version?: unknown } | undefined)?.version;
+    if (typeof v === 'number' && v > 1) {
+      // A newer OmniCandy wrote this. Keep it exactly as it is and work from an empty layout.
+      const keep = path.join(this.dir(id), `canvas.v${v}.json`);
+      if (!(await exists(keep))) await fs.copyFile(file, keep).catch(() => undefined);
+      this.told({ kind: 'recovered', planId: id, what: 'canvas', note: 'The layout was saved by a newer version of OmniCandy; a fresh layout is used.' });
+      return { layout: emptyCanvas(this.now()), recovered: true };
+    }
+    await setAside(file, this.now().toISOString().replace(/[:.]/g, '-'));
+    this.told({ kind: 'recovered', planId: id, what: 'canvas', note: 'The saved layout was damaged and has been set aside.' });
+    return { layout: emptyCanvas(this.now()), recovered: true };
+  }
+
+  /**
+   * Moves cards. This deliberately does not use `mutate`: no lock, no revision, no history line, no plan version, and nothing an execution
+   * package is built from can change. Only this app writes the layout, so one-at-a-time inside the process is enough.
+   */
+  async patchCanvas(id: string, patch: CanvasPatch): Promise<{ layoutRev: number }> {
+    if (!(await exists(this.file(id)))) throw new PlannerError('not_found', 'No such project.');
+    return this.serial(`canvas:${id}`, async () => {
+      const { layout } = await this.readCanvas(id);
+      let next: CanvasLayout;
+      try { next = applyCanvasPatch(layout, patch, this.now()); } catch (e) {
+        if (e instanceof CanvasLimitError) throw new PlannerError('invalid', e.message);
+        throw new PlannerError('invalid', 'That layout change is not valid.');
+      }
+      await writeJsonRetry(this.canvasFile(id), next);
+      this.told({ kind: 'canvas', planId: id, layoutRev: next.layoutRev });
+      return { layoutRev: next.layoutRev };
+    });
+  }
+
+  // ---- the town ---------------------------------------------------------------------------------------------------------
+  private townFile(id: string) { return path.join(this.dir(id), 'town.json'); }
+
+  /**
+   * The project's town. The first time it is asked for, the town is made (a Town Hall and a coordinator) and saved, so the same people keep the same
+   * ids afterwards. A damaged file is set aside, never deleted, and a fresh town starts.
+   */
+  async readTown(id: string): Promise<{ town: TownState; recovered: boolean }> {
+    if (!(await exists(this.file(id)))) throw new PlannerError('not_found', 'No such project.');
+    return this.serial(`town:${id}`, async () => {
+      const file = this.townFile(id);
+      let text: string | null = null;
+      try { text = await fs.readFile(file, 'utf8'); } catch { /* none yet */ }
+      let recovered = false;
+      if (text !== null) {
+        let parsed: unknown;
+        try { parsed = JSON.parse(text); } catch { parsed = undefined; }
+        const ok = townStateSchema.safeParse(parsed);
+        if (ok.success) return { town: ok.data as TownState, recovered: false };
+        const v = (parsed as { version?: unknown } | undefined)?.version;
+        if (typeof v === 'number' && v > 1) await fs.copyFile(file, path.join(this.dir(id), `town.v${v}.json`)).catch(() => undefined);
+        else await setAside(file, this.now().toISOString().replace(/[:.]/g, '-'));
+        recovered = true;
+        this.told({ kind: 'recovered', planId: id, what: 'town', note: 'The saved town could not be read, so a fresh one was started. The old file was kept.' });
+      }
+      const town = defaultTown(this.now());
+      await writeJsonRetry(file, town);
+      this.told({ kind: 'town', planId: id, rev: town.rev });
+      return { town, recovered };
+    });
+  }
+
+  /** Changes the town: read, change (a pure function that may throw), write, one at a time. Nothing is written if the change throws. */
+  async updateTown(id: string, fn: (t: TownState, now: Date) => TownState): Promise<TownState> {
+    await this.readTown(id);
+    return this.serial(`town:${id}`, async () => {
+      const cur = townStateSchema.parse(JSON.parse(await fs.readFile(this.townFile(id), 'utf8'))) as TownState;
+      const next = townStateSchema.parse(fn(cur, this.now())) as TownState;
+      await writeJsonRetry(this.townFile(id), next);
+      this.told({ kind: 'town', planId: id, rev: next.rev });
+      return next;
+    });
   }
 
   async saveRaw(id: string, reportId: string, text: string) {

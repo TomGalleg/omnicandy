@@ -8,6 +8,7 @@ import { PLANNER_CLIENTS } from '@shared/plannerClients';
 import { parseReportText, type ReportImportPreview } from '@shared/plannerHandoff';
 import { describeWorkflowRun, displayStatus } from '@shared/plannerView';
 import { classifyPaste, changesThePlan, describeChange, type SuggestionPreview } from '@shared/plannerPaste';
+import { currentTask } from '@shared/projectView';
 import { SendPanel } from './PlannerSend';
 import { CopyButton, ErrorLine, errMsg, lines, PlainWords, Section, StatusChip, useAction, when, type TabProps } from './plannerUi';
 
@@ -335,7 +336,7 @@ export function ProposalCard({ p, reload }: { p: PlannerProject; reload: () => P
         const skip = off[pr.id] ?? [];
         return (
           <div key={pr.id} className="pl-proposal">
-            <p><strong>{pr.proposedBy.name}</strong> <small className="pl-hint">{when(pr.at)} · {pr.source === 'report' ? 'from a report' : pr.source === 'pasted' ? 'pasted by you' : pr.source === 'home' ? 'from the plan you approved on Home' : 'from a connection'}</small></p>
+            <p><strong>{pr.proposedBy.name}</strong> <small className="pl-hint">{when(pr.at)} · {pr.source === 'report' ? 'from a report' : pr.source === 'pasted' ? 'pasted by you' : pr.source === 'home' ? 'from the plan you approved on Home' : pr.source === 'coordinator' ? 'from the project coordinator' : 'from a connection'}</small></p>
             {pr.note && <p className="pl-hint">{pr.note}</p>}
             <ul>{pr.changes.map((c, i) => <li key={i}><label className="pl-check"><input type="checkbox" checked={!skip.includes(i)} onChange={(e) => setOff({ ...off, [pr.id]: e.target.checked ? skip.filter((x) => x !== i) : [...skip, i] })} />{describe(c)}</label></li>)}</ul>
             <div className="pl-actions">
@@ -373,11 +374,7 @@ export function ReviewInbox({ p, reload, hideEmpty }: { p: PlannerProject; reloa
 }
 
 /** The chunk being worked on: the one named, the one picked up from where the owner left off, the next one ready, or the first open one. */
-export function pickCurrent(p: PlannerProject, focusTaskId?: string | null): PlanTask | undefined {
-  const open = p.tasks.filter((t) => t.status !== 'accepted' && t.status !== 'cancelled');
-  const ready = open.find((t) => ['todo', 'revision'].includes(t.status) && !unmetDependencies(p, t).length);
-  return open.find((x) => x.id === focusTaskId) ?? open.find((x) => x.id === p.lastActive?.taskId) ?? ready ?? open[0];
-}
+export function pickCurrent(p: PlannerProject, focusTaskId?: string | null): PlanTask | undefined { return currentTask(p, focusTaskId); }
 
 /**
  * Work, one chunk at a time. Nothing here changes a file in the project: results come back as text and wait for the owner's review.

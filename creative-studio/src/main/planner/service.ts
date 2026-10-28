@@ -15,6 +15,7 @@ import { buildContext, type Delivery } from '@shared/plannerContext';
 import { packageToMarkdown, reportInstructionsFor } from '@shared/plannerHandoff';
 import type { DestinationId } from '@shared/plannerSend';
 import { readZip, writeZip } from '../integrations/zip';
+import { canvasLayoutSchema } from '@shared/plannerCanvas';
 import { RoutedPlannerStore } from './routedStore';
 import { newId, PlannerError, type LogFn, type PlannerStore } from './store';
 
@@ -334,7 +335,7 @@ export class PlannerService {
 
   // ---------------------------------------------------------------- proposals
   async propose(c: Ctx, id: string, note: string, changes: ProposalChange[], source: Proposal['source'] = 'connection', reportId?: string): Promise<Proposal> {
-    need(c, source === 'connection' ? 'propose' : 'execute');
+    need(c, source === 'connection' || source === 'coordinator' ? 'propose' : 'execute');
     if (!changes.length) throw new PlannerError('invalid', 'A proposal needs at least one change.');
     return this.store.mutate(id, c.actor, (p, log, now) => {
       const pr = this.addProposal(p, c.actor, now, note, changes, source, reportId);
@@ -712,6 +713,9 @@ export class PlannerService {
     }
     for (const t of p.tasks) { if (t.claim) { t.claim = null; if (t.status === 'in_progress') t.status = 'todo'; } }
     files['planner.json'] = JSON.stringify({ format: PLANNER_FORMAT, version: 1, exportedAt: this.now().toISOString(), mode, project: p, activity: await this.store.history(id, 0, 5000), assets }, null, 2);
+    // Where the cards sit travels with the plan (an older importer ignores the extra file).
+    const canvasText = await fs.readFile(path.join(this.store.dir(id), 'canvas.json'), 'utf8').catch(() => null);
+    if (canvasText) files['canvas.json'] = canvasText;
     files['README.txt'] = 'OmniCandy Project Planner export. planner.json holds the plan; assets/ holds bundled files. Referenced files keep the path they had on the exporting computer. Claims are removed. No credentials or settings are included.';
     return writeZip(files);
   }
@@ -740,6 +744,14 @@ export class PlannerService {
     }
     for (const t of project.tasks) t.claim = null;
     await this.store.create(project, c.actor, `Imported "${src.title}" (${(doc.assets ?? []).filter((a) => a.how === 'bundled').length} bundled file(s), ${project.assets.length - (doc.assets ?? []).filter((a) => a.how === 'bundled').length} referenced)`);
+    // The layout comes along when the export has one and it is valid; otherwise the plan simply opens with an automatic layout.
+    const canvasRaw = entries.get('canvas.json');
+    if (canvasRaw) {
+      try {
+        const ok = canvasLayoutSchema.safeParse(JSON.parse(canvasRaw.toString('utf8')));
+        if (ok.success) await fs.writeFile(path.join(dir, 'canvas.json'), JSON.stringify(ok.data, null, 2), 'utf8');
+      } catch { /* an unreadable layout is not worth refusing the plan for */ }
+    }
     return this.store.read(project.id);
   }
 

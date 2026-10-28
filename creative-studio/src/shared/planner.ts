@@ -136,7 +136,7 @@ export interface Proposal {
   status: 'pending' | 'accepted' | 'rejected';
   decidedAt?: string;
   /** Where it came from: a connection, or a returned report. */
-  source: 'connection' | 'report' | 'pasted' | 'home';
+  source: 'connection' | 'report' | 'pasted' | 'home' | 'coordinator';
   reportId?: string;
 }
 

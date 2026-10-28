@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { PlannerProject } from '@shared/planner';
 import type { ChatProviderInfo } from '@shared/plannerApi';
 import { chunkPlan, isReady, MAKE_PLAN_REQUEST, withoutMarker, type ChatMessage, type ChatMode, type ChatProviderId } from '@shared/plannerChat';
+import { PLANNER_BUSY_EVENT } from '@shared/plannerView';
 import { errMsg, ErrorLine, useAction, type TabId } from './plannerUi';
 
 const api = () => window.studio.planner;
@@ -14,13 +15,15 @@ const put = (k: string, v: string) => { try { store?.setItem(k, v); } catch { /*
 const PROVIDER_KEY = 'cs-planner-chat-provider';
 
 /** An answer that breaks the project into chunks: shown as a plain numbered list instead of raw text. */
-function ChunkList({ p, reload, text, go, onChange }: { p: PlannerProject; reload: () => Promise<void>; text: string; go: (t: TabId) => void; onChange: () => void }) {
+function ChunkList({ p, reload, text, go, onChange, preview }: { p: PlannerProject; reload: () => Promise<void>; text: string; go: (t: TabId) => void; onChange: () => void; preview?: boolean }) {
   const plan = useMemo(() => chunkPlan(text), [text]);
   const [skip, setSkip] = useState<number[]>([]);
   const [done, setDone] = useState<number | null>(null);
   const a = useAction(reload);
   if (!plan) return null;
-  const have = new Set(p.tasks.filter((t) => t.status !== 'cancelled').map((t) => t.title.trim().toLowerCase()));
+  // Chunks already in the plan, or already waiting as a suggestion, are not added a second time.
+  const waiting = p.proposals.filter((x) => x.status === 'pending').flatMap((x) => x.changes).flatMap((c) => (c.op === 'add_task' ? [c.title] : []));
+  const have = new Set([...p.tasks.filter((t) => t.status !== 'cancelled').map((t) => t.title), ...waiting].map((t) => t.trim().toLowerCase()));
   const already = plan.chunks.every((c) => have.has(c.title.trim().toLowerCase()));
   const picked = plan.chunks.map((_, i) => i).filter((i) => !skip.includes(i));
   const add = () => a.run(async () => {
@@ -28,7 +31,8 @@ function ChunkList({ p, reload, text, go, onChange }: { p: PlannerProject; reloa
     // The project summary is set quietly with the chunks; it is tied to the summary as it is now, so it never overwrites something edited since.
     const changes = [...plan.brief.map((c) => (c.op === 'set_brief' ? { ...c, baseMetaRev: p.metaRev } : c)), ...chosen];
     const pr = await api().importSuggestions(p.id, { proposer: { kind: 'other', name: 'Planning chat' }, note: 'Chunks from the planning chat', changes, rawText: text });
-    await api().decideProposal(p.id, pr.id, true, changes.map((_, i) => i));
+    // In the Studio the chunks stay as suggestions on the canvas until the owner adds them there; elsewhere they join the plan at once, as before.
+    if (!preview) await api().decideProposal(p.id, pr.id, true, changes.map((_, i) => i));
     setDone(chosen.length);
   });
   return (
@@ -43,10 +47,10 @@ function ChunkList({ p, reload, text, go, onChange }: { p: PlannerProject; reloa
         ))}
       </ol>
       {already || done !== null ? (
-        <p role="status" className="pl-hint">{done !== null ? `Added ${done} chunk${done === 1 ? '' : 's'} to your plan.` : 'These chunks are in your plan.'} <button className="btn small primary" onClick={() => go('tasks')}>See the plan</button></p>
+        <p role="status" className="pl-hint">{done !== null ? (preview ? `${done} chunk${done === 1 ? '' : 's'} shown on the canvas. Add them there when you are happy.` : `Added ${done} chunk${done === 1 ? '' : 's'} to your plan.`) : 'These chunks are in your plan, or waiting on the canvas.'} {!preview && <button className="btn small primary" onClick={() => go('tasks')}>See the plan</button>}</p>
       ) : (
         <div className="pl-actions">
-          <button className="btn primary" disabled={a.busy || !picked.length} onClick={() => void add()}>Add these to my plan</button>
+          <button className="btn primary" disabled={a.busy || !picked.length} onClick={() => void add()}>{preview ? 'Show these on the canvas' : 'Add these to my plan'}</button>
           <button className="btn" disabled={a.busy} onClick={onChange}>I want to change something</button>
         </div>
       )}
@@ -55,7 +59,8 @@ function ChunkList({ p, reload, text, go, onChange }: { p: PlannerProject; reloa
   );
 }
 
-export function PlannerChat({ p, reload, go }: { p: PlannerProject; reload: () => Promise<void>; go: (t: TabId) => void }) {
+/** `preview`: the Studio keeps what the AI suggests as dashed cards until the owner adds them. */
+export function PlannerChat({ p, reload, go, preview }: { p: PlannerProject; reload: () => Promise<void>; go: (t: TabId) => void; preview?: boolean }) {
   const [providers, setProviders] = useState<ChatProviderInfo[] | null>(null);
   const [provider, setProvider] = useState<ChatProviderId>(() => (['claude', 'openai', 'gemini'].includes(get(PROVIDER_KEY) ?? '') ? (get(PROVIDER_KEY) as ChatProviderId) : 'claude'));
   const [models, setModels] = useState<string[] | null>(null);
@@ -96,17 +101,21 @@ export function PlannerChat({ p, reload, go }: { p: PlannerProject; reload: () =
     return () => { live = false; };
   }, [provider, info?.ready]);
   useEffect(() => { listRef.current?.scrollTo({ top: listRef.current.scrollHeight }); }, [messages.length, busy]);
+  // The Planner tab shows a live dot while a request is running, even if the owner has moved to another screen meanwhile.
+  const tellTab = (b: boolean) => window.dispatchEvent(new CustomEvent(PLANNER_BUSY_EVENT, { detail: { busy: b } }));
 
   const ask = async (text: string, mode: ChatMode = 'talk') => {
     if (!text.trim() || busy || !model) return;
     const next: ChatMessage[] = [...messages, { role: 'user', text: text.trim() }];
-    setMessages(next); setInput(''); setNotYet(null); setBusy(true); setError(null);
+    setMessages(next); setInput(''); setNotYet(null); setBusy(true); setError(null); tellTab(true);
+    // The owner's message is saved before the AI answers, so a failed request or a crash never loses it.
+    void api().chatAppend(p.id, { messages: [{ role: 'user', text: text.trim() }], provider, model }).catch(() => {});
     try {
       const r = await api().chat({ projectId: p.id, provider, model, messages: next, mode });
       const all: ChatMessage[] = [...next, { role: 'assistant', text: r.text }];
       setMessages(all);
-      save(all);
-    } catch (e) { setError(errMsg(e)); } finally { setBusy(false); }
+      void api().chatAppend(p.id, { messages: [{ role: 'assistant', text: r.text }], provider, model }).catch(() => {});
+    } catch (e) { setError(errMsg(e)); } finally { setBusy(false); tellTab(false); }
   };
 
   const lastIdx = messages.length - 1;
@@ -128,7 +137,7 @@ export function PlannerChat({ p, reload, go }: { p: PlannerProject; reload: () =
           return (
             <div key={i} className={`pl-msg ${m.role}`}>
               <strong>{m.role === 'user' ? 'You' : info?.label ?? 'AI'}</strong>
-              {plan ? <ChunkList p={p} reload={reload} text={m.text} go={go} onChange={() => inputRef.current?.focus()} /> : <p className="pl-msg-text">{withoutMarker(m.text)}</p>}
+              {plan ? <ChunkList p={p} reload={reload} text={m.text} go={go} onChange={() => inputRef.current?.focus()} preview={preview} /> : <p className="pl-msg-text">{withoutMarker(m.text)}</p>}
             </div>
           );
         })}

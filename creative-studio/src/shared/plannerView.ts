@@ -1,6 +1,15 @@
 // Plain-language view of the planner's stored state (docs/planner-simplification-plan.md, section 3.2 and 3.3). Pure and read-only:
 // nothing here changes what is stored, so older projects, the MCP tools and the history keep their exact meaning.
-import { isClaimLive, planDrift, snapshotOf, unmetDependencies, type PlannerProject, type PlanTask, type TaskStatus } from './planner';
+import { isClaimLive, planDrift, snapshotOf, unmetDependencies, type PlannerProject, type PlanTask, type ProjectSummary, type TaskStatus } from './planner';
+
+/** Window event the planning chat sends while the AI is thinking (`detail: { busy: boolean }`), so the Planner tab can show it. */
+export const PLANNER_BUSY_EVENT = 'createcraft:planner-busy';
+
+/** The number on the Planner tab: results to review plus suggestions to look at, in the plan of the open project. */
+export function plannerTabBadge(list: ReadonlyArray<Pick<ProjectSummary, 'awaitingReview' | 'pendingProposals' | 'inThisProject'>>): number {
+  const mine = list.find((s) => s.inThisProject);
+  return mine ? mine.awaitingReview + mine.pendingProposals : 0;
+}
 
 export const SIMPLE_STATUSES = ['To Do', 'In Progress', 'Needs Review', 'Done', 'Blocked'] as const;
 export type SimpleStatus = (typeof SIMPLE_STATUSES)[number];

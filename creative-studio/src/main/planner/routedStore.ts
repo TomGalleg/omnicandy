@@ -9,7 +9,7 @@ import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 import type { ProjectSummary } from '@shared/planner';
-import { PlannerError, PlannerStore } from './store';
+import { PlannerError, PlannerStore, type StoreOptions } from './store';
 
 const ID_RE = /^plan_[a-z0-9]{6,20}$/;
 export const PROJECT_PLANNER_FOLDER = 'Planner';
@@ -18,7 +18,7 @@ export class RoutedPlannerStore extends PlannerStore {
   private current: { root: string; ownerId: string } | null = null;
 
   /** `sharedRoot` is the older, shared planner folder (the app's data folder). */
-  constructor(readonly sharedRoot: string, now?: () => Date) { super(sharedRoot, now); }
+  constructor(readonly sharedRoot: string, now?: () => Date, opts?: StoreOptions) { super(sharedRoot, now, opts); }
 
   /** Called whenever the open project changes. `null` = no project open. */
   setProject(projectRoot: string | null, ownerId: string | null): void {

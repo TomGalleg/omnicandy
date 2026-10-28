@@ -2,6 +2,10 @@
 import type {
   ActivityEntry, AppRef, ExecPackage, ItemStatus, ItemType, PlanAsset, PlanDrift, PlanItem, PlannerProject, PlanReport, PlanTask, Priority, ProjectInput, ProjectSummary, ReportDraft, Actor, Proposal, ProposalChange,
 } from './planner';
+import type { CanvasLayout, CanvasPatch } from './plannerCanvas';
+import type { PlannerEvent } from './plannerEvents';
+import type { ProjectView } from './projectView';
+import type { MeetingKind, TeamChange, TownMeeting, TownState } from './town';
 
 export interface PlannerTaskInput {
   title: string; description?: string; priority?: Priority; parentId?: string | null; dependsOn?: string[]; checks?: Array<{ text: string; kind?: string }>;
@@ -98,4 +102,30 @@ export interface PlannerApi {
   attachOlder(id: string): Promise<PlannerProject>;
   connectionInfo(): Promise<PlannerConnectionInfo>;
   openFolder(): Promise<void>;
+  /** The shared view of a plan (without an id: the open project's plan). Computed from the plan; nothing in it is stored. */
+  view(id?: string): Promise<ProjectView>;
+  /** Where the cards sit. Layout is presentation only: it never changes a revision or an execution package. */
+  canvasLoad(id: string): Promise<{ layout: CanvasLayout; recovered: boolean }>;
+  canvasPatch(id: string, patch: CanvasPatch): Promise<{ layoutRev: number }>;
+  /** Adds messages to the saved planning conversation (so a message is saved before the AI answers). */
+  chatAppend(id: string, req: { messages: Array<{ role: 'user' | 'assistant'; text: string }>; provider?: 'claude' | 'openai' | 'gemini'; model?: string }): Promise<{ stored: number }>;
+  /** Stores changes as one pending proposal from the project coordinator. Nothing joins the plan until the owner accepts it. */
+  proposeChanges(id: string, draft: { note: string; changes: ProposalChange[] }): Promise<{ proposalId: string }>;
+  /** What the owner could do next, worked out from the plan alone. */
+  nextSteps(id: string): Promise<Array<{ kind: string; taskId?: string; proposalId?: string; text: string }>>;
+  /** The project's town: made the first time it is asked for (a Town Hall and a coordinator). People and places only, never the state of the work. */
+  townLoad(id: string): Promise<{ town: TownState; recovered: boolean }>;
+  /** The owner changes the team. All or nothing. */
+  townApply(id: string, changes: TeamChange[]): Promise<TownState>;
+  townSuggest(id: string, req: { note: string; changes: TeamChange[] }): Promise<TownState>;
+  /** Suggests a studio and a specialist for each application the plan names (no AI). Waits for the owner. */
+  townSuggestFromPlan(id: string): Promise<TownState>;
+  townDecide(id: string, suggestionId: string, accept: boolean): Promise<TownState>;
+  meetingStart(id: string, req: { topic: string; kind?: MeetingKind; participantIds: string[] }): Promise<{ town: TownState; meeting: TownMeeting }>;
+  meetingNote(id: string, meetingId: string, note: { by: string; text: string }): Promise<TownState>;
+  meetingEnd(id: string, meetingId: string): Promise<TownState>;
+  /** What the meeting decided for the plan, as one pending proposal (the owner adds it from the canvas). */
+  meetingPropose(id: string, meetingId: string, draft: { note: string; changes: ProposalChange[] }): Promise<{ proposalId: string }>;
+  /** Hears about changes (made here or by a connected tool) as they happen. Returns a function that stops listening. */
+  onEvent(cb: (e: PlannerEvent) => void): () => void;
 }

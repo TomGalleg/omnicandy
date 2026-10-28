@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useState, type ReactNode } from
 import { TASK_STATUS_LABEL, type PlannerProject, type PlanTask, type TaskStatus } from '@shared/planner';
 import { displayStatus, plainError, SIMPLE_LABEL } from '@shared/plannerView';
 
-export type TabId = 'overview' | 'plan' | 'tasks' | 'assets' | 'handoffs' | 'history';
+export type TabId = 'studio' | 'town' | 'plan' | 'tasks' | 'handoffs';
 export interface TabProps {
   p: PlannerProject; reload: () => Promise<void>; go: (t: TabId) => void;
   /** Tasks chosen for Send to AI (kept here so a task's Send button can open the AI area with it ticked). */

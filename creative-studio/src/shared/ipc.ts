@@ -213,6 +213,7 @@ export const IPC = {
   builderRefreshDocs: 'builder:refresh-docs',
   builderProgress: 'builder:progress',
   plannerCall: 'planner:call',
+  plannerEvent: 'planner:event',
   localAiStatus: 'localai:status',
   localAiDownloads: 'localai:downloads',
   localAiDownload: 'localai:download',

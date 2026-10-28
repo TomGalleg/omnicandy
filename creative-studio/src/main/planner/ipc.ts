@@ -7,21 +7,28 @@ import path from 'node:path';
 import { app, BrowserWindow, dialog, ipcMain, shell, type IpcMainInvokeEvent } from 'electron';
 import { z } from 'zod';
 import type { PlanAsset } from '@shared/planner';
+import { IPC } from '@shared/ipc';
 import type { PackageView, PlannerConnectionInfo } from '@shared/plannerApi';
 import { defaultPlannerDir } from './dir';
 import { chatSystemPrompt, CHAT_PROVIDER_IDS, MAX_CHAT_MESSAGE_CHARS, MAX_CHAT_MESSAGES } from '@shared/plannerChat';
 import { type ChatDeps, PlannerChat } from './chat';
 import { ProjectPlanner, type OpenProject } from './projectPlanner';
+import { ProjectCoordinator } from './coordinator';
+import { PlannerEventHub } from './events';
 import { RoutedPlannerStore } from './routedStore';
 import { PlannerService, userCtx } from './service';
+import { createTownMethods } from './townMethods';
+import { createViewMethods } from './viewMethods';
 
 export const PLANNER_CALL = 'planner:call';
 
 /** `dir` is the older, shared planner folder; each project keeps its own plan in its own folder (see routedStore.ts). */
-export function createPlanner(userDataDir: string): { service: PlannerService; store: RoutedPlannerStore; dir: string } {
+export function createPlanner(userDataDir: string): { service: PlannerService; store: RoutedPlannerStore; dir: string; events: PlannerEventHub } {
   const dir = process.env.CREATECRAFT_PLANNER_DIR ? defaultPlannerDir() : path.join(userDataDir, 'planner');
-  const store = new RoutedPlannerStore(dir);
-  return { service: new PlannerService(store), store, dir };
+  // What the store writes (and what a connected tool writes, noticed by the hub) is announced to every window.
+  const events = new PlannerEventHub({ broadcast: (e) => { for (const w of BrowserWindow.getAllWindows()) if (!w.isDestroyed()) w.webContents.send(IPC.plannerEvent, e); } });
+  const store = new RoutedPlannerStore(dir, undefined, { onWrite: (w) => events.emitWrite(w) });
+  return { service: new PlannerService(store), store, dir, events };
 }
 
 function bundleInfo() {
@@ -56,7 +63,7 @@ export function connectionInfo(dir: string): PlannerConnectionInfo {
   };
 }
 
-interface Deps { service: PlannerService; store: RoutedPlannerStore; dir: string; project: () => Promise<OpenProject | null>; isTrustedSender: (e: IpcMainInvokeEvent) => boolean; window: () => BrowserWindow | null; chat?: ChatDeps }
+interface Deps { service: PlannerService; store: RoutedPlannerStore; dir: string; events: PlannerEventHub; project: () => Promise<OpenProject | null>; isTrustedSender: (e: IpcMainInvokeEvent) => boolean; window: () => BrowserWindow | null; chat?: ChatDeps }
 
 export function registerPlannerIpc(d: Deps): void {
   const u = userCtx();
@@ -152,6 +159,16 @@ export function registerPlannerIpc(d: Deps): void {
     connectionInfo: async () => { await sync(); return connectionInfo(d.store.projectRoot ?? d.dir); },
     openFolder: async () => { await sync(); const dir = d.store.projectRoot ?? d.dir; await fs.mkdir(dir, { recursive: true }); await shell.openPath(dir); },
   };
+  // The shared view, the canvas layout, saving chat messages and coordinator proposals (see viewMethods.ts).
+  const coordinator = new ProjectCoordinator({ service: s, planner: pp });
+  Object.assign(methods, createViewMethods({ coordinator, store: d.store }), createTownMethods({ coordinator, store: d.store, service: s }));
+  // One look every few seconds, here, at the open project's plan: a change made by a connected tool becomes an event for every window.
+  d.events.watch(async () => {
+    await pp.sync();
+    const plan = await d.store.projectPlan();
+    return plan ? { planId: plan.id, file: path.join(d.store.dir(plan.id), 'project.json') } : null;
+  });
+  app.on('will-quit', () => d.events.stop());
   ipcMain.handle(PLANNER_CALL, async (e, ...raw) => {
     if (!d.isTrustedSender(e)) throw new Error('Untrusted sender.');
     const [method, args] = z.tuple([z.string(), z.array(z.unknown())]).parse(raw);

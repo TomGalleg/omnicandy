@@ -4,15 +4,18 @@ import type { ProjectFindingsDto, ProjectPlannerState } from '@shared/plannerApi
 import type { ProjectManifest } from '@shared/types';
 import { describeChange } from '@shared/plannerPaste';
 import { PlannerChat } from './PlannerChat';
+import { StudioTab } from './StudioTab';
+import { TownTab } from './TownTab';
 import { ConnectPanel, PastePanel, TasksTab, WorkTab } from './PlannerWork';
 import { AskPanel } from './PlannerSend';
 import { needsYou } from '@shared/plannerView';
+import { shouldRefresh } from '@shared/plannerEvents';
 import { ErrorLine, errMsg, PlainWords, Section, useAction, when, type TabId, type TabProps } from './plannerUi';
 
 const api = () => window.studio.planner;
 // One simple flow: Idea (think it through with an AI), Plan (break it into chunks you can edit), Work (do one chunk at a time, review it, approve it).
 // Tab ids are the original ones (plan, tasks, handoffs) so every existing go('handoffs') still lands in the right place.
-const TABS: Array<[TabId, string]> = [['plan', 'Idea'], ['tasks', 'Plan'], ['handoffs', 'Work']];
+const TABS: Array<[TabId, string]> = [['studio', 'Studio'], ['town', 'Town'], ['plan', 'Idea'], ['tasks', 'Plan'], ['handoffs', 'Work']];
 
 const ago = (iso: string) => {
   const ms = Date.now() - Date.parse(iso);
@@ -27,7 +30,7 @@ const ago = (iso: string) => {
   return `${Math.round(d / 30)} months ago`;
 };
 
-/** The Planner of the open project: its plan is kept inside the project and restored when the project is opened again. */
+/** OmniTown (the planner) of the open project: its plan is kept inside the project and restored when the project is opened again. */
 export function PlannerWorkspace({ manifest, projectKey }: { manifest: ProjectManifest | null; projectKey: string | null }) {
   const [state, setState] = useState<ProjectPlannerState | null>(null);
   /** An older plan (from the shared planner folder) being looked at instead of this project's plan. */
@@ -36,7 +39,7 @@ export function PlannerWorkspace({ manifest, projectKey }: { manifest: ProjectMa
   const [sendSel, setSendSel] = useState<string[]>([]);
   const [focusTaskId, setFocusTaskId] = useState<string | null>(null);
   const [pickUpDismissed, setPickUpDismissed] = useState<string | null>(null);
-  const [tab, setTab] = useState<TabId>('plan');
+  const [tab, setTab] = useState<TabId>('studio');
   /** Something opened from the ⋯ menu: the change history, or how to connect an AI tool. */
   const [panel, setPanel] = useState<'history' | 'connect' | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -59,22 +62,32 @@ export function PlannerWorkspace({ manifest, projectKey }: { manifest: ProjectMa
     } catch (e) { setError(errMsg(e)); }
   }, []);
   // A different project: nothing of the previous one stays on screen.
-  useEffect(() => { setState(null); setProject(null); setOlderId(null); setFocusTaskId(null); setPickUpDismissed(null); setPanel(null); setTab('plan'); sessionStart.current = Date.now(); void refresh(); }, [projectKey, refresh]);
+  useEffect(() => { setState(null); setProject(null); setOlderId(null); setFocusTaskId(null); setPickUpDismissed(null); setPanel(null); setTab('studio'); sessionStart.current = Date.now(); void refresh(); }, [projectKey, refresh]);
   useEffect(() => { void refresh(); }, [olderId, refresh]);
-  // Connections and the app write to the same folder: look again every few seconds (cheap: only a changed plan reloads).
+  // Changes made here or by a connected tool arrive as events (no polling). Looking again on focus and on a slow timer covers a lost event
+  // and the older plans, which live outside the open project's folder and so are not watched.
+  const projectRef = useRef(project);
+  projectRef.current = project;
   useEffect(() => {
-    const t = setInterval(() => {
+    const look = () => {
       const id = olderRef.current ?? null;
       void api().list().then((l) => {
         const mine = id ? l.find((x) => x.id === id) : l.find((x) => x.inThisProject);
         if (mine) setProject((p) => { if (!p || p.id !== mine.id || p.revision !== mine.revision) void api().get(mine.id).then((n) => setProject((cur) => (cur && cur.id !== n.id && !id ? cur : n))).catch(() => {}); return p; });
       }).catch(() => {});
-    }, 3000);
-    return () => clearInterval(t);
+    };
+    const off = api().onEvent((e) => {
+      const cur = projectRef.current;
+      if (shouldRefresh(e, cur?.id ?? null, cur?.revision ?? 0)) void api().get(e.planId).then((n) => setProject((now) => (now && now.id === n.id && n.revision < now.revision ? now : n))).catch(() => {});
+      else if (e.type === 'plan.recovered' && e.planId === cur?.id) setError(e.note);
+    });
+    const timer = setInterval(look, 30_000);
+    window.addEventListener('focus', look);
+    return () => { off(); clearInterval(timer); window.removeEventListener('focus', look); };
   }, []);
 
-  if (!state) return <div className="planner"><p className="pl-hint" style={{ padding: 16 }}>{error ?? 'Opening the Planner…'}</p></div>;
-  if (!state.project) return <div className="planner"><p className="pl-hint" style={{ padding: 16 }}>Open a project to use its Planner.</p></div>;
+  if (!state) return <div className="planner"><p className="pl-hint" style={{ padding: 16 }}>{error ?? 'Opening OmniTown…'}</p></div>;
+  if (!state.project) return <div className="planner"><p className="pl-hint" style={{ padding: 16 }}>Open a project to use its OmniTown.</p></div>;
   if (!project) return <PlannerStart state={state} manifest={manifest} onChanged={refresh} onOpenOlder={setOlderId} error={error} />;
 
   const props: TabProps = {
@@ -105,10 +118,12 @@ export function PlannerWorkspace({ manifest, projectKey }: { manifest: ProjectMa
       )}
       {panel === 'history' && <HistoryPanel p={project} onClose={() => setPanel(null)} />}
       {panel === 'connect' && <div className="pl-panel"><Section title="Connect an AI tool" hint="Optional. Lets a tool such as Claude Code read this plan and report back, without copy and paste." actions={<button className="btn small" onClick={() => setPanel(null)}>Close</button>}><ConnectPanel /></Section></div>}
-      <nav className="pl-tabs" role="tablist" aria-label="Planner steps">
+      <nav className="pl-tabs" role="tablist" aria-label="OmniTown steps">
         {TABS.map(([t, label]) => <button key={t} role="tab" aria-selected={tab === t} onClick={() => setTab(t)}>{label}{t === 'handoffs' && need.total ? <span className="pl-badge" title="Waiting for you">{need.total}</span> : null}</button>)}
       </nav>
       <div className="pl-body" role="tabpanel">
+        {tab === 'studio' && <StudioTab {...props} />}
+        {tab === 'town' && <TownTab {...props} />}
         {tab === 'plan' && <IdeaTab {...props} />}
         {tab === 'tasks' && <PlanTab {...props} />}
         {tab === 'handoffs' && <WorkTab {...props} />}
@@ -177,7 +192,7 @@ function PlannerStart({ state, manifest, onChanged, onOpenOlder, error }: { stat
   return (
     <div className="planner">
       <div className="pl-body pl-picker">
-        <h2>Planner for {name}</h2>
+        <h2>OmniTown for {name}</h2>
         <p className="pl-hint">An AI creative partner for this project. It works in three steps: <strong>Idea</strong> (think the project through), <strong>Plan</strong> (break it into chunks you can edit) and <strong>Work</strong> (do one chunk at a time, review it, approve it). Your files stay the real work; the plan only keeps track of goals, decisions and progress. It is optional, and it is always here.</p>
         <ErrorLine error={error ?? a.error} />
         {!findings && (

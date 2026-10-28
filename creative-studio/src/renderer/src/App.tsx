@@ -3,6 +3,7 @@ import { Group, Panel, Separator, useDefaultLayout, usePanelRef, type PanelSize 
 import { EDITOR_APPS, type EditorAppId } from '@shared/appEditors';
 import type { IntegrationSnapshot } from '@shared/ipc';
 import { parseNavMode, routeWorkspace, shownWorkspace, type EditMode, type NavMode } from '@shared/navigation';
+import { PLANNER_BUSY_EVENT, plannerTabBadge } from '@shared/plannerView';
 import { shouldShowTimeline } from '@shared/timeline';
 import type { AppProbeResult, Asset, ProjectManifest, WorkspaceId } from '@shared/types';
 import { AssetBrowser } from './components/AssetBrowser';
@@ -117,6 +118,14 @@ export function App() {
     go(t, assetId);
     if (t === 'edit') setEditModeFor({ mode: 'edit', id: assetId ?? selectedIdRef.current });
   }, [go]);
+  // The Planner tab shows when the planning AI is thinking and how many things wait for the owner.
+  const [plannerBusy, setPlannerBusy] = useState(false);
+  const [plannerNeeds, setPlannerNeeds] = useState(0);
+  useEffect(() => {
+    const on = (e: Event) => setPlannerBusy((e as CustomEvent<{ busy?: boolean }>).detail?.busy === true);
+    window.addEventListener(PLANNER_BUSY_EVENT, on);
+    return () => window.removeEventListener(PLANNER_BUSY_EVENT, on);
+  }, []);
   const [navMode, setNavModeState] = useState<NavMode>(() => parseNavMode(read('cs-nav-mode')));
   const setNavMode = useCallback((m: NavMode) => { write('cs-nav-mode', m); setNavModeState(m); }, []);
   const [manifest, setManifest] = useState<ProjectManifest | null>(null);
@@ -166,6 +175,16 @@ export function App() {
     const t = setTimeout(() => { void window.studio.setProjectMeta({ view: { workspace, ...(selectedId ? { assetId: selectedId } : {}) } }).catch(() => {}); }, 800);
     return () => clearTimeout(t);
   }, [viewReady, workspace, selectedId]);
+
+  // Count what waits in the open project's plan. A change (made here or by a connected tool) arrives as an event; the timer is a safety net.
+  useEffect(() => {
+    let live = true;
+    const look = () => { void window.studio.planner.list().then((l) => { if (live) setPlannerNeeds(plannerTabBadge(l)); }).catch(() => { if (live) setPlannerNeeds(0); }); };
+    look();
+    const off = window.studio.planner.onEvent((e) => { if (e.type === 'plan.changed') look(); });
+    const t = setInterval(look, 30_000);
+    return () => { live = false; off(); clearInterval(t); };
+  }, [projectKey]);
 
   useEffect(() => {
     loadCurrent();
@@ -259,6 +278,7 @@ export function App() {
         integrations={integrations}
         appearance={appearance}
         appTheme={liveApi.live?.appTheme ?? null}
+        plannerBadge={{ busy: plannerBusy, needs: plannerNeeds }}
       />
       {error && <div className="notice" role="alert">Could not load project: {error}</div>}
       <div className="main">

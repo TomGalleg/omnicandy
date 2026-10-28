@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { TASK_STATUSES, type PlannerProject, type PlanTask, type TaskStatus } from '@shared/planner';
-import { displayStatus, needsYou, SIMPLE_LABEL, SIMPLE_STATUSES } from '@shared/plannerView';
+import { displayStatus, needsYou, plannerTabBadge, SIMPLE_LABEL, SIMPLE_STATUSES } from '@shared/plannerView';
 
 const NOW = new Date('2026-06-01T12:00:00Z');
 const FIX = path.join(__dirname, '__fixtures__');
@@ -72,5 +72,16 @@ describe('plainError', () => {
     expect(plainError('The plan changed after this work was handed off. Review what changed, then accept knowingly.')).toMatch(/tick the box/);
     expect(plainError('Not applied: "A" changed after this was proposed. Reject the proposal or deselect those changes.')).toMatch(/Untick those items/);
     expect(plainError('Something new and unexpected.')).toBe('Something new and unexpected.');
+  });
+});
+
+describe('plannerTabBadge', () => {
+  it('counts results to review plus suggestions, only for the plan of the open project', () => {
+    expect(plannerTabBadge([])).toBe(0);
+    expect(plannerTabBadge([{ inThisProject: false, awaitingReview: 5, pendingProposals: 5 }])).toBe(0);
+    expect(plannerTabBadge([
+      { inThisProject: false, awaitingReview: 9, pendingProposals: 9 },
+      { inThisProject: true, awaitingReview: 2, pendingProposals: 1 },
+    ])).toBe(3);
   });
 });

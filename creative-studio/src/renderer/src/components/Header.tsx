@@ -18,10 +18,12 @@ interface Props {
   integrations: IntegrationSnapshot | null;
   appearance: ReturnType<typeof useAppearance>;
   appTheme: LiveSnapshot['appTheme'] | null;
+  /** The Planner tab's live state: the planning AI is thinking, and how many things wait for the owner. */
+  plannerBadge?: { busy: boolean; needs: number };
 }
 
 /** Brand, project, workspaces and Settings. Status details live in Settings and in each panel. */
-export function Header({ projectName, onProjectHome, workspace, onWorkspace, navMode, onNavMode, apps, integrations, appearance, appTheme }: Props) {
+export function Header({ projectName, onProjectHome, workspace, onWorkspace, navMode, onNavMode, apps, integrations, appearance, appTheme, plannerBadge }: Props) {
   const [settings, setSettings] = useState(false);
   const closeSettings = useCallback(() => setSettings(false), []);
   const [more, setMore] = useState(false);
@@ -43,8 +45,11 @@ export function Header({ projectName, onProjectHome, workspace, onWorkspace, nav
       <button className="project-name" title="Projects" onClick={onProjectHome}>Project: <strong>{projectName}</strong> <span aria-hidden>▾</span></button>
       <nav className="workspaces" aria-label="Workspaces">
         {(simple ? SIMPLE_NAV : ADVANCED_NAV).map((w) => (
-          <button key={w.id} aria-current={workspace === w.id ? 'page' : undefined} onClick={() => onWorkspace(w.id)}>
+          <button key={w.id} aria-current={workspace === w.id ? 'page' : undefined} onClick={() => onWorkspace(w.id)}
+            aria-label={w.id === 'planner' && plannerBadge ? `${w.label}${plannerBadge.busy ? ', working' : ''}${plannerBadge.needs ? `, ${plannerBadge.needs} waiting for you` : ''}` : undefined}>
             {w.label}
+            {w.id === 'planner' && plannerBadge?.busy && <span className="tab-working" title="The planning AI is working" aria-hidden />}
+            {w.id === 'planner' && plannerBadge && plannerBadge.needs > 0 && <span className="tab-badge" title="Waiting for you" aria-hidden>{plannerBadge.needs}</span>}
           </button>
         ))}
         {simple && (
