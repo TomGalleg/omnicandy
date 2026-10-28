@@ -6,8 +6,12 @@ describe('navigation', () => {
   it('simplified plus More reaches every advanced workspace', () => {
     const ids = [...SIMPLE_NAV, ...MORE_NAV].map((n) => n.id).sort();
     expect(ids).toEqual(ADVANCED_NAV.map((n) => n.id).sort());
-    expect(SIMPLE_NAV.map((n) => n.label)).toEqual(['Project', 'Planner', 'Create', 'AI Generate', 'Deliver']);
-    expect(MORE_NAV.map((n) => n.id)).toEqual(['media', 'effects', 'color', 'audio', 'software']);
+    expect(SIMPLE_NAV.map((n) => n.label)).toEqual(['Project', 'Create', 'AI Generate', 'Software', 'Planner', 'Deliver']);
+    expect(MORE_NAV.map((n) => n.id)).toEqual(['media', 'effects', 'color', 'audio']);
+  });
+  it('ends with Software, Planner, Deliver in both layouts', () => {
+    expect(ADVANCED_NAV.slice(-3).map((n) => n.id)).toEqual(['software', 'planner', 'deliver']);
+    expect(SIMPLE_NAV.slice(-3).map((n) => n.id)).toEqual(['software', 'planner', 'deliver']);
   });
   it('hides Workflow from the tabs and sends any request for it Home', () => {
     expect(HIDDEN_WORKSPACES).toEqual(['workflow']);

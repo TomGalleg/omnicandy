@@ -297,7 +297,7 @@ const api: StudioApi = {
   },
   planner: Object.fromEntries(['list', 'get', 'activity', 'assetHealth', 'create', 'update', 'addItem', 'updateItem', 'setItemStatus', 'removeItem', 'addTask', 'updateTask', 'setTaskStatus', 'removeTask', 'releaseClaim', 'addAsset', 'pickAssets', 'removeAsset', 'addMilestone', 'removeMilestone', 'decideProposal', 'createPackage', 'prepareSend', 'importSuggestions', 'createFromHomePlan', 'chatProviders', 'chatModels', 'chat', 'chatLoad', 'chatSave', 'forProject', 'startPlan', 'analyze', 'applyFindings', 'touchTask', 'attachOlder', 'cancelPackage', 'packageView', 'savePackage', 'importReport', 'reviewReport', 'rawReport', 'exportProject', 'importProject', 'connectionInfo', 'openFolder'].map((m) => [m, (...a: unknown[]) => ipcRenderer.invoke(IPC.plannerCall, m, a)])) as unknown as StudioApi['planner'],
   probeApps: () => ipcRenderer.invoke(IPC.probeApps),
-  launchApp: (appId: string) => ipcRenderer.invoke(IPC.launchApp, appId),
+  launchApp: (appId: string, inOmniCandy?: boolean) => ipcRenderer.invoke(IPC.launchApp, appId, inOmniCandy === true),
   integrationStatus: () => ipcRenderer.invoke(IPC.integrationStatus),
   assetUrl: (assetId) => `${ASSET_SCHEME}://asset/${encodeURIComponent(assetId)}`,
 };

@@ -634,7 +634,8 @@ export interface StudioApi {
   planner: PlannerApi;
   probeApps(): Promise<AppProbeResult[]>;
   /** Starts an installed ArtCraft app on its own (no file). */
-  launchApp(appId: string): Promise<void>;
+  /** Starts an installed ArtCraft app. With inOmniCandy its window is docked into the Software tab (Windows); otherwise it opens by itself. */
+  launchApp(appId: string, inOmniCandy?: boolean): Promise<void>;
   integrationStatus(): Promise<IntegrationSnapshot>;
   /** URL the renderer can use in <img src>, served read-only by main from the project root. */
   assetUrl(assetId: string): string;

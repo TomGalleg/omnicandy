@@ -20,17 +20,18 @@ export const ADVANCED_NAV: NavItem[] = [
   { id: 'effects', label: 'Effects' },
   { id: 'color', label: 'Color' },
   { id: 'audio', label: 'Audio' },
-  { id: 'deliver', label: 'Deliver' },
-  { id: 'planner', label: 'Planner' },
   { id: 'software', label: 'Software' },
+  { id: 'planner', label: 'Planner' },
+  { id: 'deliver', label: 'Deliver' },
 ];
 
 /** Simplified mode shows these directly; everything else sits under "More". */
 export const SIMPLE_NAV: NavItem[] = [
   { id: 'home', label: 'Project' },
-  { id: 'planner', label: 'Planner' },
   { id: 'edit', label: 'Create' },
   { id: 'generate', label: 'AI Generate' },
+  { id: 'software', label: 'Software' },
+  { id: 'planner', label: 'Planner' },
   { id: 'deliver', label: 'Deliver' },
 ];
 

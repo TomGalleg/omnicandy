@@ -1735,13 +1735,21 @@ export function registerIpc(d: IpcDeps): void {
 
   handle(IPC.probeApps, none, () => probeAllArtCraftApps());
   /** Opens an installed ArtCraft app by itself. Only the known apps' own executables from their install folders can start. */
-  handle(IPC.launchApp, z.tuple([z.enum(Object.keys(EDITOR_APPS) as [EditorAppId, ...EditorAppId[]])]), async (appId) => {
+  handle(IPC.launchApp, z.tuple([z.enum(Object.keys(EDITOR_APPS) as [EditorAppId, ...EditorAppId[]]), z.boolean()]), async (appId, inOmniCandy) => {
     const folder = EDITOR_APPS[appId].name;
     const file = craftBin(craftInstallDir(folder), folder.toLowerCase());
     try { await fs.access(file); } catch { throw new Error(`${folder} is not installed on this PC.`); }
     const child = spawn(file, [], { detached: true, stdio: 'ignore' });
     child.on('error', () => undefined);
     child.unref();
+    // "Open in OmniCandy": dock the new window into the Software tab, the same way a program opened for Claude is.
+    const pid = child.pid;
+    if (inOmniCandy && pid) {
+      liveExternal = { name: folder, pid };
+      d.embedded.prepare(pid);
+      emitLiveExternal();
+      child.on('exit', () => { if (liveExternal.pid === pid) { liveExternal = { name: folder, pid: null }; emitLiveExternal(); } });
+    }
   });
   handle(IPC.integrationStatus, none, async (): Promise<IntegrationSnapshot> => ({
     appAdapters: Object.values((await runnerDeps()).apps).map((a) => ({ id: a.id, isMock: a.isMock })),

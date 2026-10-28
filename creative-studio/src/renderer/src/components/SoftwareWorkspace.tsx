@@ -5,8 +5,6 @@ import { EDITOR_APPS } from '@shared/appEditors';
 import type { AppProbeResult } from '@shared/types';
 import { ExternalApps } from './ExternalApps';
 
-const TAB_LABEL = { edit: 'Create', color: 'Color', effects: 'Effects', audio: 'Audio' } as const;
-
 /** The window of a third-party program Claude is working in (Blender), shown inside OmniCandy. */
 function LiveStage({ live, onList }: { live: ExternalLiveState; onList: () => void }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -40,9 +38,9 @@ function LiveStage({ live, onList }: { live: ExternalLiveState; onList: () => vo
 export function SoftwareWorkspace({ apps }: { apps: AppProbeResult[] }) {
   const installed = apps.filter((a) => a.installed).length;
   const [msg, setMsg] = useState<{ text: string; error?: boolean } | null>(null);
-  const launch = async (id: string, name: string) => {
+  const launch = async (id: string, name: string, inOmniCandy: boolean) => {
     setMsg(null);
-    try { await window.studio.launchApp(id); setMsg({ text: `Opening ${name}…` }); } catch (e) { setMsg({ text: (e instanceof Error ? e.message : String(e)).replace(/^Error invoking remote method '[^']+': (Error: )?/, ''), error: true }); }
+    try { await window.studio.launchApp(id, inOmniCandy); setMsg({ text: inOmniCandy ? `Opening ${name} inside OmniCandy… its window appears here in a few seconds.` : `Opening ${name} in its own window…` }); } catch (e) { setMsg({ text: (e instanceof Error ? e.message : String(e)).replace(/^Error invoking remote method '[^']+': (Error: )?/, ''), error: true }); }
   };
   const probe = (id: string) => apps.find((a) => a.appId === id);
   const [live, setLive] = useState<ExternalLiveState | null>(null);
@@ -55,14 +53,14 @@ export function SoftwareWorkspace({ apps }: { apps: AppProbeResult[] }) {
   return (
     <div className="software-screen">
       {live?.pid && <div className="btn-row"><button className="btn small primary" onClick={() => setShowList(false)}>Back to {live.name}</button></div>}
-      <h2>Software connected to OmniCandy</h2>
-      <p className="asset-meta">Claude and you can open and edit your media in these programs. Installed means the program was found on this PC; OmniCandy starts it when you open a file in it.</p>
+      <h2>Software</h2>
+      <p className="asset-meta">Every program connected to OmniCandy. <strong>Open in OmniCandy</strong> starts it and shows its window right here, so you can start using it without leaving. Programs found on this PC come first.</p>
 
       <div className="field">
         <span className="menu-label">ArtCraft apps · {installed} of {Object.keys(EDITOR_APPS).length} installed</span>
         {msg && <div className={`wf-msg${msg.error ? ' error' : ''}`} role={msg.error ? 'alert' : 'status'}>{msg.text}</div>}
         <div className="software-grid">
-          {Object.values(EDITOR_APPS).map((app) => {
+          {Object.values(EDITOR_APPS).slice().sort((x, y) => Number(!!probe(y.id)?.installed) - Number(!!probe(x.id)?.installed)).map((app) => {
             const p = probe(app.id);
             const state = p?.connected ? 'Open now' : p?.installed ? 'Installed' : 'Not installed';
             return (
@@ -72,9 +70,14 @@ export function SoftwareWorkspace({ apps }: { apps: AppProbeResult[] }) {
                   <span className={`chip ${p?.connected ? 'ok' : p?.installed ? 'real' : 'off'}`}><span className="dot" />{state}</span>
                 </div>
                 <div className="asset-meta">{app.blurb}{p?.version ? ` · ${p.version}` : ''}</div>
-                <div className="asset-meta">Opens: {app.formats.map((f) => `.${f}`).join(' ')}</div>
-                {p?.installed && <div className="btn-row"><button className="btn small primary" onClick={() => void launch(app.id, app.name)}>Open {app.name}</button></div>}
-                <div className="asset-meta">Found in the {TAB_LABEL[app.tab]} tab · {app.quickEdits.length} quick edit{app.quickEdits.length === 1 ? '' : 's'}</div>
+                {p?.installed
+                  ? (
+                    <div className="btn-row">
+                      <button className="btn small primary" onClick={() => void launch(app.id, app.name, true)}>Open in OmniCandy</button>
+                      <button className="btn small ghost" onClick={() => void launch(app.id, app.name, false)} title="Opens it as its own window">Own window</button>
+                    </div>
+                  )
+                  : <div className="asset-meta">Install {app.name} to use it here.</div>}
               </div>
             );
           })}
