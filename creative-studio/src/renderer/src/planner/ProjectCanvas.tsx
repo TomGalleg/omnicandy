@@ -78,7 +78,7 @@ function Flow({ view, positions, selectedId, onSelect, onPatch, excluded, onTogg
   useEffect(() => setNodes(build), [build]);
   // Show everything when cards appear or go (not on every move, so the owner's own panning and zooming is left alone).
   const flow = useRef<ReactFlowInstance<Node<CardData, 'card'>> | null>(null);
-  useEffect(() => { const t = setTimeout(() => { void flow.current?.fitView({ padding: 0.25, duration: 200 }); }, 60); return () => clearTimeout(t); }, [view.nodes.length]);
+  useEffect(() => { const t = setTimeout(() => { void flow.current?.fitView({ padding: 0.25, maxZoom: 1, duration: 200 }); }, 60); return () => clearTimeout(t); }, [view.nodes.length]);
   const edges = useMemo<Edge[]>(() => view.edges.filter((e) => e.kind !== 'contains').map((e) => ({
     id: e.id, source: e.from, target: e.to, markerEnd: { type: MarkerType.ArrowClosed }, animated: e.kind === 'ghostDependsOn',
     style: e.kind === 'ghostDependsOn' ? { strokeDasharray: '5 4' } : undefined,
@@ -86,7 +86,7 @@ function Flow({ view, positions, selectedId, onSelect, onPatch, excluded, onTogg
   const onNodesChange = (changes: NodeChange<Node<CardData, 'card'>>[]) => setNodes((ns) => applyNodeChanges(changes, ns));
   return (
     <div className="pc-flow">
-      <ReactFlow nodes={nodes} edges={edges} nodeTypes={nodeTypes} onNodesChange={onNodesChange} onInit={(i) => { flow.current = i; }} nodesConnectable={false} fitView minZoom={0.1} maxZoom={2}
+      <ReactFlow nodes={nodes} edges={edges} nodeTypes={nodeTypes} onNodesChange={onNodesChange} onInit={(i) => { flow.current = i; }} nodesConnectable={false} fitView fitViewOptions={{ padding: 0.25, maxZoom: 1 }} minZoom={0.1} maxZoom={2}
         onNodeClick={(_e, n) => onSelect(n.id)} onPaneClick={() => onSelect(null)}
         onNodeDragStop={(_e, n) => onPatch({ upsertNodes: { [n.id]: { x: Math.round(n.position.x), y: Math.round(n.position.y), w: CARD_W, h: CARD_H } } })}>
         <Background />

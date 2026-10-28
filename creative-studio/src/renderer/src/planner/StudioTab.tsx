@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Group, Panel, Separator } from 'react-resizable-panels';
 import { PlannerChat } from './PlannerChat';
 import { CardDetails, ProjectCanvas } from './ProjectCanvas';
@@ -12,10 +12,28 @@ const api = () => window.studio.planner;
  * the plan only when you press Add. The canvas, board and list are three ways of drawing the same plan.
  */
 export function StudioTab(props: TabProps) {
-  const { p, reload, go, setFocusTaskId, setSendSel } = props;
+  const { p, reload, go, setFocusTaskId, setSendSel, manifest } = props;
   const c = useCanvas(p);
   const [selected, setSelected] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // A project that already has work in it can be looked at in one click: the coordinator reads it (read-only) and starts the conversation from what it found.
+  const [chatEmpty, setChatEmpty] = useState(false);
+  const [chatKey, setChatKey] = useState(0);
+  const [looking, setLooking] = useState(false);
+  useEffect(() => { let live = true; void api().chatLoad(p.id).then((c) => { if (live) setChatEmpty(c.messages.length === 0); }).catch(() => {}); return () => { live = false; }; }, [p.id, chatKey]);
+  const files = manifest?.assets.length ?? 0;
+  const offerLook = files > 0 && chatEmpty && p.tasks.length === 0;
+  const look = () => {
+    setLooking(true); setError(null);
+    void (async () => {
+      const f = await api().analyze();
+      if (f.changes.length) await api().applyFindings(p.id, f.changes.map((_, i) => i));
+      const facts = f.lines.filter((l) => !/^Nothing has been made/.test(l));
+      if (facts.length) await api().chatSave(p.id, { messages: [{ role: 'assistant', text: ['I looked through this project. Here is what I found:', '', ...facts.map((l) => `- ${l}`), '', 'What would you like to do with it next?'].join(String.fromCharCode(10)) }] });
+      setChatKey((k) => k + 1);
+      await reload();
+    })().catch((e) => setError(errMsg(e))).finally(() => setLooking(false));
+  };
   const node = selected ? c.view.nodes.find((n) => n.id === selected) ?? null : null;
 
   /** Suggested cards left out of what gets added. The service applies or rejects a suggestion as a whole, so "leave out" is a choice made here. */
@@ -36,7 +54,13 @@ export function StudioTab(props: TabProps) {
     <div className="studio">
       <Group orientation="horizontal">
         <Panel id="studio-chat" defaultSize="36" minSize="22">
-          <div className="studio-chat"><PlannerChat key={p.id} p={p} reload={reload} go={go} preview /></div>
+          <div className="studio-chat">{offerLook && (
+            <div className="pc-suggest" role="status">
+              <span>This project already has {files} file{files === 1 ? '' : 's'}. Let the coordinator look through them (nothing is changed or marked done).</span>
+              <button className="btn small primary" disabled={looking} onClick={look}>{looking ? 'Looking…' : 'Look at what is here'}</button>
+            </div>
+          )}
+          <PlannerChat key={`${p.id}:${chatKey}`} p={p} reload={reload} go={go} preview /></div>
         </Panel>
         <Separator className="sep" />
         <Panel id="studio-canvas" defaultSize="64" minSize="30">

@@ -47,6 +47,9 @@ export function PlannerWorkspace({ manifest, projectKey }: { manifest: ProjectMa
   const sessionStart = useRef(Date.now());
   const olderRef = useRef(olderId);
   olderRef.current = olderId;
+  /** Which project's plan this window already started on its own (a project opens straight into the Studio; nothing to choose first). */
+  const autoStarted = useRef<string | null>(null);
+  const [startError, setStartError] = useState<string | null>(null);
   const keyRef = useRef(projectKey);
   keyRef.current = projectKey;
 
@@ -86,12 +89,20 @@ export function PlannerWorkspace({ manifest, projectKey }: { manifest: ProjectMa
     return () => { off(); clearInterval(timer); window.removeEventListener('focus', look); };
   }, []);
 
+  useEffect(() => {
+    const pid = state?.project?.id;
+    if (!pid || state?.plan || olderId || project || autoStarted.current === pid) return;
+    autoStarted.current = pid;
+    void api().startPlan({}).then(() => refresh()).catch((e) => setStartError(errMsg(e)));
+  }, [state, olderId, project, refresh]);
+
   if (!state) return <div className="planner"><p className="pl-hint" style={{ padding: 16 }}>{error ?? 'Opening OmniTown…'}</p></div>;
   if (!state.project) return <div className="planner"><p className="pl-hint" style={{ padding: 16 }}>Open a project to use its OmniTown.</p></div>;
-  if (!project) return <PlannerStart state={state} manifest={manifest} onChanged={refresh} onOpenOlder={setOlderId} error={error} />;
+  if (!project && !startError) return <div className="planner"><p className="pl-hint" style={{ padding: 16 }}>Setting up your town…</p></div>;
+  if (!project) return <PlannerStart state={state} manifest={manifest} onChanged={refresh} onOpenOlder={setOlderId} error={startError ?? error} />;
 
   const props: TabProps = {
-    p: project, reload: async () => { setProject(await api().get(project.id)); void api().forProject().then(setState).catch(() => {}); }, go: setTab, sendSel, setSendSel, projectKey, projectName: manifest?.name,
+    manifest, p: project, reload: async () => { setProject(await api().get(project.id)); void api().forProject().then(setState).catch(() => {}); }, go: setTab, sendSel, setSendSel, projectKey, projectName: manifest?.name,
     focusTaskId, setFocusTaskId: (id) => { setFocusTaskId(id); if (id) void api().touchTask(project.id, id, 'opened').then(() => api().get(project.id).then(setProject)).catch(() => {}); },
   };
   const need = needsYou(project);

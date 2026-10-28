@@ -4,6 +4,8 @@ import { displayStatus, plainError, SIMPLE_LABEL } from '@shared/plannerView';
 
 export type TabId = 'studio' | 'town' | 'plan' | 'tasks' | 'handoffs';
 export interface TabProps {
+  /** The open OmniCandy project's manifest (what it already contains). */
+  manifest?: import('@shared/types').ProjectManifest | null;
   p: PlannerProject; reload: () => Promise<void>; go: (t: TabId) => void;
   /** Tasks chosen for Send to AI (kept here so a task's Send button can open the AI area with it ticked). */
   sendSel?: string[]; setSendSel?: (ids: string[]) => void;
