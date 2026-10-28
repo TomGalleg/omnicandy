@@ -102,18 +102,20 @@ function SideTab({ label, text, open, onToggle, controls, shortcut, side }: {
 export function App() {
   const appearance = useAppearance();
   const [workspace, setWorkspace] = useState<WorkspaceId>('home');
-  const [editMode, setEditMode] = useState<EditMode>('edit');
-  /** Switch tab. The old Effects/Color/Audio ids land in Edit, in the matching mode. */
-  const go = useCallback((w: WorkspaceId) => {
+  // The Edit mode belongs to one file: pick another file and Edit starts from its own editor again.
+  const [editModeFor, setEditModeFor] = useState<{ mode: EditMode; id: string | null }>({ mode: 'edit', id: null });
+  const selectedIdRef = useRef<string | null>(null);
+  /** Switch tab. The old Effects/Color/Audio ids land in Edit, in the matching mode (for `assetId`, or the selected file). */
+  const go = useCallback((w: WorkspaceId, assetId?: string | null) => {
     const r = routeWorkspace(shownWorkspace(w));
     setWorkspace(r.workspace);
-    if (r.mode) setEditMode(r.mode);
+    if (r.mode) setEditModeFor({ mode: r.mode, id: assetId ?? selectedIdRef.current });
   }, []);
   /** Show an app's home: Edit for its own editors (and SoundCraft), Color or Effects mode for the other two. */
-  const showApp = useCallback((appId: EditorAppId) => {
+  const showApp = useCallback((appId: EditorAppId, assetId?: string | null) => {
     const t = EDITOR_APPS[appId].tab;
-    go(t);
-    if (t === 'edit') setEditMode('edit');
+    go(t, assetId);
+    if (t === 'edit') setEditModeFor({ mode: 'edit', id: assetId ?? selectedIdRef.current });
   }, [go]);
   const [navMode, setNavModeState] = useState<NavMode>(() => parseNavMode(read('cs-nav-mode')));
   const setNavMode = useCallback((m: NavMode) => { write('cs-nav-mode', m); setNavModeState(m); }, []);
@@ -184,7 +186,7 @@ export function App() {
     const id = live.asset.id;
     if (!manifest?.assets.some((a) => a.id === id)) reloadProject();
     setSelectedId(id);
-    showApp(live.appId);
+    showApp(live.appId, id);
     // Only when Claude opens something new, not on every state update.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [claudeOpened]);
@@ -210,11 +212,12 @@ export function App() {
   const openIn = useCallback((asset: Asset, appId: EditorAppId) => {
     setChosen({ assetId: asset.id, appId });
     setSelectedId(asset.id);
-    showApp(appId);
+    showApp(appId, asset.id);
     addLog('open', `Opening ${asset.name} in ${EDITOR_APPS[appId].name}.`);
   }, [addLog, showApp]);
-  const goto = useCallback((w: WorkspaceId, assetId?: string) => { if (assetId) setSelectedId(assetId); go(w); }, [go]);
+  const goto = useCallback((w: WorkspaceId, assetId?: string) => { if (assetId) setSelectedId(assetId); go(w, assetId); }, [go]);
 
+  selectedIdRef.current = selectedId;
   const selected = useMemo(() => manifest?.assets.find((a) => a.id === selectedId) ?? null, [manifest, selectedId]);
 
   const outer = useDefaultLayout({ id: 'cs-outer-docks', storage });
@@ -295,8 +298,8 @@ export function App() {
                     liveApi={liveApi}
                     onSelectAsset={setSelectedId}
                     onOpenIn={openIn}
-                    editMode={editMode}
-                    onEditMode={setEditMode}
+                    editMode={editModeFor.id === selectedId ? editModeFor.mode : 'edit'}
+                    onEditMode={(mode) => setEditModeFor({ mode, id: selectedId })}
                     chosenApp={chosen && chosen.assetId === selectedId ? chosen.appId : null}
                   />
                 </div>

@@ -6,7 +6,7 @@ describe('navigation', () => {
   it('simplified plus More reaches every advanced workspace', () => {
     const ids = [...SIMPLE_NAV, ...MORE_NAV].map((n) => n.id).sort();
     expect(ids).toEqual(ADVANCED_NAV.map((n) => n.id).sort());
-    expect(SIMPLE_NAV.map((n) => n.label)).toEqual(['Project', 'Create', 'AI Generate', 'Software', 'Planner', 'Deliver']);
+    expect(SIMPLE_NAV.map((n) => n.label)).toEqual(['Project', 'Edit', 'AI Generate', 'Software', 'Planner', 'Deliver']);
     expect(MORE_NAV.map((n) => n.id)).toEqual(['media']);
     expect(ADVANCED_NAV.map((n) => n.id)).toEqual(['home', 'media', 'edit', 'generate', 'software', 'planner', 'deliver']);
   });

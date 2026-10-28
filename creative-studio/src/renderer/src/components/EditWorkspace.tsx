@@ -25,10 +25,21 @@ type Tab = EditorApp['tab'];
 
 const MODE_LABEL: Record<EditMode, string> = { edit: 'Edit', color: 'Color', effects: 'Effects' };
 const MODE_HINT: Record<EditMode, string> = {
-  edit: "The file's own editor",
-  color: 'LightCraft: exposure, white balance, curves, grading and looks',
-  effects: 'EffectCraft: effects, titles and animation',
+  edit: "Edit the file in its own editor. Photos use PhotoCraft, video uses FilmCraft, and so on.",
+  color: 'Color uses LightCraft: exposure, white balance, curves, grading and looks. For photos.',
+  effects: 'Effects uses EffectCraft: effects, titles and animation. For photos and video.',
 };
+
+/** The Edit | Color | Effects buttons. With no file picked they all show, greyed out, so you can see what exists. */
+function ModeStrip({ modes, active, onPick }: { modes: EditMode[] | null; active?: EditMode; onPick: (m: EditMode) => void }) {
+  return (
+    <div className="mode-strip" role="group" aria-label="Edit mode">
+      {(['edit', 'color', 'effects'] as const).filter((m) => !modes || modes.includes(m)).map((m) => (
+        <button key={m} className="btn small" disabled={!modes} aria-pressed={active === m} title={MODE_HINT[m]} onClick={() => onPick(m)}>{MODE_LABEL[m]}</button>
+      ))}
+    </div>
+  );
+}
 
 const INTRO = {
   title: 'Pick something to edit',
@@ -59,13 +70,7 @@ export function EditWorkspace({ mode, onMode, onOpenIn, ...p }: Props & { mode: 
   const current = p.selected ? (p.chosenApp && alternatives.some((a) => a.id === p.chosenApp) ? p.chosenApp : appForTab('edit', fmt)?.id) : undefined;
   const extras = p.selected && (modes.length > 1 || alternatives.length > 1) ? (
     <>
-      {modes.length > 1 && (
-        <div className="mode-strip" role="group" aria-label="Edit mode">
-          {modes.map((m) => (
-            <button key={m} className="btn small" aria-pressed={tab === m} title={MODE_HINT[m]} onClick={() => onMode(m)}>{MODE_LABEL[m]}</button>
-          ))}
-        </div>
-      )}
+      {modes.length > 1 && <ModeStrip modes={modes} active={tab} onPick={onMode} />}
       {tab === 'edit' && alternatives.length > 1 && (
         <label className="open-with">Open with{' '}
           <select value={current} onChange={(e) => onOpenIn(p.selected!, e.target.value as EditorAppId)}>
@@ -75,7 +80,7 @@ export function EditWorkspace({ mode, onMode, onOpenIn, ...p }: Props & { mode: 
       )}
     </>
   ) : null;
-  return <AppWorkspace {...p} tab={tab} barExtras={extras} />;
+  return <AppWorkspace {...p} tab={tab} barExtras={p.selected ? extras : <ModeStrip modes={null} onPick={onMode} />} />;
 }
 
 function AppWorkspace({ manifest, selected, liveApi, onProjectChanged, tab, chosenApp, log, onGoto, barExtras }: Props & { tab: Tab; barExtras?: ReactNode }) {
@@ -123,7 +128,7 @@ function AppWorkspace({ manifest, selected, liveApi, onProjectChanged, tab, chos
   useEffect(() => () => { void window.studio.live.setViewport(null); }, []);
 
   if (!selected) {
-    return <Empty title={INTRO.title}><p>{INTRO.text}</p></Empty>;
+    return <Empty title={INTRO.title}><p>{INTRO.text}</p>{barExtras}<p className="mode-hint">{MODE_HINT.color} {MODE_HINT.effects}</p></Empty>;
   }
   if (selected.kind === 'model') {
     return (

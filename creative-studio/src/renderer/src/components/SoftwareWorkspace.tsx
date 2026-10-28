@@ -1,4 +1,5 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { groupInstalls, nextStep } from '@shared/softwareList';
 import type { ExternalLiveState } from '@shared/ipc';
 import { STATUS_LABEL, type ExternalScan, type IntegrationStatus } from '@shared/integrations';
 import { useOverlayOpen } from '../overlay';
@@ -50,6 +51,7 @@ export function SoftwareWorkspace({ apps }: { apps: AppProbeResult[] }) {
   };
   const probe = (id: string) => apps.find((a) => a.appId === id);
   const [scan, setScan] = useState<ExternalScan | null>(null);
+  const rows = useMemo(() => groupInstalls(scan?.apps ?? []), [scan]);
   const [busy, setBusy] = useState<string | null>(null);
   const rescan = async () => { setBusy('scan'); try { setScan(await window.studio.external.scan()); } catch (e) { setMsg({ text: plain(e), error: true }); } setBusy(null); };
   useEffect(() => { void window.studio.external.list().then((l) => setScan((cur) => cur ?? { apps: l, missing: [] })).catch(() => undefined); void rescan(); }, []);
@@ -114,13 +116,14 @@ export function SoftwareWorkspace({ apps }: { apps: AppProbeResult[] }) {
       </div>
 
       <div className="field">
-        <span className="menu-label">Other programs · {scan?.apps.length ?? 0} found on this PC</span>
+        <span className="menu-label">Other programs · {rows.length} found on this PC</span>
         <div className="btn-row">
           <button className="btn small" disabled={!!busy} onClick={() => void rescan()}>{busy === 'scan' ? 'Scanning…' : 'Rescan'}</button>
           <button className="btn small ghost" disabled={!!busy} onClick={() => { setBusy('add'); void window.studio.external.addLocation().then((r) => { if (r) setScan(r); }).catch((e: unknown) => setMsg({ text: plain(e), error: true })).finally(() => setBusy(null)); }}>Add a program location…</button>
         </div>
         <ul className="software-list">
-          {(scan?.apps ?? []).map((a) => {
+          {rows.map(({ app: a, others }) => {
+            const next = nextStep(a);
             const connected = a.status === 'connected' || a.status === 'limited';
             const canConnect = a.status === 'available' || a.status === 'needs-repair' || a.status === 'not-running' || a.status === 'api-unavailable' || a.status === 'detected';
             const working = busy?.endsWith(`:${a.key}`);
@@ -130,6 +133,8 @@ export function SoftwareWorkspace({ apps }: { apps: AppProbeResult[] }) {
                   <strong>{a.adapterName ?? a.name}</strong>
                   <span className={`chip ${CHIP[a.status]}`}><span className="dot" />{STATUS_LABEL[a.status]}</span>
                   <small>{a.version ? `version ${a.version}` : 'version unknown'}{a.publisher ? ` · ${a.publisher}` : ''}. {a.statusDetail}</small>
+                  {next && <small className="software-next"><strong>Next:</strong> {next}</small>}
+                  {others > 0 && <small className="asset-meta">{others === 1 ? '1 other copy' : `${others} other copies`} found on this PC (older or unsupported), hidden.</small>}
                 </div>
                 <div className="software-actions">
                   {!connected && canConnect && <button className="btn small primary" disabled={!!busy} onClick={() => void act(a.key, 'connect')}>{working ? 'Connecting…' : 'Connect'}</button>}
@@ -140,7 +145,7 @@ export function SoftwareWorkspace({ apps }: { apps: AppProbeResult[] }) {
               </li>
             );
           })}
-          {scan && scan.apps.length === 0 && <li className="asset-meta">No supported programs were found on this PC yet. Press Rescan, or add a portable copy location.</li>}
+          {scan && rows.length === 0 && <li className="asset-meta">No supported programs were found on this PC yet. Press Rescan, or add a portable copy location.</li>}
           {(scan?.missing ?? []).map((m) => (
             <li key={m.adapterId} className="software-row">
               <div className="software-info"><strong>{m.name}</strong><span className="chip off"><span className="dot" />Not found on this PC</span><small>{m.vendor}. Install it, then press Rescan.</small></div>
