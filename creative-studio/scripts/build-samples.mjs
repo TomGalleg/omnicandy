@@ -6,6 +6,8 @@
 // Left out on purpose, and listed in the report so you can change the rules below:
 //   * the Dragon Burger branding set, files whose prompt names a trademark (NFL), the offline Mock picture, app documents,
 //   * files that were imported from outside (unknown origin), unless --include-imported is given.
+// It ALSO writes the model-card examples from the same files (src/renderer/src/assets/previews/cards + studioPreviews.generated.ts),
+// so the AI tab's cards and the Sample media pack always show the same results.
 // Needs ffmpeg on this PC (build time only). Nothing is sent anywhere.
 
 import { execFileSync } from 'node:child_process';
@@ -36,6 +38,10 @@ const providerOf = (provider) => reg.studioProvider(provider)?.label ?? provider
 const manifest = JSON.parse(readFileSync(path.join(project, 'project.json'), 'utf8'));
 const out = path.join(root, 'resources', 'samples');
 rmSync(out, { recursive: true, force: true });
+const cards = path.join(root, 'src', 'renderer', 'src', 'assets', 'previews', 'cards');
+rmSync(cards, { recursive: true, force: true });
+mkdirSync(cards, { recursive: true });
+const cardPreviews = {};
 mkdirSync(path.join(out, 'files'), { recursive: true });
 mkdirSync(path.join(out, 'thumbs'), { recursive: true });
 
@@ -44,6 +50,7 @@ const probe = (file) => execFileSync('ffprobe', ['-v', 'error', '-show_entries',
 const find = (a) => { const exts = a.sourceFormat.toLowerCase(); const candidates = [a.path, a.file, a.relPath].filter(Boolean); for (const c of candidates) { const p = path.join(project, c); if (existsSync(p)) return p; } return null; };
 
 let kept = []; const skipped = [];
+const VC = ['C:/Program Files/VectorCraft/vectorcraft-cli.exe', path.join(process.env.LOCALAPPDATA ?? '', 'Programs/VectorCraft/vectorcraft-cli.exe')].find(existsSync);
 for (const a of manifest.assets) {
   const p = a.provenance ?? {};
   const why =
@@ -100,6 +107,31 @@ for (const a of kept) {
   const how = a.kind === 'vector' ? 'A real SVG: open it in VectorCraft and edit the shapes.'
     : a.kind === 'video' ? 'Open it in FilmCraft to cut and edit, or use it as the source for a video tool.'
     : 'Open it in PhotoCraft to edit, or use it in AI Generate as a reference or to upscale and cut out.';
+  // The card example for this model: a poster (and, for a video, a short silent clip) made from the sample itself.
+  {
+    const m = reg.STUDIO_MODELS[order(a)];
+    const posterOut = path.join(cards, `${id}.jpg`);
+    let w = 4; let h = 3;
+    if (a.kind === 'vector') {
+      const png = `${posterOut}.png`;
+      execFileSync(VC, ['run', '--in', src, '--export', png, '--scale', '1'], { stdio: ['ignore', 'ignore', 'inherit'], timeout: 120_000 });
+      const d = JSON.parse(probe(png)).streams[0]; w = d.width; h = d.height;
+      ff('-f', 'lavfi', '-i', `color=c=white:s=${w}x${h}`, '-i', png, '-filter_complex', '[0:v][1:v]overlay=0:0:shortest=1,scale=800:-2', '-frames:v', '1', '-q:v', '4', posterOut);
+      rmSync(png, { force: true });
+    } else {
+      const input = path.join(out, file);
+      const d = JSON.parse(probe(a.kind === 'video' ? path.join(out, thumb) : input)).streams[0];
+      w = d.width; h = d.height;
+      if (a.kind === 'video') ff('-ss', '1', '-i', path.join(out, file), '-frames:v', '1', '-vf', 'scale=800:-2', '-q:v', '4', posterOut);
+      else ff('-i', input, '-vf', 'scale=800:-2', '-q:v', '4', posterOut);
+    }
+    if (a.kind === 'video') {
+      ff('-t', '6', '-i', path.join(out, file), '-vf', 'scale=640:-2', '-an', '-c:v', 'libx264', '-crf', '30', '-preset', 'slow', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', path.join(cards, `${id}.mp4`));
+    }
+    // aspect of the real file (the thumbnail of a video is the same shape as the video)
+    const real = JSON.parse(probe(a.kind === 'vector' ? posterOut : a.kind === 'video' ? path.join(out, file) : path.join(out, file))).streams[0];
+    cardPreviews[`${m.providerId}/${m.id}`] = { poster: `cards/${id}.jpg`, ...(a.kind === 'video' ? { video: `cards/${id}.mp4` } : {}), aspect: Math.round((real.width / real.height) * 1000) / 1000 };
+  }
   samples.push({
     id, file, thumb, kind: a.kind, format: path.extname(file).slice(1), name: path.basename(a.name).replace(/\.[^.]+$/, '') ? `${title}` : title,
     blurb: `Made with ${model} (${providerOf(p.provider)}). ${how}`,
@@ -108,7 +140,6 @@ for (const a of kept) {
 }
 
 // SVG thumbnails are drawn by VectorCraft's own command line (ffmpeg cannot read SVG), then placed on white.
-const VC = ['C:/Program Files/VectorCraft/vectorcraft-cli.exe', path.join(process.env.LOCALAPPDATA ?? '', 'Programs/VectorCraft/vectorcraft-cli.exe')].find(existsSync);
 for (const j of svgJobs) {
   if (!VC) { console.error('VectorCraft is not installed here, so vector thumbnails cannot be drawn.'); process.exit(1); }
   const png = `${j.out}.png`;
@@ -116,6 +147,14 @@ for (const j of svgJobs) {
   ff('-f', 'lavfi', '-i', 'color=c=white:s=480x480', '-i', png, '-filter_complex', '[1:v]scale=480:480:force_original_aspect_ratio=decrease[fg];[0:v][fg]overlay=(W-w)/2:(H-h)/2:shortest=1', '-frames:v', '1', '-q:v', '4', j.out);
   rmSync(png, { force: true });
 }
+const entries = Object.entries(cardPreviews).map(([k, v]) => `  ${JSON.stringify(k)}: { poster: ${JSON.stringify(v.poster)}, ${v.video ? `video: ${JSON.stringify(v.video)}, ` : ''}credit: 'Sample made with this model', aspect: ${v.aspect} },`);
+writeFileSync(path.join(root, 'src', 'shared', 'studioPreviews.generated.ts'), `// Generated by scripts/build-samples.mjs from the Sample media pack. Do not edit by hand: run the script again.
+import type { ModelPreview } from './studioPreviews';
+
+export const PACK_PREVIEWS: Record<string, ModelPreview> = {
+${entries.join('\n')}
+};
+`);
 writeFileSync(path.join(out, 'samples.json'), `${JSON.stringify({ version: 1, samples }, null, 2)}\n`);
 const total = samples.reduce((s, x) => s + x.bytes, 0);
 console.log(`Sample pack: ${samples.length} files, ${(total / 1048576).toFixed(1)} MB  -> ${out}`);

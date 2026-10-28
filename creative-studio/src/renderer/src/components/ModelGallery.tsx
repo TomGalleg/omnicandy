@@ -2,31 +2,6 @@ import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import type { Asset } from '@shared/types';
 import { cardState, type CardState } from '@shared/aiStudio';
 import { previewFor, type ModelPreview } from '@shared/studioPreviews';
-import textPoster from '../assets/previews/seedance-text.jpg';
-import textClip from '../assets/previews/seedance-text.mp4';
-import picturePoster from '../assets/previews/seedance-picture.jpg';
-import pictureClip from '../assets/previews/seedance-picture.mp4';
-import referencePoster from '../assets/previews/seedance-reference.jpg';
-import referenceClip from '../assets/previews/seedance-reference.mp4';
-import editPoster from '../assets/previews/seedance-edit.jpg';
-import editClip from '../assets/previews/seedance-edit.mp4';
-import extendPoster from '../assets/previews/seedance-extend.jpg';
-import extendClip from '../assets/previews/seedance-extend.mp4';
-import seedance2Poster from '../assets/previews/seedance2.jpg';
-import seedance2Clip from '../assets/previews/seedance2.mp4';
-import genjutsuPoster from '../assets/previews/genjutsu.jpg';
-import genjutsuClip from '../assets/previews/genjutsu.mp4';
-import soulPoster from '../assets/previews/soul.jpg';
-import gptPoster from '../assets/previews/gpt-image.jpg';
-import removeBgPoster from '../assets/previews/recraft-remove-bg.jpg';
-import crispPoster from '../assets/previews/recraft-crisp-upscale.jpg';
-import editWidePoster from '../assets/previews/recraft-edit-wide.jpg';
-import v3VectorPoster from '../assets/previews/recraft-v3-vector-edit.jpg';
-import newBgPoster from '../assets/previews/recraft-new-background.jpg';
-import vectorBgPoster from '../assets/previews/recraft-v3-vector-background.jpg';
-import maskedPoster from '../assets/previews/recraft-masked-editing.jpg';
-import creativePoster from '../assets/previews/recraft-creative-upscale.jpg';
-import vectorizePoster from '../assets/previews/recraft-vectorize.jpg';
 import { STUDIO_PROVIDERS, studioProvider, type StudioModel, type StudioProviderId } from '@shared/providerCapabilities';
 import {
   artSeed, BRAND, CATEGORIES, categoriesOf, compareRows, describeModel, exploreModels, favKey, OP_LABEL, outputLabel, priceInfo, settingsSummary,
@@ -42,15 +17,9 @@ interface Props {
   onOpenSettings?: () => void;
 }
 
-// Bundled example media (small copies of files the user supplied), by the file names listed in shared/studioPreviews.ts.
-const PREVIEW_FILES: Record<string, string> = {
-  'seedance-text.jpg': textPoster, 'seedance-text.mp4': textClip, 'seedance-picture.jpg': picturePoster, 'seedance-picture.mp4': pictureClip,
-  'seedance-reference.jpg': referencePoster, 'seedance-reference.mp4': referenceClip, 'seedance-edit.jpg': editPoster, 'seedance-edit.mp4': editClip,
-  'seedance-extend.jpg': extendPoster, 'seedance-extend.mp4': extendClip, 'seedance2.jpg': seedance2Poster, 'seedance2.mp4': seedance2Clip,
-  'genjutsu.jpg': genjutsuPoster, 'genjutsu.mp4': genjutsuClip, 'soul.jpg': soulPoster, 'gpt-image.jpg': gptPoster, 'recraft-remove-bg.jpg': removeBgPoster, 'recraft-crisp-upscale.jpg': crispPoster, 'recraft-edit-wide.jpg': editWidePoster, 'recraft-v3-vector-edit.jpg': v3VectorPoster, 'recraft-new-background.jpg': newBgPoster, 'recraft-v3-vector-background.jpg': vectorBgPoster, 'recraft-masked-editing.jpg': maskedPoster, 'recraft-creative-upscale.jpg': creativePoster,
-  'recraft-vectorize.jpg': vectorizePoster,
-};
-const previewUrl = (name: string) => PREVIEW_FILES[name];
+// Bundled example media (small copies of the sample files, and a few the user supplied), found by folder and looked up by the file names in shared/studioPreviews.
+const PREVIEW_FILES = import.meta.glob('../assets/previews/**/*.{jpg,mp4}', { eager: true, query: '?url', import: 'default' }) as Record<string, string>;
+const previewUrl = (name: string) => PREVIEW_FILES[`../assets/previews/${name}`];
 
 const STATE_TEXT: Record<CardState, string> = { ready: 'Ready', 'needs-key': 'Needs a key', soon: 'Coming soon' };
 const MAX_COMPARE = 3;

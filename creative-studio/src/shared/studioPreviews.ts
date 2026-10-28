@@ -4,6 +4,7 @@
 // Files live in src/renderer/src/assets/previews/ (small copies: a poster picture and a short silent clip).
 
 import { hfModel } from './higgsfield';
+import { PACK_PREVIEWS } from './studioPreviews.generated';
 import type { StudioModel } from './providerCapabilities';
 
 export interface ModelPreview {
@@ -18,8 +19,8 @@ export interface ModelPreview {
 
 const CREDIT = 'Promo clip from Higgsfield';
 
-/** One preview per model, keyed "provider/model id" (these win over a family preview). */
-export const MODEL_PREVIEWS: Record<string, ModelPreview> = {
+/** Examples the user supplied one by one (used where the shipped Sample media pack has no result of that model yet). */
+const MANUAL_PREVIEWS: Record<string, ModelPreview> = {
   'higgsfield/bytedance/seedance-2.5/text-to-video': { poster: 'seedance-text.jpg', video: 'seedance-text.mp4', credit: CREDIT, aspect: 1470 / 630 },
   'higgsfield/bytedance/seedance-2.5/image-to-video': { poster: 'seedance-picture.jpg', video: 'seedance-picture.mp4', credit: CREDIT, aspect: 16 / 9 },
   'higgsfield/bytedance/seedance-2.5/reference-to-video': { poster: 'seedance-reference.jpg', video: 'seedance-reference.mp4', credit: CREDIT, aspect: 1664 / 1248 },
@@ -50,6 +51,9 @@ export const MODEL_PREVIEWS: Record<string, ModelPreview> = {
   // A panda photo turned into SVG with Recraft Vectorize (supplied by the user).
   'recraft/recraft-tool/vectorize': { poster: 'recraft-vectorize.jpg', credit: 'Sample: photo vectorized with Recraft', aspect: 1018 / 578 },
 };
+
+/** One preview per model, keyed "provider/model id": the shipped Sample media pack (the user's own results) wins over the hand-supplied ones. */
+export const MODEL_PREVIEWS: Record<string, ModelPreview> = { ...MANUAL_PREVIEWS, ...PACK_PREVIEWS };
 
 /** One preview shared by every model of a Higgsfield family (see HfModel.family). */
 export const FAMILY_PREVIEWS: Record<string, ModelPreview> = {};

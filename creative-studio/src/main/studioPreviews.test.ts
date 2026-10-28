@@ -2,15 +2,18 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { HF_MODELS } from '@shared/higgsfield';
-import { studioModel } from '@shared/providerCapabilities';
+import { STUDIO_MODELS, studioModel } from '@shared/providerCapabilities';
+import { isShown } from '@shared/studioCatalog';
 import { FAMILY_PREVIEWS, MODEL_PREVIEWS, previewFor } from '@shared/studioPreviews';
+import { PACK_PREVIEWS } from '@shared/studioPreviews.generated';
 
 const dir = path.join(__dirname, '..', 'renderer', 'src', 'assets', 'previews');
+const all = () => [...Object.entries(MODEL_PREVIEWS), ...Object.entries(FAMILY_PREVIEWS)];
+const walk = (d: string, rel = ''): string[] => fs.readdirSync(d, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(path.join(d, e.name), `${rel}${e.name}/`) : [`${rel}${e.name}`]));
 
 describe('model card previews', () => {
-  it('only lists files that exist, and keeps them small', () => {
-    const all = [...Object.entries(MODEL_PREVIEWS), ...Object.entries(FAMILY_PREVIEWS)];
-    for (const [key, p] of all) {
+  it('only lists files that exist, keeps them small, and refers to real models', () => {
+    for (const [key, p] of all()) {
       for (const f of [p.poster, p.video].filter((x): x is string => !!x)) {
         const file = path.join(dir, f);
         expect(fs.existsSync(file), `${key}: ${f}`).toBe(true);
@@ -23,25 +26,32 @@ describe('model card previews', () => {
     for (const family of Object.keys(FAMILY_PREVIEWS)) expect(HF_MODELS.some((m) => m.family === family), `${family} is a real family`).toBe(true);
   });
 
-  it('gives every Seedance 2.5 card its own preview, plus the other cards that have one', () => {
+  it('ships no example file that no card uses', () => {
+    const used = new Set(all().flatMap(([, p]) => [p.poster, p.video].filter((x): x is string => !!x)));
+    expect(walk(dir).filter((f) => !used.has(f))).toEqual([]);
+  });
+
+  it('shows the shipped Sample media results on their cards, ahead of the hand-supplied examples', () => {
+    expect(Object.keys(PACK_PREVIEWS).length).toBeGreaterThanOrEqual(25);
+    for (const [key, p] of Object.entries(PACK_PREVIEWS)) { expect(p.poster, key).toMatch(/^cards\/sample-\d+\.jpg$/); expect(MODEL_PREVIEWS[key], key).toBe(p); }
+    expect(previewFor(studioModel('openai', 'gpt-image-2.5-flare')!)?.credit).toBe('Sample made with this model');
+    expect(previewFor(studioModel('recraft', 'recraft-tool/imageToImage')!)?.poster).toMatch(/^cards\//);
+    expect(previewFor(studioModel('higgsfield', 'bytedance/seedance-2.5/text-to-video')!)?.video).toMatch(/^cards\/sample-\d+\.mp4$/);
+    expect(previewFor(studioModel('higgsfield', 'higgsfield-ai/soul/cinema')!)?.poster).toMatch(/^cards\//);
+  });
+
+  it('keeps the hand-supplied examples for models the pack has no result of yet', () => {
     const sd = HF_MODELS.filter((m) => m.family === 'Seedance 2.5');
-    expect(sd).toHaveLength(5);
-    for (const m of sd) expect(previewFor(studioModel('higgsfield', m.id)!)?.poster, m.id).toMatch(/^seedance-.*\.jpg$/);
-    expect(new Set(sd.map((m) => previewFor(studioModel('higgsfield', m.id)!)?.poster)).size).toBe(5);
+    expect(new Set(sd.map((m) => previewFor(studioModel('higgsfield', m.id)!)?.poster)).size).toBe(5); // every Seedance 2.5 card has its own picture
     expect(previewFor(studioModel('higgsfield', 'bytedance/seedance-2.0/reference-to-video')!)?.video).toBe('seedance2.mp4');
     expect(previewFor(studioModel('higgsfield', 'higgsfield/genjutsu/motion-transfer/v1.0')!)?.aspect).toBeLessThan(1); // a tall clip
     expect(previewFor(studioModel('higgsfield', 'higgsfield-ai/soul/v2/standard')!)?.video).toBeUndefined(); // a still
-    expect(previewFor(studioModel('openai', 'gpt-image-2.5-flare')!)?.credit).toMatch(/GPT Image 2\.0/);
-    expect(previewFor(studioModel('recraft', 'recraft-tool/vectorize')!)?.poster).toBe('recraft-vectorize.jpg');
-    expect(previewFor(studioModel('recraft', 'recraft-tool/removeBackground')!)?.poster).toBe('recraft-remove-bg.jpg');
-    expect(previewFor(studioModel('recraft', 'recraft-tool/crispUpscale')!)?.poster).toBe('recraft-crisp-upscale.jpg');
-    expect(previewFor(studioModel('recraft', 'recraft-tool/imageToImageVector')!)?.poster).toBe('recraft-v3-vector-edit.jpg');
-    expect(previewFor(studioModel('recraft', 'recraft-tool/replaceBackgroundVector')!)?.poster).toBe('recraft-v3-vector-background.jpg');
+    for (const id of ['vectorize', 'removeBackground', 'crispUpscale', 'creativeUpscale']) expect(previewFor(studioModel('recraft', `recraft-tool/${id}`)!), id).not.toBeNull();
     expect(previewFor(studioModel('recraft', 'recraft-mask-tools')!)?.poster).toBe('recraft-masked-editing.jpg');
-    expect(previewFor(studioModel('recraft', 'recraftv3_vector')!)).toBeNull();
-    expect(previewFor(studioModel('recraft', 'recraft-tool/replaceBackground')!)?.poster).toBe('recraft-new-background.jpg');
-    expect(previewFor(studioModel('recraft', 'recraft-tool/imageToImage')!)?.poster).toBe('recraft-edit-wide.jpg');
-    expect(previewFor(studioModel('recraft', 'recraft-tool/creativeUpscale')!)?.poster).toBe('recraft-creative-upscale.jpg');
-    expect(previewFor(studioModel('gemini', 'gemini-nano-banana-2.1')!)).toBeNull();
+  });
+
+  it('leaves exactly one card without an example today (it needs a result made in the sample project)', () => {
+    const blank = STUDIO_MODELS.filter(isShown).filter((m) => !previewFor(m)).map((m) => `${m.providerId}/${m.id}`);
+    expect(blank).toEqual(['gemini/gemini-nano-banana-2.1']);
   });
 });
