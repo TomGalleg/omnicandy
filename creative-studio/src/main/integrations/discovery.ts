@@ -84,7 +84,7 @@ export async function discoverApps(targets: DiscoveryTarget[], d: DiscoveryEnv =
   };
   const isWanted = (file: string) => wantedExe.has(lower(path.basename(file)));
   /** The wanted executables that would sit directly in `dir`, or in its `bin` subfolder. */
-  const exesIn = (dir: string) => [...wantedExe].flatMap((e) => [path.join(dir, orig(e)), path.join(dir, 'bin', orig(e))]);
+  const exesIn = (dir: string) => [...wantedExe].flatMap((e) => [path.join(dir, orig(e)), path.join(dir, 'bin', orig(e)), path.join(dir, 'Engine', 'Binaries', 'Win64', orig(e))]);
   /** Adds every wanted executable that really exists in `dir` (or `dir\bin`); returns whether one was found. */
   const addFrom = async (dir: string, source: DiscoveredApp['source'], installType: DiscoveredApp['installType'], name = path.basename(dir)): Promise<boolean> => {
     let any = false;
