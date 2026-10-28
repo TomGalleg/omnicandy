@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import { appsForFormat, type EditorAppId } from '@shared/appEditors';
 import type { IntegrationSnapshot } from '@shared/ipc';
-import type { EditMode } from '@shared/navigation';
+import type { EditMode, NavMode } from '@shared/navigation';
 import type { AppProbeResult, Asset, ProjectManifest, WorkspaceId } from '@shared/types';
 import { formatBytes, formatDims } from '../format';
 import { importDropped, isFileDrag, uploadWithPicker } from '../importFiles';
@@ -37,6 +37,8 @@ interface Props {
   /** Which mode Edit is in (its own editor, Color or Effects). */
   editMode: EditMode;
   onEditMode: (m: EditMode) => void;
+  /** Simplified shows fewer OmniTown tabs; Advanced shows all of them. */
+  navMode: NavMode;
 }
 
 export function WorkspaceView(p: Props) {
@@ -49,7 +51,7 @@ export function WorkspaceView(p: Props) {
     case 'generate': return <GenerateHub manifest={p.manifest} selected={p.selected} onGoto={p.onGoto} log={p.log} onProjectChanged={p.onProjectChanged} />;
     case 'workflow': return <WorkflowEditor manifest={p.manifest} integrations={p.integrations} colorMode={p.resolvedTheme} log={p.log} onProjectChanged={p.onProjectChanged} />;
     case 'software': return <SoftwareWorkspace apps={p.apps} />;
-    case 'planner': return <PlannerWorkspace manifest={p.manifest} projectKey={p.projectKey} />;
+    case 'planner': return <PlannerWorkspace manifest={p.manifest} projectKey={p.projectKey} navMode={p.navMode} />;
     case 'deliver': return <DeliverWorkspace manifest={p.manifest} selected={p.selected} liveApi={p.liveApi} onSelectAsset={p.onSelectAsset} log={p.log} />;
   }
 }

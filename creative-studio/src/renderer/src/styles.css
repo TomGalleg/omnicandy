@@ -922,3 +922,6 @@ h1, h2, h3 { margin: 0; font-weight: 600; }
 .tw-past ul { margin: 4px 0 0; padding-left: 18px; font-size: 12.5px; }
 
 .tw textarea { width: 100%; min-height: 84px; box-sizing: border-box; }
+.tw-scene.alone { min-height: 230px; flex-basis: 300px; }
+.tw-intro { margin: 0; padding: 10px 12px; border: 1px dashed var(--accent); border-radius: var(--radius); background: var(--surface); font-size: 13px; }
+.pc-next { margin: 0; padding: 6px 10px; border-radius: var(--radius); background: var(--surface); border: 1px solid var(--border); font-size: 13px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }

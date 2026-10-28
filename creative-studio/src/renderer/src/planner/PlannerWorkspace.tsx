@@ -10,12 +10,15 @@ import { ConnectPanel, PastePanel, TasksTab, WorkTab } from './PlannerWork';
 import { AskPanel } from './PlannerSend';
 import { needsYou } from '@shared/plannerView';
 import { shouldRefresh } from '@shared/plannerEvents';
+import type { NavMode } from '@shared/navigation';
 import { ErrorLine, errMsg, PlainWords, Section, useAction, when, type TabId, type TabProps } from './plannerUi';
 
 const api = () => window.studio.planner;
 // One simple flow: Idea (think it through with an AI), Plan (break it into chunks you can edit), Work (do one chunk at a time, review it, approve it).
 // Tab ids are the original ones (plan, tasks, handoffs) so every existing go('handoffs') still lands in the right place.
 const TABS: Array<[TabId, string]> = [['studio', 'Studio'], ['town', 'Town'], ['plan', 'Idea'], ['tasks', 'Plan'], ['handoffs', 'Work']];
+/** Simplified: talk and see the plan (Studio), meet your team (Town), and do a chunk (Work). Advanced adds the step-by-step Idea and Plan screens. */
+const SIMPLE_TABS: readonly TabId[] = ['studio', 'town', 'handoffs'];
 
 const ago = (iso: string) => {
   const ms = Date.now() - Date.parse(iso);
@@ -31,7 +34,7 @@ const ago = (iso: string) => {
 };
 
 /** OmniTown (the planner) of the open project: its plan is kept inside the project and restored when the project is opened again. */
-export function PlannerWorkspace({ manifest, projectKey }: { manifest: ProjectManifest | null; projectKey: string | null }) {
+export function PlannerWorkspace({ manifest, projectKey, navMode }: { manifest: ProjectManifest | null; projectKey: string | null; navMode: NavMode }) {
   const [state, setState] = useState<ProjectPlannerState | null>(null);
   /** An older plan (from the shared planner folder) being looked at instead of this project's plan. */
   const [olderId, setOlderId] = useState<string | null>(null);
@@ -67,6 +70,7 @@ export function PlannerWorkspace({ manifest, projectKey }: { manifest: ProjectMa
   // A different project: nothing of the previous one stays on screen.
   useEffect(() => { setState(null); setProject(null); setOlderId(null); setFocusTaskId(null); setPickUpDismissed(null); setPanel(null); setTab('studio'); sessionStart.current = Date.now(); void refresh(); }, [projectKey, refresh]);
   useEffect(() => { void refresh(); }, [olderId, refresh]);
+  useEffect(() => { if (navMode !== 'advanced' && !SIMPLE_TABS.includes(tab)) setTab('studio'); }, [navMode, tab]);
   // Changes made here or by a connected tool arrive as events (no polling). Looking again on focus and on a slow timer covers a lost event
   // and the older plans, which live outside the open project's folder and so are not watched.
   const projectRef = useRef(project);
@@ -105,6 +109,7 @@ export function PlannerWorkspace({ manifest, projectKey }: { manifest: ProjectMa
     manifest, p: project, reload: async () => { setProject(await api().get(project.id)); void api().forProject().then(setState).catch(() => {}); }, go: setTab, sendSel, setSendSel, projectKey, projectName: manifest?.name,
     focusTaskId, setFocusTaskId: (id) => { setFocusTaskId(id); if (id) void api().touchTask(project.id, id, 'opened').then(() => api().get(project.id).then(setProject)).catch(() => {}); },
   };
+  const shownTabs = navMode === 'advanced' ? TABS : TABS.filter(([t]) => SIMPLE_TABS.includes(t));
   const need = needsYou(project);
   const pr = progressOf(project.tasks.filter((t) => t.status !== 'cancelled'));
   const la = project.lastActive;
@@ -130,7 +135,7 @@ export function PlannerWorkspace({ manifest, projectKey }: { manifest: ProjectMa
       {panel === 'history' && <HistoryPanel p={project} onClose={() => setPanel(null)} />}
       {panel === 'connect' && <div className="pl-panel"><Section title="Connect an AI tool" hint="Optional. Lets a tool such as Claude Code read this plan and report back, without copy and paste." actions={<button className="btn small" onClick={() => setPanel(null)}>Close</button>}><ConnectPanel /></Section></div>}
       <nav className="pl-tabs" role="tablist" aria-label="OmniTown steps">
-        {TABS.map(([t, label]) => <button key={t} role="tab" aria-selected={tab === t} onClick={() => setTab(t)}>{label}{t === 'handoffs' && need.total ? <span className="pl-badge" title="Waiting for you">{need.total}</span> : null}</button>)}
+        {shownTabs.map(([t, label]) => <button key={t} role="tab" aria-selected={tab === t} onClick={() => setTab(t)}>{label}{t === 'handoffs' && need.total ? <span className="pl-badge" title="Waiting for you">{need.total}</span> : null}</button>)}
       </nav>
       <div className="pl-body" role="tabpanel">
         {tab === 'studio' && <StudioTab {...props} />}

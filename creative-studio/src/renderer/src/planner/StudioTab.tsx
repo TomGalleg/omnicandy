@@ -3,6 +3,7 @@ import { Group, Panel, Separator } from 'react-resizable-panels';
 import { PlannerChat } from './PlannerChat';
 import { CardDetails, ProjectCanvas } from './ProjectCanvas';
 import { errMsg, ErrorLine, type TabProps } from './plannerUi';
+import { nextStepsOf } from '@shared/projectView';
 import { useCanvas } from './useCanvas';
 
 const api = () => window.studio.planner;
@@ -34,6 +35,7 @@ export function StudioTab(props: TabProps) {
       await reload();
     })().catch((e) => setError(errMsg(e))).finally(() => setLooking(false));
   };
+  const next = nextStepsOf(c.view)[0];
   const node = selected ? c.view.nodes.find((n) => n.id === selected) ?? null : null;
 
   /** Suggested cards left out of what gets added. The service applies or rejects a suggestion as a whole, so "leave out" is a choice made here. */
@@ -65,6 +67,7 @@ export function StudioTab(props: TabProps) {
         <Separator className="sep" />
         <Panel id="studio-canvas" defaultSize="64" minSize="30">
           <div className="studio-plan">
+            {next && <p className="pc-next" role="status"><strong>Next:</strong> {next.text} {next.kind === 'continue-current' && next.taskId && <button className="btn small primary" onClick={() => work(next.taskId!)}>Work on this</button>}</p>}
             {c.note && <p className="pl-warn" role="status">{c.note} <button className="btn small ghost" onClick={c.clearNote}>Dismiss</button></p>}
             <ErrorLine error={error} />
             {c.view.pendingProposals.map((pr) => {

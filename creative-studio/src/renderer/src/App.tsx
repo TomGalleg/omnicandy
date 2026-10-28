@@ -318,6 +318,7 @@ export function App() {
                     liveApi={liveApi}
                     onSelectAsset={setSelectedId}
                     onOpenIn={openIn}
+                    navMode={navMode}
                     editMode={editModeFor.id === selectedId ? editModeFor.mode : 'edit'}
                     onEditMode={(mode) => setEditModeFor({ mode, id: selectedId })}
                     chosenApp={chosen && chosen.assetId === selectedId ? chosen.appId : null}

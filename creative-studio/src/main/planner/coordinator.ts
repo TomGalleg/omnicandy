@@ -3,7 +3,7 @@
 // No AI is called here: whatever produces the changes (the planning chat, an agent, the owner) hands them in.
 import { type Actor, type PlanTask, type ProposalChange, changeSchema } from '@shared/planner';
 import { NULL_CAPABILITIES, NULL_EXECUTION, type CapabilityPort, type ExecutionPort, type TaskReadiness } from '@shared/plannerCoordination';
-import { buildProjectView, type ProjectView } from '@shared/projectView';
+import { buildProjectView, nextStepsOf, type NextStep, type ProjectView } from '@shared/projectView';
 import type { ProjectPlanner } from './projectPlanner';
 import { connectionCtx, type Ctx, type PlannerService } from './service';
 import { PlannerError } from './store';
@@ -11,7 +11,7 @@ import { PlannerError } from './store';
 export const COORDINATOR_ACTOR: Actor = { kind: 'createcraft', name: 'Planning coordinator' };
 
 export interface ProposalDraft { note: string; changes: ProposalChange[] }
-export interface NextStep { kind: 'review-report' | 'review-proposal' | 'retake-stalled' | 'continue-current' | 'add-first-chunk'; taskId?: string; proposalId?: string; text: string }
+export type { NextStep };
 
 export class ProjectCoordinator {
   /** read + propose + package only. `edit` and `review` are the owner's and cannot be held by anything but the UI. */
@@ -47,16 +47,7 @@ export class ProjectCoordinator {
   }
 
   /** What the owner could do next, worked out from the plan alone (no AI). Most urgent first. */
-  async nextSteps(planId: string): Promise<NextStep[]> {
-    const v = await this.view(planId);
-    const steps: NextStep[] = [];
-    for (const r of v.awaitingReview) steps.push({ kind: 'review-report', taskId: r.taskId, text: `Review the result for "${v.nodes.find((n) => n.id === r.taskId)?.title ?? 'a chunk'}".` });
-    for (const pr of v.pendingProposals) steps.push({ kind: 'review-proposal', proposalId: pr.id, text: `${pr.by} suggested ${pr.changes} change${pr.changes === 1 ? '' : 's'}: look at them.` });
-    for (const n of v.nodes) if (n.flags.stalled) steps.push({ kind: 'retake-stalled', taskId: n.id, text: `"${n.title}" stopped without a result: take it back or send it again.` });
-    if (v.current) steps.push({ kind: 'continue-current', taskId: v.current.taskId, text: `Continue with "${v.current.title}".` });
-    else if (!v.nodes.some((n) => n.kind === 'chunk' || n.kind === 'task')) steps.push({ kind: 'add-first-chunk', text: 'Describe the idea, then break it into chunks.' });
-    return steps;
-  }
+  async nextSteps(planId: string): Promise<NextStep[]> { return nextStepsOf(await this.view(planId)); }
 
   async readiness(planId: string, taskId: string): Promise<TaskReadiness> {
     await this.d.planner.sync();

@@ -28,7 +28,7 @@ function Avatar({ a, big }: { a: TownAgent; big?: boolean }) {
  * OmniTown: the people and places of the project. Every worker has a workplace; a workplace grows with the number of people in it. This shows who is
  * on the team, not what they are doing: nothing here is animated to look busy, because no work is started from here yet.
  */
-export function TownTab({ p, reload }: TabProps) {
+export function TownTab({ p, reload, go }: TabProps) {
   const { town, setTown, note, clearNote } = useTown(p.id);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -43,6 +43,7 @@ export function TownTab({ p, reload }: TabProps) {
   if (!town) return <div className="pl-stack"><p className="pl-hint">Setting up your town…</p></div>;
   const selected = town.agents.find((a) => a.id === pick) ?? null;
   const pending = town.suggestions.filter((s) => s.status === 'pending');
+  const team = activeAgents(town).filter((a) => a.role !== 'coordinator').length;
 
   return (
     <div className="tw">
@@ -65,17 +66,21 @@ export function TownTab({ p, reload }: TabProps) {
         </div>
       ))}
 
+      {team === 0 && (
+        <p className="tw-intro" role="note">Your team starts with the coordinator, who is all you need to begin: just talk to them in <button className="btn small" onClick={() => go('studio')}>Studio</button>. When your chunks name the applications you will use, press <strong>Suggest a team</strong> and a specialist is added for each.</p>
+      )}
       <div className="tw-main">
         <Scene town={town} onPick={setPick} pick={pick} />
         <aside className="tw-side">
           {selected ? <WorkerCard town={town} a={selected} busy={busy} onApply={apply} onClose={() => setPick(null)} />
             : <p className="pl-hint">Pick a worker or a building to see who they are. Every worker has their own place; busier businesses grow into bigger buildings.</p>}
-          <AddWorker town={town} busy={busy} onAdd={(c) => apply([c])} />
+          <details className="pl-fold"><summary>Add people yourself</summary><div className="pl-fold-body"><AddWorker town={town} busy={busy} onAdd={(c) => apply([c])} /></div></details>
         </aside>
       </div>
 
       {active ? <MeetingBoard town={town} meeting={active} planId={p.id} busy={busy} run={run} setTown={setTown} reload={reload} />
-        : <CallMeeting town={town} busy={busy} onStart={(topic, kind, ids) => run(async () => { setTown((await api().meetingStart(p.id, { topic, kind, participantIds: ids })).town); })} />}
+        : team === 0 ? <p className="pl-hint">Meetings are for when your team has more than the coordinator. Until then, talk to the coordinator in Studio.</p>
+          : <CallMeeting town={town} busy={busy} onStart={(topic, kind, ids) => run(async () => { setTown((await api().meetingStart(p.id, { topic, kind, participantIds: ids })).town); })} />}
 
       <PastMeetings town={town} />
     </div>
@@ -116,9 +121,10 @@ function Scene({ town, pick, onPick }: { town: TownState; pick: string | null; o
     const min = (a: number[]) => Math.min(0, ...a), max = (a: number[]) => Math.max(0, ...a);
     return { x0: min(xs), x1: max(xs), y0: min(ys), y1: max(ys) };
   }, [town.workplaces]);
-  const pos = (x: number, y: number) => ({ left: `${16 + ((x - box.x0) / Math.max(1, box.x1 - box.x0)) * 68}%`, top: `${6 + ((y - box.y0) / Math.max(1, box.y1 - box.y0)) * 52}%` });
+  const alone = town.workplaces.length === 1;
+  const pos = (x: number, y: number) => alone ? { left: '50%', top: '22%' } : ({ left: `${16 + ((x - box.x0) / Math.max(1, box.x1 - box.x0)) * 68}%`, top: `${6 + ((y - box.y0) / Math.max(1, box.y1 - box.y0)) * 52}%` });
   return (
-    <div className="tw-scene" role="group" aria-label="The town" onClick={() => onPick(null)}>
+    <div className={`tw-scene${alone ? ' alone' : ''}`} role="group" aria-label="The town" onClick={() => onPick(null)}>
       {town.workplaces.map((w) => {
         const biz: TownBusiness | undefined = town.businesses.find((b) => b.id === w.businessId);
         const people = activeAgents(town, w.businessId);
