@@ -58,6 +58,7 @@ import { BLANK_FILES, EDITOR_APPS, type EditorAppId } from '@shared/appEditors';
 import { DeliverQueue } from './deliver';
 import { RecraftService } from './recraft';
 import { importPathsInto } from './importPaths';
+import { OPEN_BLANK, hasOpenBlank, openBlank } from './openBlank';
 import { addSamples, listSamples } from './samples';
 import { HiggsfieldService } from './higgsfield';
 import { StudioJobStore } from './studioJobs';
@@ -922,10 +923,11 @@ export function registerIpc(d: IpcDeps): void {
     const info = (await external.list()).find((a) => a.key === key);
     if (!info) throw new Error('That program was not found. Use "Rescan applications" in Connections and setup.');
     const name = info.adapterName ?? info.name;
+    if (info.status !== 'connected' && info.status !== 'limited') await external.connect(key);
+    if (info.adapterId && hasOpenBlank(info.adapterId)) return openBlank(info.adapterId, name, (c, p) => external.execute(key, c, p));
     const ids = info.commands.map((c) => c.id);
     const cmd = ['app.launch', 'app.show', 'editor.show'].find((c) => ids.includes(c));
     if (!cmd) return `${name} opens inside OmniCandy when Claude works in it: ask Claude to open it. (It has no start button of its own yet.)`;
-    if (info.status !== 'connected' && info.status !== 'limited') await external.connect(key);
     await external.execute(key, cmd, {});
     return `Opening ${name} inside OmniCandy… its window appears here in a few seconds.`;
   });
@@ -1161,7 +1163,7 @@ export function registerIpc(d: IpcDeps): void {
         }
         const brief = (a: ExternalAppInfo) => ({
           app_key: a.key, name: a.name, version: a.version, status: a.status, detail: a.statusDetail.slice(0, 160), adapter: a.adapterId, maturity: a.maturity,
-          commands: a.commands.map((c) => c.id),
+          commands: [...a.commands.map((c) => c.id), ...(hasOpenBlank(a.adapterId) ? [OPEN_BLANK] : [])],
         });
         return JSON.stringify({ applications: s.apps.map(brief), not_found: s.missing.map((m) => `${m.name} (${m.maturity})`), note: 'Only commands listed here exist. status connected/available means usable; unsupported means detected only. To see one program\'s commands and their settings call external_apps again with app set to its app_key or name.' }, null, 2);
       },
@@ -1170,6 +1172,9 @@ export function registerIpc(d: IpcDeps): void {
         const s = await external.list();
         const a = s.find((x) => x.key === app || x.adapterId === app || x.name.toLowerCase() === app.toLowerCase());
         if (!a) throw new Error(`No detected application "${app}". Use external_apps.`);
+        if (command === OPEN_BLANK && a.adapterId && hasOpenBlank(a.adapterId)) {
+          return JSON.stringify({ message: await openBlank(a.adapterId, a.adapterName ?? a.name, (c, p) => external.execute(a.key, c, p)) }, null, 2);
+        }
         const r = await external.execute(a.key, command, params, background === undefined ? {} : { background });
         const added = await bringIntoLibrary(a.name, (r as { outputs?: Array<{ path: string }> }).outputs);
         return JSON.stringify(added ? { ...r, added_to_library: added } : r, null, 2);
