@@ -16,9 +16,9 @@ import { ErrorLine, errMsg, PlainWords, Section, useAction, when, type TabId, ty
 const api = () => window.studio.planner;
 // One simple flow: Idea (think it through with an AI), Plan (break it into chunks you can edit), Work (do one chunk at a time, review it, approve it).
 // Tab ids are the original ones (plan, tasks, handoffs) so every existing go('handoffs') still lands in the right place.
-const TABS: Array<[TabId, string]> = [['studio', 'Studio'], ['town', 'Town'], ['plan', 'Idea'], ['tasks', 'Plan'], ['handoffs', 'Work']];
-/** Simplified: talk and see the plan (Studio), meet your team (Town), and do a chunk (Work). Advanced adds the step-by-step Idea and Plan screens. */
-const SIMPLE_TABS: readonly TabId[] = ['studio', 'town', 'handoffs'];
+const TABS: Array<[TabId, string]> = [['town', 'Town'], ['studio', 'Studio'], ['plan', 'Idea'], ['tasks', 'Plan'], ['handoffs', 'Work']];
+/** Simplified: your town (opens first), the plan you talk through (Studio), and doing a chunk (Work). Advanced adds the step-by-step Idea and Plan screens. */
+const SIMPLE_TABS: readonly TabId[] = ['town', 'studio', 'handoffs'];
 
 const ago = (iso: string) => {
   const ms = Date.now() - Date.parse(iso);
@@ -42,7 +42,7 @@ export function PlannerWorkspace({ manifest, projectKey, navMode }: { manifest: 
   const [sendSel, setSendSel] = useState<string[]>([]);
   const [focusTaskId, setFocusTaskId] = useState<string | null>(null);
   const [pickUpDismissed, setPickUpDismissed] = useState<string | null>(null);
-  const [tab, setTab] = useState<TabId>('studio');
+  const [tab, setTab] = useState<TabId>('town');
   /** Something opened from the ⋯ menu: the change history, or how to connect an AI tool. */
   const [panel, setPanel] = useState<'history' | 'connect' | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -68,9 +68,9 @@ export function PlannerWorkspace({ manifest, projectKey, navMode }: { manifest: 
     } catch (e) { setError(errMsg(e)); }
   }, []);
   // A different project: nothing of the previous one stays on screen.
-  useEffect(() => { setState(null); setProject(null); setOlderId(null); setFocusTaskId(null); setPickUpDismissed(null); setPanel(null); setTab('studio'); sessionStart.current = Date.now(); void refresh(); }, [projectKey, refresh]);
+  useEffect(() => { setState(null); setProject(null); setOlderId(null); setFocusTaskId(null); setPickUpDismissed(null); setPanel(null); setTab('town'); sessionStart.current = Date.now(); void refresh(); }, [projectKey, refresh]);
   useEffect(() => { void refresh(); }, [olderId, refresh]);
-  useEffect(() => { if (navMode !== 'advanced' && !SIMPLE_TABS.includes(tab)) setTab('studio'); }, [navMode, tab]);
+  useEffect(() => { if (navMode !== 'advanced' && !SIMPLE_TABS.includes(tab)) setTab('town'); }, [navMode, tab]);
   // Changes made here or by a connected tool arrive as events (no polling). Looking again on focus and on a slow timer covers a lost event
   // and the older plans, which live outside the open project's folder and so are not watched.
   const projectRef = useRef(project);

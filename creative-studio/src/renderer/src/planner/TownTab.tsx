@@ -52,6 +52,7 @@ export function TownTab({ p, reload, go }: TabProps) {
       <div className="tw-bar">
         <h3>Your town</h3>
         <span className="spacer" />
+        <button className="btn small primary" title="Talk through your idea with the coordinator and see the plan take shape" onClick={() => go('studio')}>Talk to the coordinator</button>
         <button className="btn small" disabled={busy} title="Suggests a studio and a specialist for each application your chunks name. Nothing is added until you say so." onClick={() => void run(async () => { setTown(await api().townSuggestFromPlan(p.id)); })}>Suggest a team</button>
         <AddBusiness busy={busy} onAdd={(name) => apply([{ op: 'add_business', name, trade: '' }])} />
       </div>
