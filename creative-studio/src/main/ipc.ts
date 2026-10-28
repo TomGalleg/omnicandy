@@ -917,14 +917,22 @@ export function registerIpc(d: IpcDeps): void {
   handle(IPC.extScan, none, async () => { await restored; return external.scan(); });
   handle(IPC.extLiveState, none, async () => liveExternal);
   handle(IPC.extLiveShow, none, async () => { if (liveExternal.pid) d.embedded.attach(liveExternal.pid); });
+  /** One adapter command as a step of app.open_blank: a refused or failed command stops the sequence with its own message. */
+  const runStep = async (key: string, command: string, params: Record<string, string | number | boolean>): Promise<unknown> => {
+    const r = await external.execute(key, command, params);
+    if (!r.ok) throw new Error(r.message);
+    return r;
+  };
   /** "Open in OmniCandy" for a detected program: its own start/show command, so the window is docked the same way as when Claude opens it. */
   handle(IPC.extOpen, z.tuple([z.string().min(1).max(600)]), async (key): Promise<string> => {
     await restored;
     const info = (await external.list()).find((a) => a.key === key);
     if (!info) throw new Error('That program was not found. Use "Rescan applications" in Connections and setup.');
     const name = info.adapterName ?? info.name;
-    if (info.status !== 'connected' && info.status !== 'limited') await external.connect(key);
-    if (info.adapterId && hasOpenBlank(info.adapterId)) return openBlank(info.adapterId, name, (c, p) => external.execute(key, c, p));
+    const blank = !!info.adapterId && hasOpenBlank(info.adapterId);
+    // a program that is not running yet cannot answer a connection check: starting it is what makes it ready
+    if (info.status !== 'connected' && info.status !== 'limited') await external.connect(key).catch((e: unknown) => { if (!blank) throw e; });
+    if (info.adapterId && hasOpenBlank(info.adapterId)) return openBlank(info.adapterId, name, (c, p) => runStep(key, c, p));
     const ids = info.commands.map((c) => c.id);
     const cmd = ['app.launch', 'app.show', 'editor.show'].find((c) => ids.includes(c));
     if (!cmd) return `${name} opens inside OmniCandy when Claude works in it: ask Claude to open it. (It has no start button of its own yet.)`;
@@ -1173,7 +1181,7 @@ export function registerIpc(d: IpcDeps): void {
         const a = s.find((x) => x.key === app || x.adapterId === app || x.name.toLowerCase() === app.toLowerCase());
         if (!a) throw new Error(`No detected application "${app}". Use external_apps.`);
         if (command === OPEN_BLANK && a.adapterId && hasOpenBlank(a.adapterId)) {
-          return JSON.stringify({ message: await openBlank(a.adapterId, a.adapterName ?? a.name, (c, p) => external.execute(a.key, c, p)) }, null, 2);
+          return JSON.stringify({ message: await openBlank(a.adapterId, a.adapterName ?? a.name, (c, p) => runStep(a.key, c, p)) }, null, 2);
         }
         const r = await external.execute(a.key, command, params, background === undefined ? {} : { background });
         const added = await bringIntoLibrary(a.name, (r as { outputs?: Array<{ path: string }> }).outputs);

@@ -135,7 +135,7 @@ export function SoftwareWorkspace({ apps }: { apps: AppProbeResult[] }) {
                   {!connected && canConnect && <button className="btn small primary" disabled={!!busy} onClick={() => void act(a.key, 'connect')}>{working ? 'Connecting…' : 'Connect'}</button>}
                   {connected && <button className="btn small" disabled={!!busy} onClick={() => void act(a.key, 'disconnect')}>Disconnect</button>}
                   {(a.status === 'needs-repair' || a.status === 'limited') && <button className="btn small" disabled={!!busy} onClick={() => void act(a.key, 'repair')}>Repair</button>}
-                  <button className="btn small" disabled={!!busy || !connected} title={connected ? 'Starts it and shows its window here' : 'Connect it first'} onClick={() => void openOther(a.key)}>Open in OmniCandy</button>
+                  <button className="btn small" disabled={!!busy || !(connected || canConnect)} title={connected || canConnect ? 'Starts it on a new blank document and shows its window here' : 'Connect it first'} onClick={() => void openOther(a.key)}>Open in OmniCandy</button>
                 </div>
               </li>
             );
