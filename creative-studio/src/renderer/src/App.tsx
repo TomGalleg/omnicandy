@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Group, Panel, Separator, useDefaultLayout, usePanelRef, type PanelSize } from 'react-resizable-panels';
 import { EDITOR_APPS, type EditorAppId } from '@shared/appEditors';
 import type { IntegrationSnapshot } from '@shared/ipc';
-import { parseNavMode, shownWorkspace, type NavMode } from '@shared/navigation';
+import { parseNavMode, routeWorkspace, shownWorkspace, type EditMode, type NavMode } from '@shared/navigation';
 import { shouldShowTimeline } from '@shared/timeline';
 import type { AppProbeResult, Asset, ProjectManifest, WorkspaceId } from '@shared/types';
 import { AssetBrowser } from './components/AssetBrowser';
@@ -102,6 +102,19 @@ function SideTab({ label, text, open, onToggle, controls, shortcut, side }: {
 export function App() {
   const appearance = useAppearance();
   const [workspace, setWorkspace] = useState<WorkspaceId>('home');
+  const [editMode, setEditMode] = useState<EditMode>('edit');
+  /** Switch tab. The old Effects/Color/Audio ids land in Edit, in the matching mode. */
+  const go = useCallback((w: WorkspaceId) => {
+    const r = routeWorkspace(shownWorkspace(w));
+    setWorkspace(r.workspace);
+    if (r.mode) setEditMode(r.mode);
+  }, []);
+  /** Show an app's home: Edit for its own editors (and SoundCraft), Color or Effects mode for the other two. */
+  const showApp = useCallback((appId: EditorAppId) => {
+    const t = EDITOR_APPS[appId].tab;
+    go(t);
+    if (t === 'edit') setEditMode('edit');
+  }, [go]);
   const [navMode, setNavModeState] = useState<NavMode>(() => parseNavMode(read('cs-nav-mode')));
   const setNavMode = useCallback((m: NavMode) => { write('cs-nav-mode', m); setNavModeState(m); }, []);
   const [manifest, setManifest] = useState<ProjectManifest | null>(null);
@@ -137,13 +150,13 @@ export function App() {
         const back = restore ? m.view : undefined;
         const asset = back?.assetId && m.assets.some((a) => a.id === back.assetId) ? back.assetId : null;
         setSelectedId(asset ?? m.assets[0]?.id ?? null);
-        if (back && back.workspace !== 'home') setWorkspace(shownWorkspace(back.workspace));
+        if (back && back.workspace !== 'home') go(back.workspace);
         setError(null);
         setViewReady(true);
         addLog('project', `Loaded "${m.name}" (${m.assets.length} assets).`);
       })
       .catch((e: unknown) => setError(String(e)));
-  }, [addLog]);
+  }, [addLog, go]);
 
   // Remember where the user left off in this project (restored when it is opened again).
   useEffect(() => {
@@ -171,7 +184,7 @@ export function App() {
     const id = live.asset.id;
     if (!manifest?.assets.some((a) => a.id === id)) reloadProject();
     setSelectedId(id);
-    setWorkspace(EDITOR_APPS[live.appId].tab);
+    showApp(live.appId);
     // Only when Claude opens something new, not on every state update.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [claudeOpened]);
@@ -197,10 +210,10 @@ export function App() {
   const openIn = useCallback((asset: Asset, appId: EditorAppId) => {
     setChosen({ assetId: asset.id, appId });
     setSelectedId(asset.id);
-    setWorkspace(EDITOR_APPS[appId].tab);
+    showApp(appId);
     addLog('open', `Opening ${asset.name} in ${EDITOR_APPS[appId].name}.`);
-  }, [addLog]);
-  const goto = useCallback((w: WorkspaceId, assetId?: string) => { if (assetId) setSelectedId(assetId); setWorkspace(shownWorkspace(w)); }, []);
+  }, [addLog, showApp]);
+  const goto = useCallback((w: WorkspaceId, assetId?: string) => { if (assetId) setSelectedId(assetId); go(w); }, [go]);
 
   const selected = useMemo(() => manifest?.assets.find((a) => a.id === selectedId) ?? null, [manifest, selectedId]);
 
@@ -236,7 +249,7 @@ export function App() {
         projectName={manifest?.name ?? '…'}
         onProjectHome={() => setWorkspace('home')}
         workspace={workspace}
-        onWorkspace={setWorkspace}
+        onWorkspace={go}
         navMode={navMode}
         onNavMode={setNavMode}
         apps={apps}
@@ -282,6 +295,8 @@ export function App() {
                     liveApi={liveApi}
                     onSelectAsset={setSelectedId}
                     onOpenIn={openIn}
+                    editMode={editMode}
+                    onEditMode={setEditMode}
                     chosenApp={chosen && chosen.assetId === selectedId ? chosen.appId : null}
                   />
                 </div>

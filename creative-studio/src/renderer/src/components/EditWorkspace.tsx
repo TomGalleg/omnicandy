@@ -1,5 +1,6 @@
-import { useEffect, useLayoutEffect, useRef } from 'react';
-import { appForTab, EDITOR_APPS, type EditorApp, type EditorAppId } from '@shared/appEditors';
+import { useEffect, useLayoutEffect, useRef, type ReactNode } from 'react';
+import { appForTab, appsForFormat, EDITOR_APPS, type EditorApp, type EditorAppId } from '@shared/appEditors';
+import type { EditMode } from '@shared/navigation';
 import type { Asset, ProjectManifest, WorkspaceId } from '@shared/types';
 import { useOverlayOpen } from '../overlay';
 import type { LiveApi } from '../useLive';
@@ -22,28 +23,66 @@ interface Props {
 
 type Tab = EditorApp['tab'];
 
-const INTRO: Record<Tab, { title: string; text: string }> = {
-  edit: { title: 'Pick something to edit', text: 'Choose a file on the left. It opens here in the right app: photos in PhotoCraft, vector art in VectorCraft, audio in SoundCraft, video in FilmCraft, layouts in DesignCraft Word documents (.docx) in WordCraft, PDFs in PdfCraft spreadsheets (.xlsx) in GridCraft and presentations (.deckcraft, .pptx) in DeckCraft and UI designs (.figcraft) in FigCraft and CAD drawings (.dxf, .dwg) in CADCraft.' },
-  color: { title: 'Pick a photo to colour', text: 'Choose a photo (PNG, JPEG, WebP or TIFF) on the left. It opens here in LightCraft for light and colour work: exposure, white balance, curves, colour grading and looks.' },
-  effects: { title: 'Pick a picture or video', text: 'Choose a picture or a video on the left. It opens here in EffectCraft as a composition, ready for effects, titles and animation.' },
-  audio: { title: 'Pick a sound', text: 'Choose an audio file (WAV, MP3, FLAC, OGG or AIFF) on the left. It opens here in SoundCraft, with its waveform and clips in the timeline below.' },
+const MODE_LABEL: Record<EditMode, string> = { edit: 'Edit', color: 'Color', effects: 'Effects' };
+const MODE_HINT: Record<EditMode, string> = {
+  edit: "The file's own editor",
+  color: 'LightCraft: exposure, white balance, curves, grading and looks',
+  effects: 'EffectCraft: effects, titles and animation',
 };
 
-/** The Edit tab: the selected file opens in its ArtCraft app, shown right here. */
-export function EditWorkspace(p: Props) {
-  return <AppWorkspace {...p} tab="edit" />;
+const INTRO = {
+  title: 'Pick something to edit',
+  text: 'Choose a file on the left. It opens here in the right app: photos in PhotoCraft, vector art in VectorCraft, audio in SoundCraft, video in FilmCraft, layouts in DesignCraft, Word documents (.docx) in WordCraft, PDFs in PdfCraft, spreadsheets (.xlsx) in GridCraft, presentations (.deckcraft, .pptx) in DeckCraft, UI designs (.figcraft) in FigCraft and CAD drawings (.dxf, .dwg) in CADCraft. Photos and videos also get Color (LightCraft) and Effects (EffectCraft) buttons along the top.',
+};
+
+/** The modes that can open this file type: Edit always (when an app fits), Color for photos, Effects for pictures and video. */
+export function modesFor(format: string): EditMode[] {
+  return (['edit', 'color', 'effects'] as const).filter((m) => appForTab(m, format));
+}
+
+/** Other apps that can open this file in Edit itself (e.g. a PDF in PDFCraft or VectorCraft). */
+function sameModeApps(format: string): EditorApp[] {
+  return appsForFormat(format).filter((a) => a.tab === 'edit' || a.tab === 'audio');
 }
 
 /**
- * Edit / Color / Effects: the selected file opens automatically in the tab's ArtCraft app, shown
- * right here in the big area, where you work with the app's own tools. "Open in its own window"
- * pops the app out. The library file itself is never changed; saving makes a new version.
+ * The Edit tab: the selected file opens in its ArtCraft app, shown right here in the big area,
+ * where you work with the app's own tools. Photos and video also offer Color and Effects modes,
+ * and a file with more than one editor gets an "Open with" list. "Open in its own window" pops
+ * the app out. The library file itself is never changed; saving makes a new version.
  */
-export function AppWorkspace({ manifest, selected, liveApi, onProjectChanged, tab, chosenApp, log, onGoto }: Props & { tab: Tab }) {
+export function EditWorkspace({ mode, onMode, onOpenIn, ...p }: Props & { mode: EditMode; onMode: (m: EditMode) => void; onOpenIn: (asset: Asset, appId: EditorAppId) => void }) {
+  const fmt = p.selected?.sourceFormat ?? '';
+  const modes = p.selected ? modesFor(fmt) : [];
+  const tab: Tab = modes.includes(mode) ? mode : 'edit';
+  const alternatives = p.selected ? sameModeApps(fmt) : [];
+  const current = p.selected ? (p.chosenApp && alternatives.some((a) => a.id === p.chosenApp) ? p.chosenApp : appForTab('edit', fmt)?.id) : undefined;
+  const extras = p.selected && (modes.length > 1 || alternatives.length > 1) ? (
+    <>
+      {modes.length > 1 && (
+        <div className="mode-strip" role="group" aria-label="Edit mode">
+          {modes.map((m) => (
+            <button key={m} className="btn small" aria-pressed={tab === m} title={MODE_HINT[m]} onClick={() => onMode(m)}>{MODE_LABEL[m]}</button>
+          ))}
+        </div>
+      )}
+      {tab === 'edit' && alternatives.length > 1 && (
+        <label className="open-with">Open with{' '}
+          <select value={current} onChange={(e) => onOpenIn(p.selected!, e.target.value as EditorAppId)}>
+            {alternatives.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+          </select>
+        </label>
+      )}
+    </>
+  ) : null;
+  return <AppWorkspace {...p} tab={tab} barExtras={extras} />;
+}
+
+function AppWorkspace({ manifest, selected, liveApi, onProjectChanged, tab, chosenApp, log, onGoto, barExtras }: Props & { tab: Tab; barExtras?: ReactNode }) {
   const { live, busy, act } = liveApi;
   const picked = chosenApp ? EDITOR_APPS[chosenApp] : null;
   const app = selected
-    ? (picked && picked.tab === tab && picked.formats.includes(selected.sourceFormat.toLowerCase()) ? picked : appForTab(tab, selected.sourceFormat))
+    ? (picked && (picked.tab === tab || (tab === 'edit' && picked.tab === 'audio')) && picked.formats.includes(selected.sourceFormat.toLowerCase()) ? picked : appForTab(tab, selected.sourceFormat))
     : null;
   const canLive = app?.open === 'live';
   const isOpen = live?.status === 'ready' && !!live.asset;
@@ -84,7 +123,15 @@ export function AppWorkspace({ manifest, selected, liveApi, onProjectChanged, ta
   useEffect(() => () => { void window.studio.live.setViewport(null); }, []);
 
   if (!selected) {
-    return <Empty title={INTRO[tab].title}><p>{INTRO[tab].text}</p></Empty>;
+    return <Empty title={INTRO.title}><p>{INTRO.text}</p></Empty>;
+  }
+  if (selected.kind === 'model') {
+    return (
+      <Empty title={selected.name}>
+        <p>3D models ({selected.sourceFormat.toUpperCase()}) open in your 3D programs, such as Blender, FreeCAD, Revit or Unreal, not in an Edit app. Connect or open one in the Software tab.</p>
+        <div className="btn-row"><button className="btn primary" onClick={() => onGoto('software')}>Go to Software</button></div>
+      </Empty>
+    );
   }
 
   const appName = app?.name ?? 'No app';
@@ -93,6 +140,7 @@ export function AppWorkspace({ manifest, selected, liveApi, onProjectChanged, ta
       <div className="edit-bar">
         <span className={`chip ${showingThis ? 'real' : 'off'}`}><span className="dot" />{appName}</span>
         <strong className="edit-title" title={selected.name}>{selected.name}</strong>
+        {barExtras}
         <span className="spacer" />
         {canLive && showingThis && (
           <>
@@ -112,7 +160,7 @@ export function AppWorkspace({ manifest, selected, liveApi, onProjectChanged, ta
       </div>
       <div className="edit-body">
         <div className="edit-stage" ref={stageRef}>
-          <Stage asset={selected} app={app} tab={tab} live={liveApi.live} showingThis={!!showingThis} />
+          <Stage asset={selected} app={app} live={liveApi.live} showingThis={!!showingThis} />
         </div>
         {showingThis && app && quickHost(app.id) && <QuickAiPanel appId={app.id} manifest={manifest} open={selected} selected={null} onGoto={onGoto} log={log} />}
       </div>
@@ -121,15 +169,12 @@ export function AppWorkspace({ manifest, selected, liveApi, onProjectChanged, ta
 }
 
 /** What sits under the app window: the art itself, with a status line while the app starts or when it's popped out. */
-function Stage({ asset, app, tab, live, showingThis }: { asset: Asset; app: EditorApp | null; tab: Tab; live: LiveApi['live']; showingThis: boolean }) {
+function Stage({ asset, app, live, showingThis }: { asset: Asset; app: EditorApp | null; live: LiveApi['live']; showingThis: boolean }) {
   const viewable = asset.kind === 'image' || asset.kind === 'vector';
   let status: string | null = null;
   if (live?.status === 'starting') status = `Opening in ${app?.name ?? 'the app'}…`;
   else if (live?.status === 'error' && !showingThis) status = live.error ?? 'The app could not be opened.';
   else if (showingThis && live?.poppedOut) status = `${app?.name} is open in its own window.`;
-  else if (!app && tab === 'color') status = `The Color tab works on photos. ${asset.sourceFormat.toUpperCase()} files open in the Edit tab.`;
-  else if (!app && tab === 'effects') status = `The Effects tab works on pictures and video. ${asset.sourceFormat.toUpperCase()} files open in the Edit tab.`;
-  else if (!app && tab === 'audio') status = `The Audio tab works on sound files. ${asset.sourceFormat.toUpperCase()} files open in the Edit tab.`;
   else if (!app || app.open === 'none') status = app?.note ?? `No ArtCraft app edits ${asset.sourceFormat.toUpperCase()} files yet.`;
   return (
     <div className="stage-art">

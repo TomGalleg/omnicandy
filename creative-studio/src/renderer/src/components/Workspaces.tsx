@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { appsForFormat, type EditorAppId } from '@shared/appEditors';
 import type { IntegrationSnapshot } from '@shared/ipc';
+import type { EditMode } from '@shared/navigation';
 import type { AppProbeResult, Asset, ProjectManifest, WorkspaceId } from '@shared/types';
 import { formatBytes, formatDims } from '../format';
 import { importDropped, isFileDrag, uploadWithPicker } from '../importFiles';
@@ -8,7 +9,7 @@ import type { LiveApi } from '../useLive';
 import { AssetThumb, KIND_LABEL } from './AssetBrowser';
 import { DeliverWorkspace } from './DeliverWorkspace';
 import { SampleMedia } from './SampleMedia';
-import { AppWorkspace, EditWorkspace } from './EditWorkspace';
+import { EditWorkspace } from './EditWorkspace';
 import { GenerateHub } from './GenerateHub';
 import { HomeWorkspace } from './HomeWorkspace';
 import { SoftwareWorkspace } from './SoftwareWorkspace';
@@ -33,18 +34,20 @@ interface Props {
   onOpenIn: (asset: Asset, appId: EditorAppId) => void;
   /** The app picked for the selected file, if any. */
   chosenApp?: EditorAppId | null;
+  /** Which mode Edit is in (its own editor, Color or Effects). */
+  editMode: EditMode;
+  onEditMode: (m: EditMode) => void;
 }
 
 export function WorkspaceView(p: Props) {
   switch (p.workspace) {
     case 'home': return <HomeWorkspace manifest={p.manifest} projectKey={p.projectKey} onSwitched={p.onSwitched} onGoto={p.onGoto} log={p.log} />;
     case 'media': return <MediaWorkspace manifest={p.manifest} asset={p.selected} onSelect={p.onSelectAsset} onOpenIn={p.onOpenIn} onProjectChanged={p.onProjectChanged} log={p.log} />;
-    case 'edit': return <EditWorkspace manifest={p.manifest} selected={p.selected} liveApi={p.liveApi} onProjectChanged={p.onProjectChanged} onSelectAsset={p.onSelectAsset} chosenApp={p.chosenApp} log={p.log} onGoto={p.onGoto} />;
+    // Effects, Color and Audio are modes of Edit now; App routes the old ids here, so this only guards a stray one.
+    case 'edit': case 'effects': case 'color': case 'audio':
+      return <EditWorkspace mode={p.editMode} onMode={p.onEditMode} onOpenIn={p.onOpenIn} manifest={p.manifest} selected={p.selected} liveApi={p.liveApi} onProjectChanged={p.onProjectChanged} onSelectAsset={p.onSelectAsset} chosenApp={p.chosenApp} log={p.log} onGoto={p.onGoto} />;
     case 'generate': return <GenerateHub manifest={p.manifest} selected={p.selected} onGoto={p.onGoto} log={p.log} onProjectChanged={p.onProjectChanged} />;
     case 'workflow': return <WorkflowEditor manifest={p.manifest} integrations={p.integrations} colorMode={p.resolvedTheme} log={p.log} onProjectChanged={p.onProjectChanged} />;
-    case 'effects': return <AppWorkspace tab="effects" manifest={p.manifest} selected={p.selected} liveApi={p.liveApi} onProjectChanged={p.onProjectChanged} onSelectAsset={p.onSelectAsset} chosenApp={p.chosenApp} log={p.log} onGoto={p.onGoto} />;
-    case 'color': return <AppWorkspace tab="color" manifest={p.manifest} selected={p.selected} liveApi={p.liveApi} onProjectChanged={p.onProjectChanged} onSelectAsset={p.onSelectAsset} chosenApp={p.chosenApp} log={p.log} onGoto={p.onGoto} />;
-    case 'audio': return <AppWorkspace tab="audio" manifest={p.manifest} selected={p.selected} liveApi={p.liveApi} onProjectChanged={p.onProjectChanged} onSelectAsset={p.onSelectAsset} chosenApp={p.chosenApp} log={p.log} onGoto={p.onGoto} />;
     case 'software': return <SoftwareWorkspace apps={p.apps} />;
     case 'planner': return <PlannerWorkspace manifest={p.manifest} projectKey={p.projectKey} />;
     case 'deliver': return <DeliverWorkspace manifest={p.manifest} selected={p.selected} liveApi={p.liveApi} onSelectAsset={p.onSelectAsset} log={p.log} />;

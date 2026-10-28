@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ADVANCED_NAV, HIDDEN_WORKSPACES, isMoreWorkspace, MORE_NAV, parseNavMode, shownWorkspace, SIMPLE_NAV } from './navigation';
+import { ADVANCED_NAV, HIDDEN_WORKSPACES, isMoreWorkspace, MORE_NAV, parseNavMode, routeWorkspace, shownWorkspace, SIMPLE_NAV } from './navigation';
 import { shouldShowTimeline } from './timeline';
 
 describe('navigation', () => {
@@ -7,7 +7,15 @@ describe('navigation', () => {
     const ids = [...SIMPLE_NAV, ...MORE_NAV].map((n) => n.id).sort();
     expect(ids).toEqual(ADVANCED_NAV.map((n) => n.id).sort());
     expect(SIMPLE_NAV.map((n) => n.label)).toEqual(['Project', 'Create', 'AI Generate', 'Software', 'Planner', 'Deliver']);
-    expect(MORE_NAV.map((n) => n.id)).toEqual(['media', 'effects', 'color', 'audio']);
+    expect(MORE_NAV.map((n) => n.id)).toEqual(['media']);
+    expect(ADVANCED_NAV.map((n) => n.id)).toEqual(['home', 'media', 'edit', 'generate', 'software', 'planner', 'deliver']);
+  });
+  it('sends the old Effects, Color and Audio tabs into Edit modes', () => {
+    expect(routeWorkspace('color')).toEqual({ workspace: 'edit', mode: 'color' });
+    expect(routeWorkspace('effects')).toEqual({ workspace: 'edit', mode: 'effects' });
+    expect(routeWorkspace('audio')).toEqual({ workspace: 'edit', mode: 'edit' });
+    expect(routeWorkspace('edit')).toEqual({ workspace: 'edit' });
+    expect(routeWorkspace('software')).toEqual({ workspace: 'software' });
   });
   it('ends with Software, Planner, Deliver in both layouts', () => {
     expect(ADVANCED_NAV.slice(-3).map((n) => n.id)).toEqual(['software', 'planner', 'deliver']);
@@ -20,7 +28,7 @@ describe('navigation', () => {
     expect(shownWorkspace('media')).toBe('media');
   });
   it('detects specialist workspaces and parses the saved preference', () => {
-    expect(isMoreWorkspace('audio')).toBe(true);
+    expect(isMoreWorkspace('media')).toBe(true);
     expect(isMoreWorkspace('edit')).toBe(false);
     expect(parseNavMode('advanced')).toBe('advanced');
     expect(parseNavMode('junk')).toBe('simplified');
