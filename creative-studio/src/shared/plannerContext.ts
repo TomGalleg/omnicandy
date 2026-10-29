@@ -116,8 +116,8 @@ export function planSummary(p: PlannerProject): string[] {
 }
 
 /**
- * The shape of an answer that plans the work: a short summary of the project and the work in clear, ordered chunks. The reader
- * (parseSuggestionText) understands exactly this, and an answer in this shape is shown as a plain list of chunks.
+ * The shape of an answer that plans the work: a short summary of the project and the work in clear, ordered tasks. The reader
+ * (parseSuggestionText) understands exactly this, and an answer in this shape is shown as a plain list of tasks.
  */
 export const CHUNK_FORMAT = [
   'Answer in exactly this shape and write nothing else:',
@@ -132,9 +132,9 @@ export const CHUNK_FORMAT = [
   '   - another check, only if needed',
   '   - App: the connected application that would do it, only if one clearly fits (leave this line out otherwise)',
   '   - Who: the team member who should handle it, by their title (leave this line out if unsure)',
-  '2. Next chunk',
+  '2. Next task',
   '   - how we will know it is done',
-  'Rules for the chunks: 4 to 12 of them, in the order they should be done, each small enough to finish in one sitting, specific and clearly different from the others, written in plain words. Start each with a verb. Leave out work that already exists.',
+  'Rules for the tasks: 4 to 12 of them, in the order they should be done, each small enough to finish in one sitting, specific and clearly different from the others, written in plain words. Start each with a verb. Leave out work that already exists.',
 ].join('\n');
 
 /** A request to paste into ChatGPT, Gemini or any other chat: it talks the idea through, then answers in the shape the Planner can read back. */

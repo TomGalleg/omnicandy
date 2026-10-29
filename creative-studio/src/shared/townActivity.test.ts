@@ -6,14 +6,14 @@ const NOW = new Date('2026-06-01T12:00:00Z');
 const claim = (leaseUntil: string): TaskClaim => ({ token: 't', packageId: 'pkg_1', executor: { kind: 'createcraft', name: 'OmniCandy Claude' }, claimedAt: '2026-06-01T11:00:00Z', leaseUntil, note: '' });
 let n = 0;
 const task = (over: Partial<PlanTask> & { status: TaskStatus }): PlanTask => ({
-  id: `task_${++n}`, title: `Chunk ${n}`, description: '', priority: 'normal', parentId: null, dependsOn: [], completionChecks: [], expectedOutputs: [], assetIds: [], milestoneId: null,
+  id: `task_${++n}`, title: `Task ${n}`, description: '', priority: 'normal', parentId: null, dependsOn: [], completionChecks: [], expectedOutputs: [], assetIds: [], milestoneId: null,
   appRef: null, packageId: null, claim: null, progressNote: '', rev: 1, createdAt: '', updatedAt: '', createdBy: { kind: 'user', name: 'You' }, ...over,
 });
 const live = claim('2026-06-01T13:00:00Z');
 const expired = claim('2026-06-01T11:30:00Z');
 
 describe('what a director is really doing', () => {
-  it('is nothing at all for a plan with no chunks, and for chunks nobody owns', () => {
+  it('is nothing at all for a plan with no tasks, and for tasks nobody owns', () => {
     expect(directorActivity({ tasks: [] }, NOW)).toEqual({});
     expect(directorActivity({ tasks: [task({ status: 'in_progress', claim: live }), task({ status: 'reported' }), task({ status: 'blocked' })] }, NOW)).toEqual({});
   });
@@ -26,7 +26,7 @@ describe('what a director is really doing', () => {
     expect(directorActivity({ tasks: [owned({ status: 'todo', claim: live })] }, NOW)).toEqual({});
   });
 
-  it('puts what needs the owner first, then work in progress, then blocks, and lists the chunks behind it', () => {
+  it('puts what needs the owner first, then work in progress, then blocks, and lists the tasks behind it', () => {
     const t = [
       task({ assignee: 'quality-director', status: 'blocked', title: 'Stuck one' }),
       task({ assignee: 'quality-director', status: 'in_progress', claim: live, title: 'Busy one' }),
@@ -39,7 +39,7 @@ describe('what a director is really doing', () => {
     expect(ACTIVITY_LABEL[a.state]).toBe('Waiting for you');
   });
 
-  it('forgets finished and removed chunks, and a chunk owned by something that is not a director', () => {
+  it('forgets finished and removed tasks, and a task owned by something that is not a director', () => {
     expect(directorActivity({ tasks: [task({ assignee: 'creative-director', status: 'accepted' }), task({ assignee: 'creative-director', status: 'cancelled' }), task({ assignee: 'bob', status: 'reported' })] }, NOW)).toEqual({});
   });
 
@@ -51,7 +51,7 @@ describe('what a director is really doing', () => {
     expect(Object.keys(later)).toEqual(['ai-director']);
   });
 
-  it('never invents a state: for any mix of chunks, every result is backed by a chunk that really has it', () => {
+  it('never invents a state: for any mix of tasks, every result is backed by a task that really has it', () => {
     const statuses: TaskStatus[] = ['todo', 'in_progress', 'blocked', 'reported', 'revision', 'accepted', 'cancelled'];
     const keys = ['creative-director', 'ai-director', 'bob', null, undefined] as const;
     const claims = [null, live, expired];

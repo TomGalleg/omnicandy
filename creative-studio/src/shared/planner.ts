@@ -113,9 +113,9 @@ export const changeSchema = z.discriminatedUnion('op', [
     dependsOn: z.array(s(80)).max(30).default([]), parentId: s(80).nullish(), completionChecks: z.array(s(400)).max(20).default([]),
     /** The title of a milestone (an existing one, or one added by the same proposal) this task belongs to. */
     milestone: s(200).nullish(),
-    /** The application that does this chunk, when one clearly fits (named by the AI that wrote the chunk; the owner sees it before adding). */
+    /** The application that does this task, when one clearly fits (named by the AI that wrote the task; the owner sees it before adding). */
     appRef: z.object({ kind: z.enum(['native', 'external', 'workflow']), id: s(80).min(1), note: s(400).default('') }).nullish(),
-    /** The director responsible (a director key). An unknown key is dropped when the owner adds the chunk. */
+    /** The director responsible (a director key). An unknown key is dropped when the owner adds the task. */
     assignee: s(40).nullish(),
   }),
   /** One part of the project brief. Text fields are replaced; constraints and deliverables are added to (nothing the owner wrote is removed). */
@@ -242,7 +242,7 @@ export interface PlannerProject {
   ownerProjectId?: string;
   /** The older plan this one was copied from when it was brought into a project (the original is left as it was). */
   importedFrom?: string;
-  /** The chunk worked on last, so coming back after weeks can start there. Never part of the accepted plan. */
+  /** The task worked on last, so coming back after weeks can start there. Never part of the accepted plan. */
   lastActive?: LastActive;
 }
 

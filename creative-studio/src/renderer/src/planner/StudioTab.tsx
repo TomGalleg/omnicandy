@@ -50,7 +50,7 @@ export function StudioTab(props: TabProps) {
       .then(() => reload())
       .catch((e) => { setError(errMsg(e)); void reload().catch(() => {}); });
   };
-  /** The owner's choice of who handles a chunk. Plan data, so it goes through the plan's own edit (with the revision the owner was looking at). */
+  /** The owner's choice of who handles a task. Plan data, so it goes through the plan's own edit (with the revision the owner was looking at). */
   const assign = (n: ViewNode, key: string | null) => {
     setError(null);
     void api().updateTask(p.id, n.ref.id, { assignee: key }, n.ref.rev).then(() => reload()).catch((e) => { setError(errMsg(e)); void reload().catch(() => {}); });

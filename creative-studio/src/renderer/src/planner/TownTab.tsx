@@ -65,7 +65,7 @@ function Avatar({ a, big }: { a: TownAgent; big?: boolean }) {
 
 /**
  * OmniTown: the people and places of the project. Every worker has a workplace; a workplace grows with the number of people in it. This shows who is
- * on the team. A small badge over a director (a ! for a result waiting for you, a turning gear while a chunk of theirs is claimed, a red ! when stuck) is
+ * on the team. A small badge over a director (a ! for a result waiting for you, a turning gear while a task of theirs is claimed, a red ! when stuck) is
  * drawn only from the plan (see shared/townActivity.ts); nothing is animated to look busy.
  */
 export function TownTab(props: TabProps) {
@@ -115,7 +115,7 @@ export function TownTab(props: TabProps) {
         <h3>Your town</h3>
         <span className="spacer" />
         <button className="btn small primary" title="Talk through your idea with the General Manager and see the plan take shape" onClick={() => go('studio')}>Talk to the General Manager</button>
-        <button className="btn small" disabled={busy} title="Suggests a studio and a specialist helper for each application your chunks name. Nothing is added until you say so." onClick={() => void run(async () => { setTown(await api().townSuggestFromPlan(p.id)); })}>Suggest helpers</button>
+        <button className="btn small" disabled={busy} title="Suggests a studio and a specialist helper for each application your tasks name. Nothing is added until you say so." onClick={() => void run(async () => { setTown(await api().townSuggestFromPlan(p.id)); })}>Suggest helpers</button>
         <AddBusiness busy={busy} onAdd={(name) => apply([{ op: 'add_business', name, trade: '' }])} />
       </div>
 
@@ -344,7 +344,7 @@ function MeetingBoard({ town, meeting, planId, busy, run, setTown, reload, onGoi
   const who = meeting.participantIds.map((id) => town.agents.find((a) => a.id === id)).filter((a): a is TownAgent => !!a);
   const lines = chunks.split(/\r?\n/).map((l) => l.replace(/^[\s\-*\d.)]+/, '').trim()).filter(Boolean).slice(0, 30);
   return (
-    <Section title={`${KIND_LABEL[meeting.kind]}: ${meeting.topic}`} hint="Everyone is at the table. Write down what is said, then turn what you decided into chunks. The chunks wait on the Studio canvas until you add them.">
+    <Section title={`${KIND_LABEL[meeting.kind]}: ${meeting.topic}`} hint="Everyone is at the table. Write down what is said, then turn what you decided into tasks. The tasks wait on the Studio canvas until you add them.">
       <div className="tw-table" aria-label="Meeting table">
         <div className="tw-map" aria-hidden>The project map</div>
         {who.map((a, i) => <span key={a.id} className="tw-seat" style={{ ['--i' as string]: i, ['--n' as string]: who.length }}><Avatar a={a} big /><small>{a.name}</small></span>)}
@@ -354,15 +354,15 @@ function MeetingBoard({ town, meeting, planId, busy, run, setTown, reload, onGoi
         <input aria-label="Add to the meeting" value={text} maxLength={2000} placeholder="What was said or decided?" onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && text.trim() && !busy) { const t = text; setText(''); void run(async () => { setTown(await api().meetingNote(planId, meeting.id, { by: 'You', text: t })); }); } }} />
         <button className="btn small" disabled={busy || !text.trim()} onClick={() => { const t = text; setText(''); void run(async () => { setTown(await api().meetingNote(planId, meeting.id, { by: 'You', text: t })); }); }}>Add</button>
       </div>
-      <details><summary>Turn what we decided into chunks</summary>
+      <details><summary>Turn what we decided into tasks</summary>
         <div className="pl-fold-body">
-          <textarea aria-label="Chunks, one per line" rows={4} value={chunks} placeholder={'One chunk per line, for example:\nConcept art\nModel the character\nRig it'} onChange={(e) => { setChunks(e.target.value); setSent(null); }} />
+          <textarea aria-label="Tasks, one per line" rows={4} value={chunks} placeholder={'One task per line, for example:\nConcept art\nModel the character\nRig it'} onChange={(e) => { setChunks(e.target.value); setSent(null); }} />
           <button className="btn small primary" disabled={busy || !lines.length} onClick={() => void run(async () => {
             const changes: ProposalChange[] = lines.map((title) => ({ op: 'add_task', title: title.slice(0, 200), description: '', priority: 'normal', dependsOn: [], completionChecks: [] }));
             await api().meetingPropose(planId, meeting.id, { note: `From the meeting: ${meeting.topic}`.slice(0, 1000), changes });
             setSent(lines.length); setChunks(''); await reload();
-          })}>Suggest {lines.length || ''} chunk{lines.length === 1 ? '' : 's'} for the plan</button>
-          {sent !== null && <p className="pl-hint" role="status">Sent {sent} chunk{sent === 1 ? '' : 's'} to the Studio canvas as suggestions. Add them there when you are happy.</p>}
+          })}>Suggest {lines.length || ''} task{lines.length === 1 ? '' : 's'} for the plan</button>
+          {sent !== null && <p className="pl-hint" role="status">Sent {sent} task{sent === 1 ? '' : 's'} to the Studio canvas as suggestions. Add them there when you are happy.</p>}
         </div>
       </details>
       <RunWithAi town={town} meeting={meeting} planId={planId} setTown={setTown} reload={reload} onGoing={onGoing} />

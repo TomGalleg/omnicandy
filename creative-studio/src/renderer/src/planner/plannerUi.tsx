@@ -11,7 +11,7 @@ export interface TabProps {
   sendSel?: string[]; setSendSel?: (ids: string[]) => void;
   /** The OmniCandy project that is open now (a task can point at its workflow). */
   projectKey?: string | null; projectName?: string;
-  /** The chunk being worked on (opened from Plan, or picked up from where the owner left off). */
+  /** The task being worked on (opened from Plan, or picked up from where the owner left off). */
   focusTaskId?: string | null; setFocusTaskId?: (id: string | null) => void;
 }
 

@@ -10,7 +10,7 @@ const store = (() => { try { return window.localStorage; } catch { return undefi
 const get = (k: string) => { try { return store?.getItem(k) ?? null; } catch { return null; } };
 
 /**
- * "Run this meeting with AI": each person at the table speaks in turn (one request each), then the General Manager turns it into chunks. Only starts after the
+ * "Run this meeting with AI": each person at the table speaks in turn (one request each), then the General Manager turns it into tasks. Only starts after the
  * owner confirms what it will do; stops at once on Stop, on leaving the screen, or on the first problem. It adds to the meeting notes and sends at most ONE
  * suggestion to the Studio canvas. It never changes the plan itself. While it runs, the people at the table walk to the Town Hall (`onGoing`).
  */
@@ -63,14 +63,14 @@ export function RunWithAi({ town, meeting, planId, setTown, reload, onGoing }: {
       if (!stop.current && alive.current) {
         const chair = coordinatorOf(town) ?? people[0];
         if (chair) {
-          setProgress(`${chair.name} is turning it into chunks…`);
+          setProgress(`${chair.name} is turning it into tasks…`);
           const text = await ask(chair.id, summaryPrompt(meeting, notes));
           if (!stop.current && alive.current) {
             const plan = chunkPlan(text);
             if (plan) {
               await api().meetingPropose(planId, meeting.id, { note: `From the meeting: ${meeting.topic}`.slice(0, 1000), changes: plan.chunks });
               await reload();
-              setProgress(`Done. ${plan.chunks.length} chunk${plan.chunks.length === 1 ? '' : 's'} are waiting on the Studio canvas for you to add.`);
+              setProgress(`Done. ${plan.chunks.length} task${plan.chunks.length === 1 ? '' : 's'} are waiting on the Studio canvas for you to add.`);
             } else {
               setTown(await api().meetingNote(planId, meeting.id, { by: chair.name, text: text.slice(0, 2000) || '(nothing was decided)' }));
               setProgress('Done. Nothing clear was decided, so nothing was suggested.');
@@ -101,7 +101,7 @@ export function RunWithAi({ town, meeting, planId, setTown, reload, onGoing }: {
       <ErrorLine error={error} />
       {open && (
         <div className="pl-warn" role="alertdialog" aria-label="Run this meeting with AI">
-          <p><strong>Run this meeting with AI?</strong> Each person at the table says their piece in turn, then the General Manager turns it into chunks.</p>
+          <p><strong>Run this meeting with AI?</strong> Each person at the table says their piece in turn, then the General Manager turns it into tasks.</p>
           <div className="pl-two">
             <label>AI
               <select value={provider} onChange={(e) => setProvider(e.target.value as ChatProviderId)}>

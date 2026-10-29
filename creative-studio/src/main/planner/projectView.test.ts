@@ -40,7 +40,7 @@ describe('buildProjectView', () => {
     expect(JSON.stringify(p)).toBe(before);
   });
 
-  it('calls a top-level task a chunk and a subtask a task, and nests milestones, without caring which application is named', () => {
+  it('calls a top-level task a task and a subtask a task, and nests milestones, without caring which application is named', () => {
     const p = bare();
     p.milestones.push({ id: 'ms_aaaa', title: 'Act one', due: '', rev: 1 });
     p.tasks.push(task('task_a', { milestoneId: 'ms_aaaa', appRef: { kind: 'external', id: 'made-up.app', note: '' } }), task('task_b', { parentId: 'task_a' }), task('task_c', { dependsOn: ['task_a'] }));
@@ -53,7 +53,7 @@ describe('buildProjectView', () => {
     expect(by('task_c').flags.waiting).toBe(true);
   });
 
-  it('counts leaves only, and a chunk whose subtasks are all done is not marked accepted', () => {
+  it('counts leaves only, and a task whose subtasks are all done is not marked accepted', () => {
     const p = bare();
     p.tasks.push(task('task_a'), task('task_b', { parentId: 'task_a', status: 'accepted' }), task('task_c', { parentId: 'task_a', status: 'accepted' }), task('task_d'));
     expect(leafProgress(p)).toEqual({ done: 2, total: 3, percent: 67 });
@@ -82,7 +82,7 @@ describe('buildProjectView', () => {
     expect(p.tasks).toHaveLength(1);
   });
 
-  it('picks the current chunk like the Work tab does', () => {
+  it('picks the current task like the Work tab does', () => {
     const p = bare();
     p.tasks.push(task('task_a', { status: 'accepted' }), task('task_b', { dependsOn: ['task_c'] }), task('task_c'));
     expect(currentTask(p)?.id).toBe('task_c');

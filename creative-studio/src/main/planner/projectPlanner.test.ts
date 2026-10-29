@@ -86,14 +86,14 @@ describe('a plan belongs to its project and lives in its folder', () => {
     const a = await makeProject('Original');
     await r.openProject(a);
     const plan = await r.pp.startPlan({ goal: 'g' });
-    await r.svc.addTask(user, plan.id, { title: 'Chunk 1' });
+    await r.svc.addTask(user, plan.id, { title: 'Task 1' });
     const copyRoot = path.join(tmp, `dup${++n}`);
     await fs.cp(a.root, copyRoot, { recursive: true });
     const dup = new ProjectStore(copyRoot);
     await dup.regenerateIdentity('Copy');
     await r.openProject(dup);
     const state = await r.pp.forProject();
-    expect(state.plan!.tasks.map((t) => t.title)).toEqual(['Chunk 1']);
+    expect(state.plan!.tasks.map((t) => t.title)).toEqual(['Task 1']);
     expect(state.plan!.ownerProjectId).toBe((await dup.loadManifest()).id);
     expect(state.plan!.ownerProjectId).not.toBe((await a.loadManifest()).id);
   });
@@ -104,7 +104,7 @@ describe('older plans (made before projects held their own)', () => {
     const r = rig();
     // an older plan lives in the shared folder, with no owner
     const legacy = await r.svc.createProject(user, { title: 'Old plan', goal: 'old' });
-    await r.svc.addTask(user, legacy.id, { title: 'Old chunk' });
+    await r.svc.addTask(user, legacy.id, { title: 'Old task' });
     const originalBytes = await fs.readFile(path.join(r.shared, 'projects', legacy.id, 'project.json'));
     const p = await makeProject('Project');
     await r.openProject(p);
@@ -115,7 +115,7 @@ describe('older plans (made before projects held their own)', () => {
     const attached = await r.pp.attachOlder(legacy.id);
     expect(attached.importedFrom).toBe(legacy.id);
     expect(attached.ownerProjectId).toBe((await p.loadManifest()).id);
-    expect(attached.tasks.map((t) => t.title)).toEqual(['Old chunk']);
+    expect(attached.tasks.map((t) => t.title)).toEqual(['Old task']);
     expect(Buffer.compare(await fs.readFile(path.join(r.shared, 'projects', legacy.id, 'project.json')), originalBytes)).toBe(0); // the original is untouched
     expect((await r.pp.forProject()).older).toEqual([]); // no longer offered
     await expect(r.pp.attachOlder(legacy.id)).resolves.toBeTruthy();
@@ -146,21 +146,21 @@ describe('older plans (made before projects held their own)', () => {
 });
 
 describe('where you left off, and the conversation', () => {
-  it('remembers the chunk worked on last, without changing the accepted plan', async () => {
+  it('remembers the task worked on last, without changing the accepted plan', async () => {
     const r = rig();
     await r.openProject(await makeProject('P'));
     const plan = await r.pp.startPlan();
-    const t1 = await r.svc.addTask(user, plan.id, { title: 'First chunk' });
-    const t2 = await r.svc.addTask(user, plan.id, { title: 'Second chunk' });
+    const t1 = await r.svc.addTask(user, plan.id, { title: 'First task' });
+    const t2 = await r.svc.addTask(user, plan.id, { title: 'Second task' });
     const before = await r.svc.getProject(user, plan.id);
     expect(before.lastActive).toBeUndefined();
     await r.svc.touchTask(user, plan.id, t2.id, 'opened');
     const after = await r.svc.getProject(user, plan.id);
-    expect(after.lastActive).toMatchObject({ taskId: t2.id, title: 'Second chunk', what: 'opened' });
+    expect(after.lastActive).toMatchObject({ taskId: t2.id, title: 'Second task', what: 'opened' });
     expect(after.planRevision).toBe(before.planRevision);
     await r.svc.touchTask(user, plan.id, t2.id, 'opened'); // the same thing again within ten minutes writes nothing new
     expect((await r.svc.getProject(user, plan.id)).revision).toBe(after.revision);
-    await r.svc.prepareSend(user, plan.id, { taskIds: [t1.id] }); // sending a chunk to an AI counts too
+    await r.svc.prepareSend(user, plan.id, { taskIds: [t1.id] }); // sending a task to an AI counts too
     expect((await r.svc.getProject(user, plan.id)).lastActive).toMatchObject({ taskId: t1.id, what: 'sent to an AI' });
     expect((await r.pp.forProject()).plan!.lastActive!.taskId).toBe(t1.id); // and it is there when the project is opened again
   });
@@ -194,7 +194,7 @@ describe('looking at what a project already holds', () => {
     expect(f.lines.join(' ')).toMatch(/none of this is marked as done/);
     expect(f.changes.some((c) => c.op === 'set_brief' && c.patch.goal === 'Finish the island poster')).toBe(true);
     expect(f.changes.some((c) => c.op === 'set_brief' && c.patch.description?.startsWith('A tropical island'))).toBe(true);
-    expect(f.changes.filter((c) => c.op === 'add_task')).toEqual([]); // a file existing never means a chunk is done
+    expect(f.changes.filter((c) => c.op === 'add_task')).toEqual([]); // a file existing never means a task is done
     expect(f.aiContext.join('\n')).toContain('Island art');
     expect(f.aiContext.join('\n')).not.toContain(p.root); // names and counts, never locations
   });

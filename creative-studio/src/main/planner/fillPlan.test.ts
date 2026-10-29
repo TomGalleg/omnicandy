@@ -223,7 +223,7 @@ describe('adding what the AI suggested', () => {
 });
 
 describe('what the AI is asked for', () => {
-  it('the conversation talks first, asks "Ready to start building?" with a marker, and only then answers in the chunk shape the reader understands', async () => {
+  it('the conversation talks first, asks "Ready to start building?" with a marker, and only then answers in the task shape the reader understands', async () => {
     const { svc, p } = await rig({ title: 'Poster', goal: 'A dragon poster' });
     const project = await svc.getProject(user, p.id);
     const talk = chatSystemPrompt(project);
@@ -262,7 +262,7 @@ describe('reading the conversation', () => {
     expect(chunkPlan('What size should it be? And who will see it?')).toBeNull();
   });
 
-  it('reads the answer to "Yes" as an intro, a quiet project summary and clear ordered chunks with how to check each', () => {
+  it('reads the answer to "Yes" as an intro, a quiet project summary and clear ordered tasks with how to check each', () => {
     const answer = `Here is how I would build the dragon poster.
 
 ## Project brief
@@ -288,7 +288,7 @@ Scope: One A2 poster. No animation.
     expect(plan.chunks.every((c) => !c.milestone)).toBe(true);
   });
 
-  it('adding the chunks sets the summary and the chunks in the written order, and nothing else', async () => {
+  it('adding the tasks sets the summary and the tasks in the written order, and nothing else', async () => {
     const { svc, p } = await rig({ title: 'Poster', goal: '' });
     const plan = chunkPlan(`## Project brief\nGoal: G\nDescription: D\n\n## Tasks\n1. First\n2. Second\n3. Third`)!;
     const proj = await svc.getProject(user, p.id);

@@ -83,7 +83,7 @@ export interface PlannerApi {
   /** The planning chat beside the brief. Each call is one message the owner chose to send; nothing is written to the plan. */
   chatProviders(): Promise<ChatProviderInfo[]>;
   chatModels(provider: 'claude' | 'openai' | 'gemini'): Promise<string[]>;
-  /** `mode`: "talk" (default) understands the idea; "chunks" breaks the project into chunks once the owner said yes. */
+  /** `mode`: "talk" (default) understands the idea; "chunks" breaks the project into tasks once the owner said yes. */
   chat(req: { projectId: string; provider: 'claude' | 'openai' | 'gemini'; model: string; messages: Array<{ role: 'user' | 'assistant'; text: string }>; mode?: 'talk' | 'chunks'; /** Talk to this worker (they are told their own job). */ agentId?: string }): Promise<{ text: string }>;
   /** The conversation kept with the plan (restored when the project is opened again). */
   chatLoad(id: string): Promise<{ messages: Array<{ role: 'user' | 'assistant'; text: string }>; provider?: string; model?: string; savedAt?: string }>;
@@ -96,7 +96,7 @@ export interface PlannerApi {
   analyze(): Promise<ProjectFindingsDto>;
   /** Adds the ticked findings to the plan (indexes into analyze().changes). The scan is done again here; nothing from the page is trusted. */
   applyFindings(id: string, only: number[]): Promise<void>;
-  /** The owner opened or worked on a chunk (for "Pick up where I left off"). */
+  /** The owner opened or worked on a task (for "Pick up where I left off"). */
   touchTask(id: string, taskId: string, what: string): Promise<void>;
   /** Copies an older plan into this project. The original is left as it was. */
   attachOlder(id: string): Promise<PlannerProject>;

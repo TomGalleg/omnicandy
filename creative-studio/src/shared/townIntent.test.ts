@@ -8,7 +8,7 @@ const live = claim('2026-06-01T13:00:00Z');
 const expired = claim('2026-06-01T11:30:00Z');
 let n = 0;
 const task = (over: Partial<PlanTask> & { status: TaskStatus }): PlanTask => ({
-  id: `task_${++n}`, title: `Chunk ${n}`, description: '', priority: 'normal', parentId: null, dependsOn: [], completionChecks: [], expectedOutputs: [], assetIds: [], milestoneId: null,
+  id: `task_${++n}`, title: `Task ${n}`, description: '', priority: 'normal', parentId: null, dependsOn: [], completionChecks: [], expectedOutputs: [], assetIds: [], milestoneId: null,
   appRef: null, packageId: null, claim: null, progressNote: '', rev: 1, createdAt: '', updatedAt: '', createdBy: { kind: 'user', name: 'You' }, ...over,
 });
 
@@ -24,7 +24,7 @@ describe('why a director leaves their desk', () => {
     expect(directorIntents({ tasks: t }, NOW)).toEqual({ 'quality-director': { kind: 'stay' }, 'ai-director': { kind: 'stay' }, 'creative-director': { kind: 'stay' } });
   });
 
-  it('sends a director to the owner of the chunk theirs builds on, only while their claim is live', () => {
+  it('sends a director to the owner of the task theirs builds on, only while their claim is live', () => {
     const base = task({ assignee: 'creative-director', status: 'accepted' });
     const mine = task({ assignee: 'technical-director', status: 'in_progress', claim: live, dependsOn: [base.id] });
     expect(directorIntents({ tasks: [base, mine] }, NOW)['technical-director']).toEqual({ kind: 'work-visit', target: 'creative-director' });
@@ -32,7 +32,7 @@ describe('why a director leaves their desk', () => {
     expect(directorIntents({ tasks: [base, ended] }, NOW)).toEqual({});
   });
 
-  it('does not send anyone to themselves, to an unowned chunk, or to a removed one', () => {
+  it('does not send anyone to themselves, to an unowned task, or to a removed one', () => {
     const own = task({ assignee: 'technical-director', status: 'accepted' });
     const nobody = task({ status: 'accepted' });
     const gone = task({ assignee: 'ai-director', status: 'cancelled' });

@@ -10,7 +10,7 @@ export const MODES: Array<[ViewMode, string]> = [['canvas', 'Canvas'], ['board',
 
 const KIND_LABEL: Record<ViewNode['kind'], string> = {
   project: 'Project', idea: 'Idea', question: 'Question', requirement: 'Rule', decision: 'Decision', reference: 'Reference', milestone: 'Stage',
-  chunk: 'Chunk', task: 'Task', resource: 'File', result: 'Result', ghost: 'Suggested',
+  chunk: 'Task', task: 'Subtask', resource: 'File', result: 'Result', ghost: 'Suggested',
 };
 
 type CardData = { vn: ViewNode; selected: boolean; left: boolean; onToggle: (ghostId: string) => void } & Record<string, unknown>;
@@ -146,7 +146,7 @@ function List({ view, selectedId, onSelect, excluded, onToggle }: Pick<Props, 'v
 }
 
 /** What is known about the selected card, with the one action that makes sense for it. */
-/** `onAssign`: the owner chooses which director is responsible for a chunk (an owner-only edit; a suggestion shows the name read-only). */
+/** `onAssign`: the owner chooses which director is responsible for a task (an owner-only edit; a suggestion shows the name read-only). */
 export function CardDetails({ node, onWork, onClose, onAssign }: { node: ViewNode | null; onWork: (taskId: string) => void; onClose: () => void; onAssign?: (node: ViewNode, key: string | null) => void }) {
   if (!node) return null;
   return (

@@ -1,5 +1,5 @@
 // The planning conversation (the Idea step). The AI talks the idea through with the owner; when it has enough it asks "Ready to start building?" and the
-// page shows "Yes, make the plan". The answer to that is a list of clear chunks, shown as a plain list the owner can tick; they join the plan only when
+// page shows "Yes, make the plan". The answer to that is a list of clear tasks, shown as a plain list the owner can tick; they join the plan only when
 // the owner presses a button. The conversation is saved with the plan (inside the project), so it is here when the project is opened again.
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { PlannerProject } from '@shared/planner';
@@ -17,7 +17,7 @@ const put = (k: string, v: string) => { try { store?.setItem(k, v); } catch { /*
 const PROVIDER_KEY = 'cs-planner-chat-provider';
 
 /** An answer that breaks the project into chunks: shown as a plain numbered list instead of raw text. */
-function ChunkList({ p, reload, text, go, onChange, preview, by }: { p: PlannerProject; reload: () => Promise<void>; text: string; go: (t: TabId) => void; onChange: () => void; preview?: boolean; /** The worker who wrote the chunks, when it is not the General Manager. */ by?: string }) {
+function ChunkList({ p, reload, text, go, onChange, preview, by }: { p: PlannerProject; reload: () => Promise<void>; text: string; go: (t: TabId) => void; onChange: () => void; preview?: boolean; /** The worker who wrote the tasks, when it is not the General Manager. */ by?: string }) {
   const plan = useMemo(() => chunkPlan(text), [text]);
   const [skip, setSkip] = useState<number[]>([]);
   const [done, setDone] = useState<number | null>(null);
@@ -25,17 +25,17 @@ function ChunkList({ p, reload, text, go, onChange, preview, by }: { p: PlannerP
   const [told, setTold] = useState(false);
   const a = useAction(reload);
   if (!plan) return null;
-  // Chunks already in the plan, or already waiting as a suggestion, are not added a second time.
+  // Tasks already in the plan, or already waiting as a suggestion, are not added a second time.
   const waiting = p.proposals.filter((x) => x.status === 'pending').flatMap((x) => x.changes).flatMap((c) => (c.op === 'add_task' ? [c.title] : []));
   const have = new Set([...p.tasks.filter((t) => t.status !== 'cancelled').map((t) => t.title), ...waiting].map((t) => t.trim().toLowerCase()));
   const already = plan.chunks.every((c) => have.has(c.title.trim().toLowerCase()));
   const picked = plan.chunks.map((_, i) => i).filter((i) => !skip.includes(i));
   const add = () => a.run(async () => {
     const chosen = picked.map((i) => plan.chunks[i]!);
-    // The project summary is set quietly with the chunks; it is tied to the summary as it is now, so it never overwrites something edited since.
+    // The project summary is set quietly with the tasks; it is tied to the summary as it is now, so it never overwrites something edited since.
     const changes = [...plan.brief.map((c) => (c.op === 'set_brief' ? { ...c, baseMetaRev: p.metaRev } : c)), ...chosen];
-    const pr = await api().importSuggestions(p.id, { proposer: { kind: 'other', name: by ?? 'Planning chat' }, note: by ? `Chunks from ${by}` : 'Chunks from the planning chat', changes, rawText: text });
-    // In the Studio the chunks stay as suggestions on the canvas until the owner adds them there; elsewhere they join the plan at once, as before.
+    const pr = await api().importSuggestions(p.id, { proposer: { kind: 'other', name: by ?? 'Planning chat' }, note: by ? `Tasks from ${by}` : 'Tasks from the planning chat', changes, rawText: text });
+    // In the Studio the tasks stay as suggestions on the canvas until the owner adds them there; elsewhere they join the plan at once, as before.
     if (!preview) await api().decideProposal(p.id, pr.id, true, changes.map((_, i) => i));
     setDone(chosen.length);
     setAdded(chosen.map((c) => c.title));
@@ -52,7 +52,7 @@ function ChunkList({ p, reload, text, go, onChange, preview, by }: { p: PlannerP
         ))}
       </ol>
       {already || done !== null ? (
-        <p role="status" className="pl-hint">{done !== null ? (preview ? `${done} chunk${done === 1 ? '' : 's'} shown on the canvas. Add them there when you are happy.` : `Added ${done} chunk${done === 1 ? '' : 's'} to your plan.`) : 'These chunks are in your plan, or waiting on the canvas.'} {!preview && <button className="btn small primary" onClick={() => go('tasks')}>See the plan</button>}</p>
+        <p role="status" className="pl-hint">{done !== null ? (preview ? `${done} task${done === 1 ? '' : 's'} shown on the canvas. Add them there when you are happy.` : `Added ${done} task${done === 1 ? '' : 's'} to your plan.`) : 'These tasks are in your plan, or waiting on the canvas.'} {!preview && <button className="btn small primary" onClick={() => go('tasks')}>See the plan</button>}</p>
       ) : (
         <div className="pl-actions">
           <button className="btn primary" disabled={a.busy || !picked.length} onClick={() => void add()}>{preview ? 'Show these on the canvas' : 'Add these to my plan'}</button>
@@ -61,7 +61,7 @@ function ChunkList({ p, reload, text, go, onChange, preview, by }: { p: PlannerP
       )}
       {by && added.length > 0 && (
         <p className="pl-actions">
-          <button className="btn small" disabled={told} title="Adds one plain line to the General Manager's conversation. No AI is called." onClick={() => { setTold(true); void api().chatAppend(p.id, { messages: [{ role: 'user', text: `(From ${by}) I suggested ${added.length} chunk${added.length === 1 ? '' : 's'}: ${added.slice(0, 6).join('; ')}${added.length > 6 ? '…' : ''}.` }] }).catch(() => setTold(false)); }}>{told ? 'The General Manager knows' : 'Let the General Manager know'}</button>
+          <button className="btn small" disabled={told} title="Adds one plain line to the General Manager's conversation. No AI is called." onClick={() => { setTold(true); void api().chatAppend(p.id, { messages: [{ role: 'user', text: `(From ${by}) I suggested ${added.length} task${added.length === 1 ? '' : 's'}: ${added.slice(0, 6).join('; ')}${added.length > 6 ? '…' : ''}.` }] }).catch(() => setTold(false)); }}>{told ? 'The General Manager knows' : 'Let the General Manager know'}</button>
         </p>
       )}
       <ErrorLine error={a.error} />
@@ -196,7 +196,7 @@ export function PlannerChat({ p, reload, go, preview, agent }: { p: PlannerProje
       <ErrorLine error={error ?? modelErr} />
       <div className="pl-composer">
         <textarea ref={inputRef} aria-label="Message to the planning AI" rows={3} value={input}
-          placeholder={!info?.ready ? 'Add a key for this AI first, or pick Claude' : messages.length ? (hasChunks ? 'Ask for more chunks or changes…' : 'Your answer…') : 'For example: a short film about…, a poster for…, an app that…'} disabled={!info?.ready || busy}
+          placeholder={!info?.ready ? 'Add a key for this AI first, or pick Claude' : messages.length ? (hasChunks ? 'Ask for more tasks or changes…' : 'Your answer…') : 'For example: a short film about…, a poster for…, an app that…'} disabled={!info?.ready || busy}
           onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void ask(input); } }} />
         <button className="btn primary pl-send" disabled={busy || !input.trim() || !model || !info?.ready} onClick={() => void ask(input)}>Send</button>
       </div>

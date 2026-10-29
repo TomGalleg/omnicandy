@@ -1,5 +1,5 @@
 // Why a director leaves their desk. Only the plan can give a director a reason to go somewhere on purpose; everything else is idle chatter.
-//   work-visit  a chunk of theirs is claimed right now AND builds on a chunk owned by another director: they go and see that director while it runs
+//   work-visit  a task of theirs is claimed right now AND builds on a task owned by another director: they go and see that director while it runs
 //   stay        they have real work or a result waiting (see townActivity), so they do not wander off to chat
 //   meeting     the owner is running a meeting with AI help and they are at the table: they go to the Town Hall and stay until it ends
 //   chat        nothing is going on: the casual visits to a neighbour, as before

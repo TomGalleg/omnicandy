@@ -22,7 +22,7 @@ export interface ViewNode {
   summary: string;
   status: DisplayStatus | null;
   progress: ViewProgress | null;
-  /** Containment: project, then milestone, then chunk, then task. */
+  /** Containment: project, then milestone, then task, then task. */
   parentId: string | null;
   ref: ViewNodeRef;
   /** `PlanTask.appRef`, untouched: the view never decides which application does the work. */
@@ -64,7 +64,7 @@ export const MAX_GHOSTS_PER_PROPOSAL = 200;
 
 const live = (t: PlanTask) => t.status !== 'cancelled';
 
-/** The chunk worked on now: the one named, the one worked on last, the next one ready, or the first open one. */
+/** The task worked on now: the one named, the one worked on last, the next one ready, or the first open one. */
 export function currentTask(p: PlannerProject, focusTaskId?: string | null): PlanTask | undefined {
   const open = p.tasks.filter((t) => t.status !== 'accepted' && t.status !== 'cancelled');
   const unmet = (t: PlanTask) => t.dependsOn.map((id) => p.tasks.find((x) => x.id === id)).filter((x): x is PlanTask => !!x && x.status !== 'accepted' && x.status !== 'cancelled').length;
@@ -199,10 +199,10 @@ export interface NextStep { kind: 'review-report' | 'review-proposal' | 'retake-
 /** What could be done next, worked out from the view alone (no AI). Most urgent first. Every screen shows the same advice. */
 export function nextStepsOf(v: ProjectView): NextStep[] {
   const steps: NextStep[] = [];
-  for (const r of v.awaitingReview) steps.push({ kind: 'review-report', taskId: r.taskId, text: `Review the result for "${v.nodes.find((n) => n.id === r.taskId)?.title ?? 'a chunk'}".` });
+  for (const r of v.awaitingReview) steps.push({ kind: 'review-report', taskId: r.taskId, text: `Review the result for "${v.nodes.find((n) => n.id === r.taskId)?.title ?? 'a task'}".` });
   for (const pr of v.pendingProposals) steps.push({ kind: 'review-proposal', proposalId: pr.id, text: `${pr.by} suggested ${pr.changes} change${pr.changes === 1 ? '' : 's'}: look at them.` });
   for (const n of v.nodes) if (n.flags.stalled) steps.push({ kind: 'retake-stalled', taskId: n.id, text: `"${n.title}" stopped without a result: take it back or send it again.` });
   if (v.current) steps.push({ kind: 'continue-current', taskId: v.current.taskId, text: `Continue with "${v.current.title}".` });
-  else if (!v.nodes.some((n) => n.kind === 'chunk' || n.kind === 'task')) steps.push({ kind: 'add-first-chunk', text: 'Tell the General Manager what you want to make, then break it into chunks.' });
+  else if (!v.nodes.some((n) => n.kind === 'chunk' || n.kind === 'task')) steps.push({ kind: 'add-first-chunk', text: 'Tell the General Manager what you want to make, then break it into tasks.' });
   return steps;
 }

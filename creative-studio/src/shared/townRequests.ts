@@ -2,7 +2,7 @@
 //   Ask: <title> — <what is needed>    a request for another director to do something
 //   Note: <title> — <what to know>     information for another director
 // Neither reaches anyone by itself. The owner sees a card and chooses Send or Skip. A note is added to the other director's conversation as one plain line; a
-// request becomes ONE pending suggestion for a chunk owned by that director, which joins the plan only when the owner adds it. Nobody gives work to anyone.
+// request becomes ONE pending suggestion for a task owned by that director, which joins the plan only when the owner adds it. Nobody gives work to anyone.
 import type { Actor, PlanTask, Proposal, ProposalChange } from './planner';
 import { directorFromName, directorTitle, type DirectorKey, type TownAgent } from './town';
 import type { Intent } from './townIntent';
@@ -31,7 +31,7 @@ export function parseTeamLines(text: string): { text: string; lines: TeamLine[];
   return { text: keep.join('\n').replace(/\n{3,}/g, '\n\n').trim(), lines, unknown };
 }
 
-/** The suggestion a request becomes: one chunk, owned by the director it is for, from the worker who asked. */
+/** The suggestion a request becomes: one task, owned by the director it is for, from the worker who asked. */
 export function requestProposal(sender: string, line: TeamLine): { proposer: Actor; note: string; changes: ProposalChange[] } {
   const title = directorTitle(line.to) ?? line.to;
   return {
@@ -46,7 +46,7 @@ export const noteText = (sender: string, what: string) => `(Note from ${sender})
 
 export const isRequest = (p: Pick<Proposal, 'note'>) => p.note.startsWith(REQUEST_NOTE);
 
-/** Requests still waiting for the owner: the chunk and the director it is for. */
+/** Requests still waiting for the owner: the task and the director it is for. */
 export function pendingRequests(proposals: ReadonlyArray<Pick<Proposal, 'status' | 'note' | 'changes' | 'proposedBy'>> | undefined): Array<{ sender: string; to: DirectorKey; title: string }> {
   const out: Array<{ sender: string; to: DirectorKey; title: string }> = [];
   for (const pr of proposals ?? []) {

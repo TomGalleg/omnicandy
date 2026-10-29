@@ -1,16 +1,16 @@
 // What each director is really doing, read from the plan. Nothing here is stored and nothing is guessed: a state exists only when the plan holds the
 // fact that makes it true, so a badge over a director always means something real.
-//   needs-you  a chunk of theirs has a result waiting for the owner to review
-//   working    a chunk of theirs is claimed right now (a live claim; an expired one counts for nothing)
-//   blocked    a chunk of theirs is marked blocked
+//   needs-you  a task of theirs has a result waiting for the owner to review
+//   working    a task of theirs is claimed right now (a live claim; an expired one counts for nothing)
+//   blocked    a task of theirs is marked blocked
 // A request another worker made of them, still waiting for the owner to decide, also counts as something waiting for the owner.
-// Anything else is idle and has no entry. A chunk with no owner belongs to nobody, so it makes nobody look busy.
+// Anything else is idle and has no entry. A task with no owner belongs to nobody, so it makes nobody look busy.
 import { isClaimLive, type PlannerProject, type PlanTask } from './planner';
 import { requestTasks } from './townRequests';
 import { isDirectorKey, type DirectorKey } from './town';
 
 export type ActivityState = 'needs-you' | 'working' | 'blocked';
-export interface DirectorActivity { state: ActivityState; /** The chunks behind the state, in plan order. */ tasks: Array<{ id: string; title: string }> }
+export interface DirectorActivity { state: ActivityState; /** The tasks behind the state, in plan order. */ tasks: Array<{ id: string; title: string }> }
 
 const ORDER: ActivityState[] = ['needs-you', 'working', 'blocked'];
 

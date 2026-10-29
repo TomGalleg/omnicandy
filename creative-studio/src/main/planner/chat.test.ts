@@ -73,7 +73,7 @@ describe('the General Manager guides the first conversation', () => {
     expect(connectedAppsLine(Array.from({ length: 40 }, (_, i) => `App${i}`))[0]).not.toContain('App25');
   });
 
-  it('reads an App line under a chunk as the application, not as a check, and ignores "none"', () => {
+  it('reads an App line under a task as the application, not as a check, and ignores "none"', () => {
     const r = parseSuggestionText('## Tasks\n1. Model the dragon\n   - Looks right from every side\n   - App: Blender\n2. Write the story\n   - App: none\n3. Draw the logo\n   - App: PhotoCraft');
     const tasks = r.changes.filter((c) => c.op === 'add_task') as Array<Extract<(typeof r.changes)[number], { op: 'add_task' }>>;
     expect(tasks[0]!.appRef).toEqual({ kind: 'external', id: 'Blender', note: '' });
@@ -82,7 +82,7 @@ describe('the General Manager guides the first conversation', () => {
     expect(tasks[2]!.appRef!.kind).toBe('native');
   });
 
-  it('keeps the application on the task once the owner adds the chunk', async () => {
+  it('keeps the application on the task once the owner adds the task', async () => {
     const svc = new PlannerService(new PlannerStore(path.join(tmp, 'gm2')));
     const p = await svc.createProject(user, { title: 'Dragons' });
     const r = parseSuggestionText('## Tasks\n1. Model the dragon\n   - Looks right\n   - App: Blender');
@@ -92,7 +92,7 @@ describe('the General Manager guides the first conversation', () => {
   });
 });
 
-describe('who handles a chunk', () => {
+describe('who handles a task', () => {
   const tasks = (text: string) => parseSuggestionText(text).changes.filter((c) => c.op === 'add_task') as Array<Extract<ReturnType<typeof parseSuggestionText>['changes'][number], { op: 'add_task' }>>;
   it('reads a Who line as the director, not as a check, and says when it cannot place a name', () => {
     const r = parseSuggestionText(['## Tasks', '1. Draw the dragon', '   - Looks fierce', '   - Who: Creative Director', '2. Build the game', '   - Who: Bob', '3. Test it', '   - Who: none'].join('\n'));
@@ -104,7 +104,7 @@ describe('who handles a chunk', () => {
     expect(r.uncertain.join(' ')).toContain('"Bob" is not one of the nine directors');
   });
 
-  it('is kept on the task when the owner adds the chunk, and an unknown name is dropped, never stored', async () => {
+  it('is kept on the task when the owner adds the task, and an unknown name is dropped, never stored', async () => {
     const svc = new PlannerService(new PlannerStore(path.join(tmp, 'who')));
     const p = await svc.createProject(user, { title: 'Dragons' });
     const changes = [...tasks('## Tasks\n1. Draw the dragon\n   - Who: Creative Director'), { op: 'add_task' as const, title: 'Odd one', description: '', priority: 'normal' as const, dependsOn: [], completionChecks: [], assignee: 'bob' }];

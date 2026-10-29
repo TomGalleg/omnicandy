@@ -127,12 +127,12 @@ export class PlannerService {
     return this.store.read(id);
   }
 
-  /** Remembers the chunk worked on last (not part of the accepted plan, so it never changes the plan version). */
+  /** Remembers the task worked on last (not part of the accepted plan, so it never changes the plan version). */
   private markActive(p: PlannerProject, t: PlanTask, what: string, at: string) {
     p.lastActive = { taskId: t.id, title: t.title, at, what };
   }
 
-  /** The owner opened or worked on a chunk. Recorded at most once every ten minutes for the same chunk and action. */
+  /** The owner opened or worked on a task. Recorded at most once every ten minutes for the same task and action. */
   async touchTask(c: Ctx, id: string, taskId: string, what: string): Promise<void> {
     need(c, 'edit');
     await this.store.mutate(id, c.actor, (p, log, now) => {

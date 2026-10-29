@@ -3,7 +3,7 @@
 //
 // The flow is a conversation. The AI talks the idea through with the owner; when it has enough it asks "Ready to start building?" and ends that
 // message with READY_MARK. When the owner says yes, it answers once more in CHUNK_FORMAT: a short summary of the project and the work broken into
-// clear, ordered chunks. Those are shown as a plain list the owner can tick, and join the plan only when the owner presses a button.
+// clear, ordered tasks. Those are shown as a plain list the owner can tick, and join the plan only when the owner presses a button.
 import type { ProposalChange } from './planner';
 import { CHUNK_FORMAT, planSummary } from './plannerContext';
 import { parseSuggestionText } from './plannerPaste';
@@ -31,14 +31,14 @@ export function trimChat(messages: ChatMessage[]): ChatMessage[] {
   return messages.slice(-MAX_CHAT_MESSAGES).map((m) => ({ role: m.role, text: m.text.slice(0, MAX_CHAT_MESSAGE_CHARS) }));
 }
 
-/** talk: understand the idea. chunks: the owner said yes, break the project into chunks. */
+/** talk: understand the idea. chunks: the owner said yes, break the project into tasks. */
 export type ChatMode = 'talk' | 'chunks';
 
 /** The AI writes this on its own last line when it understands enough to plan the work. The page hides it and shows "Yes, make the plan". */
 export const READY_MARK = '[[READY]]';
 export const READY_QUESTION = "Ready to start building? I'll break it into clear steps.";
 /** What the owner's "Yes" sends. */
-export const MAKE_PLAN_REQUEST = 'Yes, I am ready. Please break the project into clear chunks now.';
+export const MAKE_PLAN_REQUEST = 'Yes, I am ready. Please break the project into clear tasks now.';
 
 export const isReady = (text: string): boolean => text.includes(READY_MARK);
 export const withoutMarker = (text: string): string => text.split(READY_MARK).join('').replace(/\n{3,}/g, '\n\n').trim();
@@ -50,7 +50,7 @@ const TALK_RULES = [
   '- Ask at most two short questions at a time, and build on what they just said. Never interrogate.',
   '- Find out what they want to make, what it is for and who it is for, what "finished" looks like, the limits that matter (time, size, style, budget, tools they have) and what already exists. Offer a suggestion or two when it helps them decide, but let them lead.',
   `When you understand enough to plan the work (usually after a few exchanges, sooner if they gave a lot of detail), say in two or three sentences what you understood. Then, in at most four short lines, say which people on your team you would lean on and why (use their names), and which connected applications could help if any are listed. Then ask exactly: "${READY_QUESTION}" and put ${READY_MARK} on its own last line. Do not write the steps yet. Only use ${READY_MARK} when you really have enough.`,
-  'If the user asks you to add or change steps in a plan that already exists, answer in the plan format below instead, listing only the new chunks.',
+  'If the user asks you to add or change steps in a plan that already exists, answer in the plan format below instead, listing only the new tasks.',
   'Never say the plan has changed or that work is done: the user decides what joins the plan and what is finished.',
   '',
   'Plan format (only when asked for the steps):',
@@ -58,7 +58,7 @@ const TALK_RULES = [
 ];
 
 const CHUNK_RULES = [
-  'You are the planning partner inside OmniCandy. The user has agreed they are ready to start building. Break the project into clear, logical chunks.',
+  'You are the planning partner inside OmniCandy. The user has agreed they are ready to start building. Break the project into clear, logical tasks.',
   CHUNK_FORMAT,
   'Do not write anything outside that format.',
 ];
@@ -67,7 +67,7 @@ const CHUNK_RULES = [
 /** One line telling the AI which applications are connected, by name. Empty when none are known; applications are never invented. */
 export function connectedAppsLine(names: readonly string[]): string[] {
   const list = [...new Set(names.map((n) => n.trim()).filter(Boolean))].slice(0, 20);
-  return list.length ? [`Applications connected to OmniCandy on this PC (you may name these when one clearly fits a chunk, and never name others): ${list.join(', ')}. OmniCandy's own built-in Craft apps for pictures, vector art, video, audio, documents, sheets, decks, UI, CAD and 3D are always available.`] : [];
+  return list.length ? [`Applications connected to OmniCandy on this PC (you may name these when one clearly fits a task, and never name others): ${list.join(', ')}. OmniCandy's own built-in Craft apps for pictures, vector art, video, audio, documents, sheets, decks, UI, CAD and 3D are always available.`] : [];
 }
 
 export function chatSystemPrompt(p: PlannerProject, projectContext: string[] = [], mode: ChatMode = 'talk'): string {
@@ -78,7 +78,7 @@ export function chatSystemPrompt(p: PlannerProject, projectContext: string[] = [
   ].join('\n');
 }
 
-/** What an answer in CHUNK_FORMAT holds: the intro, the project summary (set quietly when added) and the chunks. Null when it is not a plan of chunks. */
+/** What an answer in CHUNK_FORMAT holds: the intro, the project summary (set quietly when added) and the tasks. Null when it is not a plan of tasks. */
 export interface ChunkPlan {
   intro: string;
   brief: ProposalChange[];

@@ -39,7 +39,7 @@ export function createTownMethods(d: TownMethodDeps): Record<string, (...a: any[
       const hints = plan.tasks.filter((t) => t.status !== 'cancelled' && t.appRef).map((t) => ({ id: t.appRef!.id, note: t.appRef!.note }));
       return d.store.updateTown(pid, (t, now) => {
         const changes = suggestTeamFromPlan(t, hints);
-        if (!changes.length) throw new PlannerError('invalid', 'There is nothing new to suggest. Name the application on a chunk and the team can grow to match.');
+        if (!changes.length) throw new PlannerError('invalid', 'There is nothing new to suggest. Name the application on a task and the team can grow to match.');
         return addTeamSuggestion(t, COORDINATOR, 'A studio and a specialist for each kind of work in your plan', changes, now).town;
       });
     },

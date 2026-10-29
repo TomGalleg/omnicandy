@@ -14,10 +14,10 @@ import type { NavMode } from '@shared/navigation';
 import { ErrorLine, errMsg, PlainWords, Section, useAction, when, type TabId, type TabProps } from './plannerUi';
 
 const api = () => window.studio.planner;
-// One simple flow: Idea (think it through with an AI), Plan (break it into chunks you can edit), Work (do one chunk at a time, review it, approve it).
+// One simple flow: Idea (think it through with an AI), Plan (break it into tasks you can edit), Work (do one task at a time, review it, approve it).
 // Tab ids are the original ones (plan, tasks, handoffs) so every existing go('handoffs') still lands in the right place.
 const TABS: Array<[TabId, string]> = [['studio', 'Studio'], ['plan', 'Idea'], ['tasks', 'Plan'], ['handoffs', 'Work'], ['town', 'OmniTown']];
-/** Simplified: the plan you talk through (Studio), doing a chunk (Work), and your town (OmniTown, which opens first). Advanced adds the step-by-step Idea and Plan screens. */
+/** Simplified: the plan you talk through (Studio), doing a task (Work), and your town (OmniTown, which opens first). Advanced adds the step-by-step Idea and Plan screens. */
 const SIMPLE_TABS: readonly TabId[] = ['town', 'studio', 'handoffs'];
 
 const ago = (iso: string) => {
@@ -53,7 +53,7 @@ export function PlannerWorkspace({ manifest, projectKey, navMode }: { manifest: 
   /** Which project's plan this window already started on its own (a project opens straight into the Studio; nothing to choose first). */
   const autoStarted = useRef<string | null>(null);
   const [startError, setStartError] = useState<string | null>(null);
-  /** Which project this window already chose a first tab for: a project with no chunks yet opens on the General Manager's chat, any other on the town. */
+  /** Which project this window already chose a first tab for: a project with no tasks yet opens on the General Manager's chat, any other on the town. */
   const firstTab = useRef<string | null>(null);
   const keyRef = useRef(projectKey);
   keyRef.current = projectKey;
@@ -129,7 +129,7 @@ export function PlannerWorkspace({ manifest, projectKey, navMode }: { manifest: 
         {olderId ? <button className="btn small" onClick={() => setOlderId(null)} title="Back to this project's plan">← This project's plan</button> : null}
         <h2 title={project.title}>{project.title}</h2>
         {olderId && <span className="chip warn" title="Made before projects kept their own plan; it lives in the shared planner folder">older plan</span>}
-        {pr.total > 0 && <span className="pl-hint" title="Chunks you have approved">{pr.accepted} of {pr.total} chunks done</span>}
+        {pr.total > 0 && <span className="pl-hint" title="Tasks you have approved">{pr.accepted} of {pr.total} tasks done</span>}
         <HeaderMenu p={project} older={olderId ? [] : state.older} onOpenOlder={setOlderId} onImported={(n) => { setOlderId(n.id); void refresh(); }} onPanel={setPanel} />
       </header>
       {showPickUp && la && (
@@ -216,7 +216,7 @@ function PlannerStart({ state, manifest, onChanged, onOpenOlder, error }: { stat
     <div className="planner">
       <div className="pl-body pl-picker">
         <h2>OmniTown for {name}</h2>
-        <p className="pl-hint">An AI creative partner for this project. It works in three steps: <strong>Idea</strong> (think the project through), <strong>Plan</strong> (break it into chunks you can edit) and <strong>Work</strong> (do one chunk at a time, review it, approve it). Your files stay the real work; the plan only keeps track of goals, decisions and progress. It is optional, and it is always here.</p>
+        <p className="pl-hint">An AI creative partner for this project. It works in three steps: <strong>Idea</strong> (think the project through), <strong>Plan</strong> (break it into tasks you can edit) and <strong>Work</strong> (do one task at a time, review it, approve it). Your files stay the real work; the plan only keeps track of goals, decisions and progress. It is optional, and it is always here.</p>
         <ErrorLine error={error ?? a.error} />
         {!findings && (
           <Section title="How do you want to start?">
@@ -250,7 +250,7 @@ function PlannerStart({ state, manifest, onChanged, onOpenOlder, error }: { stat
             <ul className="pl-cards">
               {state.older.map((s: ProjectSummary) => (
                 <li key={s.id}>
-                  <div className="pl-card"><strong>{s.title}</strong><span>{s.goal || 'No goal written yet'}</span><small>{s.tasks} chunk(s) · {s.accepted} done</small>
+                  <div className="pl-card"><strong>{s.title}</strong><span>{s.goal || 'No goal written yet'}</span><small>{s.tasks} task(s) · {s.accepted} done</small>
                     <span className="pl-actions"><button className="btn small primary" disabled={a.busy} onClick={() => void a.run(async () => { await api().attachOlder(s.id); })}>Bring into this project</button><button className="btn small" onClick={() => onOpenOlder(s.id)}>Just open it</button></span>
                   </div>
                 </li>
@@ -278,7 +278,7 @@ function Milestones({ p, reload }: { p: PlannerProject; reload: () => Promise<vo
   );
 }
 
-/** Idea: just the conversation. The AI asks, you answer; when it understands, it offers to break the project into chunks. */
+/** Idea: just the conversation. The AI asks, you answer; when it understands, it offers to break the project into tasks. */
 function IdeaTab(props: TabProps) {
   const { p, reload, go } = props;
   return (
@@ -294,7 +294,7 @@ function IdeaTab(props: TabProps) {
   );
 }
 
-/** Plan: the work broken into chunks (editable), and the milestones that group them. */
+/** Plan: the work broken into tasks (editable), and the milestones that group them. */
 function PlanTab(props: TabProps) {
   const { p, reload } = props;
   return (

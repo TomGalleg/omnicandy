@@ -26,13 +26,13 @@ export const DIRECTORS = [
   { key: 'ai-director', title: 'AI Director', remit: 'AI models and agents', spot: { x: 36.8, y: 13 },
     job: 'Know the AI models and agents available and which one fits each task. Advise on prompts, model choice, cost and quality, and on how AI helpers should be set up for this project.' },
   { key: 'software-director', title: 'Software Director', remit: 'Connected applications and specialists', spot: { x: 65.8, y: 14.5 },
-    job: 'Know the applications connected to OmniCandy (for example Blender, Unreal and DaVinci Resolve) and what each can do. Say which application and specialist suits each chunk of work and what it would need.' },
+    job: 'Know the applications connected to OmniCandy (for example Blender, Unreal and DaVinci Resolve) and what each can do. Say which application and specialist suits each task of work and what it would need.' },
   { key: 'production-director', title: 'Production Director', remit: 'Plans, tasks and delivery', spot: { x: 85, y: 23 },
-    job: 'Own the plan: break work into clear chunks, order them, spot what blocks what, track progress honestly and say what is needed to deliver on time.' },
+    job: 'Own the plan: break work into clear tasks, order them, spot what blocks what, track progress honestly and say what is needed to deliver on time.' },
   { key: 'technical-director', title: 'Technical Director', remit: 'Development and engineering', spot: { x: 86.4, y: 48 },
     job: 'Handle the technical side: code, tools, pipelines, file formats and performance. Explain technical choices simply and flag technical risks early.' },
   { key: 'quality-director', title: 'Quality Director', remit: 'Testing and verification', spot: { x: 19.7, y: 74.5 },
-    job: 'Check that work is correct and good: define what done means for each chunk, say how to test it, and point out what could be wrong. Never call something verified unless it really was.' },
+    job: 'Check that work is correct and good: define what done means for each task, say how to test it, and point out what could be wrong. Never call something verified unless it really was.' },
   { key: 'research-director', title: 'Research Director', remit: 'Research and documentation', spot: { x: 50, y: 80 },
     job: 'Find out what the project needs to know and write it down: references, how-tos, decisions and notes. Say clearly what you know, what you are unsure of and where it came from.' },
   { key: 'media-manager', title: 'Media Manager', remit: 'Media library, assets, versions and file organization', spot: { x: 80.4, y: 74.5 },
@@ -298,7 +298,7 @@ export function suggestTeamFromPlan(town: TownState, resourceHints: ReadonlyArra
     const biz = `${label} Studio`.slice(0, TOWN_LIMITS.name);
     if (taken.has(biz.toLowerCase())) continue;
     out.push({ op: 'add_business', name: biz, trade: `Work that uses ${label}` });
-    out.push({ op: 'add_agent', name: `${label} Specialist`.slice(0, TOWN_LIMITS.name), specialty: `Does the chunks that use ${label}`, businessId: '@last' });
+    out.push({ op: 'add_agent', name: `${label} Specialist`.slice(0, TOWN_LIMITS.name), specialty: `Does the tasks that use ${label}`, businessId: '@last' });
   }
   return out;
 }
@@ -379,7 +379,7 @@ export function generalManagerIntro(town: TownState): string[] {
 }
 
 // ---- what a worker is told ----------------------------------------------------------------------------------------------------
-const DEFAULT_COORDINATOR_JOB = 'Keep the project organised: help the owner work out what they want to make, break it into chunks, suggest next steps, and bring decisions back to them.';
+const DEFAULT_COORDINATOR_JOB = 'Keep the project organised: help the owner work out what they want to make, break it into tasks, suggest next steps, and bring decisions back to them.';
 
 /**
  * Everything a worker needs to understand its job: who it is, what it is for, where it works, who else is on the team, and what the project is.
@@ -403,7 +403,7 @@ export function agentSystemPrompt(town: TownState, agent: TownAgent, plan: Plann
     '- If you need something from another team member, end your reply with a line on its own: "Ask: <their title> — <what you need>". For information only: "Note: <their title> — <what they should know>". Use their exact title, at most two such lines, and only when it really matters. The owner decides whether it is sent; you cannot give anyone work.',
     '- You can discuss, advise, plan and suggest. You do not do the work yourself yet, and you cannot change the plan: the owner decides what joins it and what is finished.',
     '- Never say that something is done unless the owner has said so. Say what you would do and what you would need.',
-    '- If the owner asks you to add or change steps, answer in the plan format below, listing only the chunks for your part of the work.',
+    '- If the owner asks you to add or change steps, answer in the plan format below, listing only the tasks for your part of the work.',
     '',
     'Plan format (only when asked for steps):',
     CHUNK_FORMAT,

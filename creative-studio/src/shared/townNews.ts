@@ -1,4 +1,4 @@
-// What the General Manager is told has changed in the plan lately, so work started with someone else (a worker's chunks, a result, a meeting) is not news
+// What the General Manager is told has changed in the plan lately, so work started with someone else (a worker's tasks, a result, a meeting) is not news
 // to them. Read from the plan's own history; nothing is stored and no AI is used. Short on purpose: a line per change, newest last.
 import type { ActivityEntry } from './planner';
 

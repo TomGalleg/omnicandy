@@ -28,7 +28,7 @@ export function turnPrompt(meeting: Pick<TownMeeting, 'topic' | 'kind'>, speaker
   ].join('\n');
 }
 
-/** The last request: the General Manager turns the discussion into chunks, in the plan format, or says so when nothing was decided. */
+/** The last request: the General Manager turns the discussion into tasks, in the plan format, or says so when nothing was decided. */
 export function summaryPrompt(meeting: Pick<TownMeeting, 'topic'>, notes: readonly MeetingNote[]): string {
   return [
     `The meeting about "${meeting.topic}" is over. This is what was said:`,
@@ -43,5 +43,5 @@ export function summaryPrompt(meeting: Pick<TownMeeting, 'topic'>, notes: readon
 /** What the owner is told before anything starts. Nothing else is promised. */
 export function meetingConfirmText(turns: number, people: number, providerLabel: string, model: string): string {
   const calls = clampMeetingTurns(turns) + 1;
-  return `This makes up to ${calls} requests to ${providerLabel} (${model}), one reply at a time from the ${people === 1 ? 'one person' : `${people} people`} at the table, and then one more to turn it into chunks. Each reply is kept short. It stops at once if you press Stop, leave this screen or anything goes wrong. It only adds to the meeting notes and, at the end, sends at most one suggestion to the Studio canvas, which waits for you.`;
+  return `This makes up to ${calls} requests to ${providerLabel} (${model}), one reply at a time from the ${people === 1 ? 'one person' : `${people} people`} at the table, and then one more to turn it into tasks. Each reply is kept short. It stops at once if you press Stop, leave this screen or anything goes wrong. It only adds to the meeting notes and, at the end, sends at most one suggestion to the Studio canvas, which waits for you.`;
 }

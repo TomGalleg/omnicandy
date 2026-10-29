@@ -7,7 +7,7 @@ export type DestinationId = 'createcraft' | 'tools' | 'chat';
 export interface Destination { id: DestinationId; label: string; blurb: string }
 
 export const DESTINATIONS: Destination[] = [
-  { id: 'createcraft', label: 'OmniCandy Claude', blurb: 'The Claude panel in this app. You confirm first, then it works on the chunk and reports back for your review.' },
+  { id: 'createcraft', label: 'OmniCandy Claude', blurb: 'The Claude panel in this app. You confirm first, then it works on the task and reports back for your review.' },
   { id: 'tools', label: 'Claude Code or Gemini CLI', blurb: 'An AI on this computer that can read the plan itself. You paste one short line.' },
   { id: 'chat', label: 'ChatGPT, Gemini, Cowork or any chat', blurb: 'Copy everything and paste it into the chat.' },
 ];

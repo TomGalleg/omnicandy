@@ -1,7 +1,7 @@
 // What an OmniCandy project already contains, read from its own files: the manifest (files, versions, where they came from, the saved brief), the
 // exports, the workflow and the saved Claude conversation. Used for two things, both local and read-only:
 //   1. "Look at what's already here": a summary and a few suggestions for the plan, shown to the owner who ticks what to keep. Nothing is assumed:
-//      a project with no saved brief or history simply has fewer findings, and no chunk is ever marked as done because a file exists.
+//      a project with no saved brief or history simply has fewer findings, and no task is ever marked as done because a file exists.
 //   2. A short description of the project for the planning AI (names and counts, never file locations).
 // Nothing in the project is written, moved or deleted by anything in this file.
 

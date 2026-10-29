@@ -27,14 +27,14 @@ describe('what a worker writes for another worker', () => {
     expect(parseTeamLines(plain)).toEqual({ text: plain, lines: [], unknown: [] });
   });
 
-  it('turns a request into one pending chunk owned by the director it is for, from the worker who asked', () => {
+  it('turns a request into one pending task owned by the director it is for, from the worker who asked', () => {
     const r = requestProposal('Creative Director', { kind: 'ask', to: 'technical-director', what: 'Build a loader for the dragon model' });
     expect(r.proposer.name).toBe('Creative Director');
     expect(r.note).toBe(`${REQUEST_NOTE}Creative Director asks Technical Director`);
     expect(r.changes).toHaveLength(1);
     expect(r.changes[0]).toMatchObject({ op: 'add_task', title: 'Build a loader for the dragon model', assignee: 'technical-director' });
     expect(isRequest(r)).toBe(true);
-    expect(isRequest({ note: 'Chunks from the planning chat' })).toBe(false);
+    expect(isRequest({ note: 'Tasks from the planning chat' })).toBe(false);
     expect(noteText('Creative Director', 'It is two metres tall')).toBe('(Note from Creative Director) It is two metres tall');
   });
 });
@@ -51,7 +51,7 @@ describe('a request that is waiting for the owner', () => {
   });
 
   it('is not confused with ordinary suggestions, which light up nobody', () => {
-    const plain = proposal({ note: 'Chunks from the planning chat', changes: [{ op: 'add_task', title: 'X', description: '', priority: 'normal', dependsOn: [], completionChecks: [], assignee: 'technical-director' }] });
+    const plain = proposal({ note: 'Tasks from the planning chat', changes: [{ op: 'add_task', title: 'X', description: '', priority: 'normal', dependsOn: [], completionChecks: [], assignee: 'technical-director' }] });
     expect(pendingRequests([plain])).toEqual([]);
     expect(directorActivity({ tasks: [], proposals: [plain] }, new Date())).toEqual({});
   });
