@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import type { CastMember } from './townCast';
 import type { ActivityState } from '@shared/townActivity';
+import { CHAT, chooseTrip, WORK_VISIT_MS, type Intent } from '@shared/townIntent';
 import puffUrl from '../assets/characters/smoke-puff.png';
 import { clearPresence, presence, restAtDesk, setPresence, stayInside } from './townPresence';
 
@@ -69,7 +70,10 @@ const BREATHS_PER_SECOND = 2.5;
 /** What is really going on with this director (from the plan), shown as a small badge over their figure, or over their door while they are inside. */
 export interface WalkerBadge { state: ActivityState; label: string }
 
-export function TownWalker({ who, name, onOpen, badge }: { who: CastMember; name: string; onOpen: () => void; badge?: WalkerBadge }) {
+/** `intent` is why this director may leave their desk (from the plan); `targetDoor` is the door of the office a work visit is for. */
+export function TownWalker({ who, name, onOpen, badge, intent, targetDoor }: { who: CastMember; name: string; onOpen: () => void; badge?: WalkerBadge; intent?: Intent; targetDoor?: string }) {
+  const reason = useRef({ intent: intent ?? CHAT, targetDoor });
+  reason.current = { intent: intent ?? CHAT, targetDoor };
   const el = useRef<HTMLButtonElement>(null);
   const badgeEl = useRef<HTMLButtonElement>(null);
   const puffEl = useRef<HTMLSpanElement>(null);
@@ -101,7 +105,10 @@ export function TownWalker({ who, name, onOpen, badge }: { who: CastMember; name
     let phase: 'out' | 'in' | 'inside' | 'exit' = 'out';
     let phaseT = 0;
     let comeOut = 0;
-    let visiting = false; // inside another director's office for a chat, not their own
+    let visiting = false; // inside another director's office, not their own
+    let workVisit = false; // ... for work (a reason from the plan), not a chat
+    let chosen: ReturnType<typeof chooseTrip> | null = null;
+    const neighbours = () => [...OFFICES].filter((n) => n !== door && n in NODES);
     const kept = still ? undefined : presence(door);
     if (kept !== undefined && door in NODES) {
       pos = [...NODES[door]!]; at = door;
@@ -113,13 +120,14 @@ export function TownWalker({ who, name, onOpen, badge }: { who: CastMember; name
       phase = 'inside'; comeOut = Date.now() + 2000 + Math.random() * 28000; setPresence(door, comeOut);
       node.style.visibility = 'hidden'; pos = [...NODES[door]!]; at = door;
     }
-    /** Get up: go and see a neighbour, or, if already visiting, go back to the desk. */
+    /** Get up: go where the plan (or an idle moment) says, or, if already visiting, go back to the desk. */
     const planTrip = () => {
       route = [];
-      if (visiting) { visiting = false; trip = 'home'; route = pathBetween(at, door); return; }
-      const others = [...OFFICES].filter((n) => n !== door && n in NODES);
-      const target = others[Math.floor(Math.random() * others.length)];
-      trip = 'visit'; if (target) route = pathBetween(at, target);
+      if (visiting) { visiting = false; workVisit = false; trip = 'home'; route = pathBetween(at, door); return; }
+      const t = chosen ?? chooseTrip(reason.current.intent, neighbours(), reason.current.targetDoor, Math.random);
+      chosen = null;
+      if (!t.go) { trip = 'home'; phase = 'in'; phaseT = 0; return; } // nothing to go for: straight back to the desk
+      trip = 'visit'; workVisit = t.purpose === 'work'; route = pathBetween(at, t.to);
     };
     const showPuff = () => {
       const f = Math.min(PUFF_FRAMES - 1, Math.floor((phaseT / PUFF_SECONDS) * PUFF_FRAMES));
@@ -131,13 +139,24 @@ export function TownWalker({ who, name, onOpen, badge }: { who: CastMember; name
       const dt = Math.min(0.05, (now - last) / 1000); last = now;
       if (phase !== 'out') {
         if (phase === 'inside') {
-          if (Date.now() >= comeOut) { phase = 'exit'; phaseT = 0; if (!visiting) clearPresence(door); }
+          const nowMs = Date.now();
+          // A work visit ends when the work does; a director at their desk with a real reason to go does not wait out the rest.
+          if (visiting && workVisit && reason.current.intent.kind !== 'work-visit') comeOut = Math.min(comeOut, nowMs);
+          if (!visiting && reason.current.intent.kind === 'work-visit' && comeOut - nowMs > 2500) { comeOut = nowMs + 2000; setPresence(door, comeOut); }
+          if (nowMs >= comeOut) {
+            if (visiting) { phase = 'exit'; phaseT = 0; }
+            else {
+              const t = chooseTrip(reason.current.intent, neighbours(), reason.current.targetDoor, Math.random);
+              if (t.go) { chosen = t; phase = 'exit'; phaseT = 0; clearPresence(door); }
+              else { comeOut = nowMs + 5000; setPresence(door, comeOut); } // real work or a result waiting keeps them at the desk
+            }
+          }
         } else {
           phaseT += dt; heading += Math.max(-TURN * dt, Math.min(TURN * dt, wrap(0 - heading))); breath += dt * BREATHS_PER_SECOND; draw(false); showPuff();
           const peak = phaseT >= PUFF_PEAK * PUFF_SECONDS, done = phaseT >= PUFF_SECONDS;
           if (phase === 'in') {
             if (peak) node.style.visibility = 'hidden';
-            if (done) { phase = 'inside'; puff.style.display = 'none'; comeOut = Date.now() + (visiting ? stayInside() : restAtDesk()); if (!visiting) setPresence(door, comeOut); }
+            if (done) { phase = 'inside'; puff.style.display = 'none'; comeOut = Date.now() + (visiting ? (workVisit ? WORK_VISIT_MS : stayInside()) : restAtDesk()); if (!visiting) setPresence(door, comeOut); }
           } else {
             if (peak) node.style.visibility = 'visible';
             if (done) { phase = 'out'; puff.style.display = 'none'; wait = 0.6; planTrip(); }

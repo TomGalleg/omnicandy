@@ -13,6 +13,7 @@ import aiOffice from '../assets/offices/ai-director.jpg';
 import hallInside from '../assets/offices/town-hall.jpg';
 import { TownWalker, type WalkerBadge } from './TownWalker';
 import { ACTIVITY_LABEL, directorActivity, type DirectorActivity } from '@shared/townActivity';
+import { directorIntents, intentFor, type Intent } from '@shared/townIntent';
 import { CAST, type CastMember } from './townCast';
 import puffUrl from '../assets/characters/smoke-puff.png';
 import { setPresence, stayInside } from './townPresence';
@@ -71,6 +72,7 @@ export function TownTab(props: TabProps) {
   const [clock, setClock] = useState(() => Date.now());
   useEffect(() => { const t = setInterval(() => setClock(Date.now()), 30_000); return () => clearInterval(t); }, []);
   const activity = useMemo(() => directorActivity(p, new Date(clock)), [p, clock]);
+  const intents = useMemo(() => directorIntents(p, new Date(clock)), [p, clock]);
   const { town, setTown, note, clearNote } = useTown(p.id);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -142,7 +144,7 @@ export function TownTab(props: TabProps) {
         </div>
       ) : (
         <div className="tw-main">
-          <Scene town={town} activity={activity} onPick={(id) => { setPick(id); setOffice(id && town.agents.find((a) => a.id === id)?.director ? id : null); }} pick={pick} onHall={() => { setInHall(true); setPick(null); setOffice(null); }} />
+          <Scene town={town} activity={activity} intents={intents} onPick={(id) => { setPick(id); setOffice(id && town.agents.find((a) => a.id === id)?.director ? id : null); }} pick={pick} onHall={() => { setInHall(true); setPick(null); setOffice(null); }} />
           <aside className="tw-side">
             {selected ? <WorkerCard town={town} a={selected} activity={selected.director ? activity[selected.director] : undefined} busy={busy} onApply={apply} onTalk={() => setTalk(selected.id)} onClose={() => setPick(null)} />
               : <p className="pl-hint">Click an office on the map to go inside and meet the person who works there. The Town Hall in the middle is where meetings happen.</p>}
@@ -231,12 +233,12 @@ function OfficeFigure({ who }: { who: CastMember }) {
  * The OmniTown map. The nine offices and the Town Hall are fixed places on the picture; each is a button over its building. Helpers hired into an
  * office stand under it. Businesses the owner opened themselves (not one of the nine) are listed under the map.
  */
-function Scene({ town, activity, pick, onPick, onHall }: { town: TownState; activity: Partial<Record<DirectorKey, DirectorActivity>>; pick: string | null; onPick: (id: string | null) => void; onHall: () => void }) {
+function Scene({ town, activity, intents, pick, onPick, onHall }: { town: TownState; activity: Partial<Record<DirectorKey, DirectorActivity>>; intents: Partial<Record<DirectorKey, Intent>>; pick: string | null; onPick: (id: string | null) => void; onHall: () => void }) {
   const extras = town.businesses.filter((b) => !town.workplaces.some((w) => w.kind === 'town-hall' && w.businessId === b.id) && !town.agents.some((a) => a.director && a.businessId === b.id));
   return (
     <div className="tw-scene" role="group" aria-label="The town" onClick={() => onPick(null)}>
       <div className="tw-map-art" style={{ backgroundImage: `url(${mapUrl})` }}>
-        {town.agents.filter((a) => a.director && CAST[a.director] && !a.retired).map((a) => <TownWalker key={a.id} who={CAST[a.director!]!} name={a.name} onOpen={() => onPick(a.id)} badge={badgeFor(activity[a.director!])} />)}
+        {town.agents.filter((a) => a.director && CAST[a.director] && !a.retired).map((a) => <TownWalker key={a.id} who={CAST[a.director!]!} name={a.name} onOpen={() => onPick(a.id)} badge={badgeFor(activity[a.director!])} intent={intentFor(intents, a.director)} targetDoor={doorOf(intentFor(intents, a.director))} />)}
         <button className="tw-spot hall" style={{ left: '50%', top: '31%' }} onClick={(e) => { e.stopPropagation(); onHall(); }} aria-label="Town Hall: call a meeting" title="Town Hall: call a meeting"><span>Town Hall</span></button>
         {DIRECTORS.map((d) => {
           const boss = town.agents.find((a) => a.director === d.key && !a.retired);
@@ -265,6 +267,9 @@ function Scene({ town, activity, pick, onPick, onHall }: { town: TownState; acti
     </div>
   );
 }
+
+/** The map spot of the office a work visit is for. */
+const doorOf = (i: Intent): string | undefined => (i.kind === 'work-visit' ? CAST[i.target]?.start : undefined);
 
 /** The badge over a director: one line saying what it means, made only from what the plan holds. */
 const badgeFor = (a: DirectorActivity | undefined): WalkerBadge | undefined => (a ? { state: a.state, label: `${ACTIVITY_LABEL[a.state]}: ${a.tasks.map((t) => t.title).slice(0, 3).join('; ')}${a.tasks.length > 3 ? ` and ${a.tasks.length - 3} more` : ''}` } : undefined);
