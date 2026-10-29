@@ -3,8 +3,10 @@
 //   needs-you  a chunk of theirs has a result waiting for the owner to review
 //   working    a chunk of theirs is claimed right now (a live claim; an expired one counts for nothing)
 //   blocked    a chunk of theirs is marked blocked
+// A request another worker made of them, still waiting for the owner to decide, also counts as something waiting for the owner.
 // Anything else is idle and has no entry. A chunk with no owner belongs to nobody, so it makes nobody look busy.
 import { isClaimLive, type PlannerProject, type PlanTask } from './planner';
+import { requestTasks } from './townRequests';
 import { isDirectorKey, type DirectorKey } from './town';
 
 export type ActivityState = 'needs-you' | 'working' | 'blocked';
@@ -20,7 +22,7 @@ const stateOf = (t: PlanTask, now: Date): ActivityState | null => {
 };
 
 /** The most pressing thing for each director who has anything real going on. The owner's own attention comes first, then work in progress, then blocks. */
-export function directorActivity(p: Pick<PlannerProject, 'tasks'>, now: Date): Partial<Record<DirectorKey, DirectorActivity>> {
+export function directorActivity(p: Pick<PlannerProject, 'tasks'> & Partial<Pick<PlannerProject, 'proposals'>>, now: Date): Partial<Record<DirectorKey, DirectorActivity>> {
   const by = new Map<DirectorKey, Map<ActivityState, Array<{ id: string; title: string }>>>();
   for (const t of p.tasks) {
     if (!isDirectorKey(t.assignee)) continue;
@@ -29,6 +31,11 @@ export function directorActivity(p: Pick<PlannerProject, 'tasks'>, now: Date): P
     const m = by.get(t.assignee) ?? new Map<ActivityState, Array<{ id: string; title: string }>>();
     m.set(s, [...(m.get(s) ?? []), { id: t.id, title: t.title }]);
     by.set(t.assignee, m);
+  }
+  for (const r of requestTasks(p.proposals)) {
+    const m = by.get(r.assignee) ?? new Map<ActivityState, Array<{ id: string; title: string }>>();
+    m.set('needs-you', [...(m.get('needs-you') ?? []), { id: `request:${r.assignee}:${r.title}`, title: r.title }]);
+    by.set(r.assignee, m);
   }
   const out: Partial<Record<DirectorKey, DirectorActivity>> = {};
   for (const [key, m] of by) {

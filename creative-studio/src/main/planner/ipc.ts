@@ -18,6 +18,7 @@ import { PlannerEventHub } from './events';
 import { RoutedPlannerStore } from './routedStore';
 import { PlannerService, userCtx } from './service';
 import { agentSystemPrompt, generalManagerIntro } from '@shared/town';
+import { recentChangeLines } from '@shared/townNews';
 import { createTownMethods } from './townMethods';
 import { createViewMethods } from './viewMethods';
 
@@ -162,7 +163,9 @@ export function registerPlannerIpc(d: Deps): void {
       if (!r.agentId) {
         // The Studio's conversation is the General Manager's: they know who is on the team.
         const intro = await d.store.readTown(plan.id).then(({ town }) => generalManagerIntro(town)).catch(() => []);
-        system = [...intro, system].join(String.fromCharCode(10));
+        // ... and what has changed in the plan lately, including work the owner started with someone else.
+        const news = recentChangeLines(await s.activity(u, plan.id).catch(() => []), new Date());
+        system = [...intro, system, ...(news.length ? ['', ...news] : [])].join(String.fromCharCode(10));
       }
       if (r.agentId) {
         const { town } = await d.store.readTown(plan.id);

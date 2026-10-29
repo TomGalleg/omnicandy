@@ -53,6 +53,8 @@ export function PlannerWorkspace({ manifest, projectKey, navMode }: { manifest: 
   /** Which project's plan this window already started on its own (a project opens straight into the Studio; nothing to choose first). */
   const autoStarted = useRef<string | null>(null);
   const [startError, setStartError] = useState<string | null>(null);
+  /** Which project this window already chose a first tab for: a project with no chunks yet opens on the General Manager's chat, any other on the town. */
+  const firstTab = useRef<string | null>(null);
   const keyRef = useRef(projectKey);
   keyRef.current = projectKey;
 
@@ -68,7 +70,12 @@ export function PlannerWorkspace({ manifest, projectKey, navMode }: { manifest: 
     } catch (e) { setError(errMsg(e)); }
   }, []);
   // A different project: nothing of the previous one stays on screen.
-  useEffect(() => { setState(null); setProject(null); setOlderId(null); setFocusTaskId(null); setPickUpDismissed(null); setPanel(null); setTab('town'); sessionStart.current = Date.now(); void refresh(); }, [projectKey, refresh]);
+  useEffect(() => { setState(null); setProject(null); setOlderId(null); setFocusTaskId(null); setPickUpDismissed(null); setPanel(null); setTab('town'); firstTab.current = null; sessionStart.current = Date.now(); void refresh(); }, [projectKey, refresh]);
+  useEffect(() => {
+    if (!project || olderId || firstTab.current === projectKey) return;
+    firstTab.current = projectKey;
+    setTab(project.tasks.some((t) => t.status !== 'cancelled') ? 'town' : 'studio');
+  }, [project, olderId, projectKey]);
   useEffect(() => { void refresh(); }, [olderId, refresh]);
   useEffect(() => { if (navMode !== 'advanced' && !SIMPLE_TABS.includes(tab)) setTab('town'); }, [navMode, tab]);
   // Changes made here or by a connected tool arrive as events (no polling). Looking again on focus and on a slow timer covers a lost event

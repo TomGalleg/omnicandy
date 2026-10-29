@@ -16,7 +16,6 @@ interface Props {
 
 const errText = (e: unknown) => (e instanceof Error ? e.message : String(e)).replace(/^Error invoking remote method '[^']+': (Error: )?/, '');
 const when = (iso: string) => new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
-const workspaceFor = (kind: ProjectKind | undefined): WorkspaceId => PROJECT_KINDS.find((k) => k.id === kind)?.workspace ?? 'media';
 
 /** Project Home (prompt-first creation, recent projects) + Project Overview (the open one). */
 export function HomeWorkspace({ manifest, projectKey, onSwitched, onGoto, log }: Props) {

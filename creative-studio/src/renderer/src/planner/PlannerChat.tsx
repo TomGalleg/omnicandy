@@ -6,6 +6,7 @@ import type { PlannerProject } from '@shared/planner';
 import type { ChatProviderInfo } from '@shared/plannerApi';
 import { chunkPlan, isReady, MAKE_PLAN_REQUEST, withoutMarker, type ChatMessage, type ChatMode, type ChatProviderId } from '@shared/plannerChat';
 import { directorTitle } from '@shared/town';
+import { noteText, parseTeamLines, requestProposal, type TeamLine } from '@shared/townRequests';
 import { PLANNER_BUSY_EVENT } from '@shared/plannerView';
 import { errMsg, ErrorLine, useAction, type TabId } from './plannerUi';
 
@@ -16,10 +17,12 @@ const put = (k: string, v: string) => { try { store?.setItem(k, v); } catch { /*
 const PROVIDER_KEY = 'cs-planner-chat-provider';
 
 /** An answer that breaks the project into chunks: shown as a plain numbered list instead of raw text. */
-function ChunkList({ p, reload, text, go, onChange, preview }: { p: PlannerProject; reload: () => Promise<void>; text: string; go: (t: TabId) => void; onChange: () => void; preview?: boolean }) {
+function ChunkList({ p, reload, text, go, onChange, preview, by }: { p: PlannerProject; reload: () => Promise<void>; text: string; go: (t: TabId) => void; onChange: () => void; preview?: boolean; /** The worker who wrote the chunks, when it is not the General Manager. */ by?: string }) {
   const plan = useMemo(() => chunkPlan(text), [text]);
   const [skip, setSkip] = useState<number[]>([]);
   const [done, setDone] = useState<number | null>(null);
+  const [added, setAdded] = useState<string[]>([]);
+  const [told, setTold] = useState(false);
   const a = useAction(reload);
   if (!plan) return null;
   // Chunks already in the plan, or already waiting as a suggestion, are not added a second time.
@@ -31,10 +34,11 @@ function ChunkList({ p, reload, text, go, onChange, preview }: { p: PlannerProje
     const chosen = picked.map((i) => plan.chunks[i]!);
     // The project summary is set quietly with the chunks; it is tied to the summary as it is now, so it never overwrites something edited since.
     const changes = [...plan.brief.map((c) => (c.op === 'set_brief' ? { ...c, baseMetaRev: p.metaRev } : c)), ...chosen];
-    const pr = await api().importSuggestions(p.id, { proposer: { kind: 'other', name: 'Planning chat' }, note: 'Chunks from the planning chat', changes, rawText: text });
+    const pr = await api().importSuggestions(p.id, { proposer: { kind: 'other', name: by ?? 'Planning chat' }, note: by ? `Chunks from ${by}` : 'Chunks from the planning chat', changes, rawText: text });
     // In the Studio the chunks stay as suggestions on the canvas until the owner adds them there; elsewhere they join the plan at once, as before.
     if (!preview) await api().decideProposal(p.id, pr.id, true, changes.map((_, i) => i));
     setDone(chosen.length);
+    setAdded(chosen.map((c) => c.title));
   });
   return (
     <div className="pl-chunks">
@@ -55,6 +59,42 @@ function ChunkList({ p, reload, text, go, onChange, preview }: { p: PlannerProje
           <button className="btn" disabled={a.busy} onClick={onChange}>I want to change something</button>
         </div>
       )}
+      {by && added.length > 0 && (
+        <p className="pl-actions">
+          <button className="btn small" disabled={told} title="Adds one plain line to the General Manager's conversation. No AI is called." onClick={() => { setTold(true); void api().chatAppend(p.id, { messages: [{ role: 'user', text: `(From ${by}) I suggested ${added.length} chunk${added.length === 1 ? '' : 's'}: ${added.slice(0, 6).join('; ')}${added.length > 6 ? '…' : ''}.` }] }).catch(() => setTold(false)); }}>{told ? 'The General Manager knows' : 'Let the General Manager know'}</button>
+        </p>
+      )}
+      <ErrorLine error={a.error} />
+    </div>
+  );
+}
+
+/** What a worker wants to tell or ask another worker. Nothing is sent until the owner presses a button; a request only becomes a suggestion on the Studio canvas. */
+function TeamCards({ p, from, lines, reload }: { p: PlannerProject; from: string; lines: TeamLine[]; reload: () => Promise<void> }) {
+  const [state, setState] = useState<Record<number, 'sent' | 'skipped'>>({});
+  const a = useAction(reload);
+  const send = (i: number, line: TeamLine) => a.run(async () => {
+    if (line.kind === 'ask') {
+      const r = requestProposal(from, line);
+      await api().importSuggestions(p.id, { proposer: r.proposer, note: r.note, changes: r.changes, rawText: line.what });
+    } else {
+      const { town } = await api().townLoad(p.id);
+      const to = town.agents.find((x) => x.director === line.to && !x.retired);
+      if (!to) throw new Error('That person is not on the team.');
+      await api().chatAppend(p.id, { messages: [{ role: 'user', text: noteText(from, line.what) }], ...(line.to === 'general-manager' ? {} : { who: to.id }) });
+    }
+    setState((s) => ({ ...s, [i]: 'sent' }));
+  });
+  return (
+    <div className="pl-team-cards">
+      {lines.map((l, i) => state[i] === 'skipped' ? null : (
+        <p key={i} className="pl-warn" role="status">
+          <strong>{from}</strong> {l.kind === 'ask' ? 'wants to ask' : 'wants to tell'} <strong>{directorTitle(l.to)}</strong>: {l.what}
+          {state[i] === 'sent'
+            ? <small className="pl-hint"> {l.kind === 'ask' ? 'Sent to the Studio canvas as a suggestion. Add it there to give it to them.' : `Sent. ${directorTitle(l.to)} will see it the next time you talk.`}</small>
+            : <span className="pl-actions"> <button className="btn small primary" disabled={a.busy} onClick={() => void send(i, l)}>{l.kind === 'ask' ? 'Send the request' : 'Send the note'}</button> <button className="btn small" onClick={() => setState((s) => ({ ...s, [i]: 'skipped' }))}>Skip</button></span>}
+        </p>
+      ))}
       <ErrorLine error={a.error} />
     </div>
   );
@@ -135,10 +175,13 @@ export function PlannerChat({ p, reload, go, preview, agent }: { p: PlannerProje
         )}
         {messages.map((m, i) => {
           const plan = m.role === 'assistant' ? chunkPlan(m.text) : null;
+          const team = m.role === 'assistant' && agent ? parseTeamLines(m.text) : null;
+          const mine = team?.lines.filter((l) => directorTitle(l.to) !== agent?.name) ?? [];
           return (
             <div key={i} className={`pl-msg ${m.role}`}>
               <strong>{m.role === 'user' ? 'You' : agent?.name ?? 'General Manager'}</strong>
-              {plan ? <ChunkList p={p} reload={reload} text={m.text} go={go} onChange={() => inputRef.current?.focus()} preview={preview} /> : <p className="pl-msg-text">{withoutMarker(m.text)}</p>}
+              {plan ? <ChunkList p={p} reload={reload} text={m.text} go={go} onChange={() => inputRef.current?.focus()} preview={preview} by={agent?.name} /> : <p className="pl-msg-text">{withoutMarker(team ? team.text : m.text)}</p>}
+              {mine.length > 0 && agent && <TeamCards p={p} from={agent.name} lines={mine} reload={reload} />}
             </div>
           );
         })}

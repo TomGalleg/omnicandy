@@ -15,6 +15,7 @@ import { TownWalker, type WalkerBadge } from './TownWalker';
 import { ACTIVITY_LABEL, directorActivity, type DirectorActivity } from '@shared/townActivity';
 import { directorIntents, intentFor, type Intent } from '@shared/townIntent';
 import { RunWithAi } from './MeetingRun';
+import { requestIntents } from '@shared/townRequests';
 import { CAST, type CastMember } from './townCast';
 import puffUrl from '../assets/characters/smoke-puff.png';
 import { setPresence, stayInside } from './townPresence';
@@ -78,6 +79,8 @@ export function TownTab(props: TabProps) {
   const [goers, setGoers] = useState<ReadonlySet<string> | null>(null);
   const intents = useMemo(() => {
     const base = directorIntents(p, new Date(clock));
+    // A worker whose request is waiting for the owner goes to see the one it is for, unless they have real work of their own.
+    for (const [k, v] of Object.entries(requestIntents(p.proposals, town?.agents ?? []))) if (!base[k as DirectorKey]) base[k as DirectorKey] = v;
     for (const a of town?.agents ?? []) if (a.director && goers?.has(a.id)) base[a.director] = { kind: 'meeting' };
     return base;
   }, [p, clock, town, goers]);

@@ -204,6 +204,8 @@ describe('the nine main workers', () => {
     const prompt = agentSystemPrompt(t, creative, plan);
     expect(prompt).toContain('one of the nine main workers');
     expect(prompt).toContain('Quality Director');
+    expect(prompt).toContain('"Ask: <their title>');
+    expect(prompt).toContain('you cannot give anyone work');
   });
 
   it('tell the General Manager who is on the team when the owner talks to them in the Studio', () => {
