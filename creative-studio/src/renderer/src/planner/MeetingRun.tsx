@@ -14,7 +14,7 @@ const get = (k: string) => { try { return store?.getItem(k) ?? null; } catch { r
  * owner confirms what it will do; stops at once on Stop, on leaving the screen, or on the first problem. It adds to the meeting notes and sends at most ONE
  * suggestion to the Studio canvas. It never changes the plan itself. While it runs, the people at the table walk to the Town Hall (`onGoing`).
  */
-export function RunWithAi({ town, meeting, planId, setTown, reload, onGoing }: { town: TownState; meeting: TownMeeting; planId: string; setTown: (t: TownState) => void; reload: () => Promise<void>; onGoing: (ids: ReadonlySet<string> | null) => void }) {
+export function RunWithAi({ town, meeting, planId, setTown, reload, onGoing, onSpeaking, onSaid }: { onSpeaking: (id: string | null) => void; onSaid: (id: string, text: string) => void; town: TownState; meeting: TownMeeting; planId: string; setTown: (t: TownState) => void; reload: () => Promise<void>; onGoing: (ids: ReadonlySet<string> | null) => void }) {
   const [open, setOpen] = useState(false);
   const [providers, setProviders] = useState<ChatProviderInfo[] | null>(null);
   const [provider, setProvider] = useState<ChatProviderId>(() => (['claude', 'openai', 'gemini'].includes(get('cs-planner-chat-provider') ?? '') ? (get('cs-planner-chat-provider') as ChatProviderId) : 'claude'));
@@ -53,10 +53,12 @@ export function RunWithAi({ town, meeting, planId, setTown, reload, onGoing }: {
         if (stop.current || !alive.current) break;
         const who = people.find((p) => p.id === order[i])!;
         setProgress(`${who.name} is speaking (${i + 1} of ${order.length})…`);
+        onSpeaking(who.id);
         const said = await ask(who.id, turnPrompt(meeting, who, people.filter((p) => p.id !== who.id).map((p) => p.name), notes));
         if (stop.current || !alive.current) break;
         const t = await api().meetingNote(planId, meeting.id, { by: who.name, text: said.slice(0, 2000) || '(no reply)' });
         if (!alive.current) break;
+        onSpeaking(null); onSaid(who.id, said.slice(0, 600));
         setTown(t);
         notes = t.meetings.find((m) => m.id === meeting.id)?.notes ?? notes;
       }
@@ -64,6 +66,7 @@ export function RunWithAi({ town, meeting, planId, setTown, reload, onGoing }: {
         const chair = coordinatorOf(town) ?? people[0];
         if (chair) {
           setProgress(`${chair.name} is turning it into tasks…`);
+          onSpeaking(chair.id);
           const text = await ask(chair.id, summaryPrompt(meeting, notes));
           if (!stop.current && alive.current) {
             const plan = chunkPlan(text);
@@ -82,6 +85,7 @@ export function RunWithAi({ town, meeting, planId, setTown, reload, onGoing }: {
       if (alive.current) { setError(errMsg(e)); setProgress('Stopped because something went wrong. What was said so far is in the notes.'); }
     } finally {
       if (alive.current) setState('done');
+      onSpeaking(null);
       onGoing(null);
     }
   };
