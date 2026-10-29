@@ -92,6 +92,40 @@ describe('the General Manager guides the first conversation', () => {
   });
 });
 
+describe('who handles a chunk', () => {
+  const tasks = (text: string) => parseSuggestionText(text).changes.filter((c) => c.op === 'add_task') as Array<Extract<ReturnType<typeof parseSuggestionText>['changes'][number], { op: 'add_task' }>>;
+  it('reads a Who line as the director, not as a check, and says when it cannot place a name', () => {
+    const r = parseSuggestionText(['## Tasks', '1. Draw the dragon', '   - Looks fierce', '   - Who: Creative Director', '2. Build the game', '   - Who: Bob', '3. Test it', '   - Who: none'].join('\n'));
+    const t = r.changes.filter((c) => c.op === 'add_task') as Array<{ assignee?: string | null; completionChecks: string[] }>;
+    expect(t[0]!.assignee).toBe('creative-director');
+    expect(t[0]!.completionChecks).toEqual(['Looks fierce']);
+    expect(t[1]!.assignee ?? null).toBeNull();
+    expect(t[2]!.assignee ?? null).toBeNull();
+    expect(r.uncertain.join(' ')).toContain('"Bob" is not one of the nine directors');
+  });
+
+  it('is kept on the task when the owner adds the chunk, and an unknown name is dropped, never stored', async () => {
+    const svc = new PlannerService(new PlannerStore(path.join(tmp, 'who')));
+    const p = await svc.createProject(user, { title: 'Dragons' });
+    const changes = [...tasks('## Tasks\n1. Draw the dragon\n   - Who: Creative Director'), { op: 'add_task' as const, title: 'Odd one', description: '', priority: 'normal' as const, dependsOn: [], completionChecks: [], assignee: 'bob' }];
+    const pr = await svc.importSuggestions(user, p.id, { note: 'chunks', changes, rawText: 'x' });
+    await svc.decideProposal(user, p.id, pr.id, true);
+    const plan = await svc.getProject(user, p.id);
+    expect(plan.tasks.map((t) => t.assignee ?? null)).toEqual(['creative-director', null]);
+  });
+
+  it('can be changed by the owner, but only to one of the nine directors, and a plan from before has none', async () => {
+    const svc = new PlannerService(new PlannerStore(path.join(tmp, 'who2')));
+    const p = await svc.createProject(user, { title: 'Dragons' });
+    const t = await svc.addTask(user, p.id, { title: 'Draw it' });
+    expect(t.assignee ?? null).toBeNull();
+    const set = await svc.updateTask(user, p.id, t.id, { assignee: 'quality-director' }, t.rev);
+    expect(set.assignee).toBe('quality-director');
+    await expect(svc.updateTask(user, p.id, t.id, { assignee: 'bob' }, set.rev)).rejects.toThrow(/nine directors/);
+    expect((await svc.updateTask(user, p.id, t.id, { assignee: null })).assignee).toBeNull();
+  });
+});
+
 describe('limits that bound the cost', () => {
   it('keeps only the newest messages and cuts long ones', () => {
     const many = Array.from({ length: 60 }, (_, i) => ({ role: (i % 2 ? 'assistant' : 'user') as 'user' | 'assistant', text: `m${i}` }));

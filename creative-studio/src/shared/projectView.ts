@@ -27,8 +27,8 @@ export interface ViewNode {
   ref: ViewNodeRef;
   /** `PlanTask.appRef`, untouched: the view never decides which application does the work. */
   resourceHint: AppRef | null;
-  /** Reserved for the agent stages. */
-  assignee: null;
+  /** The director responsible (a director key), when one was chosen. */
+  assignee: string | null;
   /** A change an AI proposed that the owner has not accepted. It is not part of the plan. */
   ghost?: { proposalId: string; changeIndex: number; by: string; op: ProposalChange['op'] };
   flags: { needsReview: boolean; stalled: boolean; planChanged: boolean; removed: boolean; waiting: boolean };
@@ -153,7 +153,7 @@ export function buildProjectView(p: PlannerProject, opts: { now?: Date; focusTas
       id: t.id, kind: t.parentId ? 'task' : 'chunk', title: t.title, summary: clip(t.description), status: ds,
       progress: hasKids ? progressOfList(leavesUnder(t, kids)) : null,
       parentId: t.parentId && taskIds.has(t.parentId) ? t.parentId : (t.milestoneId && p.milestones.some((m) => m.id === t.milestoneId) ? t.milestoneId : rootId),
-      ref: { type: 'task', id: t.id, rev: t.rev }, resourceHint: t.appRef, assignee: null,
+      ref: { type: 'task', id: t.id, rev: t.rev }, resourceHint: t.appRef, assignee: t.assignee ?? null,
       flags: flags({ needsReview: ds.label === 'Needs Review', stalled: !!ds.stalled, planChanged: !!ds.planChanged, removed: !!ds.removed, waiting }),
     });
     for (const d of t.dependsOn) if (taskIds.has(d)) edges.push({ id: `dep:${d}>${t.id}`, from: d, to: t.id, kind: 'dependsOn' });
@@ -176,7 +176,7 @@ export function buildProjectView(p: PlannerProject, opts: { now?: Date; focusTas
       const id = `ghost:${pr.id}:${i}`;
       nodes.push({
         id, kind: 'ghost', title: ghostTitle(p, c), summary: ghostSummary(c), status: null, progress: null, parentId: rootId, ref: { type: 'proposal', id: pr.id },
-        resourceHint: null, assignee: null, ghost: { proposalId: pr.id, changeIndex: i, by: pr.proposedBy.name, op: c.op }, flags: flags(),
+        resourceHint: null, assignee: c.op === 'add_task' ? c.assignee ?? null : null, ghost: { proposalId: pr.id, changeIndex: i, by: pr.proposedBy.name, op: c.op }, flags: flags(),
       });
       if (c.op === 'add_task') for (const d of c.dependsOn) if (taskIds.has(d)) edges.push({ id: `gdep:${d}>${id}`, from: d, to: id, kind: 'ghostDependsOn' });
     });

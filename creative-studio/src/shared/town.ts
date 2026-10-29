@@ -40,6 +40,16 @@ export const DIRECTORS = [
 ] as const;
 export type DirectorKey = (typeof DIRECTORS)[number]['key'];
 const DIRECTOR_KEYS = DIRECTORS.map((d) => d.key) as [DirectorKey, ...DirectorKey[]];
+export const isDirectorKey = (k: unknown): k is DirectorKey => typeof k === 'string' && DIRECTORS.some((d) => d.key === k);
+/** A director from what an AI or a person wrote: the key, the title ("Creative Director"), or the start of the title ("Creative"). Null when nothing matches; never guessed. */
+export function directorFromName(name: string): DirectorKey | null {
+  const n = name.trim().toLowerCase().replace(/[.:]+$/, '').replace(/'s office$/, '');
+  if (n.length < 3) return null;
+  const hit = DIRECTORS.find((d) => d.key === n || d.title.toLowerCase() === n) ?? DIRECTORS.filter((d) => d.title.toLowerCase().startsWith(n) || d.title.toLowerCase().replace(/ (director|manager)$/, '') === n);
+  if (Array.isArray(hit)) return hit.length === 1 ? hit[0]!.key : null;
+  return hit.key;
+}
+export const directorTitle = (k: string | null | undefined): string | null => DIRECTORS.find((d) => d.key === k)?.title ?? null;
 export const directorOffice = (title: string) => `${title}'s Office`;
 export type MeetingKind = 'kickoff' | 'planning' | 'brainstorm' | 'technical' | 'progress' | 'emergency' | 'other';
 export const MEETING_KINDS: readonly MeetingKind[] = ['kickoff', 'planning', 'brainstorm', 'technical', 'progress', 'emergency', 'other'];

@@ -3,6 +3,7 @@ import { applyNodeChanges, Background, Controls, Handle, MarkerType, MiniMap, Po
 import { CARD_H, CARD_W, type CanvasLayout, type CanvasNodePos, type CanvasPatch, type ViewMode } from '@shared/plannerCanvas';
 import type { ProjectView, ViewNode } from '@shared/projectView';
 import { SIMPLE_STATUSES } from '@shared/plannerView';
+import { DIRECTORS, directorTitle } from '@shared/town';
 
 /** The presentations offered today. The data behind each is identical; only how it is drawn differs. */
 export const MODES: Array<[ViewMode, string]> = [['canvas', 'Canvas'], ['board', 'Board'], ['list', 'List']];
@@ -145,7 +146,8 @@ function List({ view, selectedId, onSelect, excluded, onToggle }: Pick<Props, 'v
 }
 
 /** What is known about the selected card, with the one action that makes sense for it. */
-export function CardDetails({ node, onWork, onClose }: { node: ViewNode | null; onWork: (taskId: string) => void; onClose: () => void }) {
+/** `onAssign`: the owner chooses which director is responsible for a chunk (an owner-only edit; a suggestion shows the name read-only). */
+export function CardDetails({ node, onWork, onClose, onAssign }: { node: ViewNode | null; onWork: (taskId: string) => void; onClose: () => void; onAssign?: (node: ViewNode, key: string | null) => void }) {
   if (!node) return null;
   return (
     <aside className="pc-details" aria-label="Details">
@@ -154,6 +156,14 @@ export function CardDetails({ node, onWork, onClose }: { node: ViewNode | null; 
       {node.status && <p><span className={`chip pc-status ${node.status.tone}`}><span className="dot" />{node.status.label}</span> {node.status.chip && <small className="pl-hint">{node.status.chip}</small>}</p>}
       {node.summary && <p>{node.summary}</p>}
       {node.progress && node.progress.total > 0 && <p className="pl-hint">{node.progress.done} of {node.progress.total} finished</p>}
+      {(node.kind === 'chunk' || node.kind === 'task') && !node.ghost && onAssign ? (
+        <label className="pc-assign">Handled by
+          <select value={node.assignee ?? ''} onChange={(e) => onAssign(node, e.target.value || null)}>
+            <option value="">No one yet</option>
+            {DIRECTORS.map((d) => <option key={d.key} value={d.key}>{d.title}</option>)}
+          </select>
+        </label>
+      ) : node.assignee ? <p className="pl-hint">Handled by {directorTitle(node.assignee) ?? node.assignee}</p> : null}
       {node.resourceHint && <p className="pl-hint">Uses: {node.resourceHint.id}{node.resourceHint.note ? ` (${node.resourceHint.note})` : ''}</p>}
       {node.ghost && <p className="pl-hint">{node.ghost.by} suggested this. It is not part of your plan until you add it.</p>}
       {(node.kind === 'chunk' || node.kind === 'task') && !node.flags.removed && node.status?.label !== 'Done' && <button className="btn primary" onClick={() => onWork(node.id)}>Work on this</button>}

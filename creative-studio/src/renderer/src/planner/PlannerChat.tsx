@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { PlannerProject } from '@shared/planner';
 import type { ChatProviderInfo } from '@shared/plannerApi';
 import { chunkPlan, isReady, MAKE_PLAN_REQUEST, withoutMarker, type ChatMessage, type ChatMode, type ChatProviderId } from '@shared/plannerChat';
+import { directorTitle } from '@shared/town';
 import { PLANNER_BUSY_EVENT } from '@shared/plannerView';
 import { errMsg, ErrorLine, useAction, type TabId } from './plannerUi';
 
@@ -41,7 +42,7 @@ function ChunkList({ p, reload, text, go, onChange, preview }: { p: PlannerProje
       <ol>
         {plan.chunks.map((c, i) => (
           <li key={i}>
-            <label className="pl-check"><input type="checkbox" disabled={already || done !== null} checked={!skip.includes(i)} onChange={(e) => setSkip(e.target.checked ? skip.filter((x) => x !== i) : [...skip, i])} /><strong>{c.title}</strong>{c.appRef && <small className="pl-hint"> · uses {c.appRef.id}</small>}</label>
+            <label className="pl-check"><input type="checkbox" disabled={already || done !== null} checked={!skip.includes(i)} onChange={(e) => setSkip(e.target.checked ? skip.filter((x) => x !== i) : [...skip, i])} /><strong>{c.title}</strong>{c.assignee && <small className="pl-hint"> · {directorTitle(c.assignee) ?? c.assignee}</small>}{c.appRef && <small className="pl-hint"> · uses {c.appRef.id}</small>}</label>
             {c.completionChecks.length > 0 && <ul className="pl-checks">{c.completionChecks.map((k, j) => <li key={j}>{k}</li>)}</ul>}
           </li>
         ))}

@@ -5,6 +5,7 @@
 // What an answer can fill in (each part is a separate suggestion the owner ticks or unticks): the project brief (goal, description, scope,
 // constraints, deliverables), milestones, rules (requirements), decisions with their reasons, tasks (optionally under a milestone),
 // open questions, ideas and references.
+import { directorFromName } from './town';
 import { ACTOR_KINDS, type Actor, changeSchema, type ProposalChange } from './planner';
 import { parseReportText, type ReportImportPreview } from './plannerHandoff';
 
@@ -201,6 +202,13 @@ export function parseSuggestionText(text: string): SuggestionPreview {
     const indent = (b[1] ?? '').length; const item = (b[2] ?? '').trim();
     const app = indent >= 2 && cur === 'task' && lastTask ? /^app\s*:\s*(.{1,80}?)\s*\.?$/i.exec(item) : null;
     if (app && lastTask) { const id = clip(app[1] ?? '', 80); if (id && !/^(none|n\/a|-)$/i.test(id)) lastTask.appRef = { kind: /craft/i.test(id) ? 'native' : 'external', id, note: '' }; continue; }
+    const who = indent >= 2 && cur === 'task' && lastTask ? /^who\s*:\s*(.{1,80}?)\s*\.?$/i.exec(item) : null;
+    if (who && lastTask) {
+      const key = directorFromName(who[1] ?? '');
+      if (key) lastTask.assignee = key;
+      else if (!/^(none|n\/a|-)$/i.test((who[1] ?? '').trim())) uncertain.push(`"${clip(who[1] ?? '', 40)}" is not one of the nine directors, so no one was chosen for "${clip(lastTask.title, 60)}".`);
+      continue;
+    }
     if (indent >= 2 && cur === 'task' && lastTask) { if (lastTask.completionChecks.length < 20) lastTask.completionChecks.push(clip(item, 400)); subChecks = true; continue; }
     if (!room()) continue;
     const c = entryToChange(cur, item, errors, cur);

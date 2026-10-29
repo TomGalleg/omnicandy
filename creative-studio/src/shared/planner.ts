@@ -63,6 +63,8 @@ export interface PlanTask {
   assetIds: string[];
   milestoneId: string | null;
   appRef: AppRef | null;
+  /** Which of the nine directors is responsible (a director key). Plan data, not town data: the town never stores who is busy. Missing on older plans. */
+  assignee?: string | null;
   /** The one open package this task is handed off in (a task is never in two open packages). */
   packageId: string | null;
   claim: TaskClaim | null;
@@ -113,6 +115,8 @@ export const changeSchema = z.discriminatedUnion('op', [
     milestone: s(200).nullish(),
     /** The application that does this chunk, when one clearly fits (named by the AI that wrote the chunk; the owner sees it before adding). */
     appRef: z.object({ kind: z.enum(['native', 'external', 'workflow']), id: s(80).min(1), note: s(400).default('') }).nullish(),
+    /** The director responsible (a director key). An unknown key is dropped when the owner adds the chunk. */
+    assignee: s(40).nullish(),
   }),
   /** One part of the project brief. Text fields are replaced; constraints and deliverables are added to (nothing the owner wrote is removed). */
   z.object({

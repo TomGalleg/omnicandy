@@ -11,6 +11,7 @@ import {
   type ReportDraft, reportDraftSchema, type Scope, SCOPES, snapshotOf, type TaskStatus, templateById, unmetDependencies, uncoveredChecks, USER_ACTOR, wouldCycle, canonical,
   projectInputSchema, type ProjectInput, type ProjectSummary,
 } from '@shared/planner';
+import { isDirectorKey } from '@shared/town';
 import { buildContext, type Delivery } from '@shared/plannerContext';
 import { packageToMarkdown, reportInstructionsFor } from '@shared/plannerHandoff';
 import type { DestinationId } from '@shared/plannerSend';
@@ -43,7 +44,7 @@ const checkRev = (current: number, expected: number | undefined, what: string, n
 
 export interface TaskInput {
   title: string; description?: string; priority?: Priority; parentId?: string | null; dependsOn?: string[]; checks?: Array<{ text: string; kind?: string }>;
-  expectedOutputs?: string[]; assetIds?: string[]; milestoneId?: string | null; appRef?: AppRef | null;
+  expectedOutputs?: string[]; assetIds?: string[]; milestoneId?: string | null; appRef?: AppRef | null; assignee?: string | null;
 }
 export interface AssetInput { role: PlanAsset['role']; title: string; source: PlanAsset['source']; path?: string; url?: string; createcraft?: PlanAsset['createcraft']; note?: string; group?: string; version?: number; sha256?: string }
 
@@ -211,7 +212,7 @@ export class PlannerService {
     return {
       id: newId('task'), title: i.title.trim(), description: i.description ?? '', status: 'todo', priority: i.priority ?? 'normal', parentId: i.parentId ?? null, dependsOn: [...(i.dependsOn ?? [])],
       completionChecks: (i.checks ?? []).map((k) => ({ id: newId('chk'), text: k.text, kind: k.kind ?? 'review' })), expectedOutputs: i.expectedOutputs ?? [], assetIds: i.assetIds ?? [],
-      milestoneId: i.milestoneId ?? null, appRef: i.appRef ?? null, packageId: null, claim: null, progressNote: '', rev: 1, createdAt: now, updatedAt: now, createdBy: a,
+      milestoneId: i.milestoneId ?? null, appRef: i.appRef ?? null, assignee: isDirectorKey(i.assignee) ? i.assignee : null, packageId: null, claim: null, progressNote: '', rev: 1, createdAt: now, updatedAt: now, createdBy: a,
     };
   }
   private validateTaskRefs(p: PlannerProject, taskId: string | null, t: { dependsOn: string[]; parentId: string | null; milestoneId: string | null; assetIds: string[] }) {
@@ -239,6 +240,7 @@ export class PlannerService {
       const t = find(p.tasks, taskId, 'task');
       checkRev(t.rev, expectedRev, 'task', t);
       if (t.packageId && isClaimLive(t.claim, now) && (patch.completionChecks || patch.description !== undefined)) throw new PlannerError('claimed', 'An executor is working on this task. Release the claim before changing what it asks for.');
+      if (patch.assignee !== undefined && patch.assignee !== null && !isDirectorKey(patch.assignee)) throw new PlannerError('invalid', 'That is not one of the nine directors.');
       const next = { ...t, ...patch };
       this.validateTaskRefs(p, t.id, next);
       Object.assign(t, patch);
@@ -388,7 +390,7 @@ export class PlannerService {
         else if (ch.op === 'update_item') { const it = find(p.items, ch.id, 'item'); Object.assign(it, ch.patch); it.rev++; it.updatedAt = nowIso; }
         else if (ch.op === 'add_task') {
           const ms = ch.milestone ? p.milestones.find((m) => m.title.trim().toLowerCase() === ch.milestone!.trim().toLowerCase()) : undefined;
-          const t = this.blankTask(pr.proposedBy, nowIso, { title: ch.title, description: ch.description, priority: ch.priority, milestoneId: ms?.id ?? null, dependsOn: ch.dependsOn.filter((d) => p.tasks.some((x) => x.id === d)), parentId: ch.parentId && p.tasks.some((x) => x.id === ch.parentId) ? ch.parentId : null, checks: ch.completionChecks.map((text) => ({ text })), appRef: ch.appRef ?? null });
+          const t = this.blankTask(pr.proposedBy, nowIso, { title: ch.title, description: ch.description, priority: ch.priority, milestoneId: ms?.id ?? null, dependsOn: ch.dependsOn.filter((d) => p.tasks.some((x) => x.id === d)), parentId: ch.parentId && p.tasks.some((x) => x.id === ch.parentId) ? ch.parentId : null, checks: ch.completionChecks.map((text) => ({ text })), appRef: ch.appRef ?? null, assignee: ch.assignee ?? null });
           p.tasks.push(t);
         } else {
           const t = find(p.tasks, ch.id, 'task');

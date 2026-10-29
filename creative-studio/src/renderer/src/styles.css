@@ -874,6 +874,7 @@ h1, h2, h3 { margin: 0; font-weight: 600; }
 .pc-details { width: 260px; flex-shrink: 0; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); overflow: auto; display: grid; gap: 6px; align-content: start; }
 .pc-details header { display: flex; justify-content: space-between; align-items: center; }
 .pc-details h3 { margin: 0; font-size: 14px; }
+.pc-assign { display: grid; gap: 2px; font-size: 12px; color: var(--muted, inherit); }
 .pc-board { flex: 1; min-height: 0; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(180px, 1fr); gap: 8px; padding: 8px; overflow: auto; }
 .pc-col { display: grid; gap: 6px; align-content: start; }
 .pc-col h4 { margin: 0 0 2px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-2); }

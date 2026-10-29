@@ -131,6 +131,7 @@ export const CHUNK_FORMAT = [
   '   - how we will know it is done',
   '   - another check, only if needed',
   '   - App: the connected application that would do it, only if one clearly fits (leave this line out otherwise)',
+  '   - Who: the team member who should handle it, by their title (leave this line out if unsure)',
   '2. Next chunk',
   '   - how we will know it is done',
   'Rules for the chunks: 4 to 12 of them, in the order they should be done, each small enough to finish in one sitting, specific and clearly different from the others, written in plain words. Start each with a verb. Leave out work that already exists.',

@@ -3,7 +3,7 @@ import { Group, Panel, Separator } from 'react-resizable-panels';
 import { PlannerChat } from './PlannerChat';
 import { CardDetails, ProjectCanvas } from './ProjectCanvas';
 import { errMsg, ErrorLine, type TabProps } from './plannerUi';
-import { nextStepsOf } from '@shared/projectView';
+import { nextStepsOf, type ViewNode } from '@shared/projectView';
 import { useCanvas } from './useCanvas';
 
 const api = () => window.studio.planner;
@@ -50,6 +50,11 @@ export function StudioTab(props: TabProps) {
       .then(() => reload())
       .catch((e) => { setError(errMsg(e)); void reload().catch(() => {}); });
   };
+  /** The owner's choice of who handles a chunk. Plan data, so it goes through the plan's own edit (with the revision the owner was looking at). */
+  const assign = (n: ViewNode, key: string | null) => {
+    setError(null);
+    void api().updateTask(p.id, n.ref.id, { assignee: key }, n.ref.rev).then(() => reload()).catch((e) => { setError(errMsg(e)); void reload().catch(() => {}); });
+  };
   const work = (taskId: string) => { setSendSel?.([taskId]); setFocusTaskId?.(taskId); go('handoffs'); };
 
   return (
@@ -87,7 +92,7 @@ export function StudioTab(props: TabProps) {
             )}
             <div className="studio-main">
               <ProjectCanvas view={c.view} layout={c.layout} positions={c.positions} selectedId={selected} onSelect={setSelected} onPatch={c.patch} onArrange={c.arrange} excluded={left} onToggle={toggle} />
-              <CardDetails node={node} onWork={work} onClose={() => setSelected(null)} />
+              <CardDetails node={node} onWork={work} onClose={() => setSelected(null)} onAssign={assign} />
             </div>
           </div>
         </Panel>

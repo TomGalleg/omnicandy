@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  agentSystemPrompt, activeAgents, generalManagerIntro, addMeetingNote, addTeamSuggestion, applyTeamChanges, coordinatorOf, decideTeamSuggestion, defaultTown, endMeeting, linkMeetingProposal, startMeeting, withDirectors,
+  agentSystemPrompt, activeAgents, directorFromName, directorTitle, generalManagerIntro, isDirectorKey, addMeetingNote, addTeamSuggestion, applyTeamChanges, coordinatorOf, decideTeamSuggestion, defaultTown, endMeeting, linkMeetingProposal, startMeeting, withDirectors,
   suggestTeamFromPlan, tierFor, TOWN_LIMITS, townStateSchema, TownError,
 } from './town';
 
@@ -163,6 +163,23 @@ describe('meetings', () => {
     const names = Array.from({ length: 13 }, (_, i) => `W${i}`);
     t = applyTeamChanges(t, [{ op: 'add_business', name: 'Crowd', trade: '' }, ...names.map((name) => ({ op: 'add_agent' as const, name, specialty: '', businessId: '@last' }))], NOW, rnd);
     expect(() => startMeeting(t, { topic: 'Everyone', participantIds: t.agents.map((a) => a.id) }, NOW, rnd)).toThrow(/at most/);
+  });
+});
+
+describe('naming a director', () => {
+  it('finds one from a key, a title or the start of a title, and never guesses', () => {
+    expect(directorFromName('Creative Director')).toBe('creative-director');
+    expect(directorFromName('  quality director. ')).toBe('quality-director');
+    expect(directorFromName('creative-director')).toBe('creative-director');
+    expect(directorFromName('Creative')).toBe('creative-director');
+    expect(directorFromName("Media Manager's Office")).toBe('media-manager');
+    expect(directorFromName('Director')).toBeNull(); // matches several
+    expect(directorFromName('Bob')).toBeNull();
+    expect(directorFromName('')).toBeNull();
+    expect(isDirectorKey('ai-director')).toBe(true);
+    expect(isDirectorKey('bob')).toBe(false);
+    expect(directorTitle('software-director')).toBe('Software Director');
+    expect(directorTitle(null)).toBeNull();
   });
 });
 
