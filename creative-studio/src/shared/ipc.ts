@@ -445,8 +445,8 @@ export interface StudioApi {
   };
   claude: {
     state(): Promise<ClaudeState>;
-    /** Sends a message; resolves when Claude has finished its turn. */
-    send(message: string): Promise<void>;
+    /** Sends a message; resolves when Claude has finished its turn. `maxTurns` asks Claude to stop after that many steps (work started from the Planner). */
+    send(message: string, opts?: { maxTurns?: number }): Promise<void>;
     /** One real Claude call: name, category, apps and steps for a described project. Starts no work and no paid generation. */
     /** `via` runs the plan on OpenAI, Gemini or a local model instead of Claude. */
     planProject(request: string, via?: { selection: import('./agentProvider').AgentProviderSelection; model: string }): Promise<ProjectPlan>;

@@ -22,6 +22,7 @@ import type { RunSnapshot } from '@shared/workflowControl';
 import type { DeliverQueue } from './deliver';
 import { exportFileText, listExportFormatsText } from './exportOps';
 import { buildResumeContext } from '@shared/claudeHistory';
+import { clampSendTurns } from '@shared/agentBudget';
 import { builtinTemplates, templateCatalogForClaude } from '@shared/templates';
 import { signInEnv, type ClaudeAuth } from './claudeAuth';
 import { claudeLoginLaunch, defaultClaudeCliPath, findOnPath } from './platform/exec';
@@ -828,8 +829,8 @@ Available AI image models: ${models.length ? models.join('; ') : 'none set up'}.
     }
   }
 
-  /** Sends one message; Claude works until it answers. Streams activity and replies to the panel. */
-  async send(message: string): Promise<void> {
+  /** Sends one message; Claude works until it answers, or until `maxTurns` steps (work started from the Planner asks for fewer than the panel's own limit). Streams activity and replies to the panel. */
+  async send(message: string, opts: { maxTurns?: number } = {}): Promise<void> {
     if (this.status === 'working') throw new Error('Claude is still working. Stop it or wait.');
     await this.ready();
     // A new session (project just reopened): give Claude a short summary and the last few messages, not the whole chat.
@@ -852,7 +853,7 @@ Available AI image models: ${models.length ? models.join('; ') : 'none set up'}.
           allowedTools: TOOL_NAMES.map((n) => `mcp__createcraft__${n}`),
           permissionMode: 'dontAsk',
           settingSources: [],
-          maxTurns: 300,
+          maxTurns: clampSendTurns(opts.maxTurns),
           cwd: await this.d.workDir(),
           abortController: abort,
           ...(this.sessionId ? { resume: this.sessionId } : {}),

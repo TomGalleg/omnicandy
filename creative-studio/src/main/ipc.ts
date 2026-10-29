@@ -1524,9 +1524,9 @@ export function registerIpc(d: IpcDeps): void {
   });
 
   handle(IPC.claudeState, none, async () => { await claude().ready(); return claude().state(); });
-  handle(IPC.claudeSend, z.tuple([z.string().min(1).max(4000)]), (msg) => {
+  handle(IPC.claudeSend, z.tuple([z.string().min(1).max(4000), z.object({ maxTurns: z.number().int().min(1).max(300).optional() }).strict().optional()]), (msg, opts?: { maxTurns?: number }) => {
     if (agentAbort) throw new Error('Stop the independent agent before starting Claude.');
-    return claude().send(msg);
+    return claude().send(msg, opts ?? {});
   });
 
   // ---- Reference files chosen on Home: held as paths in main, copied only after the plan is approved ----

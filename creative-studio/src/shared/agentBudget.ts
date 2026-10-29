@@ -3,6 +3,10 @@ export const AGENT_BUDGET_LIMITS = {
   maxTurns: { default: 60, min: 1, max: 100 },
   maxToolCalls: { default: 150, min: 1, max: 250 },
 } as const;
+/** Steps (model turns) Claude's panel may take for one message. The panel's own limit is the maximum; work started from the Planner can ask for less. */
+export const CLAUDE_SEND_TURNS = { default: 300, min: 1, max: 300 } as const;
+export const clampSendTurns = (n: number | undefined): number => (n === undefined || !Number.isFinite(n) ? CLAUDE_SEND_TURNS.default : Math.min(CLAUDE_SEND_TURNS.max, Math.max(CLAUDE_SEND_TURNS.min, Math.floor(n))));
+
 /** strictVerification: keep the long verification rulebook (every plan step needs an evidence_verify, completion is gated). Off by default: the AI works the way Claude's panel does. */
 export interface AgentBudget { maxTurns?: number; maxToolCalls?: number; strictVerification?: boolean }
 

@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { isClaimLive, type ExecPackage, type PlannerProject } from '@shared/planner';
 import { brainstormText, buildContext } from '@shared/plannerContext';
 import { DESTINATIONS, lastActive, listPaths, sendText, type DestinationId } from '@shared/plannerSend';
-import { copyText, CopyButton, ErrorLine, Section, useAction, when } from './plannerUi';
+import { copyText, CopyButton, errMsg, ErrorLine, Section, useAction, when } from './plannerUi';
 
 const api = () => window.studio.planner;
 const TOOL_KINDS = ['claude-code', 'gemini', 'cowork'];
@@ -17,6 +17,11 @@ export function SendPanel({ p, reload, sel, setSel, only }: { p: PlannerProject;
   const [redact, setRedact] = useState(true);
   const [seen, setSeen] = useState<{ name: string; at: string } | null>(null);
   const [filled, setFilled] = useState(false);
+  // "Do this now": the owner confirms what will happen and how long it may run before OmniCandy's Claude starts. Nothing starts without that.
+  const [confirming, setConfirming] = useState(false);
+  const [steps, setSteps] = useState(40);
+  const [started, setStarted] = useState(false);
+  const [runError, setRunError] = useState<string | null>(null);
   const [force, setForce] = useState<string[]>([]);
   const [copied, setCopied] = useState(false);
   const a = useAction(reload);
@@ -25,7 +30,7 @@ export function SendPanel({ p, reload, sel, setSel, only }: { p: PlannerProject;
   const chosen = useMemo(() => (only ? ready.map((t) => t.id) : sel.filter((id) => ready.some((t) => t.id === id))), [sel, ready, only]);
   useEffect(() => { void api().activity(p.id).then((act) => setSeen(lastActive(act, TOOL_KINDS))).catch(() => {}); }, [p.id, p.revision]);
   const chosenKey = chosen.join(',');
-  useEffect(() => { setSent(null); setFilled(false); setCopied(false); }, [chosenKey, dest, force]);
+  useEffect(() => { setSent(null); setFilled(false); setCopied(false); setConfirming(false); setStarted(false); setRunError(null); }, [chosenKey, dest, force]);
   useEffect(() => { setForce([]); }, [chosenKey, dest]);
   const ctx = useMemo(() => (chosen.length ? buildContext(p, { purpose: 'execute', taskIds: chosen, destination: dest, forceInclude: force }) : null), [p, chosen, dest, force]);
   useEffect(() => { setRedact(dest === 'chat'); }, [dest]);
@@ -73,7 +78,7 @@ export function SendPanel({ p, reload, sel, setSel, only }: { p: PlannerProject;
       )}
       {ctx && ctx.rules.length === 0 && ctx.upstream.length > 0 && <p className="pl-hint">It also gets the finished results of: {ctx.upstream.map((u) => u.title).join(', ')}.</p>}
       {ready.length > 0 && <details><summary>More options</summary><label>What should it aim for? (optional)<input value={objective} onChange={(e) => setObjective(e.target.value)} placeholder="Leave empty to use the task names" /></label></details>}
-      {ready.length > 0 && <div><button className="btn primary" disabled={a.busy || !chosen.length} onClick={() => void prepare()}>{dest === 'createcraft' ? 'Get the message' : 'Copy the instructions'}</button></div>}
+      {ready.length > 0 && <div><button className="btn primary" disabled={a.busy || !chosen.length} onClick={() => void prepare()}>{dest === 'createcraft' ? 'Get it ready' : 'Copy the instructions'}</button></div>}
       <ErrorLine error={a.error} />
       {sent && (
         <div className="pl-sent" role="status">
@@ -87,10 +92,24 @@ export function SendPanel({ p, reload, sel, setSel, only }: { p: PlannerProject;
           )}
           <div className="pl-actions">
             <CopyButton text={text} label={sent.dest === 'chat' ? 'Copy for the chat' : sent.dest === 'tools' ? 'Copy the line to paste' : 'Copy the message'} />
-            {sent.dest === 'createcraft' && <button className="btn small" onClick={() => { window.dispatchEvent(new CustomEvent('createcraft:claude-prefill', { detail: { text } })); setFilled(true); }}>Put it in the Claude panel</button>}
+            {sent.dest === 'createcraft' && !started && !confirming && <button className="btn primary" onClick={() => setConfirming(true)}>Do this now</button>}
+            {sent.dest === 'createcraft' && !started && <button className="btn small" onClick={() => { window.dispatchEvent(new CustomEvent('createcraft:claude-prefill', { detail: { text } })); setFilled(true); }}>Put it in the Claude panel instead</button>}
             <button className="btn small ghost" disabled={a.busy} title="Cancel this brief; its tasks go back to To Do" onClick={() => void a.run(async () => { await api().cancelPackage(p.id, sent.pkg.id); setSent(null); })}>Unsend</button>
           </div>
           {copied && sent.dest !== 'createcraft' && <p className="pl-hint" role="status">Copied. Paste it into {sent.dest === 'chat' ? 'ChatGPT, Gemini or Claude' : 'your tool'}.</p>}
+          {sent.dest === 'createcraft' && confirming && !started && (
+            <div className="pl-warn" role="alertdialog" aria-label="Start this work">
+              <p><strong>Start this now?</strong> OmniCandy's Claude will read the brief, claim {chosen.length === 1 ? 'the chunk' : 'the chunks'}, work in this project with the apps you have connected, then report back for your review. It asks you before it runs another program, never marks anything Done itself, and uses your Claude sign-in.</p>
+              <label>It stops by itself after about <select value={steps} onChange={(e) => setSteps(Number(e.target.value))}><option value={20}>20 steps (short)</option><option value={40}>40 steps (normal)</option><option value={100}>100 steps (long)</option></select></label>
+              <p className="pl-actions">
+                <button className="btn primary" onClick={() => { setStarted(true); setConfirming(false); setRunError(null); void window.studio.claude.send(text, { maxTurns: steps }).then(() => reload()).catch((e: unknown) => { setStarted(false); setRunError(errMsg(e)); }); }}>Start</button>
+                <button className="btn" onClick={() => setConfirming(false)}>Not yet</button>
+              </p>
+            </div>
+          )}
+          {started && <p className="pl-hint" role="status">Started. Watch the Claude panel. While it works, the chunk's director shows a turning gear in the town, and a ! when the result is ready for you to review. Press Stop in the Claude panel to end it.</p>}
+          <ErrorLine error={runError} />
+          {sent.dest === 'createcraft' && chosen.some((id) => !p.tasks.find((t) => t.id === id)?.assignee) && <p className="pl-hint">Tip: choose who handles {chosen.length === 1 ? 'this chunk' : 'these chunks'} (Handled by, on the card in the Studio) so their badge shows in the town.</p>}
           {filled && <p className="pl-hint">It is in the Claude panel's box. Read it, then press Send there. If the panel is closed, use Copy and paste it in.</p>}
           <p className="pl-hint">When the AI answers, paste the answer under <strong>Paste back</strong> below. It will wait for your review.</p>
           <pre className="pl-raw">{text}</pre>
