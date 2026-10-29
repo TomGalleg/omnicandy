@@ -962,6 +962,17 @@ span.tw-portrait { display: grid; place-items: center; }
 .tw-room .tw-seated { position: absolute;  height: auto; aspect-ratio: auto; object-fit: fill; transform: translateX(-50%); pointer-events: none; }
 .tw-room .tw-desk-front { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
 
+.tw-badge { all: unset; position: absolute; z-index: 4; width: 1.9%; aspect-ratio: 1; min-width: 16px; transform: translate(-50%, -440%); display: grid; place-items: center; border-radius: 50%; font: 700 12px/1 system-ui, sans-serif; color: #fff; cursor: pointer; box-shadow: 0 1px 4px rgba(0, 0, 0, .5); }
+.tw-badge[hidden] { display: none; }
+.tw-badge.needs-you { background: #e8a317; }
+.tw-badge.blocked { background: #d33; }
+.tw-badge.working { background: #3b82f6; animation: tw-spin 3s linear infinite; }
+.tw-badge:focus-visible { outline: 2px solid var(--accent); }
+@keyframes tw-spin { to { rotate: 360deg; } }
+@media (prefers-reduced-motion: reduce) { .tw-badge.working { animation: none; } }
+.tw-activity { margin: 4px 0; padding: 6px 8px; border-radius: 8px; font-size: 13px; background: color-mix(in srgb, var(--surface) 80%, #e8a317); }
+.tw-activity.working { background: color-mix(in srgb, var(--surface) 85%, #3b82f6); }
+.tw-activity.blocked { background: color-mix(in srgb, var(--surface) 85%, #d33); }
 .tw-walker::after { content: ''; position: absolute; left: 10%; right: 10%; bottom: -6%; height: 9%; border-radius: 50%; background: radial-gradient(closest-side, rgba(60, 20, 110, .45), transparent); }
 
 .tw-walker[data-walking='1'] { animation: tw-glide .9s ease-in-out infinite alternate; }

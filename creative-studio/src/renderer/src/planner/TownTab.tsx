@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { PlannerChat } from './PlannerChat';
 import mapUrl from '../assets/omnitown-map.jpg';
 import researchOffice from '../assets/offices/research-director.jpg';
@@ -11,7 +11,8 @@ import productionOffice from '../assets/offices/production-director.jpg';
 import softwareOffice from '../assets/offices/software-director.jpg';
 import aiOffice from '../assets/offices/ai-director.jpg';
 import hallInside from '../assets/offices/town-hall.jpg';
-import { TownWalker } from './TownWalker';
+import { TownWalker, type WalkerBadge } from './TownWalker';
+import { ACTIVITY_LABEL, directorActivity, type DirectorActivity } from '@shared/townActivity';
 import { CAST, type CastMember } from './townCast';
 import puffUrl from '../assets/characters/smoke-puff.png';
 import { setPresence, stayInside } from './townPresence';
@@ -61,10 +62,15 @@ function Avatar({ a, big }: { a: TownAgent; big?: boolean }) {
 
 /**
  * OmniTown: the people and places of the project. Every worker has a workplace; a workplace grows with the number of people in it. This shows who is
- * on the team, not what they are doing: nothing here is animated to look busy, because no work is started from here yet.
+ * on the team. A small badge over a director (a ! for a result waiting for you, a turning gear while a chunk of theirs is claimed, a red ! when stuck) is
+ * drawn only from the plan (see shared/townActivity.ts); nothing is animated to look busy.
  */
 export function TownTab(props: TabProps) {
   const { p, reload, go } = props;
+  // What each director is really doing comes from the plan, never from the town. A claim that runs out takes its badge away, so look again every half minute.
+  const [clock, setClock] = useState(() => Date.now());
+  useEffect(() => { const t = setInterval(() => setClock(Date.now()), 30_000); return () => clearInterval(t); }, []);
+  const activity = useMemo(() => directorActivity(p, new Date(clock)), [p, clock]);
   const { town, setTown, note, clearNote } = useTown(p.id);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -131,14 +137,14 @@ export function TownTab(props: TabProps) {
             <button className="btn small tw-back" onClick={() => { setOffice(null); setPick(null); }}>← Back to the town</button>
           </section>
           <aside className="tw-side">
-            <WorkerCard town={town} a={inOffice} busy={busy} onApply={apply} onTalk={() => setTalk(inOffice.id)} onClose={() => { setOffice(null); setPick(null); }} />
+            <WorkerCard town={town} a={inOffice} activity={inOffice.director ? activity[inOffice.director] : undefined} busy={busy} onApply={apply} onTalk={() => setTalk(inOffice.id)} onClose={() => { setOffice(null); setPick(null); }} />
           </aside>
         </div>
       ) : (
         <div className="tw-main">
-          <Scene town={town} onPick={(id) => { setPick(id); setOffice(id && town.agents.find((a) => a.id === id)?.director ? id : null); }} pick={pick} onHall={() => { setInHall(true); setPick(null); setOffice(null); }} />
+          <Scene town={town} activity={activity} onPick={(id) => { setPick(id); setOffice(id && town.agents.find((a) => a.id === id)?.director ? id : null); }} pick={pick} onHall={() => { setInHall(true); setPick(null); setOffice(null); }} />
           <aside className="tw-side">
-            {selected ? <WorkerCard town={town} a={selected} busy={busy} onApply={apply} onTalk={() => setTalk(selected.id)} onClose={() => setPick(null)} />
+            {selected ? <WorkerCard town={town} a={selected} activity={selected.director ? activity[selected.director] : undefined} busy={busy} onApply={apply} onTalk={() => setTalk(selected.id)} onClose={() => setPick(null)} />
               : <p className="pl-hint">Click an office on the map to go inside and meet the person who works there. The Town Hall in the middle is where meetings happen.</p>}
             <details className="pl-fold"><summary>Hire a helper{helpers ? <span className="pl-count">{helpers}</span> : null}</summary>
               <div className="pl-fold-body"><AddWorker town={town} busy={busy} onAdd={(changes) => apply(changes)} /></div>
@@ -225,12 +231,12 @@ function OfficeFigure({ who }: { who: CastMember }) {
  * The OmniTown map. The nine offices and the Town Hall are fixed places on the picture; each is a button over its building. Helpers hired into an
  * office stand under it. Businesses the owner opened themselves (not one of the nine) are listed under the map.
  */
-function Scene({ town, pick, onPick, onHall }: { town: TownState; pick: string | null; onPick: (id: string | null) => void; onHall: () => void }) {
+function Scene({ town, activity, pick, onPick, onHall }: { town: TownState; activity: Partial<Record<DirectorKey, DirectorActivity>>; pick: string | null; onPick: (id: string | null) => void; onHall: () => void }) {
   const extras = town.businesses.filter((b) => !town.workplaces.some((w) => w.kind === 'town-hall' && w.businessId === b.id) && !town.agents.some((a) => a.director && a.businessId === b.id));
   return (
     <div className="tw-scene" role="group" aria-label="The town" onClick={() => onPick(null)}>
       <div className="tw-map-art" style={{ backgroundImage: `url(${mapUrl})` }}>
-        {town.agents.filter((a) => a.director && CAST[a.director] && !a.retired).map((a) => <TownWalker key={a.id} who={CAST[a.director!]!} name={a.name} onOpen={() => onPick(a.id)} />)}
+        {town.agents.filter((a) => a.director && CAST[a.director] && !a.retired).map((a) => <TownWalker key={a.id} who={CAST[a.director!]!} name={a.name} onOpen={() => onPick(a.id)} badge={badgeFor(activity[a.director!])} />)}
         <button className="tw-spot hall" style={{ left: '50%', top: '31%' }} onClick={(e) => { e.stopPropagation(); onHall(); }} aria-label="Town Hall: call a meeting" title="Town Hall: call a meeting"><span>Town Hall</span></button>
         {DIRECTORS.map((d) => {
           const boss = town.agents.find((a) => a.director === d.key && !a.retired);
@@ -260,7 +266,10 @@ function Scene({ town, pick, onPick, onHall }: { town: TownState; pick: string |
   );
 }
 
-function WorkerCard({ town, a, busy, onApply, onTalk, onClose }: { town: TownState; a: TownAgent; busy: boolean; onApply: (c: TeamChange[]) => void; onTalk: () => void; onClose: () => void }) {
+/** The badge over a director: one line saying what it means, made only from what the plan holds. */
+const badgeFor = (a: DirectorActivity | undefined): WalkerBadge | undefined => (a ? { state: a.state, label: `${ACTIVITY_LABEL[a.state]}: ${a.tasks.map((t) => t.title).slice(0, 3).join('; ')}${a.tasks.length > 3 ? ` and ${a.tasks.length - 3} more` : ''}` } : undefined);
+
+function WorkerCard({ town, a, activity, busy, onApply, onTalk, onClose }: { town: TownState; a: TownAgent; activity?: DirectorActivity; busy: boolean; onApply: (c: TeamChange[]) => void; onTalk: () => void; onClose: () => void }) {
   const biz = town.businesses.find((b) => b.id === a.businessId);
   const others = town.businesses.filter((b) => b.id !== a.businessId && !town.workplaces.some((w) => w.kind === 'town-hall' && w.businessId === b.id));
   const [editing, setEditing] = useState(false);
@@ -268,6 +277,7 @@ function WorkerCard({ town, a, busy, onApply, onTalk, onClose }: { town: TownSta
   return (
     <section className="tw-card" aria-label={a.name}>
       <header><Portrait a={a} /><div><strong>{a.name}</strong><br /><small className="pl-hint">{a.role === 'coordinator' ? 'Project coordinator' : a.director ? 'Main worker' : 'Helper'} · {biz?.name}</small></div><button className="btn small ghost" onClick={onClose} aria-label="Close">×</button></header>
+      {activity && <p className={`tw-activity ${activity.state}`} role="status"><strong>{ACTIVITY_LABEL[activity.state]}:</strong> {activity.tasks.map((t) => t.title).join('; ')}</p>}
       <button className="btn small primary" onClick={onTalk}>Talk to {a.name}</button>
       {editing ? (
         <>

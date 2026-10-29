@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import type { CastMember } from './townCast';
+import type { ActivityState } from '@shared/townActivity';
 import puffUrl from '../assets/characters/smoke-puff.png';
 import { clearPresence, presence, restAtDesk, setPresence, stayInside } from './townPresence';
 
@@ -65,13 +66,18 @@ const frameFor = (heading: number, step: number, idle: boolean, east: boolean) =
 const STEPS_PER_SECOND = 6;
 const BREATHS_PER_SECOND = 2.5;
 
-export function TownWalker({ who, name, onOpen }: { who: CastMember; name: string; onOpen: () => void }) {
+/** What is really going on with this director (from the plan), shown as a small badge over their figure, or over their door while they are inside. */
+export interface WalkerBadge { state: ActivityState; label: string }
+
+export function TownWalker({ who, name, onOpen, badge }: { who: CastMember; name: string; onOpen: () => void; badge?: WalkerBadge }) {
   const el = useRef<HTMLButtonElement>(null);
+  const badgeEl = useRef<HTMLButtonElement>(null);
   const puffEl = useRef<HTMLSpanElement>(null);
   useEffect(() => {
     const node = el.current;
     const puff = puffEl.current;
-    if (!node || !puff) return;
+    const flag = badgeEl.current;
+    if (!node || !puff || !flag) return;
     const still = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
     let at = who.start in NODES ? who.start : 'steps';
     let to = '';
@@ -86,6 +92,7 @@ export function TownWalker({ who, name, onOpen }: { who: CastMember; name: strin
     let breath = 0;
     const draw = (walking: boolean) => {
       node.style.left = `${pos[0]}%`; node.style.top = `${pos[1]}%`;
+      flag.style.left = `${pos[0]}%`; flag.style.top = `${pos[1]}%`;
       node.style.backgroundPositionX = `${(frameFor(heading, Math.floor(walking ? stride : breath), !walking, who.order === 'east') / 63) * 100}%`;
       node.dataset.walking = walking ? '1' : '0';
     };
@@ -169,6 +176,7 @@ export function TownWalker({ who, name, onOpen }: { who: CastMember; name: strin
     return () => cancelAnimationFrame(raf);
   }, [who.start, who.order, who.rate]);
   return <>
+    <button ref={badgeEl} type="button" className={`tw-badge ${badge?.state ?? ''}`} hidden={!badge} title={badge?.label} aria-label={badge ? `${name}: ${badge.label}. Open the office.` : undefined} onClick={(e) => { e.stopPropagation(); onOpen(); }}>{badge?.state === 'working' ? '⚙' : '!'}</button>
     <span ref={puffEl} className="tw-puff" aria-hidden style={{ backgroundImage: `url(${puffUrl})` }} />
     <button ref={el} className="tw-walker" style={{ backgroundImage: `url(${who.walk})`, ...(who.frame ? { width: `${4.1 * (who.frame.w / 40)}%`, aspectRatio: `${who.frame.w} / ${who.frame.h}` } : {}) }} onClick={(e) => { e.stopPropagation(); onOpen(); }} aria-label={`${name}, gliding round the town. Open the office.`} title={name} />
   </>;
