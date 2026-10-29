@@ -60,7 +60,8 @@ function ChunkList({ p, reload, text, go, onChange, preview }: { p: PlannerProje
 }
 
 /** `preview`: the Studio keeps what the AI suggests as dashed cards until the owner adds them. */
-export function PlannerChat({ p, reload, go, preview }: { p: PlannerProject; reload: () => Promise<void>; go: (t: TabId) => void; preview?: boolean }) {
+export function PlannerChat({ p, reload, go, preview, agent }: { p: PlannerProject; reload: () => Promise<void>; go: (t: TabId) => void; preview?: boolean; /** Talk to this worker instead of the coordinator: they answer from their own job, and keep their own conversation. */ agent?: { id: string; name: string } }) {
+  const agentId = agent?.id;
   const [providers, setProviders] = useState<ChatProviderInfo[] | null>(null);
   const [provider, setProvider] = useState<ChatProviderId>(() => (['claude', 'openai', 'gemini'].includes(get(PROVIDER_KEY) ?? '') ? (get(PROVIDER_KEY) as ChatProviderId) : 'claude'));
   const [models, setModels] = useState<string[] | null>(null);
@@ -79,13 +80,13 @@ export function PlannerChat({ p, reload, go, preview }: { p: PlannerProject; rel
   // The conversation kept with this plan comes back when the plan is opened.
   useEffect(() => {
     let live = true;
-    void api().chatLoad(p.id).then((c) => {
+    void (agentId ? api().chatLoadFor(p.id, agentId) : api().chatLoad(p.id)).then((c) => {
       if (!live) return;
       setMessages(c.messages);
       if (c.provider && ['claude', 'openai', 'gemini'].includes(c.provider)) setProvider(c.provider as ChatProviderId);
     }).catch(() => {});
     return () => { live = false; };
-  }, [p.id]);
+  }, [p.id, agentId]);
   const save = (next: ChatMessage[]) => { void api().chatSave(p.id, { messages: next, provider, model }).catch(() => {}); };
   const info = providers?.find((x) => x.id === provider);
   useEffect(() => {
@@ -109,18 +110,18 @@ export function PlannerChat({ p, reload, go, preview }: { p: PlannerProject; rel
     const next: ChatMessage[] = [...messages, { role: 'user', text: text.trim() }];
     setMessages(next); setInput(''); setNotYet(null); setBusy(true); setError(null); tellTab(true);
     // The owner's message is saved before the AI answers, so a failed request or a crash never loses it.
-    void api().chatAppend(p.id, { messages: [{ role: 'user', text: text.trim() }], provider, model }).catch(() => {});
+    void api().chatAppend(p.id, { messages: [{ role: 'user', text: text.trim() }], provider, model, ...(agent ? { who: agent.id } : {}) }).catch(() => {});
     try {
-      const r = await api().chat({ projectId: p.id, provider, model, messages: next, mode });
+      const r = await api().chat({ projectId: p.id, provider, model, messages: next, mode, ...(agent ? { agentId: agent.id } : {}) });
       const all: ChatMessage[] = [...next, { role: 'assistant', text: r.text }];
       setMessages(all);
-      void api().chatAppend(p.id, { messages: [{ role: 'assistant', text: r.text }], provider, model }).catch(() => {});
+      void api().chatAppend(p.id, { messages: [{ role: 'assistant', text: r.text }], provider, model, ...(agent ? { who: agent.id } : {}) }).catch(() => {});
     } catch (e) { setError(errMsg(e)); } finally { setBusy(false); tellTab(false); }
   };
 
   const lastIdx = messages.length - 1;
   const last = messages[lastIdx];
-  const readyNow = !!last && last.role === 'assistant' && isReady(last.text) && !chunkPlan(last.text) && notYet !== lastIdx && !busy;
+  const readyNow = !agent && !!last && last.role === 'assistant' && isReady(last.text) && !chunkPlan(last.text) && notYet !== lastIdx && !busy;
   const hasChunks = p.tasks.some((t) => t.status !== 'cancelled');
 
   return (
@@ -128,15 +129,14 @@ export function PlannerChat({ p, reload, go, preview }: { p: PlannerProject; rel
       <div className="pl-chat" ref={listRef} aria-live="polite">
         {!messages.length && (
           <div className="pl-hello">
-            <h3>What do you want to make?</h3>
-            <p className="pl-hint">Tell me in your own words. I will ask a few questions, and when I understand it, I will break the project into clear steps for you.</p>
+            {agent ? <><h3>Say hello to {agent.name}</h3><p className="pl-hint">{agent.name} knows their job, the team and your project. Ask what you need.</p></> : <><h3>What do you want to make?</h3><p className="pl-hint">Tell me in your own words. I will ask a few questions, and when I understand it, I will break the project into clear steps for you.</p></>}
           </div>
         )}
         {messages.map((m, i) => {
           const plan = m.role === 'assistant' ? chunkPlan(m.text) : null;
           return (
             <div key={i} className={`pl-msg ${m.role}`}>
-              <strong>{m.role === 'user' ? 'You' : info?.label ?? 'AI'}</strong>
+              <strong>{m.role === 'user' ? 'You' : agent?.name ?? info?.label ?? 'AI'}</strong>
               {plan ? <ChunkList p={p} reload={reload} text={m.text} go={go} onChange={() => inputRef.current?.focus()} preview={preview} /> : <p className="pl-msg-text">{withoutMarker(m.text)}</p>}
             </div>
           );
@@ -174,7 +174,7 @@ export function PlannerChat({ p, reload, go, preview }: { p: PlannerProject; rel
         </div>
         {info && !info.ready && <p className="pl-warn">{info.note}</p>}
         {info?.ready && <p className="pl-hint">{info.cost} A short summary of your plan (no file locations) is sent with your messages. The conversation is saved with this project's plan.</p>}
-        {messages.length > 0 && <p><button className="btn small ghost" onClick={() => { setMessages([]); setError(null); save([]); }}>Start the conversation over</button></p>}
+        {messages.length > 0 && !agent && <p><button className="btn small ghost" onClick={() => { setMessages([]); setError(null); save([]); }}>Start the conversation over</button></p>}
       </details>
     </div>
   );

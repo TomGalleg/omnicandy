@@ -84,7 +84,7 @@ export interface PlannerApi {
   chatProviders(): Promise<ChatProviderInfo[]>;
   chatModels(provider: 'claude' | 'openai' | 'gemini'): Promise<string[]>;
   /** `mode`: "talk" (default) understands the idea; "chunks" breaks the project into chunks once the owner said yes. */
-  chat(req: { projectId: string; provider: 'claude' | 'openai' | 'gemini'; model: string; messages: Array<{ role: 'user' | 'assistant'; text: string }>; mode?: 'talk' | 'chunks' }): Promise<{ text: string }>;
+  chat(req: { projectId: string; provider: 'claude' | 'openai' | 'gemini'; model: string; messages: Array<{ role: 'user' | 'assistant'; text: string }>; mode?: 'talk' | 'chunks'; /** Talk to this worker (they are told their own job). */ agentId?: string }): Promise<{ text: string }>;
   /** The conversation kept with the plan (restored when the project is opened again). */
   chatLoad(id: string): Promise<{ messages: Array<{ role: 'user' | 'assistant'; text: string }>; provider?: string; model?: string; savedAt?: string }>;
   chatSave(id: string, chat: { messages: Array<{ role: 'user' | 'assistant'; text: string }>; provider?: string; model?: string }): Promise<void>;
@@ -108,7 +108,9 @@ export interface PlannerApi {
   canvasLoad(id: string): Promise<{ layout: CanvasLayout; recovered: boolean }>;
   canvasPatch(id: string, patch: CanvasPatch): Promise<{ layoutRev: number }>;
   /** Adds messages to the saved planning conversation (so a message is saved before the AI answers). */
-  chatAppend(id: string, req: { messages: Array<{ role: 'user' | 'assistant'; text: string }>; provider?: 'claude' | 'openai' | 'gemini'; model?: string }): Promise<{ stored: number }>;
+  chatAppend(id: string, req: { messages: Array<{ role: 'user' | 'assistant'; text: string }>; provider?: 'claude' | 'openai' | 'gemini'; model?: string; /** A worker's own conversation. */ who?: string }): Promise<{ stored: number }>;
+  /** A conversation saved with the plan: the coordinator's (no `who`) or one worker's. */
+  chatLoadFor(id: string, who?: string): Promise<{ messages: Array<{ role: 'user' | 'assistant'; text: string }>; provider?: string; model?: string; savedAt?: string }>;
   /** Stores changes as one pending proposal from the project coordinator. Nothing joins the plan until the owner accepts it. */
   proposeChanges(id: string, draft: { note: string; changes: ProposalChange[] }): Promise<{ proposalId: string }>;
   /** What the owner could do next, worked out from the plan alone. */

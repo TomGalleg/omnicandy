@@ -925,3 +925,21 @@ h1, h2, h3 { margin: 0; font-weight: 600; }
 .tw-scene.alone { min-height: 230px; flex-basis: 300px; }
 .tw-intro { margin: 0; padding: 10px 12px; border: 1px dashed var(--accent); border-radius: var(--radius); background: var(--surface); font-size: 13px; }
 .pc-next { margin: 0; padding: 6px 10px; border-radius: var(--radius); background: var(--surface); border: 1px solid var(--border); font-size: 13px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+
+.tw-talk { height: 460px; display: flex; flex-direction: column; min-height: 0; }
+.tw-talk .pl-chat-main { flex: 1; min-height: 0; }
+.tw-hire textarea { width: 100%; box-sizing: border-box; }
+
+/* OmniTown map: the picture, with a button over each office */
+.tw-scene { min-height: 0; background: var(--surface); }
+.tw-map-art { position: relative; width: 100%; aspect-ratio: 1672 / 941; background-size: cover; background-position: center; }
+.tw-office, .tw-spot.hall { position: absolute; transform: translate(-50%, -50%); }
+.tw-spot { all: unset; cursor: pointer; box-sizing: border-box; width: clamp(86px, 15vw, 190px); height: clamp(58px, 11vw, 130px); border-radius: 14px; display: grid; align-items: end; justify-items: center; }
+.tw-spot.hall { width: clamp(120px, 22vw, 290px); height: clamp(70px, 13vw, 160px); }
+.tw-spot span { opacity: 0; transform: translateY(6px); transition: opacity .12s; padding: 2px 8px; border-radius: 999px; background: rgba(20, 20, 30, .85); color: #fff; font-size: 12px; white-space: nowrap; pointer-events: none; }
+.tw-spot:hover, .tw-spot:focus-visible, .tw-spot.selected { outline: 3px solid var(--accent); background: rgba(255, 255, 255, .12); }
+.tw-spot:hover span, .tw-spot:focus-visible span, .tw-spot.selected span { opacity: 1; }
+.tw-crew { position: absolute; left: 50%; top: 100%; transform: translateX(-50%); display: flex; gap: 4px; margin-top: 2px; }
+.tw-crew .tw-person { background: rgba(20, 20, 30, .85); color: #fff; }
+.tw-extras { display: flex; flex-wrap: wrap; gap: 8px; padding: 10px; border-top: 1px solid var(--border); }
+.tw-extra { display: grid; gap: 3px; padding: 6px 10px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg); }

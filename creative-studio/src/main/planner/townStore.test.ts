@@ -34,7 +34,7 @@ describe('the town of a project', () => {
     const plan = await planner.startPlan({ title: 'Castle' });
     const a = await store.readTown(plan.id);
     const b = await store.readTown(plan.id);
-    expect(a.town.agents).toHaveLength(1);
+    expect(a.town.agents).toHaveLength(9);
     expect(b.town).toEqual(a.town);
     expect(coordinatorOf(b.town)!.id).toBe(coordinatorOf(a.town)!.id);
     expect(seen.filter((e) => e.type === 'town.changed')).toHaveLength(1);
@@ -57,7 +57,7 @@ describe('the town of a project', () => {
     fs.writeFileSync(path.join(planDir(store, plan.id), 'town.json'), '{{ nope');
     const r = await store.readTown(plan.id);
     expect(r.recovered).toBe(true);
-    expect(r.town.agents).toHaveLength(1);
+    expect(r.town.agents).toHaveLength(9);
     expect(fs.readdirSync(planDir(store, plan.id)).some((f) => f.startsWith('town.corrupt-'))).toBe(true);
     expect(seen.some((e) => e.type === 'plan.recovered' && e.what === 'town')).toBe(true);
   });
@@ -81,12 +81,12 @@ describe('suggesting a team and holding a meeting', () => {
     await svc.addTask(u, plan.id, { title: 'Build the terrain', appRef: { kind: 'external', id: 'unreal', note: '' } });
     await svc.addTask(u, plan.id, { title: 'Walls again', appRef: { kind: 'external', id: 'blender', note: '' } });
     const asked = await m.townSuggestFromPlan!(plan.id) as { businesses: unknown[]; suggestions: Array<{ id: string; status: string; changes: unknown[] }> };
-    expect(asked.businesses).toHaveLength(1);
+    expect(asked.businesses).toHaveLength(10);
     expect(asked.suggestions).toHaveLength(1);
     expect(asked.suggestions[0]!.changes).toHaveLength(4);
     const decided = await m.townDecide!(plan.id, asked.suggestions[0]!.id, true) as { businesses: Array<{ name: string }> };
-    expect(decided.businesses.map((b) => b.name)).toEqual(['Town Hall', 'Blender Studio', 'Unreal Studio']);
-    expect((await store.readTown(plan.id)).town.agents.map((a) => a.name)).toEqual(['Coordinator', 'Blender Specialist', 'Unreal Specialist']);
+    expect(decided.businesses.slice(10).map((b) => b.name)).toEqual(['Blender Studio', 'Unreal Studio']);
+    expect((await store.readTown(plan.id)).town.agents.map((a) => a.name).slice(9)).toEqual(['Blender Specialist', 'Unreal Specialist']);
     await expect(m.townSuggestFromPlan!(plan.id)).rejects.toThrow(/nothing new/);
   });
 

@@ -12,6 +12,8 @@ const chatAppendSchema = z.object({
   messages: z.array(z.object({ role: z.enum(['user', 'assistant']), text: z.string().min(1).max(CHAT_MAX_CHARS * 2) }).strict()).min(1).max(4),
   provider: z.enum(['claude', 'openai', 'gemini']).optional(),
   model: z.string().min(1).max(80).optional(),
+  /** A worker's own conversation instead of the coordinator's. */
+  who: z.string().regex(/^agent_[a-z0-9]{4,24}$/).optional(),
 }).strict();
 const draftSchema = z.object({ note: z.string().max(1000), changes: z.array(changeSchema).min(1).max(80) }).strict();
 
@@ -22,7 +24,8 @@ export function createViewMethods(d: ViewMethodDeps): Record<string, (...a: any[
     view: (id?: string) => d.coordinator.view(id === undefined ? undefined : planId.parse(id)),
     canvasLoad: (id: string) => d.store.readCanvas(planId.parse(id)),
     canvasPatch: (id: string, patch: unknown) => d.store.patchCanvas(planId.parse(id), canvasPatchSchema.parse(patch)),
-    chatAppend: (id: string, req: unknown) => d.store.appendChat(planId.parse(id), chatAppendSchema.parse(req)),
+    chatAppend: (id: string, req: unknown) => { const { who, ...r } = chatAppendSchema.parse(req); return d.store.appendChat(planId.parse(id), r, who); },
+    chatLoadFor: (id: string, who?: string) => d.store.readChat(planId.parse(id), who),
     proposeChanges: (id: string, draft: unknown) => d.coordinator.proposeChanges(planId.parse(id), draftSchema.parse(draft)),
     nextSteps: (id: string) => d.coordinator.nextSteps(planId.parse(id)),
   };

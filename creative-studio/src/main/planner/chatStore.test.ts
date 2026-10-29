@@ -70,6 +70,20 @@ describe('the planning conversation file', () => {
     expect((await store.readChat(p.id)).messages).toEqual([]);
   });
 
+  it('keeps a separate conversation for each worker, and refuses anything that is not a worker id', async () => {
+    const { store, svc, u } = make();
+    const p = await svc.createProject(u, { title: 'Team chats' });
+    await store.appendChat(p.id, { messages: [msg(1)] });
+    await store.appendChat(p.id, { messages: [{ role: 'user', text: 'hello Mira' }] }, 'agent_mira0001');
+    await store.appendChat(p.id, { messages: [{ role: 'user', text: 'hello Teo' }] }, 'agent_teo00002');
+    expect((await store.readChat(p.id)).messages.map((m) => m.text)).toEqual(['message 1']);
+    expect((await store.readChat(p.id, 'agent_mira0001')).messages.map((m) => m.text)).toEqual(['hello Mira']);
+    expect((await store.readChat(p.id, 'agent_teo00002')).messages.map((m) => m.text)).toEqual(['hello Teo']);
+    expect((await store.readChat(p.id, 'agent_nobody01')).messages).toEqual([]);
+    await expect(store.readChat(p.id, '../chat')).rejects.toMatchObject({ code: 'invalid' });
+    await expect(store.appendChat(p.id, { messages: [msg(2)] }, 'agent_x')).rejects.toMatchObject({ code: 'invalid' });
+  });
+
   it('keeps the legacy full save working and never stores more than the schema', async () => {
     const { store, svc, u } = make();
     const p = await svc.createProject(u, { title: 'Legacy' });

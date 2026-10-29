@@ -6,6 +6,8 @@
 //    activity, never stored here, so a picture of a worker working always means something is really running.
 //  * Changing the team has cost and permission implications, so only the owner applies team changes. The coordinator can only suggest them.
 import { z } from 'zod';
+import type { PlannerProject } from './planner';
+import { CHUNK_FORMAT, planSummary } from './plannerContext';
 
 export const TOWN_VERSION = 1;
 export const TOWN_LIMITS = { agents: 100, businesses: 50, workplaces: 100, meetings: 200, notesPerMeeting: 200, suggestions: 100, participants: 12, name: 60, text: 2000 } as const;
@@ -14,11 +16,41 @@ export type AgentRole = 'coordinator' | 'worker';
 /** Which AI a worker uses. 'default' follows the project's choice; a role is never tied to one provider. */
 export type AgentEngine = { kind: 'default' } | { kind: 'claude' | 'openai' | 'gemini' | 'local'; model?: string };
 export type WorkplaceKind = 'town-hall' | 'workplace';
+
+/** The nine main workers every town has. Each has an office on the OmniTown map. `spot` is where the office sits on that picture, in percent. */
+export const DIRECTORS = [
+  { key: 'general-manager', title: 'General Manager', remit: 'Overall project coordination', spot: { x: 14.7, y: 46 },
+    job: 'Coordinate the whole project: help the owner work out what they want to make, keep every part moving together, decide which director should handle what, suggest next steps and bring decisions back to the owner.' },
+  { key: 'creative-director', title: 'Creative Director', remit: 'Art and visual direction', spot: { x: 18.5, y: 21 },
+    job: 'Guide the art and the look of the project: style, colour, composition, characters, mood and visual consistency. Explain your choices in plain words and offer options.' },
+  { key: 'ai-director', title: 'AI Director', remit: 'AI models and agents', spot: { x: 36.8, y: 13 },
+    job: 'Know the AI models and agents available and which one fits each task. Advise on prompts, model choice, cost and quality, and on how AI helpers should be set up for this project.' },
+  { key: 'software-director', title: 'Software Director', remit: 'Connected applications and specialists', spot: { x: 65.8, y: 14.5 },
+    job: 'Know the applications connected to OmniCandy (for example Blender, Unreal and DaVinci Resolve) and what each can do. Say which application and specialist suits each chunk of work and what it would need.' },
+  { key: 'production-director', title: 'Production Director', remit: 'Plans, tasks and delivery', spot: { x: 85, y: 23 },
+    job: 'Own the plan: break work into clear chunks, order them, spot what blocks what, track progress honestly and say what is needed to deliver on time.' },
+  { key: 'technical-director', title: 'Technical Director', remit: 'Development and engineering', spot: { x: 86.4, y: 48 },
+    job: 'Handle the technical side: code, tools, pipelines, file formats and performance. Explain technical choices simply and flag technical risks early.' },
+  { key: 'quality-director', title: 'Quality Director', remit: 'Testing and verification', spot: { x: 19.7, y: 74.5 },
+    job: 'Check that work is correct and good: define what done means for each chunk, say how to test it, and point out what could be wrong. Never call something verified unless it really was.' },
+  { key: 'research-director', title: 'Research Director', remit: 'Research and documentation', spot: { x: 50, y: 80 },
+    job: 'Find out what the project needs to know and write it down: references, how-tos, decisions and notes. Say clearly what you know, what you are unsure of and where it came from.' },
+  { key: 'media-manager', title: 'Media Manager', remit: 'Media library, assets, versions and file organization', spot: { x: 80.4, y: 74.5 },
+    job: 'Look after the files: the media library, assets, versions and folder organisation. Suggest where things should live and how to name them, and keep track of which version is current.' },
+] as const;
+export type DirectorKey = (typeof DIRECTORS)[number]['key'];
+const DIRECTOR_KEYS = DIRECTORS.map((d) => d.key) as [DirectorKey, ...DirectorKey[]];
+export const directorOffice = (title: string) => `${title}'s Office`;
 export type MeetingKind = 'kickoff' | 'planning' | 'brainstorm' | 'technical' | 'progress' | 'emergency' | 'other';
 export const MEETING_KINDS: readonly MeetingKind[] = ['kickoff', 'planning', 'brainstorm', 'technical', 'progress', 'emergency', 'other'];
 
 export interface TownAgent {
-  id: string; name: string; role: AgentRole; specialty: string; businessId: string; workplaceId: string; engine: AgentEngine;
+  id: string; name: string; role: AgentRole; specialty: string;
+  /** What this worker is for, in the owner's words. The worker is told this and works within it. */
+  job?: string;
+  /** Set for the nine main workers. They cannot be retired or moved; their job can still be edited. */
+  director?: DirectorKey;
+  businessId: string; workplaceId: string; engine: AgentEngine;
   /** How the character looks. A seed and an accent colour are enough for any renderer to draw the same person. */
   look: { seed: number; accent: string };
   createdAt: string; retired?: boolean;
@@ -36,7 +68,8 @@ export interface TownMeeting {
 
 export type TeamChange =
   | { op: 'add_business'; name: string; trade: string }
-  | { op: 'add_agent'; name: string; specialty: string; businessId: string; engine?: AgentEngine }
+  | { op: 'add_agent'; name: string; specialty: string; job?: string; businessId: string; engine?: AgentEngine }
+  | { op: 'update_agent'; agentId: string; name?: string; specialty?: string; job?: string; engine?: AgentEngine }
   | { op: 'move_agent'; agentId: string; businessId: string }
   | { op: 'retire_agent'; agentId: string }
   | { op: 'rename_business'; businessId: string; name: string };
@@ -52,11 +85,13 @@ export class TownError extends Error {
 }
 
 const str = (n: number) => z.string().trim().max(n);
+export const JOB_MAX = 1200;
 const name = str(TOWN_LIMITS.name).min(1);
 const engineSchema = z.union([z.object({ kind: z.literal('default') }).strict(), z.object({ kind: z.enum(['claude', 'openai', 'gemini', 'local']), model: z.string().min(1).max(80).optional() }).strict()]);
 export const teamChangeSchema: z.ZodType<TeamChange> = z.discriminatedUnion('op', [
   z.object({ op: z.literal('add_business'), name, trade: str(TOWN_LIMITS.name).default('') }).strict(),
-  z.object({ op: z.literal('add_agent'), name, specialty: str(200).default(''), businessId: z.string().max(80).min(1), engine: engineSchema.optional() }).strict(),
+  z.object({ op: z.literal('add_agent'), name, specialty: str(200).default(''), job: str(JOB_MAX).optional(), businessId: z.string().max(80).min(1), engine: engineSchema.optional() }).strict(),
+  z.object({ op: z.literal('update_agent'), agentId: z.string().max(80).min(1), name: name.optional(), specialty: str(200).optional(), job: str(JOB_MAX).optional(), engine: engineSchema.optional() }).strict(),
   z.object({ op: z.literal('move_agent'), agentId: z.string().max(80).min(1), businessId: z.string().max(80).min(1) }).strict(),
   z.object({ op: z.literal('retire_agent'), agentId: z.string().max(80).min(1) }).strict(),
   z.object({ op: z.literal('rename_business'), businessId: z.string().max(80).min(1), name }).strict(),
@@ -66,7 +101,7 @@ export const teamChangesSchema = z.array(teamChangeSchema).min(1).max(30);
 const idRe = /^[a-z]{2,10}_[a-z0-9]{4,24}$/;
 const idStr = z.string().regex(idRe);
 const agentSchema = z.object({
-  id: idStr, name, role: z.enum(['coordinator', 'worker']), specialty: str(200), businessId: idStr, workplaceId: idStr, engine: engineSchema,
+  id: idStr, name, role: z.enum(['coordinator', 'worker']), specialty: str(200), job: str(JOB_MAX).optional(), director: z.enum(DIRECTOR_KEYS).optional(), businessId: idStr, workplaceId: idStr, engine: engineSchema,
   look: z.object({ seed: z.number().int().min(0).max(2 ** 31), accent: z.string().max(32) }).strict(), createdAt: z.string().max(40), retired: z.boolean().optional(),
 }).strict();
 export const townStateSchema = z.object({
@@ -104,17 +139,54 @@ export function makeId(prefix: string, rnd: () => number = Math.random): string 
   return `${prefix}_${body}`;
 }
 
-/** A new town: the Town Hall and the coordinator, and nothing else. The team grows with the project. */
+/** The office and the person for one director, added to `t`. The General Manager is the coordinator. */
+function addDirector(t: TownState, d: (typeof DIRECTORS)[number], iso: string, rnd?: () => number): TownAgent {
+  const biz: TownBusiness = { id: makeId('biz', rnd), name: directorOffice(d.title), trade: d.remit, managerId: null, createdAt: iso };
+  const place: TownWorkplace = { id: makeId('place', rnd), businessId: biz.id, name: biz.name, kind: 'workplace', x: d.spot.x, y: d.spot.y };
+  const a: TownAgent = {
+    id: makeId('agent', rnd), name: d.title, role: d.key === 'general-manager' ? 'coordinator' : 'worker', specialty: d.remit, job: d.job, director: d.key,
+    businessId: biz.id, workplaceId: place.id, engine: { kind: 'default' }, look: lookFor(d.key), createdAt: iso,
+  };
+  biz.managerId = a.id;
+  t.businesses.push(biz); t.workplaces.push(place); t.agents.push(a);
+  return a;
+}
+
+/** A new town: the Town Hall and the nine directors, each in their own office. Nobody else is added; helpers are hired by the owner. */
 export function defaultTown(now: Date, rnd?: () => number): TownState {
   const iso = now.toISOString();
-  const business: TownBusiness = { id: makeId('biz', rnd), name: 'Town Hall', trade: 'Planning and coordination', managerId: null, createdAt: iso };
-  const hall: TownWorkplace = { id: makeId('place', rnd), businessId: business.id, name: 'Town Hall', kind: 'town-hall', x: 0, y: 0 };
-  const coordinator: TownAgent = {
-    id: makeId('agent', rnd), name: 'Coordinator', role: 'coordinator', specialty: 'Keeps the project organised, suggests next steps and brings decisions to you',
-    businessId: business.id, workplaceId: hall.id, engine: { kind: 'default' }, look: lookFor('coordinator'), createdAt: iso,
-  };
-  business.managerId = coordinator.id;
-  return { version: 1, rev: 1, updatedAt: iso, businesses: [business], workplaces: [hall], agents: [coordinator], meetings: [], suggestions: [] };
+  const business: TownBusiness = { id: makeId('biz', rnd), name: 'Town Hall', trade: 'Meetings and planning together', managerId: null, createdAt: iso };
+  const hall: TownWorkplace = { id: makeId('place', rnd), businessId: business.id, name: 'Town Hall', kind: 'town-hall', x: 50, y: 31 };
+  const t: TownState = { version: 1, rev: 1, updatedAt: iso, businesses: [business], workplaces: [hall], agents: [], meetings: [], suggestions: [] };
+  for (const d of DIRECTORS) addDirector(t, d, iso, rnd);
+  return t;
+}
+
+/**
+ * Brings a town made before the directors existed up to date: the old coordinator becomes the General Manager and the other eight arrive.
+ * Returns the same object when nothing was missing, so callers can tell whether to save.
+ */
+export function withDirectors(state: TownState, now: Date, rnd?: () => number): TownState {
+  const has = (k: DirectorKey) => state.agents.some((a) => a.director === k);
+  if (DIRECTORS.every((d) => has(d.key))) return state;
+  const t: TownState = structuredClone(state);
+  const iso = now.toISOString();
+  const old = t.agents.find((a) => a.role === 'coordinator' && !a.director && !a.retired);
+  for (const d of DIRECTORS) {
+    if (t.agents.some((a) => a.director === d.key)) continue;
+    const fresh = addDirector(t, d, iso, rnd);
+    if (d.key !== 'general-manager' || !old) continue;
+    // The same person (same id, same conversations), now in their own office with a proper title.
+    t.agents = t.agents.filter((a) => a.id !== fresh.id);
+    const from = t.businesses.find((b) => b.id === old.businessId);
+    if (from && from.managerId === old.id) from.managerId = null;
+    old.director = d.key; old.businessId = fresh.businessId; old.workplaceId = fresh.workplaceId;
+    if (old.name === 'Coordinator') old.name = d.title;
+    if (!old.job) old.job = d.job;
+    t.businesses.find((b) => b.id === fresh.businessId)!.managerId = old.id;
+  }
+  t.rev = state.rev + 1; t.updatedAt = iso;
+  return t;
 }
 
 const need = <T extends { id: string }>(list: T[], id: string, what: string): T => {
@@ -154,14 +226,22 @@ export function applyTeamChanges(state: TownState, changesIn: TeamChange[], now:
         if (t.agents.length >= TOWN_LIMITS.agents) throw new TownError('limit', 'The town cannot hold more workers.');
         const place = t.workplaces.find((w) => w.businessId === biz.id);
         if (!place) throw new TownError('invalid', 'That business has no workplace.');
-        const a: TownAgent = { id: makeId('agent', rnd), name: c.name, role: 'worker', specialty: c.specialty, businessId: biz.id, workplaceId: place.id, engine: c.engine ?? { kind: 'default' }, look: lookFor(`${c.name}:${t.agents.length}`), createdAt: iso };
+        const a: TownAgent = { id: makeId('agent', rnd), name: c.name, role: 'worker', specialty: c.specialty, ...(c.job ? { job: c.job } : {}), businessId: biz.id, workplaceId: place.id, engine: c.engine ?? { kind: 'default' }, look: lookFor(`${c.name}:${t.agents.length}`), createdAt: iso };
         t.agents.push(a);
         if (!biz.managerId) biz.managerId = a.id;
         break;
       }
+      case 'update_agent': {
+        const a = need(t.agents, c.agentId, 'worker');
+        if (c.name !== undefined) a.name = c.name;
+        if (c.specialty !== undefined) a.specialty = c.specialty;
+        if (c.job !== undefined) { if (c.job) a.job = c.job; else delete a.job; }
+        if (c.engine !== undefined) a.engine = c.engine;
+        break;
+      }
       case 'move_agent': {
         const a = need(t.agents, c.agentId, 'worker');
-        if (a.role === 'coordinator') throw new TownError('invalid', 'The coordinator stays at the Town Hall.');
+        if (a.role === 'coordinator' || a.director) throw new TownError('invalid', `${a.name} stays in their own office.`);
         const biz = need(t.businesses, bizId(c.businessId), 'business');
         const place = t.workplaces.find((w) => w.businessId === biz.id);
         if (!place) throw new TownError('invalid', 'That business has no workplace.');
@@ -174,6 +254,7 @@ export function applyTeamChanges(state: TownState, changesIn: TeamChange[], now:
       case 'retire_agent': {
         const a = need(t.agents, c.agentId, 'worker');
         if (a.role === 'coordinator') throw new TownError('invalid', 'The coordinator cannot be retired.');
+        if (a.director) throw new TownError('invalid', `${a.name} is one of the nine main workers and cannot be retired.`);
         a.retired = true;
         const biz = t.businesses.find((b) => b.id === a.businessId);
         if (biz?.managerId === a.id) biz.managerId = t.agents.find((x) => x.businessId === biz.id && x.id !== a.id && !x.retired)?.id ?? null;
@@ -182,6 +263,7 @@ export function applyTeamChanges(state: TownState, changesIn: TeamChange[], now:
       case 'rename_business': {
         const b = need(t.businesses, c.businessId, 'business');
         if (t.workplaces.some((w) => w.kind === 'town-hall' && w.businessId === b.id)) throw new TownError('invalid', 'The Town Hall keeps its name.');
+        if (t.agents.some((a) => a.director && a.businessId === b.id)) throw new TownError('invalid', 'The nine offices keep their names.');
         b.name = c.name;
         for (const w of t.workplaces) if (w.businessId === b.id) w.name = c.name;
         break;
@@ -270,4 +352,38 @@ export function decideTeamSuggestion(state: TownState, suggestionId: string, acc
   if (s.status !== 'pending') throw new TownError('invalid', 'That suggestion was already decided.');
   const base = accept ? applyTeamChanges(state, s.changes, now, rnd) : touch(structuredClone(state), now);
   return { ...base, suggestions: base.suggestions.map((x) => (x.id === suggestionId ? { ...x, status: accept ? 'accepted' : 'rejected' } : x)) };
+}
+
+// ---- what a worker is told ----------------------------------------------------------------------------------------------------
+const DEFAULT_COORDINATOR_JOB = 'Keep the project organised: help the owner work out what they want to make, break it into chunks, suggest next steps, and bring decisions back to them.';
+
+/**
+ * Everything a worker needs to understand its job: who it is, what it is for, where it works, who else is on the team, and what the project is.
+ * The owner stays in charge: a worker advises and proposes; it never claims anything is done and never changes the plan itself.
+ */
+export function agentSystemPrompt(town: TownState, agent: TownAgent, plan: PlannerProject): string {
+  const biz = town.businesses.find((b) => b.id === agent.businessId);
+  const mates = activeAgents(town).filter((a) => a.id !== agent.id);
+  const job = (agent.job ?? '').trim() || (agent.role === 'coordinator' ? DEFAULT_COORDINATOR_JOB : agent.specialty.trim()) || 'Help with whatever this project needs, within your business.';
+  return [
+    `You are ${agent.name}, ${agent.role === 'coordinator' ? 'the project coordinator' : agent.director ? 'one of the nine main workers' : 'a member of the team'} at ${biz?.name ?? 'the project'}, in the OmniTown team for the project "${plan.title}". You are talking with the project owner.`,
+    '',
+    `Your job: ${job}`,
+    ...(agent.specialty.trim() && agent.job ? [`Your specialty: ${agent.specialty.trim()}`] : []),
+    ...(biz?.trade ? [`Your business: ${biz.name}, ${biz.trade}.`] : []),
+    ...(mates.length ? ['', 'The rest of the team:', ...mates.map((m) => `- ${m.name}${m.role === 'coordinator' ? ' (coordinator)' : ''}: ${(m.job ?? m.specialty ?? '').trim().slice(0, 160) || 'general help'}`)] : []),
+    '',
+    'How to behave:',
+    '- Plain, short sentences. Sound like a friendly, capable colleague. Ask at most two short questions at a time, and only when you really need the answer.',
+    '- Stay inside your job. If something belongs to someone else on the team, say who, and what to ask them.',
+    '- You can discuss, advise, plan and suggest. You do not do the work yourself yet, and you cannot change the plan: the owner decides what joins it and what is finished.',
+    '- Never say that something is done unless the owner has said so. Say what you would do and what you would need.',
+    '- If the owner asks you to add or change steps, answer in the plan format below, listing only the chunks for your part of the work.',
+    '',
+    'Plan format (only when asked for steps):',
+    CHUNK_FORMAT,
+    '',
+    'The project so far:',
+    ...planSummary(plan),
+  ].join(String.fromCharCode(10));
 }

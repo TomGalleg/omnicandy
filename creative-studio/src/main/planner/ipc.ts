@@ -17,6 +17,7 @@ import { ProjectCoordinator } from './coordinator';
 import { PlannerEventHub } from './events';
 import { RoutedPlannerStore } from './routedStore';
 import { PlannerService, userCtx } from './service';
+import { agentSystemPrompt } from '@shared/town';
 import { createTownMethods } from './townMethods';
 import { createViewMethods } from './viewMethods';
 
@@ -77,6 +78,8 @@ export function registerPlannerIpc(d: Deps): void {
     projectId: z.string().max(60), provider, model: z.string().min(1).max(80),
     messages: z.array(z.object({ role: z.enum(['user', 'assistant']), text: z.string().min(1).max(MAX_CHAT_MESSAGE_CHARS) })).min(1).max(MAX_CHAT_MESSAGES),
     mode: z.enum(['talk', 'chunks']).optional(),
+    /** Talk to this worker instead of the coordinator: they are told their own job (see agentSystemPrompt). */
+    agentId: z.string().regex(/^agent_[a-z0-9]{4,24}$/).optional(),
   });
   // Which project is open decides where plans are read from and written to (see projectPlanner.ts).
   const pp = new ProjectPlanner(s, d.store, d.project);
@@ -154,7 +157,14 @@ export function registerPlannerIpc(d: Deps): void {
       const plan = await s.getProject(u, r.projectId);
       // What the project already contains (names and counts only) is part of what the AI is told, when this is the open project's plan.
       const context = await pp.chatContext(plan);
-      return needChat().reply({ system: chatSystemPrompt(plan, context, r.mode ?? 'talk'), provider: r.provider, model: r.model, messages: r.messages });
+      let system = chatSystemPrompt(plan, context, r.mode ?? 'talk');
+      if (r.agentId) {
+        const { town } = await d.store.readTown(plan.id);
+        const agent = town.agents.find((a) => a.id === r.agentId && !a.retired);
+        if (!agent) throw new Error('That worker is not on the team any more.');
+        system = [agentSystemPrompt(town, agent, plan), ...(context?.length ? ['', 'What the project already contains (names and counts only):', ...context] : [])].join(String.fromCharCode(10));
+      }
+      return needChat().reply({ system, provider: r.provider, model: r.model, messages: r.messages });
     },
     connectionInfo: async () => { await sync(); return connectionInfo(d.store.projectRoot ?? d.dir); },
     openFolder: async () => { await sync(); const dir = d.store.projectRoot ?? d.dir; await fs.mkdir(dir, { recursive: true }); await shell.openPath(dir); },

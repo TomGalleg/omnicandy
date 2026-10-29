@@ -12,7 +12,7 @@ import { randomBytes } from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { type ActivityEntry, type Actor, canonical, type PlannerProject, type ProjectSummary, snapshotOf, summarize } from '@shared/planner';
-import { defaultTown, townStateSchema, type TownState } from '@shared/town';
+import { defaultTown, townStateSchema, withDirectors, type TownState } from '@shared/town';
 import { applyCanvasPatch, canvasLayoutSchema, CanvasLimitError, type CanvasLayout, type CanvasPatch, emptyCanvas } from '@shared/plannerCanvas';
 
 export class PlannerError extends Error {
@@ -43,6 +43,13 @@ export interface ChatFile { messages: ChatMessage[]; provider?: string; model?: 
 export const CHAT_KEEP_MESSAGES = 48;
 export const CHAT_MAX_CHARS = 6000;
 const KEEP_CORRUPT = 3;
+
+/** The coordinator's conversation is `chat`; each worker has their own, `chat-<agentId>`. Only well-formed worker ids are accepted. */
+function chatName(who?: string): string {
+  if (who === undefined) return 'chat';
+  if (!/^agent_[a-z0-9]{4,24}$/.test(who)) throw new PlannerError('invalid', 'That is not a worker id.');
+  return `chat-${who}`;
+}
 
 async function writeJsonAtomic(file: string, data: unknown): Promise<void> {
   const tmp = `${file}.${process.pid}.${randomBytes(3).toString('hex')}.tmp`;
@@ -214,9 +221,10 @@ export class PlannerStore {
    * The planning conversation, kept with the plan so it is there when the project is opened again. An older file (no version) loads as it is.
    * A damaged file is set aside and the copy from before the last write is used; with neither, the conversation starts empty.
    */
-  async readChat(id: string): Promise<ChatFile> {
-    const file = path.join(this.dir(id), 'chat.json');
-    const prev = path.join(this.dir(id), 'chat.prev.json');
+  async readChat(id: string, who?: string): Promise<ChatFile> {
+    const name = chatName(who);
+    const file = path.join(this.dir(id), `${name}.json`);
+    const prev = path.join(this.dir(id), `${name}.prev.json`);
     let text: string | null = null;
     try { text = await fs.readFile(file, 'utf8'); } catch { /* none yet */ }
     if (text !== null) {
@@ -229,12 +237,13 @@ export class PlannerStore {
     return back ?? { messages: [] };
   }
 
-  async writeChat(id: string, chat: { messages: ChatMessage[]; provider?: string; model?: string }): Promise<void> {
-    await this.serial(`chat:${id}`, async () => {
+  async writeChat(id: string, chat: { messages: ChatMessage[]; provider?: string; model?: string }, who?: string): Promise<void> {
+    const name = chatName(who);
+    await this.serial(`chat:${id}:${name}`, async () => {
       const dir = this.dir(id);
       await fs.mkdir(dir, { recursive: true });
-      const file = path.join(dir, 'chat.json');
-      if (await exists(file)) await fs.copyFile(file, path.join(dir, 'chat.prev.json')).catch(() => undefined);
+      const file = path.join(dir, `${name}.json`);
+      if (await exists(file)) await fs.copyFile(file, path.join(dir, `${name}.prev.json`)).catch(() => undefined);
       const messages = chat.messages.slice(-CHAT_KEEP_MESSAGES).map((m) => ({ role: m.role, text: m.text.slice(0, CHAT_MAX_CHARS) }));
       await writeJsonRetry(file, { version: 2, messages, provider: chat.provider?.slice(0, 80), model: chat.model?.slice(0, 80), savedAt: this.now().toISOString() });
       this.told({ kind: 'chat', planId: id, messages: messages.length });
@@ -242,11 +251,11 @@ export class PlannerStore {
   }
 
   /** Adds messages to the saved conversation (read, add, trim, write, one at a time), so a message is never lost to a stale full copy. */
-  async appendChat(id: string, req: { messages: ChatMessage[]; provider?: string; model?: string }): Promise<{ stored: number }> {
-    return this.serial(`chatappend:${id}`, async () => {
-      const cur = await this.readChat(id);
+  async appendChat(id: string, req: { messages: ChatMessage[]; provider?: string; model?: string }, who?: string): Promise<{ stored: number }> {
+    return this.serial(`chatappend:${id}:${chatName(who)}`, async () => {
+      const cur = await this.readChat(id, who);
       const messages = [...cur.messages, ...req.messages].slice(-CHAT_KEEP_MESSAGES);
-      await this.writeChat(id, { messages, provider: req.provider ?? cur.provider, model: req.model ?? cur.model });
+      await this.writeChat(id, { messages, provider: req.provider ?? cur.provider, model: req.model ?? cur.model }, who);
       return { stored: messages.length };
     });
   }
@@ -313,7 +322,13 @@ export class PlannerStore {
         let parsed: unknown;
         try { parsed = JSON.parse(text); } catch { parsed = undefined; }
         const ok = townStateSchema.safeParse(parsed);
-        if (ok.success) return { town: ok.data as TownState, recovered: false };
+        if (ok.success) {
+          // A town made before the nine directors existed gets them now (and is saved, so they keep their ids).
+          const cur = ok.data as TownState;
+          const up = withDirectors(cur, this.now());
+          if (up !== cur) { await writeJsonRetry(file, up); this.told({ kind: 'town', planId: id, rev: up.rev }); }
+          return { town: up, recovered: false };
+        }
         const v = (parsed as { version?: unknown } | undefined)?.version;
         if (typeof v === 'number' && v > 1) await fs.copyFile(file, path.join(this.dir(id), `town.v${v}.json`)).catch(() => undefined);
         else await setAside(file, this.now().toISOString().replace(/[:.]/g, '-'));

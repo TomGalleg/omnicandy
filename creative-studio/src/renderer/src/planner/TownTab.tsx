@@ -1,5 +1,7 @@
-import { useMemo, useState } from 'react';
-import { MEETING_KINDS, activeAgents, tierFor, type MeetingKind, type TeamChange, type TownAgent, type TownBusiness, type TownMeeting, type TownState } from '@shared/town';
+import { useEffect, useState } from 'react';
+import { PlannerChat } from './PlannerChat';
+import mapUrl from '../assets/omnitown-map.jpg';
+import { DIRECTORS, MEETING_KINDS, activeAgents, tierFor, type MeetingKind, type TeamChange, type TownAgent, type TownBusiness, type TownMeeting, type TownState } from '@shared/town';
 import type { ProposalChange } from '@shared/planner';
 import { errMsg, ErrorLine, Section, type TabProps } from './plannerUi';
 import { useTown } from './useTown';
@@ -14,6 +16,7 @@ const describe = (c: TeamChange, t: TownState): string => {
   switch (c.op) {
     case 'add_business': return `Open ${c.name}`;
     case 'add_agent': return `Hire ${c.name}${c.specialty ? ` (${c.specialty})` : ''}`;
+    case 'update_agent': return `Update ${t.agents.find((a) => a.id === c.agentId)?.name ?? 'a worker'}'s job`;
     case 'move_agent': return `Move ${t.agents.find((a) => a.id === c.agentId)?.name ?? 'a worker'} to ${t.businesses.find((b) => b.id === c.businessId)?.name ?? 'another business'}`;
     case 'retire_agent': return `Retire ${t.agents.find((a) => a.id === c.agentId)?.name ?? 'a worker'}`;
     case 'rename_business': return `Rename a business to ${c.name}`;
@@ -28,11 +31,15 @@ function Avatar({ a, big }: { a: TownAgent; big?: boolean }) {
  * OmniTown: the people and places of the project. Every worker has a workplace; a workplace grows with the number of people in it. This shows who is
  * on the team, not what they are doing: nothing here is animated to look busy, because no work is started from here yet.
  */
-export function TownTab({ p, reload, go }: TabProps) {
+export function TownTab(props: TabProps) {
+  const { p, reload, go } = props;
   const { town, setTown, note, clearNote } = useTown(p.id);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [pick, setPick] = useState<string | null>(null);
+  const [talk, setTalk] = useState<string | null>(null);
+  // Opening a conversation brings it into view (it sits below the town).
+  useEffect(() => { if (talk) document.getElementById('tw-talk')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, [talk]);
   const run = async <T,>(fn: () => Promise<T>): Promise<T | undefined> => {
     setBusy(true); setError(null);
     try { return await fn(); } catch (e) { setError(errMsg(e)); return undefined; } finally { setBusy(false); }
@@ -43,7 +50,7 @@ export function TownTab({ p, reload, go }: TabProps) {
   if (!town) return <div className="pl-stack"><p className="pl-hint">Setting up your town…</p></div>;
   const selected = town.agents.find((a) => a.id === pick) ?? null;
   const pending = town.suggestions.filter((s) => s.status === 'pending');
-  const team = activeAgents(town).filter((a) => a.role !== 'coordinator').length;
+  const helpers = activeAgents(town).filter((a) => !a.director).length;
 
   return (
     <div className="tw">
@@ -53,7 +60,7 @@ export function TownTab({ p, reload, go }: TabProps) {
         <h3>Your town</h3>
         <span className="spacer" />
         <button className="btn small primary" title="Talk through your idea with the coordinator and see the plan take shape" onClick={() => go('studio')}>Talk to the coordinator</button>
-        <button className="btn small" disabled={busy} title="Suggests a studio and a specialist for each application your chunks name. Nothing is added until you say so." onClick={() => void run(async () => { setTown(await api().townSuggestFromPlan(p.id)); })}>Suggest a team</button>
+        <button className="btn small" disabled={busy} title="Suggests a studio and a specialist helper for each application your chunks name. Nothing is added until you say so." onClick={() => void run(async () => { setTown(await api().townSuggestFromPlan(p.id)); })}>Suggest helpers</button>
         <AddBusiness busy={busy} onAdd={(name) => apply([{ op: 'add_business', name, trade: '' }])} />
       </div>
 
@@ -67,21 +74,27 @@ export function TownTab({ p, reload, go }: TabProps) {
         </div>
       ))}
 
-      {team === 0 && (
-        <p className="tw-intro" role="note">Your team starts with the coordinator, who is all you need to begin: just talk to them in <button className="btn small" onClick={() => go('studio')}>Studio</button>. When your chunks name the applications you will use, press <strong>Suggest a team</strong> and a specialist is added for each.</p>
-      )}
       <div className="tw-main">
-        <Scene town={town} onPick={setPick} pick={pick} />
+        <Scene town={town} onPick={setPick} pick={pick} onHall={() => document.getElementById('tw-meet')?.scrollIntoView({ behavior: 'smooth', block: 'start' })} />
         <aside className="tw-side">
-          {selected ? <WorkerCard town={town} a={selected} busy={busy} onApply={apply} onClose={() => setPick(null)} />
-            : <p className="pl-hint">Pick a worker or a building to see who they are. Every worker has their own place; busier businesses grow into bigger buildings.</p>}
-          <details className="pl-fold"><summary>Add people yourself</summary><div className="pl-fold-body"><AddWorker town={town} busy={busy} onAdd={(c) => apply([c])} /></div></details>
+          {selected ? <WorkerCard town={town} a={selected} busy={busy} onApply={apply} onTalk={() => setTalk(selected.id)} onClose={() => setPick(null)} />
+            : <p className="pl-hint">Click an office on the map to meet the person who works there, see their job and talk to them. The Town Hall in the middle is where meetings happen.</p>}
+          <details className="pl-fold"><summary>Hire a helper{helpers ? <span className="pl-count">{helpers}</span> : null}</summary>
+            <div className="pl-fold-body"><AddWorker town={town} busy={busy} onAdd={(changes) => apply(changes)} /></div>
+          </details>
         </aside>
       </div>
 
-      {active ? <MeetingBoard town={town} meeting={active} planId={p.id} busy={busy} run={run} setTown={setTown} reload={reload} />
-        : team === 0 ? <p className="pl-hint">Meetings are for when your team has more than the coordinator. Until then, talk to the coordinator in Studio.</p>
+      {talk && town.agents.find((a) => a.id === talk && !a.retired) && (
+        <Section title={`Talking with ${town.agents.find((a) => a.id === talk)!.name}`} actions={<button className="btn small" onClick={() => setTalk(null)}>Close</button>}>
+          <div className="tw-talk" id="tw-talk"><PlannerChat key={`${p.id}:${talk}`} p={p} reload={reload} go={go} preview agent={{ id: talk, name: town.agents.find((a) => a.id === talk)!.name }} /></div>
+        </Section>
+      )}
+
+      <div id="tw-meet">
+        {active ? <MeetingBoard town={town} meeting={active} planId={p.id} busy={busy} run={run} setTown={setTown} reload={reload} />
           : <CallMeeting town={town} busy={busy} onStart={(topic, kind, ids) => run(async () => { setTown((await api().meetingStart(p.id, { topic, kind, participantIds: ids })).town); })} />}
+      </div>
 
       <PastMeetings town={town} />
     </div>
@@ -98,63 +111,99 @@ function AddBusiness({ busy, onAdd }: { busy: boolean; onAdd: (name: string) => 
   );
 }
 
-function AddWorker({ town, busy, onAdd }: { town: TownState; busy: boolean; onAdd: (c: TeamChange) => void }) {
+const NEW_BUILDING = '__new__';
+
+/** Hire an assistant: a name, what they are for, and where they work (an existing building, or a new one opened for them). */
+function AddWorker({ town, busy, onAdd }: { town: TownState; busy: boolean; onAdd: (changes: TeamChange[]) => void }) {
   const biz = town.businesses.filter((b) => !town.workplaces.some((w) => w.kind === 'town-hall' && w.businessId === b.id));
   const [name, setName] = useState('');
-  const [specialty, setSpecialty] = useState('');
+  const [job, setJob] = useState('');
   const [bid, setBid] = useState('');
-  if (!biz.length) return <p className="pl-hint">Open a business, then hire a worker for it.</p>;
-  const target = bid || biz[0]!.id;
+  const [building, setBuilding] = useState('');
+  const target = bid || (biz[0]?.id ?? NEW_BUILDING);
+  const isNew = target === NEW_BUILDING;
+  const ready = !!name.trim() && !!job.trim() && (!isNew || !!building.trim());
+  const hire = () => {
+    const worker = { op: 'add_agent' as const, name: name.trim(), specialty: '', job: job.trim(), businessId: isNew ? '@last' : target };
+    onAdd(isNew ? [{ op: 'add_business', name: building.trim(), trade: '' }, worker] : [worker]);
+    setName(''); setJob(''); setBuilding('');
+  };
   return (
-    <div className="pl-form tw-hire">
-      <strong>Hire a worker</strong>
-      <input aria-label="Worker name" value={name} maxLength={60} placeholder="Name" onChange={(e) => setName(e.target.value)} />
-      <input aria-label="What they do" value={specialty} maxLength={200} placeholder="What they do (optional)" onChange={(e) => setSpecialty(e.target.value)} />
-      <select aria-label="Business" value={target} onChange={(e) => setBid(e.target.value)}>{biz.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}</select>
-      <button className="btn small" disabled={busy || !name.trim()} onClick={() => { onAdd({ op: 'add_agent', name: name.trim(), specialty: specialty.trim(), businessId: target }); setName(''); setSpecialty(''); }}>Hire</button>
-    </div>
+    <section className="pl-form tw-hire" aria-label="Hire an assistant">
+      <strong>Hire an assistant</strong>
+      <input aria-label="Name" value={name} maxLength={60} placeholder="Name, e.g. Mira" onChange={(e) => setName(e.target.value)} />
+      <textarea aria-label="Their job" rows={3} value={job} maxLength={1200} placeholder="What is their job? e.g. Design the logo and brand colours, and explain each choice in plain words." onChange={(e) => setJob(e.target.value)} />
+      <select aria-label="Where they work" value={target} onChange={(e) => setBid(e.target.value)}>
+        {biz.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+        <option value={NEW_BUILDING}>A new building…</option>
+      </select>
+      {isNew && <input aria-label="New building name" value={building} maxLength={60} placeholder="Name the new building, e.g. Design Studio" onChange={(e) => setBuilding(e.target.value)} />}
+      <button className="btn small primary" disabled={busy || !ready} onClick={hire}>Hire</button>
+      <small className="pl-hint">They are told their job, the team and your project, and you can talk to them from their card.</small>
+    </section>
   );
 }
 
-function Scene({ town, pick, onPick }: { town: TownState; pick: string | null; onPick: (id: string | null) => void }) {
-  const box = useMemo(() => {
-    const xs = town.workplaces.map((w) => w.x), ys = town.workplaces.map((w) => w.y);
-    const min = (a: number[]) => Math.min(0, ...a), max = (a: number[]) => Math.max(0, ...a);
-    return { x0: min(xs), x1: max(xs), y0: min(ys), y1: max(ys) };
-  }, [town.workplaces]);
-  const alone = town.workplaces.length === 1;
-  const pos = (x: number, y: number) => alone ? { left: '50%', top: '22%' } : ({ left: `${16 + ((x - box.x0) / Math.max(1, box.x1 - box.x0)) * 68}%`, top: `${6 + ((y - box.y0) / Math.max(1, box.y1 - box.y0)) * 52}%` });
+/**
+ * The OmniTown map. The nine offices and the Town Hall are fixed places on the picture; each is a button over its building. Helpers hired into an
+ * office stand under it. Businesses the owner opened themselves (not one of the nine) are listed under the map.
+ */
+function Scene({ town, pick, onPick, onHall }: { town: TownState; pick: string | null; onPick: (id: string | null) => void; onHall: () => void }) {
+  const extras = town.businesses.filter((b) => !town.workplaces.some((w) => w.kind === 'town-hall' && w.businessId === b.id) && !town.agents.some((a) => a.director && a.businessId === b.id));
   return (
-    <div className={`tw-scene${alone ? ' alone' : ''}`} role="group" aria-label="The town" onClick={() => onPick(null)}>
-      {town.workplaces.map((w) => {
-        const biz: TownBusiness | undefined = town.businesses.find((b) => b.id === w.businessId);
-        const people = activeAgents(town, w.businessId);
-        const tier = w.kind === 'town-hall' ? 'hall' : tierFor(people.length);
-        return (
-          <div key={w.id} className={`tw-building tier-${tier}`} style={pos(w.x, w.y)} onClick={(e) => e.stopPropagation()}>
-            <div className="tw-roof" />
-            <div className="tw-body">
-              <strong>{w.name}</strong>
-              <small>{w.kind === 'town-hall' ? 'Planning and meetings' : `${TIER_LABEL[tier as keyof typeof TIER_LABEL]} · ${people.length} ${people.length === 1 ? 'worker' : 'workers'}`}</small>
-              {biz?.trade && w.kind !== 'town-hall' && <small className="pl-hint">{biz.trade}</small>}
-              <div className="tw-people">{people.map((a) => <button key={a.id} className={`tw-person${a.id === pick ? ' selected' : ''}`} onClick={() => onPick(a.id)} aria-label={a.name}><Avatar a={a} /><span>{a.name}</span></button>)}</div>
+    <div className="tw-scene" role="group" aria-label="The town" onClick={() => onPick(null)}>
+      <div className="tw-map-art" style={{ backgroundImage: `url(${mapUrl})` }}>
+        <button className="tw-spot hall" style={{ left: '50%', top: '31%' }} onClick={(e) => { e.stopPropagation(); onHall(); }} aria-label="Town Hall: call a meeting" title="Town Hall: call a meeting"><span>Town Hall</span></button>
+        {DIRECTORS.map((d) => {
+          const boss = town.agents.find((a) => a.director === d.key && !a.retired);
+          if (!boss) return null;
+          const helpers = activeAgents(town, boss.businessId).filter((a) => a.id !== boss.id);
+          return (
+            <div key={d.key} className="tw-office" style={{ left: `${d.spot.x}%`, top: `${d.spot.y}%` }} onClick={(e) => e.stopPropagation()}>
+              <button className={`tw-spot${boss.id === pick ? ' selected' : ''}`} onClick={() => onPick(boss.id)} aria-label={`${d.title}: ${d.remit}`} title={`${d.title}: ${d.remit}`}><span>{d.title}</span></button>
+              {helpers.length > 0 && <div className="tw-crew">{helpers.map((a) => <button key={a.id} className={`tw-person${a.id === pick ? ' selected' : ''}`} onClick={() => onPick(a.id)} aria-label={a.name}><Avatar a={a} /><span>{a.name}</span></button>)}</div>}
             </div>
-          </div>
-        );
-      })}
+          );
+        })}
+      </div>
+      {extras.length > 0 && (
+        <div className="tw-extras" onClick={(e) => e.stopPropagation()}>
+          {extras.map((b: TownBusiness) => {
+            const people = activeAgents(town, b.id);
+            return (
+              <div key={b.id} className="tw-extra"><strong>{b.name}</strong><small>{TIER_LABEL[tierFor(people.length)]} · {people.length} {people.length === 1 ? 'worker' : 'workers'}</small>
+                <div className="tw-people">{people.map((a) => <button key={a.id} className={`tw-person${a.id === pick ? ' selected' : ''}`} onClick={() => onPick(a.id)} aria-label={a.name}><Avatar a={a} /><span>{a.name}</span></button>)}</div>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
 
-function WorkerCard({ town, a, busy, onApply, onClose }: { town: TownState; a: TownAgent; busy: boolean; onApply: (c: TeamChange[]) => void; onClose: () => void }) {
+function WorkerCard({ town, a, busy, onApply, onTalk, onClose }: { town: TownState; a: TownAgent; busy: boolean; onApply: (c: TeamChange[]) => void; onTalk: () => void; onClose: () => void }) {
   const biz = town.businesses.find((b) => b.id === a.businessId);
   const others = town.businesses.filter((b) => b.id !== a.businessId && !town.workplaces.some((w) => w.kind === 'town-hall' && w.businessId === b.id));
+  const [editing, setEditing] = useState(false);
+  const [job, setJob] = useState(a.job ?? '');
   return (
     <section className="tw-card" aria-label={a.name}>
-      <header><Avatar a={a} big /><div><strong>{a.name}</strong><br /><small className="pl-hint">{a.role === 'coordinator' ? 'Project coordinator' : 'Worker'} · {biz?.name}</small></div><button className="btn small ghost" onClick={onClose} aria-label="Close">×</button></header>
-      {a.specialty && <p>{a.specialty}</p>}
+      <header><Avatar a={a} big /><div><strong>{a.name}</strong><br /><small className="pl-hint">{a.role === 'coordinator' ? 'Project coordinator' : a.director ? 'Main worker' : 'Helper'} · {biz?.name}</small></div><button className="btn small ghost" onClick={onClose} aria-label="Close">×</button></header>
+      <button className="btn small primary" onClick={onTalk}>Talk to {a.name}</button>
+      {editing ? (
+        <>
+          <textarea aria-label="Job" rows={4} value={job} maxLength={1200} onChange={(e) => setJob(e.target.value)} />
+          <span className="pl-actions"><button className="btn small primary" disabled={busy} onClick={() => { onApply([{ op: 'update_agent', agentId: a.id, job: job.trim() }]); setEditing(false); }}>Save job</button><button className="btn small" onClick={() => { setJob(a.job ?? ''); setEditing(false); }}>Cancel</button></span>
+        </>
+      ) : (
+        <>
+          <p><strong>Job:</strong> {a.job || a.specialty || (a.role === 'coordinator' ? 'Keeps the project organised and suggests next steps.' : 'Not described yet.')}</p>
+          <button className="btn small ghost" onClick={() => setEditing(true)}>{a.job ? 'Change the job' : 'Describe the job'}</button>
+        </>
+      )}
       <p className="pl-hint">Works with: {a.engine.kind === 'default' ? "the project's AI" : `${a.engine.kind}${a.engine.model ? ` (${a.engine.model})` : ''}`}</p>
-      {a.role === 'worker' && (
+      {a.role === 'worker' && !a.director && (
         <div className="pl-actions">
           {others.length > 0 && <select aria-label="Move to" defaultValue="" onChange={(e) => { if (e.target.value) onApply([{ op: 'move_agent', agentId: a.id, businessId: e.target.value }]); e.target.value = ''; }}><option value="" disabled>Move to…</option>{others.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}</select>}
           <button className="btn small" disabled={busy} onClick={() => onApply([{ op: 'retire_agent', agentId: a.id }])}>Retire</button>
