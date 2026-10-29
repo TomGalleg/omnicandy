@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import type { CastMember } from './townCast';
 import type { ActivityState } from '@shared/townActivity';
-import { CHAT, chooseTrip, WORK_VISIT_MS, type Intent } from '@shared/townIntent';
+import { CHAT, chooseTrip, MEETING_STAY_MS, WORK_VISIT_MS, type Intent } from '@shared/townIntent';
 import puffUrl from '../assets/characters/smoke-puff.png';
 import { clearPresence, presence, restAtDesk, setPresence, stayInside } from './townPresence';
 
@@ -106,7 +106,8 @@ export function TownWalker({ who, name, onOpen, badge, intent, targetDoor }: { w
     let phaseT = 0;
     let comeOut = 0;
     let visiting = false; // inside another director's office, not their own
-    let workVisit = false; // ... for work (a reason from the plan), not a chat
+    let visitFor: 'work' | 'meeting' | null = null; // ... for a reason (work from the plan, or a meeting), not a chat
+    const reasonKind = () => (visitFor === 'work' ? 'work-visit' : 'meeting');
     let chosen: ReturnType<typeof chooseTrip> | null = null;
     const neighbours = () => [...OFFICES].filter((n) => n !== door && n in NODES);
     const kept = still ? undefined : presence(door);
@@ -123,11 +124,11 @@ export function TownWalker({ who, name, onOpen, badge, intent, targetDoor }: { w
     /** Get up: go where the plan (or an idle moment) says, or, if already visiting, go back to the desk. */
     const planTrip = () => {
       route = [];
-      if (visiting) { visiting = false; workVisit = false; trip = 'home'; route = pathBetween(at, door); return; }
+      if (visiting) { visiting = false; visitFor = null; trip = 'home'; route = pathBetween(at, door); return; }
       const t = chosen ?? chooseTrip(reason.current.intent, neighbours(), reason.current.targetDoor, Math.random);
       chosen = null;
       if (!t.go) { trip = 'home'; phase = 'in'; phaseT = 0; return; } // nothing to go for: straight back to the desk
-      trip = 'visit'; workVisit = t.purpose === 'work'; route = pathBetween(at, t.to);
+      trip = 'visit'; visitFor = t.purpose === 'chat' ? null : t.purpose; route = pathBetween(at, t.to);
     };
     const showPuff = () => {
       const f = Math.min(PUFF_FRAMES - 1, Math.floor((phaseT / PUFF_SECONDS) * PUFF_FRAMES));
@@ -141,8 +142,8 @@ export function TownWalker({ who, name, onOpen, badge, intent, targetDoor }: { w
         if (phase === 'inside') {
           const nowMs = Date.now();
           // A work visit ends when the work does; a director at their desk with a real reason to go does not wait out the rest.
-          if (visiting && workVisit && reason.current.intent.kind !== 'work-visit') comeOut = Math.min(comeOut, nowMs);
-          if (!visiting && reason.current.intent.kind === 'work-visit' && comeOut - nowMs > 2500) { comeOut = nowMs + 2000; setPresence(door, comeOut); }
+          if (visiting && visitFor && reason.current.intent.kind !== reasonKind()) comeOut = Math.min(comeOut, nowMs);
+          if (!visiting && (reason.current.intent.kind === 'work-visit' || reason.current.intent.kind === 'meeting') && comeOut - nowMs > 2500) { comeOut = nowMs + 2000; setPresence(door, comeOut); }
           if (nowMs >= comeOut) {
             if (visiting) { phase = 'exit'; phaseT = 0; }
             else {
@@ -156,7 +157,7 @@ export function TownWalker({ who, name, onOpen, badge, intent, targetDoor }: { w
           const peak = phaseT >= PUFF_PEAK * PUFF_SECONDS, done = phaseT >= PUFF_SECONDS;
           if (phase === 'in') {
             if (peak) node.style.visibility = 'hidden';
-            if (done) { phase = 'inside'; puff.style.display = 'none'; comeOut = Date.now() + (visiting ? (workVisit ? WORK_VISIT_MS : stayInside()) : restAtDesk()); if (!visiting) setPresence(door, comeOut); }
+            if (done) { phase = 'inside'; puff.style.display = 'none'; comeOut = Date.now() + (visiting ? (visitFor === 'work' ? WORK_VISIT_MS : visitFor === 'meeting' ? MEETING_STAY_MS : stayInside()) : restAtDesk()); if (!visiting) setPresence(door, comeOut); }
           } else {
             if (peak) node.style.visibility = 'visible';
             if (done) { phase = 'out'; puff.style.display = 'none'; wait = 0.6; planTrip(); }

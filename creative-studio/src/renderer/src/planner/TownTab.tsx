@@ -14,6 +14,7 @@ import hallInside from '../assets/offices/town-hall.jpg';
 import { TownWalker, type WalkerBadge } from './TownWalker';
 import { ACTIVITY_LABEL, directorActivity, type DirectorActivity } from '@shared/townActivity';
 import { directorIntents, intentFor, type Intent } from '@shared/townIntent';
+import { RunWithAi } from './MeetingRun';
 import { CAST, type CastMember } from './townCast';
 import puffUrl from '../assets/characters/smoke-puff.png';
 import { setPresence, stayInside } from './townPresence';
@@ -68,12 +69,18 @@ function Avatar({ a, big }: { a: TownAgent; big?: boolean }) {
  */
 export function TownTab(props: TabProps) {
   const { p, reload, go } = props;
+  const { town, setTown, note, clearNote } = useTown(p.id);
   // What each director is really doing comes from the plan, never from the town. A claim that runs out takes its badge away, so look again every half minute.
   const [clock, setClock] = useState(() => Date.now());
   useEffect(() => { const t = setInterval(() => setClock(Date.now()), 30_000); return () => clearInterval(t); }, []);
   const activity = useMemo(() => directorActivity(p, new Date(clock)), [p, clock]);
-  const intents = useMemo(() => directorIntents(p, new Date(clock)), [p, clock]);
-  const { town, setTown, note, clearNote } = useTown(p.id);
+  /** The people at the table of a meeting that is running with AI help: they walk to the Town Hall until it ends. */
+  const [goers, setGoers] = useState<ReadonlySet<string> | null>(null);
+  const intents = useMemo(() => {
+    const base = directorIntents(p, new Date(clock));
+    for (const a of town?.agents ?? []) if (a.director && goers?.has(a.id)) base[a.director] = { kind: 'meeting' };
+    return base;
+  }, [p, clock, town, goers]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [pick, setPick] = useState<string | null>(null);
@@ -162,7 +169,7 @@ export function TownTab(props: TabProps) {
       )}
 
       <div id="tw-meet">
-        {active ? <MeetingBoard town={town} meeting={active} planId={p.id} busy={busy} run={run} setTown={setTown} reload={reload} />
+        {active ? <MeetingBoard town={town} meeting={active} planId={p.id} busy={busy} run={run} setTown={setTown} reload={reload} onGoing={setGoers} />
           : <CallMeeting town={town} busy={busy} onStart={(topic, kind, ids) => run(async () => { setTown((await api().meetingStart(p.id, { topic, kind, participantIds: ids })).town); })} />}
       </div>
 
@@ -269,7 +276,7 @@ function Scene({ town, activity, intents, pick, onPick, onHall }: { town: TownSt
 }
 
 /** The map spot of the office a work visit is for. */
-const doorOf = (i: Intent): string | undefined => (i.kind === 'work-visit' ? CAST[i.target]?.start : undefined);
+const doorOf = (i: Intent): string | undefined => (i.kind === 'work-visit' ? CAST[i.target]?.start : i.kind === 'meeting' ? 'steps' : undefined);
 
 /** The badge over a director: one line saying what it means, made only from what the plan holds. */
 const badgeFor = (a: DirectorActivity | undefined): WalkerBadge | undefined => (a ? { state: a.state, label: `${ACTIVITY_LABEL[a.state]}: ${a.tasks.map((t) => t.title).slice(0, 3).join('; ')}${a.tasks.length > 3 ? ` and ${a.tasks.length - 3} more` : ''}` } : undefined);
@@ -327,7 +334,7 @@ function CallMeeting({ town, busy, onStart }: { town: TownState; busy: boolean; 
   );
 }
 
-function MeetingBoard({ town, meeting, planId, busy, run, setTown, reload }: { town: TownState; meeting: TownMeeting; planId: string; busy: boolean; run: <T>(fn: () => Promise<T>) => Promise<T | undefined>; setTown: (t: TownState) => void; reload: () => Promise<void> }) {
+function MeetingBoard({ town, meeting, planId, busy, run, setTown, reload, onGoing }: { onGoing: (ids: ReadonlySet<string> | null) => void; town: TownState; meeting: TownMeeting; planId: string; busy: boolean; run: <T>(fn: () => Promise<T>) => Promise<T | undefined>; setTown: (t: TownState) => void; reload: () => Promise<void> }) {
   const [text, setText] = useState('');
   const [chunks, setChunks] = useState('');
   const [sent, setSent] = useState<number | null>(null);
@@ -355,6 +362,7 @@ function MeetingBoard({ town, meeting, planId, busy, run, setTown, reload }: { t
           {sent !== null && <p className="pl-hint" role="status">Sent {sent} chunk{sent === 1 ? '' : 's'} to the Studio canvas as suggestions. Add them there when you are happy.</p>}
         </div>
       </details>
+      <RunWithAi town={town} meeting={meeting} planId={planId} setTown={setTown} reload={reload} onGoing={onGoing} />
       <div className="pl-actions"><button className="btn" disabled={busy} onClick={() => void run(async () => { setTown(await api().meetingEnd(planId, meeting.id)); })}>End the meeting</button></div>
     </Section>
   );

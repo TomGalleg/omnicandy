@@ -53,6 +53,11 @@ describe('what a director does when their time at the desk is up', () => {
     for (let i = 0; i < 20; i++) expect(chooseTrip({ kind: 'stay' }, doors, undefined, () => i / 20)).toEqual({ go: false });
   });
 
+  it('goes to the Town Hall for a meeting, and nowhere else', () => {
+    expect(chooseTrip({ kind: 'meeting' }, doors, 'steps', () => 0.5)).toEqual({ go: true, to: 'steps', purpose: 'meeting' });
+    expect(chooseTrip({ kind: 'meeting' }, doors, undefined, () => 0.5)).toEqual({ go: false });
+  });
+
   it('goes to the one office a work visit is for, and nowhere else', () => {
     expect(chooseTrip({ kind: 'work-visit', target: 'creative-director' }, doors, 'creative', () => 0.99)).toEqual({ go: true, to: 'creative', purpose: 'work' });
     expect(chooseTrip({ kind: 'work-visit', target: 'creative-director' }, doors, undefined, () => 0)).toEqual({ go: false });
