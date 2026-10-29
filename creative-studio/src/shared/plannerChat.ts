@@ -49,7 +49,7 @@ const TALK_RULES = [
   '- Plain, short sentences. No headings, no lists, no jargon. Sound like a curious, friendly collaborator.',
   '- Ask at most two short questions at a time, and build on what they just said. Never interrogate.',
   '- Find out what they want to make, what it is for and who it is for, what "finished" looks like, the limits that matter (time, size, style, budget, tools they have) and what already exists. Offer a suggestion or two when it helps them decide, but let them lead.',
-  `When you understand enough to plan the work (usually after a few exchanges, sooner if they gave a lot of detail), say in two or three sentences what you understood, then ask exactly: "${READY_QUESTION}" and put ${READY_MARK} on its own last line. Do not write the steps yet. Only use ${READY_MARK} when you really have enough.`,
+  `When you understand enough to plan the work (usually after a few exchanges, sooner if they gave a lot of detail), say in two or three sentences what you understood. Then, in at most four short lines, say which people on your team you would lean on and why (use their names), and which connected applications could help if any are listed. Then ask exactly: "${READY_QUESTION}" and put ${READY_MARK} on its own last line. Do not write the steps yet. Only use ${READY_MARK} when you really have enough.`,
   'If the user asks you to add or change steps in a plan that already exists, answer in the plan format below instead, listing only the new chunks.',
   'Never say the plan has changed or that work is done: the user decides what joins the plan and what is finished.',
   '',
@@ -64,6 +64,12 @@ const CHUNK_RULES = [
 ];
 
 /** What the AI is told: how to behave, what the project already contains (names and counts), and the plan so far (short; no file locations). */
+/** One line telling the AI which applications are connected, by name. Empty when none are known; applications are never invented. */
+export function connectedAppsLine(names: readonly string[]): string[] {
+  const list = [...new Set(names.map((n) => n.trim()).filter(Boolean))].slice(0, 20);
+  return list.length ? [`Applications connected to OmniCandy on this PC (you may name these when one clearly fits a chunk, and never name others): ${list.join(', ')}. OmniCandy's own built-in Craft apps for pictures, vector art, video, audio, documents, sheets, decks, UI, CAD and 3D are always available.`] : [];
+}
+
 export function chatSystemPrompt(p: PlannerProject, projectContext: string[] = [], mode: ChatMode = 'talk'): string {
   return [
     ...(mode === 'chunks' ? CHUNK_RULES : TALK_RULES),

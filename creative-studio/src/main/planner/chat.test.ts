@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { chatSystemPrompt, MAX_CHAT_MESSAGE_CHARS, MAX_CHAT_MESSAGES, trimChat } from '@shared/plannerChat';
+import { chatSystemPrompt, connectedAppsLine, MAX_CHAT_MESSAGE_CHARS, MAX_CHAT_MESSAGES, trimChat } from '@shared/plannerChat';
 import { parseSuggestionText } from '@shared/plannerPaste';
 import { geminiChatBody, openaiChatBody, parseGeminiChat, parseOpenAIChat, PlannerChat, textModels, type ChatDeps } from './chat';
 import { PlannerService, userCtx } from './service';
@@ -50,6 +50,45 @@ describe('what the AI is told', () => {
   it('what comes back reads as suggestions the owner can tick (same reader as Paste back)', () => {
     const r = parseSuggestionText('Here is a start.\n\n## Requirements\n- Print at A2\n## Tasks\n- Sketch it\n  - Looks good at thumbnail size\n## Questions\n- Which paper?');
     expect(r.changes.map((c) => c.op)).toEqual(['add_item', 'add_task', 'add_item']);
+  });
+});
+
+describe('the General Manager guides the first conversation', () => {
+  it('is told to say who on the team it would lean on, and keeps the ready question and the format', async () => {
+    const svc = new PlannerService(new PlannerStore(path.join(tmp, 'gm')));
+    const p = await svc.createProject(user, { title: 'Dragons' });
+    const sys = chatSystemPrompt(await svc.getProject(user, p.id));
+    expect(sys).toContain('which people on your team you would lean on');
+    expect(sys).toContain('[[READY]]');
+    expect(sys).toContain('App: the connected application');
+  });
+
+  it('names connected applications once each, at most twenty, and says nothing when there are none', () => {
+    expect(connectedAppsLine([])).toEqual([]);
+    expect(connectedAppsLine(['  ', ''])).toEqual([]);
+    const one = connectedAppsLine(['Blender', 'Blender', 'Unreal Engine']);
+    expect(one).toHaveLength(1);
+    expect(one[0]).toContain('Blender, Unreal Engine');
+    expect(one[0]).toContain('never name others');
+    expect(connectedAppsLine(Array.from({ length: 40 }, (_, i) => `App${i}`))[0]).not.toContain('App25');
+  });
+
+  it('reads an App line under a chunk as the application, not as a check, and ignores "none"', () => {
+    const r = parseSuggestionText('## Tasks\n1. Model the dragon\n   - Looks right from every side\n   - App: Blender\n2. Write the story\n   - App: none\n3. Draw the logo\n   - App: PhotoCraft');
+    const tasks = r.changes.filter((c) => c.op === 'add_task') as Array<Extract<(typeof r.changes)[number], { op: 'add_task' }>>;
+    expect(tasks[0]!.appRef).toEqual({ kind: 'external', id: 'Blender', note: '' });
+    expect(tasks[0]!.completionChecks).toEqual(['Looks right from every side']);
+    expect(tasks[1]!.appRef ?? null).toBeNull();
+    expect(tasks[2]!.appRef!.kind).toBe('native');
+  });
+
+  it('keeps the application on the task once the owner adds the chunk', async () => {
+    const svc = new PlannerService(new PlannerStore(path.join(tmp, 'gm2')));
+    const p = await svc.createProject(user, { title: 'Dragons' });
+    const r = parseSuggestionText('## Tasks\n1. Model the dragon\n   - Looks right\n   - App: Blender');
+    const pr = await svc.importSuggestions(user, p.id, { note: 'chunks', changes: r.changes, rawText: 'x' });
+    await svc.decideProposal(user, p.id, pr.id, true);
+    expect((await svc.getProject(user, p.id)).tasks[0]!.appRef).toEqual({ kind: 'external', id: 'Blender', note: '' });
   });
 });
 

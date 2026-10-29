@@ -199,6 +199,8 @@ export function parseSuggestionText(text: string): SuggestionPreview {
     const b = /^(\s*)(?:[-*+]|\d+[.)])\s+(.*\S)\s*$/.exec(raw);
     if (!b) continue;
     const indent = (b[1] ?? '').length; const item = (b[2] ?? '').trim();
+    const app = indent >= 2 && cur === 'task' && lastTask ? /^app\s*:\s*(.{1,80}?)\s*\.?$/i.exec(item) : null;
+    if (app && lastTask) { const id = clip(app[1] ?? '', 80); if (id && !/^(none|n\/a|-)$/i.test(id)) lastTask.appRef = { kind: /craft/i.test(id) ? 'native' : 'external', id, note: '' }; continue; }
     if (indent >= 2 && cur === 'task' && lastTask) { if (lastTask.completionChecks.length < 20) lastTask.completionChecks.push(clip(item, 400)); subChecks = true; continue; }
     if (!room()) continue;
     const c = entryToChange(cur, item, errors, cur);

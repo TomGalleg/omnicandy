@@ -41,7 +41,7 @@ function ChunkList({ p, reload, text, go, onChange, preview }: { p: PlannerProje
       <ol>
         {plan.chunks.map((c, i) => (
           <li key={i}>
-            <label className="pl-check"><input type="checkbox" disabled={already || done !== null} checked={!skip.includes(i)} onChange={(e) => setSkip(e.target.checked ? skip.filter((x) => x !== i) : [...skip, i])} /><strong>{c.title}</strong></label>
+            <label className="pl-check"><input type="checkbox" disabled={already || done !== null} checked={!skip.includes(i)} onChange={(e) => setSkip(e.target.checked ? skip.filter((x) => x !== i) : [...skip, i])} /><strong>{c.title}</strong>{c.appRef && <small className="pl-hint"> · uses {c.appRef.id}</small>}</label>
             {c.completionChecks.length > 0 && <ul className="pl-checks">{c.completionChecks.map((k, j) => <li key={j}>{k}</li>)}</ul>}
           </li>
         ))}

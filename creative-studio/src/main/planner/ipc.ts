@@ -10,7 +10,7 @@ import type { PlanAsset } from '@shared/planner';
 import { IPC } from '@shared/ipc';
 import type { PackageView, PlannerConnectionInfo } from '@shared/plannerApi';
 import { defaultPlannerDir } from './dir';
-import { chatSystemPrompt, CHAT_PROVIDER_IDS, MAX_CHAT_MESSAGE_CHARS, MAX_CHAT_MESSAGES } from '@shared/plannerChat';
+import { chatSystemPrompt, CHAT_PROVIDER_IDS, connectedAppsLine, MAX_CHAT_MESSAGE_CHARS, MAX_CHAT_MESSAGES } from '@shared/plannerChat';
 import { type ChatDeps, PlannerChat } from './chat';
 import { ProjectPlanner, type OpenProject } from './projectPlanner';
 import { ProjectCoordinator } from './coordinator';
@@ -64,7 +64,7 @@ export function connectionInfo(dir: string): PlannerConnectionInfo {
   };
 }
 
-interface Deps { service: PlannerService; store: RoutedPlannerStore; dir: string; events: PlannerEventHub; project: () => Promise<OpenProject | null>; isTrustedSender: (e: IpcMainInvokeEvent) => boolean; window: () => BrowserWindow | null; chat?: ChatDeps }
+interface Deps { /** The names of the applications connected to OmniCandy on this PC, for the General Manager. */ apps?: () => Promise<string[]>; service: PlannerService; store: RoutedPlannerStore; dir: string; events: PlannerEventHub; project: () => Promise<OpenProject | null>; isTrustedSender: (e: IpcMainInvokeEvent) => boolean; window: () => BrowserWindow | null; chat?: ChatDeps }
 
 export function registerPlannerIpc(d: Deps): void {
   const u = userCtx();
@@ -156,6 +156,7 @@ export function registerPlannerIpc(d: Deps): void {
       const r = chatReq.parse(req);
       const plan = await s.getProject(u, r.projectId);
       // What the project already contains (names and counts only) is part of what the AI is told, when this is the open project's plan.
+      const apps = d.apps ? await d.apps().catch(() => []) : [];
       const context = await pp.chatContext(plan);
       let system = chatSystemPrompt(plan, context, r.mode ?? 'talk');
       if (!r.agentId) {
@@ -169,6 +170,7 @@ export function registerPlannerIpc(d: Deps): void {
         if (!agent) throw new Error('That worker is not on the team any more.');
         system = [agentSystemPrompt(town, agent, plan), ...(context?.length ? ['', 'What the project already contains (names and counts only):', ...context] : [])].join(String.fromCharCode(10));
       }
+      if (apps.length) system = [system, '', ...connectedAppsLine(apps)].join(String.fromCharCode(10));
       return needChat().reply({ system, provider: r.provider, model: r.model, messages: r.messages });
     },
     connectionInfo: async () => { await sync(); return connectionInfo(d.store.projectRoot ?? d.dir); },

@@ -388,7 +388,7 @@ export class PlannerService {
         else if (ch.op === 'update_item') { const it = find(p.items, ch.id, 'item'); Object.assign(it, ch.patch); it.rev++; it.updatedAt = nowIso; }
         else if (ch.op === 'add_task') {
           const ms = ch.milestone ? p.milestones.find((m) => m.title.trim().toLowerCase() === ch.milestone!.trim().toLowerCase()) : undefined;
-          const t = this.blankTask(pr.proposedBy, nowIso, { title: ch.title, description: ch.description, priority: ch.priority, milestoneId: ms?.id ?? null, dependsOn: ch.dependsOn.filter((d) => p.tasks.some((x) => x.id === d)), parentId: ch.parentId && p.tasks.some((x) => x.id === ch.parentId) ? ch.parentId : null, checks: ch.completionChecks.map((text) => ({ text })) });
+          const t = this.blankTask(pr.proposedBy, nowIso, { title: ch.title, description: ch.description, priority: ch.priority, milestoneId: ms?.id ?? null, dependsOn: ch.dependsOn.filter((d) => p.tasks.some((x) => x.id === d)), parentId: ch.parentId && p.tasks.some((x) => x.id === ch.parentId) ? ch.parentId : null, checks: ch.completionChecks.map((text) => ({ text })), appRef: ch.appRef ?? null });
           p.tasks.push(t);
         } else {
           const t = find(p.tasks, ch.id, 'task');

@@ -111,6 +111,8 @@ export const changeSchema = z.discriminatedUnion('op', [
     dependsOn: z.array(s(80)).max(30).default([]), parentId: s(80).nullish(), completionChecks: z.array(s(400)).max(20).default([]),
     /** The title of a milestone (an existing one, or one added by the same proposal) this task belongs to. */
     milestone: s(200).nullish(),
+    /** The application that does this chunk, when one clearly fits (named by the AI that wrote the chunk; the owner sees it before adding). */
+    appRef: z.object({ kind: z.enum(['native', 'external', 'workflow']), id: s(80).min(1), note: s(400).default('') }).nullish(),
   }),
   /** One part of the project brief. Text fields are replaced; constraints and deliverables are added to (nothing the owner wrote is removed). */
   z.object({

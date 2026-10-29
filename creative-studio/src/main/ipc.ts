@@ -125,6 +125,8 @@ export function registerIpc(d: IpcDeps): void {
   registerPlannerIpc({
     service: planner.service, store: planner.store, dir: planner.dir, events: planner.events, isTrustedSender: d.isTrustedSender, window: d.window,
     project: async () => { const store = await d.project(); const m = await store.loadManifest().catch(() => null); return m ? { id: m.id, name: m.name, root: store.root, store } : null; },
+    // The applications OmniCandy can use here, by name only (the scan is lazy: `external` is created further down).
+    apps: async () => (await external.scan()).apps.filter((a) => a.status === 'connected' || a.status === 'available').map((a) => a.name),
     // Lazy: the key vault and Claude are created further down. Keys are lent per call and never returned to the page.
     chat: { vault: { status: (id) => vault.status(id as never), withKey: (id, fn) => vault.withKey(id, fn) }, fetch: globalThis.fetch.bind(globalThis), claude: () => claude() },
   });
