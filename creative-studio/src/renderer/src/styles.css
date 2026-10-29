@@ -982,9 +982,11 @@ span.tw-portrait { display: grid; place-items: center; }
 .tw-puff { position: absolute; display: none; width: 10%; aspect-ratio: 1; transform: translate(-50%, -78%); background-size: 2200% 100%; background-repeat: no-repeat; pointer-events: none; z-index: 3; }
 .tw-hall-people { position: absolute; inset: 0; pointer-events: none; z-index: 2; }
 .tw-hall-person { position: absolute; transform: translate(-50%, -100%); display: grid; justify-items: center; }
-.tw-hall-figure { display: block; width: 100%; background-size: 6400% 100%; background-position-x: calc(32 / 63 * 100%); background-repeat: no-repeat; filter: drop-shadow(0 3px 2px rgba(0, 0, 0, .4)); }
+.tw-room img.tw-hall-figure { display: block; width: 100%; height: auto; aspect-ratio: auto; object-fit: contain; filter: drop-shadow(0 3px 3px rgba(0, 0, 0, .35)); }
 .tw-room .tw-hall-person .tw-hall-puff { left: 50%; top: 60%; width: 220%; }
-.tw-hall-name { margin-top: 2px; padding: 0 5px; border-radius: 6px; background: rgba(20, 10, 40, .72); color: #fff; font-size: 10px; white-space: nowrap; }
+.tw-hall-person { pointer-events: auto; }
+.tw-hall-person:not(:hover) .tw-hall-name { display: none; }
+.tw-hall-name { position: absolute; top: calc(100% - 4px); margin-top: 0; padding: 0 5px; border-radius: 6px; background: rgba(20, 10, 40, .72); color: #fff; font-size: 10px; white-space: nowrap; }
 .tw-bubble { position: absolute; bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%); width: max-content; max-width: min(300px, 26vw); padding: 7px 10px; border-radius: 12px; background: #fff; color: #1d1530; font-size: 12px; line-height: 1.35; text-align: left; box-shadow: 0 3px 10px rgba(0, 0, 0, .4); animation: tw-pop .25s ease-out; z-index: 3; }
 .tw-bubble::after { content: ''; position: absolute; left: 50%; top: 100%; margin-left: -7px; border: 7px solid transparent; border-top-color: #fff; }
 .tw-bubble strong { display: block; font-size: 11px; color: #6a3fb5; margin-bottom: 2px; }

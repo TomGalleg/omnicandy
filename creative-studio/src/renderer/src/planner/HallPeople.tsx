@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { TownAgent, TownMeeting } from '@shared/town';
-import { CAST } from './townCast';
+import { HALL } from './hallCast';
 import puffUrl from '../assets/characters/smoke-puff.png';
 
 /**
@@ -11,11 +11,12 @@ import puffUrl from '../assets/characters/smoke-puff.png';
  */
 export interface Said { id: string; text: string; at: number }
 
-/** Where each person goes, in the order they were called: the head of the table first, then the chairs down each side, then spare places round the room.
- *  x and y are percent of the room picture (y is where they hover above the floor); w is how wide they are, wider the nearer to the viewer. */
+/** Where each person sits, in the order they were called: the head of the table first, then the chairs down each side (left, right, left, right...), then the
+ *  sofa and the far side of the room. x is the middle of the seat and y the table edge they sit behind, as percent of the room picture; w is how wide they
+ *  are, wider the nearer to the viewer. */
 const SEATS: ReadonlyArray<{ x: number; y: number; w: number }> = [
-  { x: 49.8, y: 39, w: 4.2 }, { x: 32, y: 47, w: 4.6 }, { x: 67.6, y: 47, w: 4.6 }, { x: 27.5, y: 56, w: 5.2 }, { x: 71.8, y: 55, w: 5.2 },
-  { x: 21, y: 70, w: 6 }, { x: 79, y: 69, w: 6 }, { x: 13, y: 60, w: 5.6 }, { x: 87, y: 61, w: 5.6 }, { x: 40, y: 90, w: 6.4 }, { x: 60, y: 90, w: 6.4 }, { x: 36, y: 36, w: 4 },
+  { x: 49.9, y: 41, w: 7 }, { x: 32, y: 53, w: 8 }, { x: 67.8, y: 53, w: 8 }, { x: 26.5, y: 63, w: 9 }, { x: 73, y: 63, w: 9 }, { x: 20, y: 77, w: 10.5 }, { x: 79.5, y: 77, w: 10.5 },
+  { x: 9.5, y: 54, w: 7.5 }, { x: 15, y: 54, w: 7.5 }, { x: 88, y: 64, w: 8 }, { x: 93, y: 52, w: 7 }, { x: 40, y: 38, w: 6 },
 ];
 
 /** The words as a person would say them: no formatting marks, and short enough to read at a glance. */
@@ -31,12 +32,11 @@ export function HallPeople({ people, speaking, said }: { people: TownAgent[]; sp
     <div className="tw-hall-people" aria-label="The people at the meeting">
       {people.slice(0, SEATS.length).map((a, i) => {
         const seat = SEATS[i]!;
-        const cast = a.director ? CAST[a.director] : undefined;
+        const img = a.director ? HALL[a.director] : undefined;
         const talking = speaking === a.id;
         const words = !talking && said?.id === a.id && now - said.at < BUBBLE_MS ? plain(said.text) : null;
-        const frame = cast?.frame ?? { w: 40, h: 80 };
         return (
-          <div key={a.id} className={`tw-hall-person${seat.x < 22 ? ' left' : seat.x > 78 ? ' right' : ''}${seat.y < 50 ? ' high' : ''}`} style={{ left: `${seat.x}%`, top: `${seat.y}%`, width: `${seat.w * (frame.w / 40)}%` }}>
+          <div key={a.id} className={`tw-hall-person${seat.x < 22 ? ' left' : seat.x > 78 ? ' right' : ''}${seat.y < 56 ? ' high' : ''}`} style={{ left: `${seat.x}%`, top: `${seat.y}%`, width: `${seat.w}%` }}>
             <span className="tw-puff-room tw-hall-puff" aria-hidden style={{ backgroundImage: `url(${puffUrl})` }} />
             {(talking || words) && (
               <div className="tw-bubble" role="status" aria-label={`${a.name} says`}>
@@ -44,8 +44,8 @@ export function HallPeople({ people, speaking, said }: { people: TownAgent[]; sp
                 {talking ? <span className="tw-dots" aria-label="is thinking"><i /><i /><i /></span> : <span>{words}</span>}
               </div>
             )}
-            {cast
-              ? <span className="tw-hall-figure tw-appear" role="img" aria-label={a.name} title={a.name} style={{ backgroundImage: `url(${cast.walk})`, aspectRatio: `${frame.w} / ${frame.h}` }} />
+            {img
+              ? <img className="tw-hall-figure tw-appear" src={img} alt={a.name} title={a.name} draggable={false} />
               : <span className="tw-avatar big tw-appear" style={{ background: a.look.accent }} title={a.name}>{a.name.slice(0, 1).toUpperCase()}</span>}
             <small className="tw-hall-name">{a.name}</small>
           </div>
