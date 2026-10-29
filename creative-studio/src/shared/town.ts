@@ -354,6 +354,20 @@ export function decideTeamSuggestion(state: TownState, suggestionId: string, acc
   return { ...base, suggestions: base.suggestions.map((x) => (x.id === suggestionId ? { ...x, status: accept ? 'accepted' : 'rejected' } : x)) };
 }
 
+/**
+ * What the General Manager is told when the owner talks to them in the Studio. It is the same person as the one in the town, so they know who they work
+ * with. (The planning rules that follow it are the Studio's own; see shared/plannerChat.ts.)
+ */
+export function generalManagerIntro(town: TownState): string[] {
+  const gm = town.agents.find((a) => a.director === 'general-manager' && !a.retired) ?? coordinatorOf(town);
+  const mates = activeAgents(town).filter((a) => a.id !== gm?.id).slice(0, 30);
+  return [
+    `You are ${gm?.name ?? 'the General Manager'}, the General Manager and project coordinator. You are the owner's first point of contact, and the same person whether they talk to you in the Studio or in your office in the town.`,
+    ...(mates.length ? ['', 'The rest of the team:', ...mates.map((m) => `- ${m.name}: ${(m.job ?? m.specialty ?? '').trim().slice(0, 160) || 'general help'}`)] : []),
+    '',
+  ];
+}
+
 // ---- what a worker is told ----------------------------------------------------------------------------------------------------
 const DEFAULT_COORDINATOR_JOB = 'Keep the project organised: help the owner work out what they want to make, break it into chunks, suggest next steps, and bring decisions back to them.';
 

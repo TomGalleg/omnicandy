@@ -237,6 +237,22 @@ export class PlannerStore {
     return back ?? { messages: [] };
   }
 
+  /**
+   * The Studio's conversation, which is also the General Manager's. Before the two were one, the General Manager's was kept apart: when the Studio's is
+   * empty and theirs is not, theirs is brought across once, so nothing said is lost.
+   */
+  async readStudioChat(id: string): Promise<ChatFile> {
+    const own = await this.readChat(id);
+    if (own.messages.length) return own;
+    try {
+      const { town } = await this.readTown(id);
+      const gm = town.agents.find((a) => a.director === 'general-manager' && !a.retired);
+      const old = gm ? await this.readChat(id, gm.id) : null;
+      if (old?.messages.length) { await this.writeChat(id, { messages: old.messages, provider: old.provider, model: old.model }); return await this.readChat(id); }
+    } catch { /* no town yet: nothing to bring across */ }
+    return own;
+  }
+
   async writeChat(id: string, chat: { messages: ChatMessage[]; provider?: string; model?: string }, who?: string): Promise<void> {
     const name = chatName(who);
     await this.serial(`chat:${id}:${name}`, async () => {

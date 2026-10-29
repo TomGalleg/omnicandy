@@ -385,8 +385,8 @@ function CurrentChunk({ p, reload, go, setSendSel, focusTaskId, setFocusTaskId, 
   if (!t) {
     return (
       <Section title="Work" hint="One chunk at a time.">
-        <p className="pl-hint">{p.tasks.length ? 'Every chunk is done. Add another in Plan if there is more to do.' : 'There are no chunks yet. Break your idea into chunks in Plan first.'}</p>
-        <button className="btn small" onClick={() => go('tasks')}>Go to Plan</button>
+        <p className="pl-hint">{p.tasks.length ? 'Every chunk is done. Ask the General Manager for more if there is more to do.' : 'There are no chunks yet. Tell the General Manager what you want to make and they will break it into chunks.'}</p>
+        <button className="btn small primary" onClick={() => go('studio')}>Talk to the General Manager</button>
       </Section>
     );
   }

@@ -72,6 +72,29 @@ describe('the town of a project', () => {
   });
 });
 
+describe('the Studio chat and the General Manager', () => {
+  it('are one conversation: an older General Manager chat is brought across once, and nothing is lost', async () => {
+    const { store, planner } = setup();
+    const plan = await planner.startPlan({ title: 'Castle' });
+    const gm = (await store.readTown(plan.id)).town.agents.find((a) => a.director === 'general-manager')!;
+    await store.appendChat(plan.id, { messages: [{ role: 'user', text: 'I want a dragon game' }, { role: 'assistant', text: 'Tell me more.' }] }, gm.id);
+    expect((await store.readChat(plan.id)).messages).toHaveLength(0);
+    const first = await store.readStudioChat(plan.id);
+    expect(first.messages.map((m) => m.text)).toEqual(['I want a dragon game', 'Tell me more.']);
+    await store.appendChat(plan.id, { messages: [{ role: 'user', text: 'A small one' }] });
+    expect((await store.readStudioChat(plan.id)).messages).toHaveLength(3);
+  });
+
+  it('leaves a Studio chat that already has messages alone', async () => {
+    const { store, planner } = setup();
+    const plan = await planner.startPlan({ title: 'Castle' });
+    const gm = (await store.readTown(plan.id)).town.agents.find((a) => a.director === 'general-manager')!;
+    await store.appendChat(plan.id, { messages: [{ role: 'user', text: 'old' }] }, gm.id);
+    await store.appendChat(plan.id, { messages: [{ role: 'user', text: 'mine' }] });
+    expect((await store.readStudioChat(plan.id)).messages.map((m) => m.text)).toEqual(['mine']);
+  });
+});
+
 describe('suggesting a team and holding a meeting', () => {
   it('suggests a studio and a specialist for each application the plan names, and only the owner adds them', async () => {
     const { store, svc, planner, m, u } = setup();

@@ -1,7 +1,30 @@
 import { useEffect, useState } from 'react';
 import { PlannerChat } from './PlannerChat';
 import mapUrl from '../assets/omnitown-map.jpg';
-import { DIRECTORS, MEETING_KINDS, activeAgents, tierFor, type MeetingKind, type TeamChange, type TownAgent, type TownBusiness, type TownMeeting, type TownState } from '@shared/town';
+import researchOffice from '../assets/offices/research-director.jpg';
+import mediaOffice from '../assets/offices/media-manager.jpg';
+import qualityOffice from '../assets/offices/quality-director.jpg';
+import managerOffice from '../assets/offices/general-manager.jpg';
+import technicalOffice from '../assets/offices/technical-director.jpg';
+import creativeOffice from '../assets/offices/creative-director.jpg';
+import productionOffice from '../assets/offices/production-director.jpg';
+import softwareOffice from '../assets/offices/software-director.jpg';
+import aiOffice from '../assets/offices/ai-director.jpg';
+import hallInside from '../assets/offices/town-hall.jpg';
+import { TownWalker } from './TownWalker';
+import { CAST, type CastMember } from './townCast';
+import puffUrl from '../assets/characters/smoke-puff.png';
+import { setPresence, stayInside } from './townPresence';
+import managerPortrait from '../assets/portraits/general-manager.jpg';
+import creativePortrait from '../assets/portraits/creative-director.jpg';
+import qualityPortrait from '../assets/portraits/quality-director.jpg';
+import mediaPortrait from '../assets/portraits/media-manager.jpg';
+import aiPortrait from '../assets/portraits/ai-director.jpg';
+import productionPortrait from '../assets/portraits/production-director.jpg';
+import softwarePortrait from '../assets/portraits/software-director.jpg';
+import researchPortrait from '../assets/portraits/research-director.jpg';
+import techPortrait from '../assets/portraits/technical-director.jpg';
+import { DIRECTORS, MEETING_KINDS, type DirectorKey, activeAgents, tierFor, type MeetingKind, type TeamChange, type TownAgent, type TownBusiness, type TownMeeting, type TownState } from '@shared/town';
 import type { ProposalChange } from '@shared/planner';
 import { errMsg, ErrorLine, Section, type TabProps } from './plannerUi';
 import { useTown } from './useTown';
@@ -11,6 +34,8 @@ const api = () => window.studio.planner;
 const KIND_LABEL: Record<MeetingKind, string> = {
   kickoff: 'Project kickoff', planning: 'Planning meeting', brainstorm: 'Creative brainstorming', technical: 'Technical review', progress: 'Progress meeting', emergency: 'Emergency meeting', other: 'Meeting',
 };
+/** The picture of the inside of an office. Offices without one yet simply show no picture. */
+const INTERIORS: Partial<Record<DirectorKey, string>> = { 'research-director': researchOffice, 'media-manager': mediaOffice, 'quality-director': qualityOffice, 'general-manager': managerOffice, 'technical-director': technicalOffice, 'creative-director': creativeOffice, 'production-director': productionOffice, 'ai-director': aiOffice, 'software-director': softwareOffice };
 const TIER_LABEL = { studio: 'Studio', workshop: 'Workshop', factory: 'Factory' } as const;
 const describe = (c: TeamChange, t: TownState): string => {
   switch (c.op) {
@@ -22,6 +47,13 @@ const describe = (c: TeamChange, t: TownState): string => {
     case 'rename_business': return `Rename a business to ${c.name}`;
   }
 };
+
+/** The director's picture. Until a portrait is added for them, their coloured initial stands in. */
+const PORTRAITS: Partial<Record<DirectorKey, string>> = { 'general-manager': managerPortrait, 'creative-director': creativePortrait, 'quality-director': qualityPortrait, 'technical-director': techPortrait, 'media-manager': mediaPortrait, 'ai-director': aiPortrait, 'production-director': productionPortrait, 'software-director': softwarePortrait, 'research-director': researchPortrait };
+function Portrait({ a }: { a: TownAgent }) {
+  const src = a.director ? PORTRAITS[a.director] : undefined;
+  return src ? <img className="tw-portrait" src={src} alt={a.name} /> : <span className="tw-portrait"><Avatar a={a} big /></span>;
+}
 
 function Avatar({ a, big }: { a: TownAgent; big?: boolean }) {
   return <span className={`tw-avatar${big ? ' big' : ''}`} style={{ background: a.look.accent }} title={`${a.name}${a.specialty ? `: ${a.specialty}` : ''}`}>{a.name.slice(0, 1).toUpperCase()}</span>;
@@ -38,6 +70,10 @@ export function TownTab(props: TabProps) {
   const [busy, setBusy] = useState(false);
   const [pick, setPick] = useState<string | null>(null);
   const [talk, setTalk] = useState<string | null>(null);
+  /** The main worker whose office is open (full screen), or null for the map. */
+  const [office, setOffice] = useState<string | null>(null);
+  /** Inside the Town Hall (full screen), where meetings are held. */
+  const [inHall, setInHall] = useState(false);
   // Opening a conversation brings it into view (it sits below the town).
   useEffect(() => { if (talk) document.getElementById('tw-talk')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, [talk]);
   const run = async <T,>(fn: () => Promise<T>): Promise<T | undefined> => {
@@ -49,6 +85,7 @@ export function TownTab(props: TabProps) {
   const active = town?.meetings.filter((m) => !m.endedAt).at(-1) ?? null;
   if (!town) return <div className="pl-stack"><p className="pl-hint">Setting up your town…</p></div>;
   const selected = town.agents.find((a) => a.id === pick) ?? null;
+  const inOffice = office ? town.agents.find((a) => a.id === office && a.director && !a.retired) ?? null : null;
   const pending = town.suggestions.filter((s) => s.status === 'pending');
   const helpers = activeAgents(town).filter((a) => !a.director).length;
 
@@ -59,7 +96,7 @@ export function TownTab(props: TabProps) {
       <div className="tw-bar">
         <h3>Your town</h3>
         <span className="spacer" />
-        <button className="btn small primary" title="Talk through your idea with the coordinator and see the plan take shape" onClick={() => go('studio')}>Talk to the coordinator</button>
+        <button className="btn small primary" title="Talk through your idea with the General Manager and see the plan take shape" onClick={() => go('studio')}>Talk to the General Manager</button>
         <button className="btn small" disabled={busy} title="Suggests a studio and a specialist helper for each application your chunks name. Nothing is added until you say so." onClick={() => void run(async () => { setTown(await api().townSuggestFromPlan(p.id)); })}>Suggest helpers</button>
         <AddBusiness busy={busy} onAdd={(name) => apply([{ op: 'add_business', name, trade: '' }])} />
       </div>
@@ -74,20 +111,45 @@ export function TownTab(props: TabProps) {
         </div>
       ))}
 
-      <div className="tw-main">
-        <Scene town={town} onPick={setPick} pick={pick} onHall={() => document.getElementById('tw-meet')?.scrollIntoView({ behavior: 'smooth', block: 'start' })} />
-        <aside className="tw-side">
-          {selected ? <WorkerCard town={town} a={selected} busy={busy} onApply={apply} onTalk={() => setTalk(selected.id)} onClose={() => setPick(null)} />
-            : <p className="pl-hint">Click an office on the map to meet the person who works there, see their job and talk to them. The Town Hall in the middle is where meetings happen.</p>}
-          <details className="pl-fold"><summary>Hire a helper{helpers ? <span className="pl-count">{helpers}</span> : null}</summary>
-            <div className="pl-fold-body"><AddWorker town={town} busy={busy} onAdd={(changes) => apply(changes)} /></div>
-          </details>
-        </aside>
-      </div>
+      {inHall ? (
+        <div className="tw-main tw-inoffice">
+          <section className="tw-room" aria-label="Inside the Town Hall">
+            <img src={hallInside} alt="Inside the Town Hall" />
+            <button className="btn small tw-back" onClick={() => setInHall(false)}>← Back to the town</button>
+          </section>
+          <aside className="tw-side"><p className="pl-hint"><strong>The Town Hall.</strong> This is where your team meets. Call a meeting below, say who should come, and write down what you decide.</p></aside>
+        </div>
+      ) : inOffice ? (
+        <div className="tw-main tw-inoffice">
+          <section className="tw-room" aria-label={`Inside ${inOffice.name}'s office`}>
+            {INTERIORS[inOffice.director!] ? <img src={INTERIORS[inOffice.director!]} alt={`Inside the ${inOffice.name}'s office`} /> : <div className="tw-room-empty"><strong>{inOffice.name}'s office</strong><p className="pl-hint">This office has not been drawn yet. {inOffice.name} still works here: talk to them from their card.</p></div>}
+            {inOffice.director && CAST[inOffice.director] && <>
+              <OfficeFigure key={inOffice.id} who={CAST[inOffice.director]!} />
+              {/* The desk, drawn again on top of him, so he sits behind it instead of being cut off. */}
+              <img className="tw-desk-front" src={INTERIORS[inOffice.director]} alt="" aria-hidden style={{ clipPath: CAST[inOffice.director]!.desk }} />
+            </>}
+            <button className="btn small tw-back" onClick={() => { setOffice(null); setPick(null); }}>← Back to the town</button>
+          </section>
+          <aside className="tw-side">
+            <WorkerCard town={town} a={inOffice} busy={busy} onApply={apply} onTalk={() => setTalk(inOffice.id)} onClose={() => { setOffice(null); setPick(null); }} />
+          </aside>
+        </div>
+      ) : (
+        <div className="tw-main">
+          <Scene town={town} onPick={(id) => { setPick(id); setOffice(id && town.agents.find((a) => a.id === id)?.director ? id : null); }} pick={pick} onHall={() => { setInHall(true); setPick(null); setOffice(null); }} />
+          <aside className="tw-side">
+            {selected ? <WorkerCard town={town} a={selected} busy={busy} onApply={apply} onTalk={() => setTalk(selected.id)} onClose={() => setPick(null)} />
+              : <p className="pl-hint">Click an office on the map to go inside and meet the person who works there. The Town Hall in the middle is where meetings happen.</p>}
+            <details className="pl-fold"><summary>Hire a helper{helpers ? <span className="pl-count">{helpers}</span> : null}</summary>
+              <div className="pl-fold-body"><AddWorker town={town} busy={busy} onAdd={(changes) => apply(changes)} /></div>
+            </details>
+          </aside>
+        </div>
+      )}
 
       {talk && town.agents.find((a) => a.id === talk && !a.retired) && (
         <Section title={`Talking with ${town.agents.find((a) => a.id === talk)!.name}`} actions={<button className="btn small" onClick={() => setTalk(null)}>Close</button>}>
-          <div className="tw-talk" id="tw-talk"><PlannerChat key={`${p.id}:${talk}`} p={p} reload={reload} go={go} preview agent={{ id: talk, name: town.agents.find((a) => a.id === talk)!.name }} /></div>
+          <div className="tw-talk" id="tw-talk"><PlannerChat key={`${p.id}:${talk}`} p={p} reload={reload} go={go} preview {...(town.agents.find((a) => a.id === talk)!.director === 'general-manager' ? {} : { agent: { id: talk, name: town.agents.find((a) => a.id === talk)!.name } })} /></div>
         </Section>
       )}
 
@@ -145,6 +207,21 @@ function AddWorker({ town, busy, onAdd }: { town: TownState; busy: boolean; onAd
 }
 
 /**
+ * The director at their desk. They arrive in a puff of smoke when the office opens, and are marked as inside while it is open, so on leaving they
+ * stay in for a few seconds more and then come out of the door in a puff on the map.
+ */
+function OfficeFigure({ who }: { who: CastMember }) {
+  useEffect(() => {
+    setPresence(who.start, Infinity);
+    return () => setPresence(who.start, Date.now() + stayInside());
+  }, [who.start]);
+  return <>
+    <img className="tw-seated tw-appear" src={who.seated} alt="" aria-hidden style={{ left: `${who.seat.left}%`, top: `${who.seat.top}%`, width: `${who.seat.width}%` }} />
+    <span className="tw-puff-room" aria-hidden style={{ left: `${who.seat.left}%`, top: `${who.seat.top + 5}%`, backgroundImage: `url(${puffUrl})` }} />
+  </>;
+}
+
+/**
  * The OmniTown map. The nine offices and the Town Hall are fixed places on the picture; each is a button over its building. Helpers hired into an
  * office stand under it. Businesses the owner opened themselves (not one of the nine) are listed under the map.
  */
@@ -153,6 +230,7 @@ function Scene({ town, pick, onPick, onHall }: { town: TownState; pick: string |
   return (
     <div className="tw-scene" role="group" aria-label="The town" onClick={() => onPick(null)}>
       <div className="tw-map-art" style={{ backgroundImage: `url(${mapUrl})` }}>
+        {town.agents.filter((a) => a.director && CAST[a.director] && !a.retired).map((a) => <TownWalker key={a.id} who={CAST[a.director!]!} name={a.name} onOpen={() => onPick(a.id)} />)}
         <button className="tw-spot hall" style={{ left: '50%', top: '31%' }} onClick={(e) => { e.stopPropagation(); onHall(); }} aria-label="Town Hall: call a meeting" title="Town Hall: call a meeting"><span>Town Hall</span></button>
         {DIRECTORS.map((d) => {
           const boss = town.agents.find((a) => a.director === d.key && !a.retired);
@@ -189,7 +267,7 @@ function WorkerCard({ town, a, busy, onApply, onTalk, onClose }: { town: TownSta
   const [job, setJob] = useState(a.job ?? '');
   return (
     <section className="tw-card" aria-label={a.name}>
-      <header><Avatar a={a} big /><div><strong>{a.name}</strong><br /><small className="pl-hint">{a.role === 'coordinator' ? 'Project coordinator' : a.director ? 'Main worker' : 'Helper'} · {biz?.name}</small></div><button className="btn small ghost" onClick={onClose} aria-label="Close">×</button></header>
+      <header><Portrait a={a} /><div><strong>{a.name}</strong><br /><small className="pl-hint">{a.role === 'coordinator' ? 'Project coordinator' : a.director ? 'Main worker' : 'Helper'} · {biz?.name}</small></div><button className="btn small ghost" onClick={onClose} aria-label="Close">×</button></header>
       <button className="btn small primary" onClick={onTalk}>Talk to {a.name}</button>
       {editing ? (
         <>
@@ -223,8 +301,8 @@ function CallMeeting({ town, busy, onStart }: { town: TownState; busy: boolean; 
       <div className="pl-form">
         <input aria-label="Meeting topic" value={topic} maxLength={200} placeholder="What should we work out? e.g. How should we build the main character?" onChange={(e) => setTopic(e.target.value)} />
         <label>Kind<select value={kind} onChange={(e) => setKind(e.target.value as MeetingKind)}>{MEETING_KINDS.map((k) => <option key={k} value={k}>{KIND_LABEL[k]}</option>)}</select></label>
-        <fieldset><legend>Who should come (the coordinator always does)</legend>
-          {people.length === 0 && <small className="pl-hint">You have no workers yet. You and the coordinator can still meet.</small>}
+        <fieldset><legend>Who should come (the General Manager always does)</legend>
+          {people.length === 0 && <small className="pl-hint">You have no workers yet. You and the General Manager can still meet.</small>}
           {people.map((a) => <label key={a.id} className="pl-check"><input type="checkbox" checked={chosen.includes(a.id)} onChange={(e) => setChosen(e.target.checked ? [...chosen, a.id] : chosen.filter((x) => x !== a.id))} /><Avatar a={a} /> {a.name}</label>)}
           {people.length > 1 && <button className="btn small ghost" onClick={() => setChosen(chosen.length === people.length ? [] : people.map((a) => a.id))}>{chosen.length === people.length ? 'Nobody else' : 'Everyone'}</button>}
         </fieldset>

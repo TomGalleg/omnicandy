@@ -17,7 +17,7 @@ import { ProjectCoordinator } from './coordinator';
 import { PlannerEventHub } from './events';
 import { RoutedPlannerStore } from './routedStore';
 import { PlannerService, userCtx } from './service';
-import { agentSystemPrompt } from '@shared/town';
+import { agentSystemPrompt, generalManagerIntro } from '@shared/town';
 import { createTownMethods } from './townMethods';
 import { createViewMethods } from './viewMethods';
 
@@ -91,7 +91,7 @@ export function registerPlannerIpc(d: Deps): void {
     applyFindings: (id: string, only: number[]) => pp.applyFindings(id, only),
     touchTask: async (id: string, taskId: string, what: string) => { await sync(); await s.touchTask(u, id, taskId, String(what).slice(0, 80)); },
     attachOlder: (id: string) => pp.attachOlder(id),
-    chatLoad: async (id: string) => { await sync(); return d.store.readChat(id); },
+    chatLoad: async (id: string) => { await sync(); return d.store.readStudioChat(id); },
     chatSave: async (id: string, chat: { messages: Array<{ role: 'user' | 'assistant'; text: string }>; provider?: string; model?: string }) => { await sync(); await d.store.writeChat(id, chat); },
     list: () => s.listProjects(u),
     get: (id: string) => s.getProject(u, id),
@@ -158,6 +158,11 @@ export function registerPlannerIpc(d: Deps): void {
       // What the project already contains (names and counts only) is part of what the AI is told, when this is the open project's plan.
       const context = await pp.chatContext(plan);
       let system = chatSystemPrompt(plan, context, r.mode ?? 'talk');
+      if (!r.agentId) {
+        // The Studio's conversation is the General Manager's: they know who is on the team.
+        const intro = await d.store.readTown(plan.id).then(({ town }) => generalManagerIntro(town)).catch(() => []);
+        system = [...intro, system].join(String.fromCharCode(10));
+      }
       if (r.agentId) {
         const { town } = await d.store.readTown(plan.id);
         const agent = town.agents.find((a) => a.id === r.agentId && !a.retired);

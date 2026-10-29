@@ -136,7 +136,7 @@ export function PlannerChat({ p, reload, go, preview, agent }: { p: PlannerProje
           const plan = m.role === 'assistant' ? chunkPlan(m.text) : null;
           return (
             <div key={i} className={`pl-msg ${m.role}`}>
-              <strong>{m.role === 'user' ? 'You' : agent?.name ?? info?.label ?? 'AI'}</strong>
+              <strong>{m.role === 'user' ? 'You' : agent?.name ?? 'General Manager'}</strong>
               {plan ? <ChunkList p={p} reload={reload} text={m.text} go={go} onChange={() => inputRef.current?.focus()} preview={preview} /> : <p className="pl-msg-text">{withoutMarker(m.text)}</p>}
             </div>
           );
@@ -147,7 +147,7 @@ export function PlannerChat({ p, reload, go, preview, agent }: { p: PlannerProje
             <button className="btn" onClick={() => { setNotYet(lastIdx); inputRef.current?.focus(); }}>Not yet, I want to add something</button>
           </div>
         )}
-        {busy && <p className="pl-hint">{info?.label ?? 'The AI'} is thinking…</p>}
+        {busy && <p className="pl-hint">{agent?.name ?? 'The General Manager'} is thinking…</p>}
       </div>
       <ErrorLine error={error ?? modelErr} />
       <div className="pl-composer">
@@ -157,7 +157,7 @@ export function PlannerChat({ p, reload, go, preview, agent }: { p: PlannerProje
         <button className="btn primary pl-send" disabled={busy || !input.trim() || !model || !info?.ready} onClick={() => void ask(input)}>Send</button>
       </div>
       <details className="pl-about">
-        <summary>{info ? `Talking with ${info.label}${model ? ` · ${model}` : ''}` : 'AI settings'}</summary>
+        <summary>{info ? `How I think · ${info.label}` : 'How I think'}</summary>
         <div className="pl-two">
           <label>AI
             <select value={provider} onChange={(e) => { setProvider(e.target.value as ChatProviderId); put(PROVIDER_KEY, e.target.value); setError(null); }}>

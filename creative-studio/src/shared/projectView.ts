@@ -203,6 +203,6 @@ export function nextStepsOf(v: ProjectView): NextStep[] {
   for (const pr of v.pendingProposals) steps.push({ kind: 'review-proposal', proposalId: pr.id, text: `${pr.by} suggested ${pr.changes} change${pr.changes === 1 ? '' : 's'}: look at them.` });
   for (const n of v.nodes) if (n.flags.stalled) steps.push({ kind: 'retake-stalled', taskId: n.id, text: `"${n.title}" stopped without a result: take it back or send it again.` });
   if (v.current) steps.push({ kind: 'continue-current', taskId: v.current.taskId, text: `Continue with "${v.current.title}".` });
-  else if (!v.nodes.some((n) => n.kind === 'chunk' || n.kind === 'task')) steps.push({ kind: 'add-first-chunk', text: 'Tell the coordinator what you want to make, then break it into chunks.' });
+  else if (!v.nodes.some((n) => n.kind === 'chunk' || n.kind === 'task')) steps.push({ kind: 'add-first-chunk', text: 'Tell the General Manager what you want to make, then break it into chunks.' });
   return steps;
 }

@@ -17,7 +17,7 @@ export function StudioTab(props: TabProps) {
   const c = useCanvas(p);
   const [selected, setSelected] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  // A project that already has work in it can be looked at in one click: the coordinator reads it (read-only) and starts the conversation from what it found.
+  // A project that already has work in it can be looked at in one click: the General Manager reads it (read-only) and starts the conversation from what it found.
   const [chatEmpty, setChatEmpty] = useState(false);
   const [chatKey, setChatKey] = useState(0);
   const [looking, setLooking] = useState(false);
@@ -58,7 +58,7 @@ export function StudioTab(props: TabProps) {
         <Panel id="studio-chat" defaultSize="36" minSize="22">
           <div className="studio-chat">{offerLook && (
             <div className="pc-suggest" role="status">
-              <span>This project already has {files} file{files === 1 ? '' : 's'}. Let the coordinator look through them (nothing is changed or marked done).</span>
+              <span>This project already has {files} file{files === 1 ? '' : 's'}. Let the General Manager look through them (nothing is changed or marked done).</span>
               <button className="btn small primary" disabled={looking} onClick={look}>{looking ? 'Looking…' : 'Look at what is here'}</button>
             </div>
           )}

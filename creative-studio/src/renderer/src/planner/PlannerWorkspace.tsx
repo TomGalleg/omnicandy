@@ -16,8 +16,8 @@ import { ErrorLine, errMsg, PlainWords, Section, useAction, when, type TabId, ty
 const api = () => window.studio.planner;
 // One simple flow: Idea (think it through with an AI), Plan (break it into chunks you can edit), Work (do one chunk at a time, review it, approve it).
 // Tab ids are the original ones (plan, tasks, handoffs) so every existing go('handoffs') still lands in the right place.
-const TABS: Array<[TabId, string]> = [['town', 'Town'], ['studio', 'Studio'], ['plan', 'Idea'], ['tasks', 'Plan'], ['handoffs', 'Work']];
-/** Simplified: your town (opens first), the plan you talk through (Studio), and doing a chunk (Work). Advanced adds the step-by-step Idea and Plan screens. */
+const TABS: Array<[TabId, string]> = [['studio', 'Studio'], ['plan', 'Idea'], ['tasks', 'Plan'], ['handoffs', 'Work'], ['town', 'OmniTown']];
+/** Simplified: the plan you talk through (Studio), doing a chunk (Work), and your town (OmniTown, which opens first). Advanced adds the step-by-step Idea and Plan screens. */
 const SIMPLE_TABS: readonly TabId[] = ['town', 'studio', 'handoffs'];
 
 const ago = (iso: string) => {

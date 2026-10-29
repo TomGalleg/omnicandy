@@ -18,7 +18,7 @@ export const ADVANCED_NAV: NavItem[] = [
   { id: 'edit', label: 'Edit' },
   { id: 'generate', label: 'AI Generate' },
   { id: 'software', label: 'Software' },
-  { id: 'planner', label: 'OmniTown' },
+  { id: 'planner', label: 'Planner' },
   { id: 'deliver', label: 'Deliver' },
 ];
 
@@ -28,7 +28,7 @@ export const SIMPLE_NAV: NavItem[] = [
   { id: 'edit', label: 'Edit' },
   { id: 'generate', label: 'AI Generate' },
   { id: 'software', label: 'Software' },
-  { id: 'planner', label: 'OmniTown' },
+  { id: 'planner', label: 'Planner' },
   { id: 'deliver', label: 'Deliver' },
 ];
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  agentSystemPrompt, activeAgents, addMeetingNote, addTeamSuggestion, applyTeamChanges, coordinatorOf, decideTeamSuggestion, defaultTown, endMeeting, linkMeetingProposal, startMeeting, withDirectors,
+  agentSystemPrompt, activeAgents, generalManagerIntro, addMeetingNote, addTeamSuggestion, applyTeamChanges, coordinatorOf, decideTeamSuggestion, defaultTown, endMeeting, linkMeetingProposal, startMeeting, withDirectors,
   suggestTeamFromPlan, tierFor, TOWN_LIMITS, townStateSchema, TownError,
 } from './town';
 
@@ -187,6 +187,14 @@ describe('the nine main workers', () => {
     const prompt = agentSystemPrompt(t, creative, plan);
     expect(prompt).toContain('one of the nine main workers');
     expect(prompt).toContain('Quality Director');
+  });
+
+  it('tell the General Manager who is on the team when the owner talks to them in the Studio', () => {
+    const intro = generalManagerIntro(defaultTown(NOW, rnd)).join(' ');
+    expect(intro).toContain('General Manager');
+    expect(intro).toContain('Creative Director');
+    expect(intro).toContain('Quality Director');
+    expect(intro).not.toMatch(/General Manager: /); // not listed among their own team
   });
 
   it('are added to a town made before they existed, keeping the old coordinator as the General Manager', () => {
