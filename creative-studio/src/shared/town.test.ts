@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  agentSystemPrompt, activeAgents, directorFromName, directorTitle, generalManagerIntro, isDirectorKey, addMeetingNote, addTeamSuggestion, applyTeamChanges, coordinatorOf, decideTeamSuggestion, defaultTown, endMeeting, linkMeetingProposal, startMeeting, withDirectors,
+  agentSystemPrompt, activeAgents, directorFromName, directorTitle, generalManagerIntro, isDirectorKey, taskIsFor, addMeetingNote, addTeamSuggestion, applyTeamChanges, coordinatorOf, decideTeamSuggestion, defaultTown, endMeeting, linkMeetingProposal, startMeeting, withDirectors,
   suggestTeamFromPlan, tierFor, TOWN_LIMITS, townStateSchema, TownError,
 } from './town';
 
@@ -163,6 +163,18 @@ describe('meetings', () => {
     const names = Array.from({ length: 13 }, (_, i) => `W${i}`);
     t = applyTeamChanges(t, [{ op: 'add_business', name: 'Crowd', trade: '' }, ...names.map((name) => ({ op: 'add_agent' as const, name, specialty: '', businessId: '@last' }))], NOW, rnd);
     expect(() => startMeeting(t, { topic: 'Everyone', participantIds: t.agents.map((a) => a.id) }, NOW, rnd)).toThrow(/at most/);
+  });
+});
+
+describe('whose task it is', () => {
+  it('belongs to the director it names, and to the General Manager when it names no one', () => {
+    expect(taskIsFor({ assignee: 'creative-director' }, 'creative-director')).toBe(true);
+    expect(taskIsFor({ assignee: 'creative-director' }, 'quality-director')).toBe(false);
+    expect(taskIsFor({ assignee: 'creative-director' }, 'general-manager')).toBe(false);
+    expect(taskIsFor({}, 'general-manager')).toBe(true);
+    expect(taskIsFor({ assignee: null }, 'general-manager')).toBe(true);
+    expect(taskIsFor({ assignee: null }, 'quality-director')).toBe(false);
+    expect(taskIsFor({ assignee: 'creative-director' }, undefined)).toBe(true); // no director asked about: everything
   });
 });
 

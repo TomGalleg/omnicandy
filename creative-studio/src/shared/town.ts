@@ -49,6 +49,11 @@ export function directorFromName(name: string): DirectorKey | null {
   if (Array.isArray(hit)) return hit.length === 1 ? hit[0]!.key : null;
   return hit.key;
 }
+/**
+ * Whether a task is this director's to handle. A task with no owner falls to the General Manager, who is the first point of contact, so nothing the owner has
+ * not handed to someone is left without a place.
+ */
+export const taskIsFor = (t: { assignee?: string | null }, key: DirectorKey | undefined): boolean => (key ? (t.assignee ? t.assignee === key : key === 'general-manager') : true);
 export const directorTitle = (k: string | null | undefined): string | null => DIRECTORS.find((d) => d.key === k)?.title ?? null;
 export const directorOffice = (title: string) => `${title}'s Office`;
 export type MeetingKind = 'kickoff' | 'planning' | 'brainstorm' | 'technical' | 'progress' | 'emergency' | 'other';

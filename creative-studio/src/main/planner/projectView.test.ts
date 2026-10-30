@@ -3,6 +3,7 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { PlannerProject, PlanTask } from '@shared/planner';
 import { buildProjectView, currentTask, leafProgress } from '@shared/projectView';
+import { taskIsFor } from '@shared/town';
 
 const NOW = new Date('2026-06-01T12:00:00Z');
 const FIX = path.join(__dirname, '__fixtures__');
@@ -15,6 +16,24 @@ const bare = (): PlannerProject => ({
 const task = (id: string, over: Partial<PlanTask> = {}): PlanTask => ({
   id, title: id, description: '', status: 'todo', priority: 'normal', parentId: null, dependsOn: [], completionChecks: [], expectedOutputs: [], assetIds: [], milestoneId: null,
   appRef: null, packageId: null, claim: null, progressNote: '', rev: 1, createdAt: '', updatedAt: '', createdBy: { kind: 'user', name: 'You' }, ...over,
+});
+
+describe('the current task of one director', () => {
+  it('is picked only from the open tasks of that director, never from anyone else', () => {
+    const p = { ...bare(), tasks: [task('task_a', { assignee: 'creative-director' }), task('task_b', { assignee: 'quality-director' }), task('task_c', { assignee: 'quality-director', status: 'accepted' })] };
+    const mine = (key: 'creative-director' | 'quality-director' | 'general-manager') => currentTask(p, null, (t) => taskIsFor(t, key));
+    expect(mine('creative-director')?.id).toBe('task_a');
+    expect(mine('quality-director')?.id).toBe('task_b');
+    expect(mine('general-manager')).toBeUndefined();
+    expect(currentTask(p, 'task_a', (t) => taskIsFor(t, 'quality-director'))?.id).toBe('task_b'); // a task that belongs to someone else cannot be brought to the front
+    expect(currentTask(p, 'task_b')?.id).toBe('task_b'); // without a scope nothing changes
+  });
+
+  it('leaves tasks with no owner to the General Manager', () => {
+    const p = { ...bare(), tasks: [task('task_a')] };
+    expect(currentTask(p, null, (t) => taskIsFor(t, 'general-manager'))?.id).toBe('task_a');
+    expect(currentTask(p, null, (t) => taskIsFor(t, 'creative-director'))).toBeUndefined();
+  });
 });
 
 describe('buildProjectView', () => {

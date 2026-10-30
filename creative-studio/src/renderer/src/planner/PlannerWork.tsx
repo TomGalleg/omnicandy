@@ -9,6 +9,7 @@ import { parseReportText, type ReportImportPreview } from '@shared/plannerHandof
 import { describeWorkflowRun, displayStatus } from '@shared/plannerView';
 import { classifyPaste, changesThePlan, describeChange, type SuggestionPreview } from '@shared/plannerPaste';
 import { currentTask } from '@shared/projectView';
+import { taskIsFor, type DirectorKey } from '@shared/town';
 import { SendPanel } from './PlannerSend';
 import { CopyButton, ErrorLine, errMsg, lines, PlainWords, Section, StatusChip, useAction, when, type TabProps } from './plannerUi';
 
@@ -352,11 +353,12 @@ export function ProposalCard({ p, reload }: { p: PlannerProject; reload: () => P
 }
 
 /** One queue for everything that waits for the owner: results to review, suggestions to look at, stalled tasks to take back. */
-export function ReviewInbox({ p, reload, hideEmpty }: { p: PlannerProject; reload: () => Promise<void>; hideEmpty?: boolean }) {
-  const results = p.reports.filter((r) => r.status === 'submitted');
-  const pending = p.proposals.filter((x) => x.status === 'pending');
+export function ReviewInbox({ p, reload, hideEmpty, forDirector }: { p: PlannerProject; reload: () => Promise<void>; hideEmpty?: boolean; /** Only what belongs to this director (their office); plan-wide suggestions are left to the Plan. */ forDirector?: DirectorKey }) {
+  const mine = (taskId: string) => { const t = p.tasks.find((x) => x.id === taskId); return !forDirector || (!!t && taskIsFor(t, forDirector)); };
+  const results = p.reports.filter((r) => r.status === 'submitted' && mine(r.taskId));
+  const pending = forDirector ? [] : p.proposals.filter((x) => x.status === 'pending');
   const now = new Date();
-  const stalled = p.tasks.filter((t) => displayStatus(t, p, now).stalled);
+  const stalled = p.tasks.filter((t) => mine(t.id) && displayStatus(t, p, now).stalled);
   const a = useAction(reload);
   const empty = !results.length && !pending.length && !stalled.length;
   if (empty && hideEmpty) return null;
@@ -367,21 +369,28 @@ export function ReviewInbox({ p, reload, hideEmpty }: { p: PlannerProject; reloa
         <p key={t.id} className="pl-warn">{t.title}: no result arrived and the AI stopped working on it. <button className="btn small" disabled={a.busy} onClick={() => void a.run(() => api().setTaskStatus(p.id, t.id, 'todo', '', t.rev))}>Take back</button></p>
       ))}
       {results.map((r) => <ReportCard key={r.id} r={r} p={p} reload={reload} />)}
-      <ProposalCard p={p} reload={reload} />
+      {!forDirector && <ProposalCard p={p} reload={reload} />}
       <ErrorLine error={a.error} />
     </Section>
   );
 }
 
 /** The task being worked on: the one named, the one picked up from where the owner left off, the next one ready, or the first open one. */
-export function pickCurrent(p: PlannerProject, focusTaskId?: string | null): PlanTask | undefined { return currentTask(p, focusTaskId); }
+export function pickCurrent(p: PlannerProject, focusTaskId?: string | null, forDirector?: DirectorKey): PlanTask | undefined { return currentTask(p, focusTaskId, forDirector ? (t) => taskIsFor(t, forDirector) : undefined); }
 
 /**
  * Work, one task at a time. Nothing here changes a file in the project: results come back as text and wait for the owner's review.
  */
-function CurrentChunk({ p, reload, go, setSendSel, focusTaskId, setFocusTaskId, projectKey, projectName }: TabProps) {
-  const open = p.tasks.filter((t) => t.status !== 'accepted' && t.status !== 'cancelled');
-  const t = pickCurrent(p, focusTaskId);
+function CurrentChunk({ p, reload, go, setSendSel, focusTaskId, setFocusTaskId, projectKey, projectName, forDirector }: TabProps) {
+  const open = p.tasks.filter((t) => t.status !== 'accepted' && t.status !== 'cancelled' && (!forDirector || taskIsFor(t, forDirector)));
+  const t = pickCurrent(p, focusTaskId, forDirector);
+  if (!t && forDirector) {
+    return (
+      <Section title="Tasks" hint="Anything the owner hands to this person shows up here.">
+        <p className="pl-hint">{p.tasks.some((x) => taskIsFor(x, forDirector)) ? 'Every task here is done.' : 'No tasks here yet. Tell the General Manager what you want to make, or give this person a task from the Plan.'}</p>
+      </Section>
+    );
+  }
   if (!t) {
     return (
       <Section title="Work" hint="One task at a time.">
@@ -405,11 +414,11 @@ function CurrentChunk({ p, reload, go, setSendSel, focusTaskId, setFocusTaskId, 
 
 /** Work: the current task, what waits for the owner, sending it out and bringing the result back. */
 export function WorkTab(props: TabProps) {
-  const { p, reload, sendSel, setSendSel, focusTaskId } = props;
-  const cur = pickCurrent(p, focusTaskId);
+  const { p, reload, sendSel, setSendSel, focusTaskId, forDirector } = props;
+  const cur = pickCurrent(p, focusTaskId, forDirector);
   return (
     <div className="pl-stack">
-      <ReviewInbox p={p} reload={reload} hideEmpty />
+      <ReviewInbox p={p} reload={reload} hideEmpty forDirector={forDirector} />
       <CurrentChunk {...props} />
       {cur && <SendPanel p={p} reload={reload} sel={sendSel ?? []} setSel={setSendSel ?? (() => {})} only={cur.id} />}
       <details className="pl-fold"><summary>Bring an answer back from another AI</summary>

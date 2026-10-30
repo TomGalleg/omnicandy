@@ -13,9 +13,7 @@ const api = () => window.studio.planner;
  * the plan only when you press Add. The canvas, board and list are three ways of drawing the same plan.
  */
 export function StudioTab(props: TabProps) {
-  const { p, reload, go, setFocusTaskId, setSendSel, manifest } = props;
-  const c = useCanvas(p);
-  const [selected, setSelected] = useState<string | null>(null);
+  const { p, reload, go, manifest } = props;
   const [error, setError] = useState<string | null>(null);
   // A project that already has work in it can be looked at in one click: the General Manager reads it (read-only) and starts the conversation from what it found.
   const [chatEmpty, setChatEmpty] = useState(false);
@@ -35,6 +33,38 @@ export function StudioTab(props: TabProps) {
       await reload();
     })().catch((e) => setError(errMsg(e))).finally(() => setLooking(false));
   };
+
+  return (
+    <div className="studio">
+      <Group orientation="horizontal">
+        <Panel id="studio-chat" defaultSize="36" minSize="22">
+          <div className="studio-chat">{offerLook && (
+            <div className="pc-suggest" role="status">
+              <span>This project already has {files} file{files === 1 ? '' : 's'}. Let the General Manager look through them (nothing is changed or marked done).</span>
+              <button className="btn small primary" disabled={looking} onClick={look}>{looking ? 'Looking…' : 'Look at what is here'}</button>
+            </div>
+          )}
+          <ErrorLine error={error} />
+          <PlannerChat key={`${p.id}:${chatKey}`} p={p} reload={reload} go={go} preview /></div>
+        </Panel>
+        <Separator className="sep" />
+        <Panel id="studio-canvas" defaultSize="64" minSize="30">
+          <StudioPlan {...props} />
+        </Panel>
+      </Group>
+    </div>
+  );
+}
+
+/**
+ * The plan side of the Studio: suggestions waiting for the owner as dashed cards, and the plan as cards you can move, group and connect. Shown on its own from
+ * OmniTown's Plan button (`onWork` then opens the task in its director's office instead of the Work tab).
+ */
+export function StudioPlan(props: TabProps & { onWork?: (taskId: string) => void }) {
+  const { p, reload, go, setFocusTaskId, setSendSel } = props;
+  const c = useCanvas(p);
+  const [selected, setSelected] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
   /** Nothing to draw yet: the canvas, its toolbar, counters and minimap stay out of the way until there is something to show. */
   const empty = c.view.nodes.length <= 1 && c.view.pendingProposals.length === 0;
   const node = selected ? c.view.nodes.find((n) => n.id === selected) ?? null : null;
@@ -56,45 +86,29 @@ export function StudioTab(props: TabProps) {
     setError(null);
     void api().updateTask(p.id, n.ref.id, { assignee: key }, n.ref.rev).then(() => reload()).catch((e) => { setError(errMsg(e)); void reload().catch(() => {}); });
   };
-  const work = (taskId: string) => { setSendSel?.([taskId]); setFocusTaskId?.(taskId); go('handoffs'); };
+  const work = (taskId: string) => { if (props.onWork) { props.onWork(taskId); return; } setSendSel?.([taskId]); setFocusTaskId?.(taskId); go('handoffs'); };
 
   return (
-    <div className="studio">
-      <Group orientation="horizontal">
-        <Panel id="studio-chat" defaultSize="36" minSize="22">
-          <div className="studio-chat">{offerLook && (
-            <div className="pc-suggest" role="status">
-              <span>This project already has {files} file{files === 1 ? '' : 's'}. Let the General Manager look through them (nothing is changed or marked done).</span>
-              <button className="btn small primary" disabled={looking} onClick={look}>{looking ? 'Looking…' : 'Look at what is here'}</button>
-            </div>
-          )}
-          <PlannerChat key={`${p.id}:${chatKey}`} p={p} reload={reload} go={go} preview /></div>
-        </Panel>
-        <Separator className="sep" />
-        <Panel id="studio-canvas" defaultSize="64" minSize="30">
-          <div className="studio-plan">
-            {c.note && <p className="pl-warn" role="status">{c.note} <button className="btn small ghost" onClick={c.clearNote}>Dismiss</button></p>}
-            <ErrorLine error={error} />
-            {c.view.pendingProposals.map((pr) => {
-              const kept = p.proposals.find((x) => x.id === pr.id)?.changes.filter((_, i) => !left.has(`ghost:${pr.id}:${i}`)).length ?? pr.changes;
-              return (
-                <div key={pr.id} className="pc-suggest" role="status">
-                  <span><strong>{pr.by}</strong> suggests {pr.changes} {pr.changes === 1 ? 'change' : 'changes'}{pr.note ? `: ${pr.note}` : ''}. They are shown dashed.</span>
-                  <span className="pl-actions">
-                    <button className="btn small primary" onClick={() => decide(pr.id, true)}>Add {kept === pr.changes ? 'all' : `${kept} of ${pr.changes}`}</button>
-                    <button className="btn small" onClick={() => decide(pr.id, false)}>Skip all</button>
-                  </span>
-                </div>
-              );
-            })}
-            {empty && <p className="pl-hint studio-empty">Your plan will take shape here as you talk. Cards you can move, group and connect appear as soon as there is something to show.</p>}
-            {!empty && <div className="studio-main">
-              <ProjectCanvas view={c.view} layout={c.layout} positions={c.positions} selectedId={selected} onSelect={setSelected} onPatch={c.patch} onArrange={c.arrange} excluded={left} onToggle={toggle} />
-              <CardDetails node={node} onWork={work} onClose={() => setSelected(null)} onAssign={assign} />
-            </div>}
+    <div className="studio-plan">
+      {c.note && <p className="pl-warn" role="status">{c.note} <button className="btn small ghost" onClick={c.clearNote}>Dismiss</button></p>}
+      <ErrorLine error={error} />
+      {c.view.pendingProposals.map((pr) => {
+        const kept = p.proposals.find((x) => x.id === pr.id)?.changes.filter((_, i) => !left.has(`ghost:${pr.id}:${i}`)).length ?? pr.changes;
+        return (
+          <div key={pr.id} className="pc-suggest" role="status">
+            <span><strong>{pr.by}</strong> suggests {pr.changes} {pr.changes === 1 ? 'change' : 'changes'}{pr.note ? `: ${pr.note}` : ''}. They are shown dashed.</span>
+            <span className="pl-actions">
+              <button className="btn small primary" onClick={() => decide(pr.id, true)}>Add {kept === pr.changes ? 'all' : `${kept} of ${pr.changes}`}</button>
+              <button className="btn small" onClick={() => decide(pr.id, false)}>Skip all</button>
+            </span>
           </div>
-        </Panel>
-      </Group>
+        );
+      })}
+      {empty && <p className="pl-hint studio-empty">Your plan will take shape here as you talk. Cards you can move, group and connect appear as soon as there is something to show.</p>}
+      {!empty && <div className="studio-main">
+        <ProjectCanvas view={c.view} layout={c.layout} positions={c.positions} selectedId={selected} onSelect={setSelected} onPatch={c.patch} onArrange={c.arrange} excluded={left} onToggle={toggle} />
+        <CardDetails node={node} onWork={work} onClose={() => setSelected(null)} onAssign={assign} />
+      </div>}
     </div>
   );
 }

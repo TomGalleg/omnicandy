@@ -1049,3 +1049,8 @@ span.tw-portrait { display: grid; place-items: center; }
 .tw-team-options > summary { cursor: pointer; padding: 3px 10px; border-radius: var(--radius); border: 1px solid var(--border); background: var(--surface); list-style: none; }
 .tw-team-options > summary::-webkit-details-marker { display: none; }
 .tw-team-options-body { position: absolute; right: 0; top: calc(100% + 6px); z-index: 20; width: min(420px, 80vw); padding: 12px; border-radius: 12px; background: var(--surface); border: 1px solid var(--border); box-shadow: 0 6px 20px rgba(0, 0, 0, .35); display: grid; gap: 10px; }
+.tw-office-tasks { position: absolute; top: 44px; right: 8px; bottom: 150px; width: min(560px, 64%); z-index: 10; overflow: auto; padding: 10px 12px; border-radius: 12px; background: var(--surface); color: var(--text, inherit); border: 1px solid var(--border); box-shadow: 0 6px 20px rgba(0, 0, 0, .5); }
+.tw-office-tasks > header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.tw-plan { flex: 1 1 auto; min-width: 0; height: min(76vh, 760px); display: flex; flex-direction: column; border-radius: 16px; overflow: hidden; border: 1px solid var(--border); background: var(--surface); }
+.tw-plan > header { display: flex; gap: 12px; align-items: center; padding: 8px 12px; border-bottom: 1px solid var(--border); }
+.tw-plan .studio-plan { flex: 1; min-height: 0; }

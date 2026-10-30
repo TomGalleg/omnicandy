@@ -64,9 +64,9 @@ export const MAX_GHOSTS_PER_PROPOSAL = 200;
 
 const live = (t: PlanTask) => t.status !== 'cancelled';
 
-/** The task worked on now: the one named, the one worked on last, the next one ready, or the first open one. */
-export function currentTask(p: PlannerProject, focusTaskId?: string | null): PlanTask | undefined {
-  const open = p.tasks.filter((t) => t.status !== 'accepted' && t.status !== 'cancelled');
+/** The task worked on now: the one named, the one worked on last, the next one ready, or the first open one. `scope` limits it to some tasks (one director's). */
+export function currentTask(p: PlannerProject, focusTaskId?: string | null, scope?: (t: PlanTask) => boolean): PlanTask | undefined {
+  const open = p.tasks.filter((t) => t.status !== 'accepted' && t.status !== 'cancelled' && (!scope || scope(t)));
   const unmet = (t: PlanTask) => t.dependsOn.map((id) => p.tasks.find((x) => x.id === id)).filter((x): x is PlanTask => !!x && x.status !== 'accepted' && x.status !== 'cancelled').length;
   const ready = open.find((t) => ['todo', 'revision'].includes(t.status) && !unmet(t));
   return open.find((x) => x.id === focusTaskId) ?? open.find((x) => x.id === p.lastActive?.taskId) ?? ready ?? open[0];

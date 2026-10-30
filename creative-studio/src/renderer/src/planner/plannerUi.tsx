@@ -13,6 +13,8 @@ export interface TabProps {
   projectKey?: string | null; projectName?: string;
   /** The task being worked on (opened from Plan, or picked up from where the owner left off). */
   focusTaskId?: string | null; setFocusTaskId?: (id: string | null) => void;
+  /** Show only this director's tasks (their office), instead of the whole plan. */
+  forDirector?: import('@shared/town').DirectorKey;
 }
 
 /** Electron prefixes errors that cross the bridge; the user only needs the message. */

@@ -65,6 +65,32 @@ try {
   }
   check('"Bring an answer back" is under a closed fold', (await win.locator('details', { hasText: 'Bring an answer back from another AI' }).first().evaluate((e) => e.open)) === false);
 
+  // ---- tasks inside the offices, and the Plan button
+  await win.evaluate(async (id) => { const api = window.studio.planner; const pr = await api.importSuggestions(id, { proposer: { kind: 'other', name: 'Smoke test' }, note: 'x', changes: [
+    { op: 'add_task', title: 'Draw the dragon', description: '', priority: 'normal', dependsOn: [], completionChecks: [], assignee: 'creative-director' },
+    { op: 'add_task', title: 'Test the loader', description: '', priority: 'normal', dependsOn: [], completionChecks: [], assignee: 'quality-director' }], rawText: 'x' }); await api.decideProposal(id, pr.id, true, [0, 1]); }, id);
+  await tab(win, 'OmniTown');
+  const enter = async (who) => { await win.locator('.tw-office .tw-spot').filter({ hasText: who }).first().dispatchEvent('click'); await win.waitForTimeout(1800); };
+  const leave = async () => { await win.getByRole('button', { name: 'Back to the town' }).click(); await win.waitForTimeout(500); };
+  await enter('Creative');
+  await win.getByRole('button', { name: /^Tasks/ }).click(); await win.waitForTimeout(800);
+  const creative = await win.getByRole('dialog', { name: /tasks/ }).innerText();
+  check('An office shows the tasks of that director', /Draw the dragon/.test(creative));
+  check('...and nobody elses', !/Test the loader|Write the brief/.test(creative));
+  check('"Do this now" is right there in the office', (await win.getByRole('dialog', { name: /tasks/ }).getByRole('button', { name: 'Do this now' }).count()) === 1 || !ready);
+  await leave();
+  await enter('General');
+  await win.getByRole('button', { name: /^Tasks/ }).click(); await win.waitForTimeout(800);
+  const gm = await win.getByRole('dialog', { name: /tasks/ }).innerText();
+  check('A task nobody owns falls to the General Manager', /Write the brief/.test(gm) && !/Draw the dragon|Test the loader/.test(gm));
+  await leave();
+  await win.getByRole('button', { name: 'Plan', exact: true }).click(); await win.waitForTimeout(1500);
+  check('The Plan button in OmniTown shows the plan as cards', (await win.locator('.react-flow__node').count()) >= 3);
+  await win.locator('.react-flow__node', { hasText: 'Test the loader' }).first().click(); await win.waitForTimeout(400);
+  await win.getByRole('region', { name: 'The plan' }).getByRole('button', { name: 'Work on this' }).click(); await win.waitForTimeout(1800);
+  check('"Work on this" on a card opens the task in the office of its director', /Test the loader/.test(await win.getByRole('dialog', { name: /tasks/ }).innerText().catch(() => '')) && /Quality Director/.test(await win.locator('.tw-card').first().innerText()));
+  await leave();
+
   // ---- remember the last tab, through a restart
   await tab(win, 'Work');
   await win.waitForTimeout(1500);

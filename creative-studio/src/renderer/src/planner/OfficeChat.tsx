@@ -15,7 +15,7 @@ const api = () => window.studio.planner;
  * speech bubble beside them (long ones scroll), and a task they recommend gets an Add task button under it. The conversation is the one kept with the plan
  * (the General Manager's is the Studio's), so it is the same whichever door the owner uses.
  */
-export function OfficeChat({ agent, seat, planId, tasks, reload, onMessages }: { agent: TownAgent; seat: CastMember['seat']; planId: string; tasks: readonly PlanTask[]; reload: () => Promise<void>; onMessages: (m: ChatMessage[]) => void }) {
+export function OfficeChat({ agent, seat, planId, tasks, reload, onMessages, taskCount, waitingCount, onTasks }: { agent: TownAgent; seat: CastMember['seat']; planId: string; tasks: readonly PlanTask[]; reload: () => Promise<void>; onMessages: (m: ChatMessage[]) => void; /** This director's open tasks, and how many have a result waiting for the owner. */ taskCount: number; waitingCount: number; onTasks: () => void }) {
   const isGm = agent.director === 'general-manager';
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [bubble, setBubble] = useState<{ text: string; tasks: string[] } | null>(null);
@@ -67,6 +67,7 @@ export function OfficeChat({ agent, seat, planId, tasks, reload, onMessages }: {
   return (
     <>
       <div className="tw-hall-top">
+        <button className="btn small" onClick={onTasks} title={`${agent.name}'s tasks: start one, and review what comes back`}>Tasks{taskCount ? ` (${taskCount})` : ''}{waitingCount ? <span className="pl-badge" title="A result is waiting for you">{waitingCount}</span> : null}</button>
         <details className="tw-hall-settings" open={showSettings} onToggle={(e) => setShowSettings((e.currentTarget as HTMLDetailsElement).open)}>
           <summary>Chat settings</summary>
           <div className="tw-hall-settings-body">
