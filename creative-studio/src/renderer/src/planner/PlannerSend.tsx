@@ -53,7 +53,7 @@ export function SendPanel({ p, reload, sel, setSel, only }: { p: PlannerProject;
 
   return (
     <Section title={only ? 'Do this task' : 'Send to AI'} hint={only ? (dest === 'createcraft' ? 'OmniCandy Claude does it after you confirm. Nothing starts until you press Start.' : 'Pick who does it. This only prepares instructions for you to copy; nothing starts by itself.') : 'Pick what the AI should do and who gets it. This only prepares text for you to send. Nothing starts by itself.'}>
-      {!ready.length && <p className="pl-hint">{only ? 'This task is already with an AI, waiting for a result, or finished. Bring the result back below.' : 'No task is ready to send. A task is ready when it is To Do and nobody is working on it.'}</p>}
+      {!ready.length && <p className="pl-hint">{only ? 'This task is already with an AI, waiting for a result, or finished. Bring its answer back below.' : 'No task is ready to send. A task is ready when it is To Do and nobody is working on it.'}</p>}
       {!only && ready.map((t) => (
         <label key={t.id} className="pl-check">
           <input type="checkbox" checked={chosen.includes(t.id)} onChange={(e) => setSel(e.target.checked ? [...chosen, t.id] : chosen.filter((x) => x !== t.id))} />
@@ -92,8 +92,8 @@ export function SendPanel({ p, reload, sel, setSel, only }: { p: PlannerProject;
       <ErrorLine error={a.error} />
       {sent && (
         <div className="pl-sent" role="status">
-          <p><strong>{sent.reused ? 'Ready. This is the same brief you prepared before, and nothing in the plan has changed.' : 'Ready.'}</strong>
-            {sent.replaced.length > 0 && <> It replaces the earlier brief{sent.replaced.length > 1 ? 's' : ''} ({sent.replaced.join(', ')}): an AI still holding the old one will be told it is out of date.</>}</p>
+          <p><strong>{sent.reused ? 'Ready. These are the same instructions you prepared before, and nothing in the plan has changed.' : 'Ready.'}</strong>
+            {sent.replaced.length > 0 && <> It replaces the earlier instructions ({sent.replaced.join(', ')}): an AI still holding the old one will be told it is out of date.</>}</p>
           {sent.dest !== 'createcraft' && paths.length > 0 && (
             <div className="pl-warn">
               <label className="pl-check"><input type="checkbox" checked={redact} onChange={(e) => setRedact(e.target.checked)} />Remove file locations from the text ({paths.length} found)</label>
@@ -103,7 +103,7 @@ export function SendPanel({ p, reload, sel, setSel, only }: { p: PlannerProject;
           <div className="pl-actions">
             {sent.dest !== 'createcraft' && <CopyButton text={text} label={sent.dest === 'chat' ? 'Copy for the chat' : 'Copy the line to paste'} />}
             {sent.dest === 'createcraft' && !started && !confirming && <button className="btn primary" onClick={() => setConfirming(true)}>Do this now</button>}
-            <button className="btn small ghost" disabled={a.busy} title="Cancel this brief; its tasks go back to To Do" onClick={() => void a.run(async () => { await api().cancelPackage(p.id, sent.pkg.id); setSent(null); })}>Undo</button>
+            <button className="btn small ghost" disabled={a.busy} title="Cancel these instructions; the tasks go back to To Do" onClick={() => void a.run(async () => { await api().cancelPackage(p.id, sent.pkg.id); setSent(null); })}>Undo</button>
           </div>
           {sent.dest === 'createcraft' && !started && (
             <details><summary>Other ways to give this to Claude</summary>
@@ -115,7 +115,7 @@ export function SendPanel({ p, reload, sel, setSel, only }: { p: PlannerProject;
           {copied && sent.dest !== 'createcraft' && <p className="pl-hint" role="status">Copied. Paste it into {sent.dest === 'chat' ? 'ChatGPT, Gemini or Claude' : 'your tool'}.</p>}
           {sent.dest === 'createcraft' && confirming && !started && (
             <div className="pl-warn" role="alertdialog" aria-label="Start this work">
-              <p><strong>Start this now?</strong> OmniCandy's Claude will read the brief, claim {chosen.length === 1 ? 'the task' : 'the tasks'}, work in this project with the apps you have connected, then report back for your review. It asks you before it runs another program, never marks anything Done itself, and uses your Claude sign-in.</p>
+              <p><strong>Start this now?</strong> OmniCandy's Claude will read the instructions, take {chosen.length === 1 ? 'the task' : 'the tasks'}, work in this project with the apps you have connected, then report back for your review. It asks you before it runs another program, never marks anything Done itself, and uses your Claude sign-in.</p>
               <label>It stops by itself after about <select value={steps} onChange={(e) => setSteps(Number(e.target.value))}><option value={20}>20 steps (short)</option><option value={40}>40 steps (normal)</option><option value={100}>100 steps (long)</option></select></label>
               <p className="pl-actions">
                 <button className="btn primary" onClick={() => { setStarted(true); setConfirming(false); setRunError(null); void window.studio.claude.send(text, { maxTurns: steps }).then(() => reload()).catch((e: unknown) => { setStarted(false); setRunError(errMsg(e)); }); }}>Start</button>
@@ -125,9 +125,9 @@ export function SendPanel({ p, reload, sel, setSel, only }: { p: PlannerProject;
           )}
           {started && <p className="pl-hint" role="status">Started. Watch the Claude panel. While it works, the task's director shows a turning gear in the town, and a ! when the result is ready for you to review. Press Stop in the Claude panel to end it.</p>}
           <ErrorLine error={runError} />
-          {sent.dest === 'createcraft' && chosen.some((id) => !p.tasks.find((t) => t.id === id)?.assignee) && <p className="pl-hint">Tip: choose who handles {chosen.length === 1 ? 'this task' : 'these tasks'} (Handled by, on the card in the Studio) so their badge shows in the town.</p>}
+          {sent.dest === 'createcraft' && chosen.some((id) => !p.tasks.find((t) => t.id === id)?.assignee) && <p className="pl-hint">Tip: choose who handles {chosen.length === 1 ? 'this task' : 'these tasks'} (Handled by, on its card in the Plan) so their badge shows in the town.</p>}
           {filled && <p className="pl-hint">It is in the Claude panel's box. Read it, then press Send there. If the panel is closed, use Copy and paste it in.</p>}
-          {sent.dest !== 'createcraft' && <p className="pl-hint">When the AI answers, paste the answer under <strong>Paste back</strong> below. It will wait for your review.</p>}
+          {sent.dest !== 'createcraft' && <p className="pl-hint">When the AI answers, paste the answer into <strong>Bring an answer back from another AI</strong> below. It will wait for your review.</p>}
           {sent.dest !== 'createcraft' && <pre className="pl-raw">{text}</pre>}
         </div>
       )}
@@ -139,7 +139,7 @@ export function SendPanel({ p, reload, sel, setSel, only }: { p: PlannerProject;
 export function AskPanel({ p }: { p: PlannerProject }) {
   const text = useMemo(() => brainstormText(p), [p]);
   return (
-    <Section title="Ask an AI for ideas" hint="Copies a short summary of your plan and asks for suggestions in a form you can paste back below. Nothing joins your plan until you say so.">
+    <Section title="Ask an AI for ideas" hint="Copies a short summary of your plan and asks for suggestions in a form you can paste in below. Nothing joins your plan until you say so.">
       <div className="pl-actions"><CopyButton text={text} label="Copy the request" /></div>
       <details><summary>Show what will be copied</summary><pre className="pl-raw">{text}</pre></details>
     </Section>

@@ -81,6 +81,8 @@ export function StudioPlan(props: TabProps & { onWork?: (taskId: string) => void
       .then(() => reload())
       .catch((e) => { setError(errMsg(e)); void reload().catch(() => {}); });
   };
+  /** A suggestion made only of new tasks says "tasks"; one that also changes the brief, a decision or the like says "changes". */
+  const noun = (proposalId: string, n: number) => { const all = p.proposals.find((x) => x.id === proposalId)?.changes.every((c) => c.op === 'add_task'); return `${all ? 'task' : 'change'}${n === 1 ? '' : 's'}`; };
   /** The owner's choice of who handles a task. Plan data, so it goes through the plan's own edit (with the revision the owner was looking at). */
   const assign = (n: ViewNode, key: string | null) => {
     setError(null);
@@ -96,10 +98,10 @@ export function StudioPlan(props: TabProps & { onWork?: (taskId: string) => void
         const kept = p.proposals.find((x) => x.id === pr.id)?.changes.filter((_, i) => !left.has(`ghost:${pr.id}:${i}`)).length ?? pr.changes;
         return (
           <div key={pr.id} className="pc-suggest" role="status">
-            <span><strong>{pr.by}</strong> suggests {pr.changes} {pr.changes === 1 ? 'change' : 'changes'}{pr.note ? `: ${pr.note}` : ''}. They are shown dashed.</span>
+            <span><strong>{pr.by}</strong> suggests {pr.changes} {noun(pr.id, pr.changes)}{pr.note ? `: ${pr.note}` : ''}. {pr.changes === 1 ? 'It is' : 'They are'} shown dashed until you add {pr.changes === 1 ? 'it' : 'them'} to your plan.</span>
             <span className="pl-actions">
-              <button className="btn small primary" onClick={() => decide(pr.id, true)}>Add {kept === pr.changes ? 'all' : `${kept} of ${pr.changes}`}</button>
-              <button className="btn small" onClick={() => decide(pr.id, false)}>Skip all</button>
+              <button className="btn small primary" onClick={() => decide(pr.id, true)}>{kept === pr.changes ? (pr.changes === 1 ? 'Add to my plan' : 'Add all to my plan') : `Add ${kept} of ${pr.changes} to my plan`}</button>
+              <button className="btn small" onClick={() => decide(pr.id, false)}>{pr.changes === 1 ? 'Skip' : 'Skip all'}</button>
             </span>
           </div>
         );

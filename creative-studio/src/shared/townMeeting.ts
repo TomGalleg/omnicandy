@@ -1,22 +1,14 @@
 // A meeting the team holds with AI help. Pure rules and text only: nothing here calls an AI (the Town Hall does, one request at a time).
 //
-// It is run like an organised meeting. The owner talks with ONE person at a time (the General Manager to begin with). After each exchange the others work out
-// who, if anyone, has the most important thing the owner should hear next; that person gets a ! over their head and the owner chooses when to open it. Opening
-// it starts a conversation with them, until someone else has something more important. Each message costs at most three short requests: the reply, a quick
-// choice of who might speak up, and that person's remark (which may be a PASS).
+// It is run like an organised meeting. The owner talks with ONE person at a time (the General Manager to begin with). Who might have something to add is
+// worked out by rules, for free (see townHands.ts): a ! over their head means only "they could add something". What they say is asked for ONLY when the
+// owner clicks the ! to invite them. So a message costs one request for the answer, and hearing from an invited colleague is one more.
 import type { TownAgent, TownMeeting, MeetingNote } from './town';
 import { CHUNK_FORMAT } from './plannerContext';
 
 /** The most recent notes that go into a prompt, so a long meeting does not grow without bound. */
 const RECENT = 8;
 const said = (notes: readonly MeetingNote[]) => notes.slice(-RECENT).map((n) => `${n.by}: ${n.text.slice(0, 300)}`);
-const jobOf = (a: { job?: string; specialty?: string }) => (a.job ?? a.specialty ?? '').replace(/\s+/g, ' ').trim().slice(0, 140);
-
-/** A reply that means "nothing to add". */
-export const isPass = (text: string): boolean => {
-  const t = text.trim().replace(/^["'*_\s]+/, '');
-  return /^pass[\s.!"')\]*_]*$/i.test(t) || (t.length < 24 && /^pass\b/i.test(t));
-};
 
 /** A task a person recommends is a line of its own: `Task: <short title>`. At most this many are read from one reply. */
 export const MAX_TASK_LINES = 2;
@@ -45,43 +37,17 @@ export function replyPrompt(meeting: Pick<TownMeeting, 'topic' | 'kind'>, speake
   ].join('\n');
 }
 
-/** Who might speak up next. One short request that names a title or NONE, so it is cheap. */
-export function chimePickPrompt(talkingWith: string, candidates: ReadonlyArray<{ name: string; job?: string; specialty?: string }>, recent: readonly string[], notes: readonly MeetingNote[]): string {
+/** A colleague the owner invited by clicking their "!": what they would add from their own job, not what has already been said. */
+export function invitePrompt(meeting: Pick<TownMeeting, 'topic' | 'kind'>, speaker: Pick<TownAgent, 'name'>, talkingWith: string, notes: readonly MeetingNote[]): string {
   return [
-    `You are choosing who, if anyone, should speak up next in a meeting between the owner and their team. The owner is talking with ${talkingWith}.`,
-    '',
-    'The others at the table, and their jobs:',
-    ...candidates.map((c) => `- ${c.name}: ${jobOf(c) || 'general help'}`),
+    `We are in a ${meeting.kind} meeting with the owner. It started with: ${meeting.topic}`,
+    `The owner has been talking with ${talkingWith}.`,
     '',
     'What has been said so far (the owner is "You"):',
     ...said(notes),
     '',
-    `Pick the ONE person who has the most important thing the owner should hear right now, judged by their job, that ${talkingWith} has not already covered.${recent.length ? ` Do not pick anyone who spoke in the last few turns (${recent.join(', ')}) unless it is truly important.` : ''} Most of the time nobody needs to speak up: if so, say NONE.`,
-    'Reply with only that person\'s exact title, or NONE.',
+    `${speaker.name}, the owner has invited you to add your view. In one to three short sentences, say what you would add from your own job that has not already been said. Do not repeat others, do not do the work, and do not say anything is done.${TASK_NOTE}`,
   ].join('\n');
-}
-
-/** The person chosen: what they most need the owner to hear, or a pass. */
-export function chimePrompt(speaker: Pick<TownAgent, 'name'>, talkingWith: string, notes: readonly MeetingNote[]): string {
-  return [
-    `You are ${speaker.name}, listening to a meeting between the owner and ${talkingWith}.`,
-    '',
-    'What has been said so far (the owner is "You"):',
-    ...said(notes),
-    '',
-    'If you have something important the owner should hear now, from your own job, say it to them in one to three short sentences. Do not repeat what has been said, do not do the work, and do not say anything is done.' + TASK_NOTE + ' If you have nothing important to add, reply with exactly: PASS',
-  ].join('\n');
-}
-
-/** Reads the answer to chimePickPrompt: the one name it names, or null for NONE (or anyone not at the table). */
-export function parsePick(text: string, names: readonly string[]): string | null {
-  const t = text.toLowerCase();
-  let best: { name: string; at: number } | null = null;
-  for (const n of names) {
-    const at = t.indexOf(n.toLowerCase());
-    if (at >= 0 && (!best || at < best.at)) best = { name: n, at };
-  }
-  return best?.name ?? null;
 }
 
 /** The last request: the General Manager turns the discussion into tasks, in the plan format, or says so when nothing was decided. */
@@ -97,8 +63,8 @@ export function summaryPrompt(meeting: Pick<TownMeeting, 'topic'>, notes: readon
 }
 
 /** The cost, said plainly, for the settings under the chat. */
-export function costText(chime: boolean, providerLabel: string, model: string): string {
-  return chime
-    ? `Each message you send makes one request to ${providerLabel} (${model}) for the answer, and up to two short ones so the others can decide whether to speak up. A ! over someone's head means they really have something to tell you.`
-    : `Each message you send makes one request to ${providerLabel} (${model}) for the answer. Nobody else speaks up unless you click them.`;
+export function costText(hands: boolean, providerLabel: string, model: string): string {
+  return hands
+    ? `Each message you send makes one request to ${providerLabel} (${model}) for the answer. A ! over someone's head costs nothing: it only means they could add something here. Hearing from them is one more request, and only if you click it.`
+    : `Each message you send makes one request to ${providerLabel} (${model}) for the answer. Nobody else shows a ! unless you turn it on.`;
 }

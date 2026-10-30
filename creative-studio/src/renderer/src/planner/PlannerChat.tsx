@@ -52,10 +52,10 @@ export function ChunkList({ p, reload, text, go, onChange, preview, by }: { p: P
         ))}
       </ol>
       {already || done !== null ? (
-        <p role="status" className="pl-hint">{done !== null ? (preview ? `${done} task${done === 1 ? '' : 's'} shown on the canvas. Add them there when you are happy.` : `Added ${done} task${done === 1 ? '' : 's'} to your plan.`) : 'These tasks are in your plan, or waiting on the canvas.'} {!preview && <button className="btn small primary" onClick={() => go('tasks')}>See the plan</button>}</p>
+        <p role="status" className="pl-hint">{done !== null ? (preview ? `${done} task${done === 1 ? '' : 's'} are waiting in the Plan. Add them there when you are happy.` : `Added ${done} task${done === 1 ? '' : 's'} to your plan.`) : 'These tasks are in your plan, or waiting in the Plan.'} {!preview && <button className="btn small primary" onClick={() => go('tasks')}>See the plan</button>}</p>
       ) : (
         <div className="pl-actions">
-          <button className="btn primary" disabled={a.busy || !picked.length} onClick={() => void add()}>{preview ? 'Show these on the canvas' : 'Add these to my plan'}</button>
+          <button className="btn primary" disabled={a.busy || !picked.length} onClick={() => void add()}>{preview ? 'Review these in the Plan' : 'Add these to my plan'}</button>
           <button className="btn" disabled={a.busy} onClick={onChange}>I want to change something</button>
         </div>
       )}
@@ -91,7 +91,7 @@ function TeamCards({ p, from, lines, reload }: { p: PlannerProject; from: string
         <p key={i} className="pl-warn" role="status">
           <strong>{from}</strong> {l.kind === 'ask' ? 'wants to ask' : 'wants to tell'} <strong>{directorTitle(l.to)}</strong>: {l.what}
           {state[i] === 'sent'
-            ? <small className="pl-hint"> {l.kind === 'ask' ? 'Sent to the Studio canvas as a suggestion. Add it there to give it to them.' : `Sent. ${directorTitle(l.to)} will see it the next time you talk.`}</small>
+            ? <small className="pl-hint"> {l.kind === 'ask' ? 'Sent to the Plan as a suggestion. Add it there to give it to them.' : `Sent. ${directorTitle(l.to)} will see it the next time you talk.`}</small>
             : <span className="pl-actions"> <button className="btn small primary" disabled={a.busy} onClick={() => void send(i, l)}>{l.kind === 'ask' ? 'Send the request' : 'Send the note'}</button> <button className="btn small" onClick={() => setState((s) => ({ ...s, [i]: 'skipped' }))}>Skip</button></span>}
         </p>
       ))}

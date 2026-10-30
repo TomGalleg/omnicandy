@@ -20,8 +20,8 @@ const api = () => window.studio.planner;
 // One simple flow: Idea (think it through with an AI), Plan (break it into tasks you can edit), Work (do one task at a time, review it, approve it).
 // Tab ids are the original ones (plan, tasks, handoffs) so every existing go('handoffs') still lands in the right place.
 const TABS: Array<[TabId, string]> = [['town', 'OmniTown'], ['studio', 'Studio'], ['plan', 'Idea'], ['tasks', 'Plan'], ['handoffs', 'Work']];
-/** Simplified: your town (OmniTown), the plan you talk through (Studio) and doing a task (Work). Advanced adds the step-by-step Idea and Plan screens. */
-const SIMPLE_TABS: readonly TabId[] = ['town', 'studio', 'handoffs'];
+/** Simplified: just your town (OmniTown): the offices, the chat with the General Manager and the Plan button cover everything else. Advanced shows all five tabs. */
+const SIMPLE_TABS: readonly TabId[] = ['town'];
 /** The tab each project was left on during this session. The copy kept with the project is read once when the project opens; this one is always current. */
 const tabMemory = new Map<string, TabId>();
 
@@ -87,6 +87,8 @@ export function PlannerWorkspace({ manifest, projectKey, navMode }: { manifest: 
     const mine = tabMemory.get(pid);
     setSavedTab(mine ?? (isPlannerTab(manifest.plannerTab) ? (manifest.plannerTab as TabId) : 'studio'));
   }, [pid, manifest]);
+  /** In Simplified mode there is one view; what used to switch tabs opens the plan, or a task in its director's office, inside OmniTown instead. */
+  const [townCmd, setTownCmd] = useState<TabProps['townCmd']>(null);
   /** Choosing a tab remembers it for this project. It is project data, not plan data: no plan revision, no package, no AI call. */
   const setTab = useCallback((t: TabId) => {
     setSavedTab(t);
@@ -127,8 +129,13 @@ export function PlannerWorkspace({ manifest, projectKey, navMode }: { manifest: 
   if (!project && !startError) return <div className="planner"><p className="pl-hint" style={{ padding: 16 }}>Setting up your town…</p></div>;
   if (!project) return <PlannerStart state={state} manifest={manifest} onChanged={refresh} onOpenOlder={setOlderId} error={startError ?? error} />;
 
+  /** What the screens call to "go" somewhere. Advanced mode switches tab; Simplified mode stays in OmniTown and opens the plan or the task there. */
+  const goTab = (t: TabId) => {
+    if (advanced || t === 'town') { setTab(t); return; }
+    setTownCmd(t === 'handoffs' && focusTaskId ? { kind: 'task', id: focusTaskId } : { kind: 'plan' });
+  };
   const props: TabProps = {
-    manifest, p: project, reload: async () => { setProject(await api().get(project.id)); void api().forProject().then(setState).catch(() => {}); }, go: setTab, sendSel, setSendSel, projectKey, projectName: manifest?.name,
+    manifest, p: project, reload: async () => { setProject(await api().get(project.id)); void api().forProject().then(setState).catch(() => {}); }, go: goTab, townCmd, clearTownCmd: () => setTownCmd(null), sendSel, setSendSel, projectKey, projectName: manifest?.name,
     focusTaskId, setFocusTaskId: (id) => { setFocusTaskId(id); if (id) void api().touchTask(project.id, id, 'opened').then(() => api().get(project.id).then(setProject)).catch(() => {}); },
   };
   const shownTabs = advanced ? TABS : TABS.filter(([t]) => SIMPLE_TABS.includes(t));
@@ -152,19 +159,19 @@ export function PlannerWorkspace({ manifest, projectKey, navMode }: { manifest: 
       {showPickUp && la && (
         <div className="pl-pickup" role="status" aria-label="Pick up where you left off">
           <div><strong>Pick up where I left off</strong><br /><span>{la.title}</span> <small className="pl-hint">· {la.what} · {ago(la.at)}</small></div>
-          <button className="btn primary" onClick={() => { setPickUpDismissed(`${project.id}:${la.at}`); props.setFocusTaskId?.(la.taskId); setTab('handoffs'); }}>Pick up</button>
+          <button className="btn primary" onClick={() => { setPickUpDismissed(`${project.id}:${la.at}`); props.setFocusTaskId?.(la.taskId); if (advanced) setTab('handoffs'); else setTownCmd({ kind: 'task', id: la.taskId }); }}>Pick up</button>
           <button className="btn small ghost" onClick={() => setPickUpDismissed(`${project.id}:${la.at}`)}>Not now</button>
         </div>
       )}
       {next && !showPickUp && !(tab === 'town' && next.talksToManager) && (
         <p className="pc-next pl-nextstrip" role="status"><strong>Next:</strong> {next.text}{' '}
-          <button className="btn small primary" onClick={() => { const id = next.button.taskId; if (id) { setSendSel([id]); props.setFocusTaskId?.(id); } setTab(next.button.tab as TabId); }}>{next.button.label}</button>
+          <button className="btn small primary" onClick={() => { const id = next.button.taskId; if (id) { setSendSel([id]); props.setFocusTaskId?.(id); } if (advanced) setTab(next.button.tab as TabId); else setTownCmd(next.button.tab === 'studio' || !id ? { kind: 'plan' } : { kind: 'task', id }); }}>{next.button.label}</button>
         </p>
       )}
       {panel === 'history' && <HistoryPanel p={project} onClose={() => setPanel(null)} />}
       {panel === 'connect' && <div className="pl-panel"><Section title="Connect an AI tool" hint="Optional. Lets a tool such as Claude Code read this plan and report back, without copy and paste." actions={<button className="btn small" onClick={() => setPanel(null)}>Close</button>}><ConnectPanel /></Section></div>}
       <nav className="pl-tabs" role="tablist" aria-label="OmniTown steps">
-        {shownTabs.map(([t, label]) => <button key={t} role="tab" aria-selected={tab === t} onClick={() => setTab(t)}>{label}{t === 'handoffs' && need.total ? <span className="pl-badge" title="Waiting for you">{need.total}</span> : null}</button>)}
+        {shownTabs.length > 1 && shownTabs.map(([t, label]) => <button key={t} role="tab" aria-selected={tab === t} onClick={() => setTab(t)}>{label}{t === 'handoffs' && need.total ? <span className="pl-badge" title="Waiting for you">{need.total}</span> : null}</button>)}
       </nav>
       <div className="pl-body" role="tabpanel">
         {tab === 'studio' && <StudioTab {...props} />}

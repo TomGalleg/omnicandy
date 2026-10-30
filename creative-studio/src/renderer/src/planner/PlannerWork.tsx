@@ -121,7 +121,7 @@ export function TaskRow({ t, p, reload, onWork, projectKey, projectName, inColum
         {live && <button className="btn small" disabled={a.busy} title={plain ? 'Stop waiting for the AI and put the task back on your list' : undefined} onClick={() => void a.run(() => api().releaseClaim(p.id, t.id))}>{plain ? 'Take back' : 'Release claim'}</button>}
         {plain && (ds.stalled || ds.chip === 'Partly done') && <button className="btn small" disabled={a.busy} title="Put it back on your list so it can be sent again" onClick={() => void st('todo')}>Take back</button>}
         {plain && t.status === 'blocked' && !live && <button className="btn small" disabled={a.busy} title="The problem is solved: put it back on your list" onClick={() => void st('todo')}>Unblock</button>}
-        {plain && sentOnly && <button className="btn small" disabled={a.busy} title="Cancels the brief you sent; tasks in it go back to To Do" onClick={() => void a.run(() => api().cancelPackage(p.id, pkg.id))}>Unsend{pkg.tasks.length > 1 ? ` (${pkg.tasks.length} tasks)` : ''}</button>}
+        {plain && sentOnly && <button className="btn small" disabled={a.busy} title="Cancels the instructions you sent; the tasks go back to To Do" onClick={() => void a.run(() => api().cancelPackage(p.id, pkg.id))}>Undo{pkg.tasks.length > 1 ? ` (${pkg.tasks.length} tasks)` : ''}</button>}
         {idle && !live && !ds.stalled && <button className="btn small" disabled={a.busy} title="Mark it done yourself, without a report" onClick={() => void st('accepted')}>Mark done</button>}
         {plain && ds.stalled && <button className="btn small" disabled={a.busy} title="Mark it done yourself" onClick={() => void st('accepted')}>Mark done</button>}
         {(t.status === 'accepted' || t.status === 'cancelled') && <button className="btn small" disabled={a.busy} onClick={() => void st('todo')}>{plain && t.status === 'cancelled' ? 'Bring back' : 'Reopen'}</button>}
@@ -422,7 +422,7 @@ export function WorkTab(props: TabProps) {
       <CurrentChunk {...props} />
       {cur && <SendPanel p={p} reload={reload} sel={sendSel ?? []} setSel={setSendSel ?? (() => {})} only={cur.id} />}
       <details className="pl-fold"><summary>Bring an answer back from another AI</summary>
-        <div className="pl-fold-body"><Section title="Bring the result back" hint="Paste what the AI answered. You see what it says first, and nothing changes until you press a button."><PastePanel p={p} reload={reload} /></Section></div>
+        <div className="pl-fold-body"><Section title="Paste the answer" hint="Paste what the AI answered. You see what it says first, and nothing changes until you press a button."><PastePanel p={p} reload={reload} /></Section></div>
       </details>
     </div>
   );

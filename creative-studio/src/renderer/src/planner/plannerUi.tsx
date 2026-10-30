@@ -13,6 +13,8 @@ export interface TabProps {
   projectKey?: string | null; projectName?: string;
   /** The task being worked on (opened from Plan, or picked up from where the owner left off). */
   focusTaskId?: string | null; setFocusTaskId?: (id: string | null) => void;
+  /** Something for OmniTown to open the moment it shows: the plan as cards, or one task in its director's office. Used in Simplified mode, which has no other tabs. */
+  townCmd?: { kind: 'plan' } | { kind: 'task'; id: string } | null; clearTownCmd?: () => void;
   /** Show only this director's tasks (their office), instead of the whole plan. */
   forDirector?: import('@shared/town').DirectorKey;
 }

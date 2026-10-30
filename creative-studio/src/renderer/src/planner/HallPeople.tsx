@@ -43,6 +43,8 @@ export interface HallPeopleProps {
   speaking: string | null;
   /** Who has something important to tell the owner (a ! over their head). At most one at a time. */
   waiting: ReadonlySet<string>;
+  /** Why each ! is there, for the tooltip. */
+  reasons?: ReadonlyMap<string, string>;
   /** Who the owner is talking with now (lit up), and what they last said (shown over their head until the owner speaks again). */
   current: string | null;
   open: { id: string; text: string; tasks?: string[] } | null;
@@ -56,7 +58,7 @@ export interface HallPeopleProps {
   greeting?: { id: string; text: string } | null;
 }
 
-export function HallPeople({ people, speaking, waiting, current, open, onAddTask, added, onPick, onCloseBubble, greeting }: HallPeopleProps) {
+export function HallPeople({ people, speaking, waiting, reasons, current, open, onAddTask, added, onPick, onCloseBubble, greeting }: HallPeopleProps) {
   const seated = people.slice(0, SEATS.length);
   const shown = open ? { id: open.id, text: plain(open.text), closable: true, tasks: open.tasks ?? [] } : greeting ? { id: greeting.id, text: greeting.text, closable: false, tasks: [] as string[] } : null;
   return (
@@ -71,7 +73,7 @@ export function HallPeople({ people, speaking, waiting, current, open, onAddTask
             <span className="tw-puff-room tw-hall-puff" aria-hidden style={{ backgroundImage: `url(${puffUrl})` }} />
             {alert && <span className="tw-hall-alert" aria-hidden>!</span>}
             <button type="button" className={`tw-hall-hit on${talkingWith ? ' current' : ''}`} onClick={() => onPick(a.id)}
-              aria-label={alert ? `${a.name} has something important to tell you. Listen.` : talkingWith ? `${a.name}: you are talking with them` : `Talk to ${a.name}`} title={alert ? `${a.name} has something important to tell you` : talkingWith ? `Talking with ${a.name}` : `Talk to ${a.name}`}>
+              aria-label={alert ? `${a.name} could add something. Click to hear from them.` : talkingWith ? `${a.name}: you are talking with them` : `Talk to ${a.name}`} title={alert ? `${a.name} could add something${reasons?.get(a.id) ? ` (${reasons.get(a.id)})` : ''}. Click to hear from them.` : talkingWith ? `Talking with ${a.name}` : `Talk to ${a.name}`}>
               {img
                 ? <img className="tw-hall-figure tw-appear" src={img} alt="" draggable={false} />
                 : <span className="tw-avatar big tw-appear" style={{ background: a.look.accent }}>{a.name.slice(0, 1).toUpperCase()}</span>}
