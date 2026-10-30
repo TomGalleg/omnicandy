@@ -1,34 +1,55 @@
 import { describe, expect, it } from 'vitest';
-import { clampMeetingTurns, MEETING_TURNS, meetingConfirmText, summaryPrompt, turnOrder, turnPrompt } from './townMeeting';
+import { chimePickPrompt, chimePrompt, costText, isPass, parsePick, replyPrompt, summaryPrompt } from './townMeeting';
 
-const notes = Array.from({ length: 20 }, (_, i) => ({ by: `P${i}`, text: `said ${i}`, at: '' }));
+const notes = Array.from({ length: 20 }, (_, i) => ({ by: i % 2 ? 'General Manager' : 'You', text: `said ${i}`, at: '' }));
 
-describe('a meeting with AI help', () => {
-  it('has a small number of replies, never fewer than two or more than twelve', () => {
-    expect(clampMeetingTurns(undefined)).toBe(MEETING_TURNS.default);
-    expect(clampMeetingTurns(0)).toBe(2);
-    expect(clampMeetingTurns(5.9)).toBe(5);
-    expect(clampMeetingTurns(500)).toBe(12);
-    expect(clampMeetingTurns(Number.NaN)).toBe(6);
+describe('a meeting run one person at a time', () => {
+  it('knows a pass when it sees one, and only then', () => {
+    for (const t of ['PASS', 'pass.', ' Pass! ', 'PASS\n', '"PASS"']) expect(isPass(t)).toBe(true);
+    for (const t of ['Passing the loader to Quality makes sense because it is needed.', 'I think we should go with 2D.', '']) expect(isPass(t)).toBe(false);
   });
 
-  it('has everyone speak in turn, round and round, and exactly as many times as allowed', () => {
-    expect(turnOrder(['a', 'b', 'c'], 5)).toEqual(['a', 'b', 'c', 'a', 'b']);
-    expect(turnOrder(['a', 'a', 'b'], 3)).toEqual(['a', 'b', 'a']);
-    expect(turnOrder([], 6)).toEqual([]);
-    expect(turnOrder(['a'], 1000)).toHaveLength(12);
-  });
-
-  it('asks each speaker for a short view from their own job, and carries only the latest notes', () => {
-    const p = turnPrompt({ topic: 'The dragon', kind: 'brainstorm' }, { name: 'Creative Director' }, ['AI Director'], notes);
-    expect(p).toContain('brainstorm meeting about: The dragon');
-    expect(p).toContain('It is your turn, Creative Director');
-    expect(p).toContain('P19: said 19');
-    expect(p).not.toContain('P11: said 11');
-    expect(p.length).toBeLessThan(6000);
-    expect(turnPrompt({ topic: 'x', kind: 'other' }, { name: 'A' }, [], [{ by: 'B', text: 'long '.repeat(2000), at: '' }]).length).toBeLessThan(6000);
+  it('asks the person the owner is talking with to answer them directly, from their own job', () => {
+    const p = replyPrompt({ topic: 'The dragon', kind: 'brainstorm' }, { name: 'Creative Director' }, ['AI Director'], notes);
+    expect(p).toContain('brainstorm meeting with the owner');
+    expect(p).toContain('Creative Director, the owner is talking to you');
+    expect(p).toContain('say who');
     expect(p).toContain('do not say anything is done');
-    expect(turnPrompt({ topic: 'x', kind: 'other' }, { name: 'A' }, [], [])).toContain('Nobody has spoken yet.');
+    expect(p).toContain('said 19');
+    expect(p).not.toContain('said 11');
+    expect(p.length).toBeLessThan(6000);
+    expect(replyPrompt({ topic: 'x', kind: 'other' }, { name: 'A' }, [], [{ by: 'B', text: 'long '.repeat(2000), at: '' }]).length).toBeLessThan(6000);
+    expect(replyPrompt({ topic: 'x', kind: 'other' }, { name: 'A' }, [], [])).toContain('nobody else');
+  });
+
+  it('asks who, if anyone, should speak up, lists only the others with their jobs, and makes NONE the usual answer', () => {
+    const p = chimePickPrompt('General Manager', [{ name: 'Creative Director', job: 'Art and the look.' }, { name: 'Quality Director', specialty: 'Testing' }], ['Creative Director'], notes);
+    expect(p).toContain('The owner is talking with General Manager');
+    expect(p).toContain('- Creative Director: Art and the look.');
+    expect(p).toContain('- Quality Director: Testing');
+    expect(p).toContain('Do not pick anyone who spoke in the last few turns (Creative Director)');
+    expect(p).toContain('Most of the time nobody needs to speak up');
+    expect(p).toContain('or NONE');
+    expect(p).not.toContain('- General Manager:');
+    expect(chimePickPrompt('A', [{ name: 'B' }], [], []).length).toBeLessThan(2000);
+  });
+
+  it('reads the pick: the one title it names, the first if it rambles, and nobody for NONE or a stranger', () => {
+    const names = ['Creative Director', 'Quality Director', 'AI Director'];
+    expect(parsePick('Quality Director', names)).toBe('Quality Director');
+    expect(parsePick('  "quality director".', names)).toBe('Quality Director');
+    expect(parsePick('I would say the AI Director, not the Creative Director.', names)).toBe('AI Director');
+    expect(parsePick('NONE', names)).toBeNull();
+    expect(parsePick('Bob should speak', names)).toBeNull();
+    expect(parsePick('', names)).toBeNull();
+  });
+
+  it('asks the chosen person for what the owner most needs to hear, or a pass', () => {
+    const p = chimePrompt({ name: 'Quality Director' }, 'General Manager', notes);
+    expect(p).toContain('You are Quality Director');
+    expect(p).toContain('between the owner and General Manager');
+    expect(p).toContain('reply with exactly: PASS');
+    expect(p.length).toBeLessThan(6000);
   });
 
   it('asks for the plan format at the end, and allows "nothing decided"', () => {
@@ -37,12 +58,10 @@ describe('a meeting with AI help', () => {
     expect(s).toContain('If nothing clear was decided');
   });
 
-  it('tells the owner the most it can cost in requests, and what it will and will not do', () => {
-    const t = meetingConfirmText(6, 3, 'Claude', 'claude-opus-5-5');
-    expect(t).toContain('up to 7 requests');
-    expect(t).toContain('3 people');
-    expect(t).toContain('at most one suggestion');
-    expect(t).toContain('waits for you');
-    expect(meetingConfirmText(100, 1, 'OpenAI', 'gpt')).toContain('up to 13 requests');
+  it('says plainly what a message costs, with and without others speaking up', () => {
+    expect(costText(true, 'Claude', 'claude-opus-5-5')).toContain('one request to Claude (claude-opus-5-5)');
+    expect(costText(true, 'Claude', 'm')).toContain('up to two short ones');
+    expect(costText(false, 'OpenAI', 'gpt')).toContain('Nobody else speaks up unless you click them');
+    expect(costText(false, 'OpenAI', 'gpt')).not.toContain('two short');
   });
 });

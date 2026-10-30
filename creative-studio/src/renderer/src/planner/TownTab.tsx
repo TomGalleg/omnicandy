@@ -10,12 +10,10 @@ import creativeOffice from '../assets/offices/creative-director.jpg';
 import productionOffice from '../assets/offices/production-director.jpg';
 import softwareOffice from '../assets/offices/software-director.jpg';
 import aiOffice from '../assets/offices/ai-director.jpg';
-import hallInside from '../assets/offices/town-hall.jpg';
 import { TownWalker, type WalkerBadge } from './TownWalker';
 import { ACTIVITY_LABEL, directorActivity, type DirectorActivity } from '@shared/townActivity';
 import { directorIntents, intentFor, type Intent } from '@shared/townIntent';
-import { RunWithAi } from './MeetingRun';
-import { HallPeople, meetingPeople, type Said } from './HallPeople';
+import { TownHall } from './TownHall';
 import { requestIntents } from '@shared/townRequests';
 import { CAST, type CastMember } from './townCast';
 import puffUrl from '../assets/characters/smoke-puff.png';
@@ -29,8 +27,7 @@ import productionPortrait from '../assets/portraits/production-director.jpg';
 import softwarePortrait from '../assets/portraits/software-director.jpg';
 import researchPortrait from '../assets/portraits/research-director.jpg';
 import techPortrait from '../assets/portraits/technical-director.jpg';
-import { DIRECTORS, MEETING_KINDS, type DirectorKey, activeAgents, tierFor, type MeetingKind, type TeamChange, type TownAgent, type TownBusiness, type TownMeeting, type TownState } from '@shared/town';
-import type { ProposalChange } from '@shared/planner';
+import { DIRECTORS, type DirectorKey, activeAgents, tierFor, type MeetingKind, type TeamChange, type TownAgent, type TownBusiness, type TownState } from '@shared/town';
 import { errMsg, ErrorLine, Section, type TabProps } from './plannerUi';
 import { useTown } from './useTown';
 
@@ -76,18 +73,15 @@ export function TownTab(props: TabProps) {
   const [clock, setClock] = useState(() => Date.now());
   useEffect(() => { const t = setInterval(() => setClock(Date.now()), 30_000); return () => clearInterval(t); }, []);
   const activity = useMemo(() => directorActivity(p, new Date(clock)), [p, clock]);
-  /** The people at the table of a meeting that is running with AI help: they walk to the Town Hall until it ends. */
-  const [goers, setGoers] = useState<ReadonlySet<string> | null>(null);
-  /** Who is being asked to speak right now in a meeting run with AI help, and the words of the latest reply: shown as a bubble in the Town Hall. */
-  const [speaking, setSpeaking] = useState<string | null>(null);
-  const [said, setSaid] = useState<Said | null>(null);
   const intents = useMemo(() => {
     const base = directorIntents(p, new Date(clock));
     // A worker whose request is waiting for the owner goes to see the one it is for, unless they have real work of their own.
     for (const [k, v] of Object.entries(requestIntents(p.proposals, town?.agents ?? []))) if (!base[k as DirectorKey]) base[k as DirectorKey] = v;
-    for (const a of town?.agents ?? []) if (a.director && goers?.has(a.id)) base[a.director] = { kind: 'meeting' };
+    // While a meeting is open its people are at the Town Hall, however long it takes.
+    const open = town?.meetings.filter((m) => !m.endedAt).at(-1);
+    for (const a of town?.agents ?? []) if (a.director && open?.participantIds.includes(a.id)) base[a.director] = { kind: 'meeting' };
     return base;
-  }, [p, clock, town, goers]);
+  }, [p, clock, town]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [pick, setPick] = useState<string | null>(null);
@@ -104,7 +98,6 @@ export function TownTab(props: TabProps) {
   };
   const apply = (changes: TeamChange[]) => run(async () => { setTown(await api().townApply(p.id, changes)); });
 
-  const active = town?.meetings.filter((m) => !m.endedAt).at(-1) ?? null;
   if (!town) return <div className="pl-stack"><p className="pl-hint">Setting up your town…</p></div>;
   const selected = town.agents.find((a) => a.id === pick) ?? null;
   const inOffice = office ? town.agents.find((a) => a.id === office && a.director && !a.retired) ?? null : null;
@@ -134,14 +127,7 @@ export function TownTab(props: TabProps) {
       ))}
 
       {inHall ? (
-        <div className="tw-main tw-inoffice">
-          <section className="tw-room" aria-label="Inside the Town Hall">
-            <img src={hallInside} alt="Inside the Town Hall" />
-            {active && <HallPeople key={active.id} people={meetingPeople(town, active)} speaking={speaking} said={said} />}
-            <button className="btn small tw-back" onClick={() => setInHall(false)}>← Back to the town</button>
-          </section>
-          <aside className="tw-side"><p className="pl-hint"><strong>The Town Hall.</strong> This is where your team meets. Call a meeting below, say who should come, and write down what you decide.</p></aside>
-        </div>
+        <TownHall town={town} planId={p.id} setTown={setTown} reload={reload} onBack={() => setInHall(false)} aside={<PastMeetings town={town} />} />
       ) : inOffice ? (
         <div className="tw-main tw-inoffice">
           <section className="tw-room" aria-label={`Inside ${inOffice.name}'s office`}>
@@ -175,13 +161,6 @@ export function TownTab(props: TabProps) {
           <div className="tw-talk" id="tw-talk"><PlannerChat key={`${p.id}:${talk}`} p={p} reload={reload} go={go} preview {...(town.agents.find((a) => a.id === talk)!.director === 'general-manager' ? {} : { agent: { id: talk, name: town.agents.find((a) => a.id === talk)!.name } })} /></div>
         </Section>
       )}
-
-      <div id="tw-meet">
-        {active ? <MeetingBoard town={town} meeting={active} planId={p.id} busy={busy} run={run} setTown={setTown} reload={reload} onGoing={setGoers} onSpeaking={setSpeaking} onSaid={(id, text) => setSaid({ id, text, at: Date.now() })} />
-          : <CallMeeting town={town} busy={busy} onStart={(topic, kind, ids) => run(async () => { setTown((await api().meetingStart(p.id, { topic, kind, participantIds: ids })).town); })} />}
-      </div>
-
-      <PastMeetings town={town} />
     </div>
   );
 }
@@ -318,61 +297,6 @@ function WorkerCard({ town, a, activity, busy, onApply, onTalk, onClose }: { tow
         </div>
       )}
     </section>
-  );
-}
-
-function CallMeeting({ town, busy, onStart }: { town: TownState; busy: boolean; onStart: (topic: string, kind: MeetingKind, ids: string[]) => void }) {
-  const [topic, setTopic] = useState('');
-  const [kind, setKind] = useState<MeetingKind>('planning');
-  const [chosen, setChosen] = useState<string[]>([]);
-  const people = activeAgents(town).filter((a) => a.role !== 'coordinator');
-  return (
-    <Section title="Call a meeting" hint="Bring your team to the Town Hall to work something out. A meeting is a record of who came and what was decided. It does not start any AI by itself.">
-      <div className="pl-form">
-        <input aria-label="Meeting topic" value={topic} maxLength={200} placeholder="What should we work out? e.g. How should we build the main character?" onChange={(e) => setTopic(e.target.value)} />
-        <label>Kind<select value={kind} onChange={(e) => setKind(e.target.value as MeetingKind)}>{MEETING_KINDS.map((k) => <option key={k} value={k}>{KIND_LABEL[k]}</option>)}</select></label>
-        <fieldset><legend>Who should come (the General Manager always does)</legend>
-          {people.length === 0 && <small className="pl-hint">You have no workers yet. You and the General Manager can still meet.</small>}
-          {people.map((a) => <label key={a.id} className="pl-check"><input type="checkbox" checked={chosen.includes(a.id)} onChange={(e) => setChosen(e.target.checked ? [...chosen, a.id] : chosen.filter((x) => x !== a.id))} /><Avatar a={a} /> {a.name}</label>)}
-          {people.length > 1 && <button className="btn small ghost" onClick={() => setChosen(chosen.length === people.length ? [] : people.map((a) => a.id))}>{chosen.length === people.length ? 'Nobody else' : 'Everyone'}</button>}
-        </fieldset>
-        <button className="btn primary" disabled={busy || !topic.trim()} onClick={() => { onStart(topic.trim(), kind, chosen); setTopic(''); setChosen([]); }}>Call the meeting</button>
-      </div>
-    </Section>
-  );
-}
-
-function MeetingBoard({ town, meeting, planId, busy, run, setTown, reload, onGoing, onSpeaking, onSaid }: { onGoing: (ids: ReadonlySet<string> | null) => void; onSpeaking: (id: string | null) => void; onSaid: (id: string, text: string) => void; town: TownState; meeting: TownMeeting; planId: string; busy: boolean; run: <T>(fn: () => Promise<T>) => Promise<T | undefined>; setTown: (t: TownState) => void; reload: () => Promise<void> }) {
-  const [text, setText] = useState('');
-  const [chunks, setChunks] = useState('');
-  const [sent, setSent] = useState<number | null>(null);
-  const who = meeting.participantIds.map((id) => town.agents.find((a) => a.id === id)).filter((a): a is TownAgent => !!a);
-  const lines = chunks.split(/\r?\n/).map((l) => l.replace(/^[\s\-*\d.)]+/, '').trim()).filter(Boolean).slice(0, 30);
-  return (
-    <Section title={`${KIND_LABEL[meeting.kind]}: ${meeting.topic}`} hint="Everyone is at the table. Write down what is said, then turn what you decided into tasks. The tasks wait on the Studio canvas until you add them.">
-      <div className="tw-table" aria-label="Meeting table">
-        <div className="tw-map" aria-hidden>The project map</div>
-        {who.map((a, i) => <span key={a.id} className="tw-seat" style={{ ['--i' as string]: i, ['--n' as string]: who.length }}><Avatar a={a} big /><small>{a.name}</small></span>)}
-      </div>
-      <ul className="tw-notes">{meeting.notes.map((n, i) => <li key={i}><strong>{n.by}</strong> {n.text}</li>)}{!meeting.notes.length && <li className="pl-hint">Nothing said yet.</li>}</ul>
-      <div className="pl-add">
-        <input aria-label="Add to the meeting" value={text} maxLength={2000} placeholder="What was said or decided?" onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && text.trim() && !busy) { const t = text; setText(''); void run(async () => { setTown(await api().meetingNote(planId, meeting.id, { by: 'You', text: t })); }); } }} />
-        <button className="btn small" disabled={busy || !text.trim()} onClick={() => { const t = text; setText(''); void run(async () => { setTown(await api().meetingNote(planId, meeting.id, { by: 'You', text: t })); }); }}>Add</button>
-      </div>
-      <details><summary>Turn what we decided into tasks</summary>
-        <div className="pl-fold-body">
-          <textarea aria-label="Tasks, one per line" rows={4} value={chunks} placeholder={'One task per line, for example:\nConcept art\nModel the character\nRig it'} onChange={(e) => { setChunks(e.target.value); setSent(null); }} />
-          <button className="btn small primary" disabled={busy || !lines.length} onClick={() => void run(async () => {
-            const changes: ProposalChange[] = lines.map((title) => ({ op: 'add_task', title: title.slice(0, 200), description: '', priority: 'normal', dependsOn: [], completionChecks: [] }));
-            await api().meetingPropose(planId, meeting.id, { note: `From the meeting: ${meeting.topic}`.slice(0, 1000), changes });
-            setSent(lines.length); setChunks(''); await reload();
-          })}>Suggest {lines.length || ''} task{lines.length === 1 ? '' : 's'} for the plan</button>
-          {sent !== null && <p className="pl-hint" role="status">Sent {sent} task{sent === 1 ? '' : 's'} to the Studio canvas as suggestions. Add them there when you are happy.</p>}
-        </div>
-      </details>
-      <RunWithAi town={town} meeting={meeting} planId={planId} setTown={setTown} reload={reload} onGoing={onGoing} onSpeaking={onSpeaking} onSaid={onSaid} />
-      <div className="pl-actions"><button className="btn" disabled={busy} onClick={() => void run(async () => { setTown(await api().meetingEnd(planId, meeting.id)); })}>End the meeting</button></div>
-    </Section>
   );
 }
 
