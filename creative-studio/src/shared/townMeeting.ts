@@ -12,7 +12,7 @@ const said = (notes: readonly MeetingNote[]) => notes.slice(-RECENT).map((n) => 
 
 /** A task a person recommends is a line of its own: `Task: <short title>`. At most this many are read from one reply. */
 export const MAX_TASK_LINES = 2;
-export const TASK_NOTE = ' If a task is clearly needed, you may end with up to two lines, each exactly: Task: <short title>. Only suggest a task when it really helps; the owner decides whether it is added.';
+export const TASK_NOTE = ' If a task is clearly needed, offer it: end with a short question in your own words asking whether the owner wants you to take it on (for example "Want me to draft that?"), then up to two lines, each exactly: Task: <short title>. The owner only has to say yes. Only offer a task when it really helps; the owner decides.';
 
 /** The words without the Task lines, and the titles those lines recommend (empty titles and repeats dropped). */
 export function parseTaskLines(text: string): { text: string; tasks: string[] } {

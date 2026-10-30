@@ -43,7 +43,7 @@ describe('a meeting run one person at a time', () => {
   it('tells people how to recommend a task, and that the owner decides', () => {
     const a = replyPrompt({ topic: 'x', kind: 'other' }, { name: 'A' }, [], []);
     const b = invitePrompt({ topic: 'x', kind: 'other' }, { name: 'B' }, 'A', []);
-    for (const p of [a, b]) { expect(p).toContain('Task: <short title>'); expect(p).toContain('the owner decides whether it is added'); }
+    for (const p of [a, b]) { expect(p).toContain('Task: <short title>'); expect(p).toContain('The owner only has to say yes'); }
   });
 
   it('asks for the plan format at the end, and allows "nothing decided"', () => {

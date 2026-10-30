@@ -44,6 +44,17 @@ describe('a director doing a task', () => {
     expect(s.log.map((e) => `${e.tool}:${e.outcome}:${e.approvedBy ?? ''}`)).toEqual(['generate_image:done:owner']);
   });
 
+  it('sends the Creative Director\'s AI work through the AI Director: named in the question, and stopped when they are switched off', async () => {
+    const s = await setup(); const asked: string[] = [];
+    const engine = s.makeEngine(async (call) => (await call('generate_image', { prompt: 'dragon' })).text);
+    await runDirector(s.deps(engine, { approve: async ({ via }: { via?: { name: string } }) => { asked.push(via?.name ?? 'direct'); return 'once'; } }), 'creative-director', task);
+    expect(asked).toEqual(['AI Director']); expect(s.log[0]).toMatchObject({ via: 'AI Director', approvedBy: 'owner' });
+    await s.store.setRevoked(directorWorkerId('ai-director'), true);
+    const s2 = s.lib.length; const out = await runDirector(s.deps(s.makeEngine(async (call) => (await call('generate_image', { prompt: 'again' })).text), { approve: async () => 'once' }), 'creative-director', task);
+    expect(s.lib.length).toBe(s2); expect(out.status).toBe('stopped');
+    expect(s.log.at(-1)).toMatchObject({ outcome: 'refused' }); expect(s.log.at(-1)?.why).toContain('AI Director is switched off');
+  });
+
   it('does not say it worked when the owner said no', async () => {
     const s = await setup();
     const out = await runDirector(s.deps(s.makeEngine(async (call) => { await call('generate_image', { prompt: 'dragon' }); return 'All done! I made a lovely dragon.'; }), { approve: async () => 'deny' }), 'creative-director', task);

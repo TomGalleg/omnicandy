@@ -1,4 +1,6 @@
+import { BuildStrip } from './BuildStrip';
 import { DirectorWork } from './DirectorWork';
+import { TeamAccess } from './TeamAccess';
 import { useEffect, useMemo, useState } from 'react';
 import { PlannerChat } from './PlannerChat';
 import mapUrl from '../assets/omnitown-map.jpg';
@@ -14,6 +16,7 @@ import aiOffice from '../assets/offices/ai-director.jpg';
 import { TownWalker, type WalkerBadge } from './TownWalker';
 import { ACTIVITY_LABEL, directorActivity, type DirectorActivity } from '@shared/townActivity';
 import { taskIsFor } from '@shared/town';
+import { defaultOrder, isOpen, orderPrompt, parseOrder } from '@shared/buildQueue';
 import { directorIntents, intentFor, type Intent } from '@shared/townIntent';
 import { TownHall } from './TownHall';
 import { OfficeChat } from './OfficeChat';
@@ -95,6 +98,8 @@ export function TownTab(props: TabProps) {
   /** The Plan (the cards) shown in place of the map, and which office has its tasks panel open (by worker id, so it never carries over to another office). */
   const [showPlan, setShowPlan] = useState(false);
   const [tasksFor, setTasksFor] = useState<string | null>(null);
+  /** The office whose Team access window is open (what the director may do, and the button to let them do a task). */
+  const [accessFor, setAccessFor] = useState<string | null>(null);
   /** What was said in the open office, for the list beside it. */
   const [officeMsgs, setOfficeMsgs] = useState<ChatMessage[]>([]);
   /** The main worker whose office is open (full screen), or null for the map. */
@@ -126,6 +131,34 @@ export function TownTab(props: TabProps) {
     props.setSendSel?.([taskId]); props.setFocusTaskId?.(taskId);
     setShowPlan(false); setInHall(false); setPick(who.id); setOffice(who.id); setTasksFor(who.id);
   };
+  /** Walks the owner into a director's office (used by "needs you"). */
+  const goOffice = (key: DirectorKey) => {
+    const who = town?.agents.find((a) => a.director === key && !a.retired);
+    if (who) { setShowPlan(false); setInHall(false); setPick(who.id); setOffice(who.id); }
+  };
+  /**
+   * "Let's build this": the Production Director puts the open tasks in the order they need to happen (one request to the chosen AI; if it cannot be reached or
+   * answers nonsense, the order falls back to what each task needs and how urgent it is), then the build starts. Returns what the director says back.
+   */
+  const startBuild = async (ai: { provider: 'claude' | 'openai' | 'gemini'; model: string } | null): Promise<string> => {
+    const open = p.tasks.filter(isOpen);
+    if (open.length === 0) return 'There is nothing open to build yet. Tell me what you want to make and we will plan it first.';
+    // Who does the work depends on the AI chosen under the chat; with none ready nothing could run, so say so instead of starting.
+    if (!ai) return 'Choose the AI under Chat settings first, so I know who will do the work. Then say it again.';
+    let order = defaultOrder(p.tasks); let why = 'Ordered by what each task needs and how urgent it is.';
+    const production = town?.agents.find((a) => a.director === 'production-director' && !a.retired);
+    if (open.length > 1) {
+      try {
+        const q = orderPrompt(p.tasks);
+        const reply = (await api().chat({ projectId: p.id, provider: ai.provider, model: ai.model, ...(production ? { agentId: production.id } : {}), messages: [{ role: 'user', text: `${q.system}\n\n${q.user}` }] })).text;
+        const parsed = parseOrder(reply, p.tasks); order = parsed.order; why = parsed.why;
+      } catch { /* the default order stands */ }
+    }
+    const q = await window.studio.director.build.start({ order, why, provider: ai.provider });
+    const names = q.order.map((id) => p.tasks.find((t) => t.id === id)?.title).filter(Boolean);
+    await reload();
+    return `Right, we are on it. ${production ? 'The Production Director' : 'I'} put it in this order: ${names.map((n, i) => `${i + 1}. ${n}`).join('; ')}. ${why} Each director takes their task in turn, and I will flag you if anyone needs you.`;
+  };
   const run = async <T,>(fn: () => Promise<T>): Promise<T | undefined> => {
     setBusy(true); setError(null);
     try { return await fn(); } catch (e) { setError(errMsg(e)); return undefined; } finally { setBusy(false); }
@@ -142,6 +175,7 @@ export function TownTab(props: TabProps) {
     <div className="tw">
       {note && <p className="pl-warn" role="status">{note} <button className="btn small ghost" onClick={clearNote}>Dismiss</button></p>}
       <ErrorLine error={error} />
+      <BuildStrip tasks={p.tasks} openOffice={goOffice} openPlan={() => { setShowPlan(true); setOffice(null); setInHall(false); }} />
       <div className="tw-bar">
         <h3>Your town</h3>
         <span className="spacer" />
@@ -184,8 +218,16 @@ export function TownTab(props: TabProps) {
               {/* The desk, drawn again on top of him, so he sits behind it instead of being cut off. */}
               <img className="tw-desk-front" src={INTERIORS[inOffice.director]} alt="" aria-hidden style={{ clipPath: CAST[inOffice.director]!.desk }} />
             </>}
-            <button className="btn small tw-back" onClick={() => { setOffice(null); setPick(null); setOfficeMsgs([]); setTasksFor(null); }}>← Back to the town</button>
-            {inOffice.director && <OfficeChat key={inOffice.id} agent={inOffice} seat={CAST[inOffice.director]?.seat ?? { left: 50, top: 30, width: 5 }} p={p} reload={reload} onOpenPlan={() => { setShowPlan(true); setOffice(null); setInHall(false); }} onMessages={setOfficeMsgs} taskCount={officeTasks(inOffice).length} waitingCount={officeWaiting(inOffice)} onTasks={() => setTasksFor((cur) => (cur === inOffice.id ? null : inOffice.id))} />}
+            <button className="btn small tw-back" onClick={() => { setOffice(null); setPick(null); setOfficeMsgs([]); setTasksFor(null); setAccessFor(null); }}>← Back to the town</button>
+            {inOffice.director && <button className="btn small tw-access-btn" aria-expanded={accessFor === inOffice.id} onClick={() => { setAccessFor((cur) => (cur === inOffice.id ? null : inOffice.id)); setTasksFor(null); }}>Team access</button>}
+            {inOffice.director && <OfficeChat key={inOffice.id} agent={inOffice} seat={CAST[inOffice.director]?.seat ?? { left: 50, top: 30, width: 5 }} p={p} reload={reload} onOpenPlan={() => { setShowPlan(true); setOffice(null); setInHall(false); }} onBuild={startBuild} onMessages={setOfficeMsgs} taskCount={officeTasks(inOffice).length} waitingCount={officeWaiting(inOffice)} onTasks={() => setTasksFor((cur) => (cur === inOffice.id ? null : inOffice.id))} />}
+            {inOffice.director && accessFor === inOffice.id && (
+              <div className="tw-office-tasks" role="dialog" aria-label={`${inOffice.name}'s team access`}>
+                <header><strong>{inOffice.name}: what they may do</strong><button className="btn small" onClick={() => setAccessFor(null)}>Close</button></header>
+                <DirectorWork p={p} reload={reload} director={inOffice.director} name={inOffice.name} />
+                <TeamAccess key={inOffice.director} director={inOffice.director} name={inOffice.name} defaultOpen />
+              </div>
+            )}
             {inOffice.director && tasksFor === inOffice.id && (
               <div className="tw-office-tasks" role="dialog" aria-label={`${inOffice.name}'s tasks`}>
                 <header><strong>{inOffice.name}'s tasks</strong><button className="btn small" onClick={() => setTasksFor(null)}>Close</button></header>
@@ -195,7 +237,6 @@ export function TownTab(props: TabProps) {
           </section>
           <aside className="tw-side">
             <WorkerCard hideTalk town={town} a={inOffice} activity={inOffice.director ? activity[inOffice.director] : undefined} busy={busy} onApply={apply} onTalk={() => setTalk(inOffice.id)} onClose={() => { setOffice(null); setPick(null); }} />
-            {inOffice.director && <DirectorWork p={p} reload={reload} director={inOffice.director} name={inOffice.name} />}
             {officeMsgs.length > 0 && (
               <details className="pl-fold" open><summary>What was said<span className="pl-count">{officeMsgs.length}</span></summary>
                 <ul className="tw-notes tw-hall-notes">{officeMsgs.map((m, i) => <li key={i}><strong>{m.role === 'user' ? 'You' : inOffice.name}</strong> {m.text}</li>)}</ul>
@@ -209,7 +250,7 @@ export function TownTab(props: TabProps) {
           <aside className="tw-side">
             {selected ? <WorkerCard town={town} a={selected} activity={selected.director ? activity[selected.director] : undefined} busy={busy} onApply={apply} onTalk={() => setTalk(selected.id)} onClose={() => setPick(null)} />
               : <p className="pl-hint">Click an office on the map to go inside and meet the person who works there. The Town Hall in the middle is where meetings happen.</p>}
-            {manager && <OfficeChat key={manager.id} variant="panel" agent={manager} p={p} reload={reload} onMessages={() => {}} onOpenPlan={() => setShowPlan(true)} />}
+            {manager && <OfficeChat key={manager.id} variant="panel" agent={manager} p={p} reload={reload} onBuild={startBuild} onMessages={() => {}} onOpenPlan={() => setShowPlan(true)} />}
           </aside>
         </div>
       )}

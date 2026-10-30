@@ -95,7 +95,11 @@ import { activityLogger, readActivity } from './teamAccess/activityLog';
 import { PolicyStore } from './teamAccess/policyStore';
 import { nativeApprover } from './teamAccess/approval';
 import { runDirector, type MadeFile } from './teamAccess/directorRun';
-import { chooseEngine, type DirectorRunRequest } from '@shared/directorToolbox';
+import { chooseEngine, toolboxFor, type DirectorOutcome, type DirectorRunRequest } from '@shared/directorToolbox';
+import { defaultOrder, isOpen, respectDependencies, type BuildQueue } from '@shared/buildQueue';
+import { BuildRunner, loadQueue, saveQueue } from './teamAccess/buildRunner';
+import { applyChange, buildView } from '@shared/teamAccessView';
+import { directorWorkerId } from './teamAccess/directorRun';
 import { DIRECTORS } from '@shared/town';
 import { BuilderService } from './integrations/builder/service';
 import { ClaudeAuthor, ScriptedAuthor } from './integrations/builder/author';
@@ -1612,9 +1616,29 @@ export function registerIpc(d: IpcDeps): void {
   // ---- Directors at work: one director, one task, under the team access rules, on Claude (the base) or the provider the owner chose ----
   let directorAbort: AbortController | null = null;
   handle(IPC.directorActivity, none, async () => readActivity((await d.project()).root));
+  // The Team Access screen: read what a director may do, and change one thing at a time. Saved in the project folder; takes effect at the director's next action.
+  const directorKey = z.enum(DIRECTORS.map((x) => x.key) as [string, ...string[]]);
+  const accessChange = z.discriminatedUnion('kind', [
+    z.object({ kind: z.literal('preset'), preset: z.enum(['supervised', 'balanced', 'independent']) }).strict(),
+    z.object({ kind: z.literal('level'), capability: z.enum(['read-project', 'edit-project', 'native-apps', 'outside-apps', 'generate-media', 'propose-plan']), level: z.enum(['none', 'read', 'ask', 'allow']) }).strict(),
+    z.object({ kind: z.literal('spend-cap'), cents: z.number().int().min(0).max(100_000).nullable() }).strict(),
+    z.object({ kind: z.literal('revoked'), revoked: z.boolean() }).strict(),
+    z.object({ kind: z.literal('reset') }).strict(),
+  ]);
+  const accessStore = async () => new PolicyStore((await d.project()).root);
+  handle(IPC.directorAccess, z.tuple([directorKey]), async (key) => {
+    const box = toolboxFor(key as never);
+    return buildView(await (await accessStore()).get(directorWorkerId(key as never), undefined, box.preset), box);
+  });
+  handle(IPC.directorAccessSet, z.tuple([directorKey, accessChange]), async (key, change) => {
+    const box = toolboxFor(key as never); const store = await accessStore(); const id = directorWorkerId(key as never);
+    const next = applyChange(await store.get(id, undefined, box.preset), box, change as never);
+    await store.save(next);
+    return buildView(next, box);
+  });
   handle(IPC.directorStop, none, async () => { directorAbort?.abort(); agentAbort?.abort(); });
-  handle(IPC.directorRun, z.tuple([z.object({ director: z.enum(DIRECTORS.map((x) => x.key) as [string, ...string[]]), taskId: z.string().min(1).max(60), provider: z.enum(['claude', 'openai', 'gemini']) }).strict()]), async (req) => {
-    const request = req as DirectorRunRequest;
+  /** One director doing one task: used by the "Let them do this" button and by the build, so both are the same guarded run. */
+  const doDirectorRun = async (request: DirectorRunRequest, outer?: AbortSignal): Promise<DirectorOutcome> => {
     if (directorAbort) throw new Error('A director is already working. They work one at a time: wait, or press Stop.');
     if (agentAbort || agentState.status === 'working' || partner?.state().status === 'working') throw new Error('The AI is busy with something else. Wait for it, or press Stop.');
     const store = await d.project();
@@ -1628,6 +1652,7 @@ export function registerIpc(d: IpcDeps): void {
     if (!route.choice) throw new Error(route.why);
 
     const abort = new AbortController(); directorAbort = abort;
+    if (outer?.aborted) abort.abort(); else outer?.addEventListener('abort', () => abort.abort(), { once: true });
     const session = new McpSession(planner.service, ['read', 'execute'], { kind: 'createcraft', name: DIRECTORS.find((x) => x.key === request.director)?.title ?? 'Director' });
     const rpc = async (tool: string, args: Record<string, unknown>) => {
       const out = await session.handle({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: tool, arguments: args } });
@@ -1678,7 +1703,38 @@ export function registerIpc(d: IpcDeps): void {
         },
       }, request.director, { id: found.id, title: found.title, ...(found.description ? { detail: found.description } : {}) }, abort.signal);
     } finally { directorAbort = null; }
+  };
+  handle(IPC.directorRun, z.tuple([z.object({ director: z.enum(DIRECTORS.map((x) => x.key) as [string, ...string[]]), taskId: z.string().min(1).max(60), provider: z.enum(['claude', 'openai', 'gemini']) }).strict()]), (req) => doDirectorRun(req as DirectorRunRequest));
+
+  // ---- "Let's build this": the open tasks done one at a time, in order, each by its director. Stops and flags the owner when something needs them. ----
+  const planTasks = async () => { const plan = await planner.store.projectPlan(); return plan ? (await planner.service.getProject(userCtx(), plan.id)).tasks : []; };
+  let buildProvider: DirectorRunRequest['provider'] = 'claude';
+  let buildRunner: { root: string; runner: BuildRunner } | null = null;
+  const runnerFor = async () => {
+    const root = (await d.project()).root;
+    if (buildRunner?.root !== root) {
+      void buildRunner?.runner.stop();
+      buildRunner = { root, runner: new BuildRunner({
+        tasks: planTasks, works: (k) => toolboxFor(k).works,
+        runTask: (task, director, signal) => doDirectorRun({ director, taskId: task.id, provider: buildProvider }, signal),
+        load: () => loadQueue(root), save: (q) => saveQueue(root, q),
+        emit: (q: BuildQueue) => { const w = d.window(); if (w && !w.isDestroyed()) w.webContents.send(IPC.directorBuildEvent, q); },
+      }) };
+    }
+    return buildRunner.runner;
+  };
+  resetters.push(() => { void buildRunner?.runner.stop(); buildRunner = null; });
+  handle(IPC.directorBuildState, none, async () => (await runnerFor()).state());
+  handle(IPC.directorBuildStart, z.tuple([z.object({ order: z.array(z.string().max(60)).max(200).optional(), why: z.string().max(400).optional(), provider: z.enum(['claude', 'openai', 'gemini']) }).strict()]), async (r) => {
+    const tasks = await planTasks();
+    const wanted = (r.order ?? []).filter((id, i, a) => a.indexOf(id) === i && tasks.some((t) => t.id === id && isOpen(t)));
+    const order = respectDependencies([...wanted, ...defaultOrder(tasks).filter((id) => !wanted.includes(id))], tasks);
+    buildProvider = r.provider;
+    return (await runnerFor()).start(order, r.why ?? 'Ordered by what each task needs and how urgent it is.');
   });
+  handle(IPC.directorBuildPause, none, async () => (await runnerFor()).pause());
+  handle(IPC.directorBuildResume, z.tuple([z.enum(['claude', 'openai', 'gemini']).optional()]), async (p?: 'claude' | 'openai' | 'gemini') => { if (p) buildProvider = p; return (await runnerFor()).resume(); });
+  handle(IPC.directorBuildStop, none, async () => (await runnerFor()).stop());
   handle(IPC.claudeReset, none, () => { claude().reset(); return claude().state(); });
   handle(IPC.claudeModel, z.tuple([z.string().max(64)]), (m) => { claude().setModel(m); return claude().state(); });
   handle(IPC.claudeAuth, none, () => claude().checkAuth());

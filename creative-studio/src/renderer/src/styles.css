@@ -1069,3 +1069,7 @@ span.tw-portrait { display: grid; place-items: center; }
 .tw-mchat-input textarea { width: 100%; resize: vertical; min-height: 54px; font: inherit; font-size: 13px; padding: 6px 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg, transparent); color: inherit; }
 .tw-mchat .tw-hall-settings > summary { background: transparent; color: inherit; border: 1px solid var(--border); }
 .tw-mchat .tw-hall-settings .tw-hall-settings-body { position: static; transform: none; width: auto; margin-top: 6px; box-shadow: none; }
+.tw-access-btn { position: absolute; left: 160px; top: 12px; }
+.tw-build { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 12px; padding: 8px 12px; margin: 6px 0; border-radius: 10px; border: 1px solid var(--border); background: var(--surface); }
+.tw-build-waiting { border-color: #d9a441; background: color-mix(in srgb, #d9a441 14%, var(--surface)); }
+.tw-build-done { border-color: #4caf7a; }

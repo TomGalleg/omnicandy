@@ -128,6 +128,20 @@ const api: StudioApi = {
     run: (req) => ipcRenderer.invoke(IPC.directorRun, req),
     stop: () => ipcRenderer.invoke(IPC.directorStop),
     activity: () => ipcRenderer.invoke(IPC.directorActivity),
+    build: {
+      state: () => ipcRenderer.invoke(IPC.directorBuildState),
+      start: (req) => ipcRenderer.invoke(IPC.directorBuildStart, req),
+      pause: () => ipcRenderer.invoke(IPC.directorBuildPause),
+      resume: (provider) => ipcRenderer.invoke(IPC.directorBuildResume, provider),
+      stop: () => ipcRenderer.invoke(IPC.directorBuildStop),
+      onChange: (cb) => {
+        const listener = (_e: IpcRendererEvent, q: import('@shared/buildQueue').BuildQueue) => cb(q);
+        ipcRenderer.on(IPC.directorBuildEvent, listener);
+        return () => ipcRenderer.removeListener(IPC.directorBuildEvent, listener);
+      },
+    },
+    access: (director) => ipcRenderer.invoke(IPC.directorAccess, director),
+    setAccess: (director, change) => ipcRenderer.invoke(IPC.directorAccessSet, director, change),
   },
   agent: {
     state: () => ipcRenderer.invoke(IPC.agentState),

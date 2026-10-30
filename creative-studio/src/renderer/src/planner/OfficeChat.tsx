@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { PlannerProject } from '@shared/planner';
 import { chunkPlan, isReady, MAKE_PLAN_REQUEST, withoutMarker, type ChatMessage, type ChatMode } from '@shared/plannerChat';
 import type { TownAgent } from '@shared/town';
+import { isNo, isYes, wantsBuild } from '@shared/ownerReply';
 import { parseTaskLines, TASK_NOTE } from '@shared/townMeeting';
 import { plain } from './HallPeople';
 import { AiPicker, useAiSettings, useTaskAdder } from './meetingKit';
@@ -19,7 +20,8 @@ const api = () => window.studio.planner;
  * The General Manager's office does everything the Studio chat does: they talk the idea through, say when they understand ("Ready to start building?"), and
  * on "Yes, make the plan" give the tasks as a list to show on the canvas. Every other director recommends a task or two with an Add task button.
  */
-export function OfficeChat({ agent, seat, p, reload, onMessages, taskCount = 0, waitingCount = 0, onTasks, onOpenPlan, variant = 'room' }: { agent: TownAgent; seat?: CastMember['seat']; p: PlannerProject; reload: () => Promise<void>; onMessages: (m: ChatMessage[]) => void; /** This director's open tasks, and how many have a result waiting for the owner. */ taskCount?: number; waitingCount?: number; onTasks?: () => void; onOpenPlan: () => void;
+export function OfficeChat({ agent, seat, p, reload, onMessages, taskCount = 0, waitingCount = 0, onTasks, onOpenPlan, onBuild, variant = 'room' }: { agent: TownAgent; seat?: CastMember['seat']; p: PlannerProject; reload: () => Promise<void>; onMessages: (m: ChatMessage[]) => void; /** This director's open tasks, and how many have a result waiting for the owner. */ taskCount?: number; waitingCount?: number; onTasks?: () => void; onOpenPlan: () => void;
+  /** "Let's build this": starts the build and answers in the director's voice. `ai` is the AI chosen under the chat, or null when none is ready. */ onBuild?: (ai: { provider: 'claude' | 'openai' | 'gemini'; model: string } | null) => Promise<string>;
   /** `room`: laid over the picture of the office. `panel`: a compact box in the side panel beside the town map, for talking with the General Manager without going anywhere. */ variant?: 'room' | 'panel' }) {
   const planId = p.id;
   const isGm = agent.director === 'general-manager';
@@ -47,6 +49,15 @@ export function OfficeChat({ agent, seat, p, reload, onMessages, taskCount = 0, 
     return () => { live = false; };
   }, [planId, agent.id, isGm]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  /** An answer the director gives without asking an AI (a plain yes, or the build starting): kept in the conversation like any other. */
+  const answerLocally = (said: string, replyText: string, tasks: string[] = []) => {
+    const mine: ChatMessage = { role: 'user', text: said.trim().slice(0, 6000) };
+    const theirs: ChatMessage = { role: 'assistant', text: replyText.slice(0, 6000) };
+    const all = [...messages, mine, theirs]; setMessages(all); onMessages(all); setBubble({ text: theirs.text, tasks });
+    const who = isGm ? {} : { who: agent.id };
+    void api().chatAppend(planId, { messages: [mine, theirs], provider: ai.provider, model: ai.model, ...who }).catch(() => {});
+  };
+
   /** Say `text` to this director. `mode` is only for the General Manager's "Yes, make the plan", which asks for the tasks instead of more conversation. */
   const submit = async (text: string, mode: ChatMode = 'talk') => {
     if (!text.trim() || busy) return;
@@ -71,6 +82,22 @@ export function OfficeChat({ agent, seat, p, reload, onMessages, taskCount = 0, 
   };
   const send = () => {
     const t = draft.trim(); if (!t || busy) return;
+    // A plain yes to something just offered needs no AI: the offered tasks go on this director's list, and they carry on.
+    const offered = bubble?.tasks.filter((x) => !adder.added.has(x)) ?? [];
+    if (offered.length && isYes(t)) {
+      setDraft(''); for (const title of offered) adder.add(agent, title);
+      answerLocally(t, `Good. ${offered.length === 1 ? `"${offered[0]}" is` : `${offered.map((x) => `"${x}"`).join(' and ')} are`} on my list now. I will get on with ${offered.length === 1 ? 'it' : 'them'}. Say "let's build this" when you want the team to start working through the list.`);
+      return;
+    }
+    if (offered.length && isNo(t)) { setDraft(''); answerLocally(t, 'Okay, I will leave that. Tell me if you change your mind.'); return; }
+    // The General Manager asked "Ready to start building?": a yes makes the plan, no button needed.
+    if (ready && isYes(t)) { setDraft(''); void submit(MAKE_PLAN_REQUEST, 'chunks'); return; }
+    // "Let's build this": the team starts working through the open tasks, in order, one at a time.
+    if (onBuild && wantsBuild(t)) {
+      setDraft(''); setBusy(true); setError(null);
+      void onBuild(ai.ready ? { provider: ai.provider as 'claude' | 'openai' | 'gemini', model: ai.model } : null).then((said) => { if (alive.current) answerLocally(t, said); }).catch((e) => { if (alive.current) setError(errMsg(e)); }).finally(() => { if (alive.current) setBusy(false); });
+      return;
+    }
     // If there is no AI ready to answer yet, say so and keep what was typed instead of clearing the box.
     if (!ai.ready) { setShowSettings(true); setError(ai.info && !ai.info.ready ? ai.info.note : 'Still choosing the AI. Try again in a moment.'); return; }
     setDraft(''); void submit(t);
@@ -101,7 +128,7 @@ export function OfficeChat({ agent, seat, p, reload, onMessages, taskCount = 0, 
       {bubble.tasks.length > 0 && (
         <div className="tw-bubble-tasks" onClick={(e) => e.stopPropagation()}>
           {bubble.tasks.map((t) => (
-            <div key={t} className="tw-bubble-task"><span>{t}</span>{adder.added.has(t) ? <em>Added to your plan</em> : <button type="button" className="btn small primary" onClick={() => adder.add(agent, t)}>Add task</button>}</div>
+            <div key={t} className="tw-bubble-task"><span>{t}</span>{adder.added.has(t) ? <em>On my list</em> : <em>Say yes and it goes on my list</em>}</div>
           ))}
         </div>
       )}

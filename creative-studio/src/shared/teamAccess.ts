@@ -46,6 +46,8 @@ export const PRESET_LEVELS: Record<Preset, Record<Capability, AccessLevel>> = {
 export interface ActivityEntry {
   at: string; workerId: string; worker: string; tool: string; label: string; target?: string; taskId?: string;
   verdict: 'allow' | 'ask' | 'deny'; why: string; approvedBy?: 'rule' | 'owner'; outcome: 'done' | 'failed' | 'refused'; note?: string;
+  /** Set when the AI Director decided this call for another director. */
+  via?: string;
 }
 
 /** Who is acting. A hired expert has a parent: the director who delegated to them. */

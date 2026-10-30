@@ -179,7 +179,7 @@ export function registerPlannerIpc(d: Deps): void {
         if (wantsAiModels(agent.director) && d.chat) {
           const ready: ProviderReady = {};
           for (const id of ['openai', 'gemini', 'runway', 'recraft', 'higgsfield'] as const) ready[id] = (await d.chat.vault.status(id).catch(() => ({ configured: false }))).configured;
-          system = [system, '', ...aiModelsLines(ready)].join(String.fromCharCode(10));
+          system = [system, '', ...aiModelsLines(ready, agent.director)].join(String.fromCharCode(10));
         }
       }
       return needChat().reply({ system, provider: r.provider, model: r.model, messages: r.messages });

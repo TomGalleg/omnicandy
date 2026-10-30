@@ -35,6 +35,7 @@ export function briefing(key: DirectorKey, task: DirectorTask): string {
     `Your tools: ${tb.does}`,
     `Your task: ${task.title}${task.detail ? `\n${task.detail}` : ''}`,
     'To make pictures, first call list_image_models to see which AI makers can run right now, choose from that list, and tell the owner which one you chose and why.',
+    ...(tb.aiVia ? [`Anything that uses AI goes through the ${DIRECTORS.find((x) => x.key === tb.aiVia)?.title ?? 'AI Director'}: it is approved, limited and recorded under their access, and if they are switched off no AI work can run.`] : []),
     'Work only on this task. Some actions ask the owner first; if they say no, accept it and say so. If a tool is refused, do not look for a way round it.',
     'Say only what you really did. Do not say something is made unless a tool confirmed it. The owner decides whether it is accepted.',
   ].join('\n\n');
@@ -59,6 +60,7 @@ export async function runDirector(deps: DirectorRunDeps, key: DirectorKey, task:
     chain: async () => [await chain()],
     taskId: () => task.id,
     tools: box.tools,
+    ...(box.aiVia ? { via: { worker: { id: directorWorkerId(box.aiVia), name: DIRECTORS.find((x) => x.key === box.aiVia)?.title ?? 'AI Director', kind: 'director' as const, director: box.aiVia }, chain: async () => { const ab = toolboxFor(box.aiVia!); return [bindTask(await deps.store.get(directorWorkerId(box.aiVia!), ab.ceiling, ab.preset), task.id)]; } } } : {}),
     ...(deps.now ? { now: deps.now } : {}),
     ...(deps.approve ? { approve: deps.approve } : {}),
     ...(deps.log ? { log: deps.log } : {}),

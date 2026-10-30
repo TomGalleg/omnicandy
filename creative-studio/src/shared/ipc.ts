@@ -110,6 +110,14 @@ export const IPC = {
   directorRun: 'director:run',
   directorStop: 'director:stop',
   directorActivity: 'director:activity',
+  directorAccess: 'director:access',
+  directorBuildState: 'director:build-state',
+  directorBuildStart: 'director:build-start',
+  directorBuildPause: 'director:build-pause',
+  directorBuildResume: 'director:build-resume',
+  directorBuildStop: 'director:build-stop',
+  directorBuildEvent: 'director:build-event',
+  directorAccessSet: 'director:access-set',
   claudeState: 'claude:state',
   claudeSend: 'claude:send',
   claudePlanProject: 'claude:plan-project',
@@ -439,6 +447,20 @@ export interface StudioApi {
     run(req: import('./directorToolbox').DirectorRunRequest): Promise<import('./directorToolbox').DirectorOutcome>;
     stop(): Promise<void>;
     activity(): Promise<import('./teamAccess').ActivityEntry[]>;
+    /** "Let's build this": the open tasks done one at a time in order, each by its director. */
+    build: {
+      state(): Promise<import('./buildQueue').BuildQueue>;
+      /** `order` is the Production Director's opinion (task ids); anything wrong with it is repaired. */
+      start(req: { order?: string[]; why?: string; provider: 'claude' | 'openai' | 'gemini' }): Promise<import('./buildQueue').BuildQueue>;
+      pause(): Promise<import('./buildQueue').BuildQueue>;
+      resume(provider?: 'claude' | 'openai' | 'gemini'): Promise<import('./buildQueue').BuildQueue>;
+      stop(): Promise<import('./buildQueue').BuildQueue>;
+      onChange(cb: (q: import('./buildQueue').BuildQueue) => void): () => void;
+    };
+    /** What this director may do, as the Team Access screen shows it. */
+    access(director: import('./town').DirectorKey): Promise<import('./teamAccessView').AccessView>;
+    /** One change from the screen; returns the new view. */
+    setAccess(director: import('./town').DirectorKey, change: import('./teamAccessView').AccessChange): Promise<import('./teamAccessView').AccessView>;
   };
   agent: {
     state(): Promise<AgentUiState>;

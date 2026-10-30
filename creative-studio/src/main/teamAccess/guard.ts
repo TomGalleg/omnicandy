@@ -10,11 +10,13 @@ export interface GuardDeps {
   /** The worker's policy and every policy above them (a hired expert's director), read fresh on each call. */
   chain: () => readonly AccessPolicy[] | Promise<readonly AccessPolicy[]>;
   taskId?: () => string | undefined;
+  /** Anything that uses AI is decided by this worker's access instead of the requester's own (the AI Director). The requester must still be switched on. */
+  via?: { worker: WorkerRef; chain: () => readonly AccessPolicy[] | Promise<readonly AccessPolicy[]> };
   /** The tools this worker's toolbox lists. Anything else is refused, even if their access level would allow it. */
   tools?: readonly string[];
   now?: () => Date;
   /** Shows the owner what is about to happen and returns their answer. With none, anything that needs approval is refused. */
-  approve?: (info: { worker: WorkerRef; request: AccessRequest; why: string; offer: ApprovalOffer[] }) => Promise<ApprovalOffer | 'deny'>;
+  approve?: (info: { worker: WorkerRef; request: AccessRequest; why: string; offer: ApprovalOffer[]; via?: WorkerRef }) => Promise<ApprovalOffer | 'deny'>;
   log?: (e: ActivityEntry) => void | Promise<void>;
   /** Called when a call is refused because the owner switched access off, so the run can be stopped. */
   onRevoked?: () => void;
@@ -27,6 +29,14 @@ export class AccessGuard {
   private n = 0;
   constructor(private readonly d: GuardDeps) {}
 
+  private useVia(req: AccessRequest) { return !!this.d.via && req.capability === 'generate-media'; }
+  /** Whose access decides this call: the worker's own chain, or for AI work the AI Director's (after the worker's own on/off check). */
+  private async chainFor(req: AccessRequest): Promise<readonly AccessPolicy[]> {
+    const own = await this.d.chain();
+    if (!this.useVia(req)) return own;
+    const off = own.filter((p) => p.revoked || (p.expiresAt && Date.parse(p.expiresAt) <= this.now().getTime()));
+    return [...off, ...(await this.d.via!.chain())];
+  }
   private now() { return this.d.now?.() ?? new Date(); }
   private record(e: Omit<ActivityEntry, 'at' | 'workerId' | 'worker'>) {
     try { void Promise.resolve(this.d.log?.({ at: this.now().toISOString(), workerId: this.d.worker.id, worker: this.d.worker.name, ...e })).catch(() => undefined); } catch { /* a log problem never decides an action */ }
@@ -37,26 +47,27 @@ export class AccessGuard {
     const taskId = this.d.taskId?.();
     const req = classifyToolCall(tool, args, taskId);
     const refuse = (verdict: 'ask' | 'deny', why: string, r?: AccessRequest): GuardResult => {
-      this.record({ tool, label: r?.label ?? tool, ...(r?.target ? { target: r.target } : {}), ...(taskId ? { taskId } : {}), verdict, why, outcome: 'refused' });
+      this.record({ tool, label: r?.label ?? tool, ...(r?.target ? { target: r.target } : {}), ...(taskId ? { taskId } : {}), verdict, why, outcome: 'refused', ...(this.d.via && r?.capability === 'generate-media' ? { via: this.d.via.worker.name } : {}) });
       return { ok: false, text: `Error: Not allowed. ${why}` };
     };
     if (!req) return refuse('deny', 'This tool has not been cleared for AI workers.');
     if (this.d.tools && !this.d.tools.includes(tool)) return refuse('deny', 'This tool is not in this worker\'s toolbox.', req);
-    const chain = await this.d.chain();
+    const chainOf = async () => this.chainFor(req);
+    const chain = await chainOf();
     let decision: Decision = decideChain(chain, req, { now: this.now(), grants: this.grants });
     if (decision.verdict === 'deny') {
       if (chain.some((p) => p.revoked)) { try { this.d.onRevoked?.(); } catch { /* ignore */ } }
-      return refuse('deny', decision.why, req);
+      return refuse('deny', this.d.via && req.capability === 'generate-media' && chain.some((p) => p.revoked && p.workerId === (this.d.via?.worker.id)) ? `The ${this.d.via.worker.name} is switched off, and all AI work goes through them.` : decision.why, req);
     }
     let approvedBy: 'rule' | 'owner' = 'rule';
     if (decision.verdict === 'ask') {
       if (!this.d.approve) return refuse('ask', `${decision.why} It needs your OK, and there is no way to ask yet.`, req);
       let answer: ApprovalOffer | 'deny';
-      try { answer = await this.d.approve({ worker: this.d.worker, request: req, why: decision.why, offer: decision.offer }); } catch { answer = 'deny'; }
+      try { answer = await this.d.approve({ worker: this.d.worker, request: req, why: decision.why, offer: decision.offer, ...(this.useVia(req) ? { via: this.d.via!.worker } : {}) }); } catch { answer = 'deny'; }
       if (answer === 'deny' || !decision.offer.includes(answer)) return refuse('ask', 'You said no.', req);
       this.grants = [...this.grants, ...makeGrants(chain, req, answer, this.now(), this.d.newId ?? (() => `grant-${++this.n}-${Date.now().toString(36)}`))];
       // the owner may have switched access off while the question was open: ask the rules again with the new approval
-      decision = decideChain(await this.d.chain(), req, { now: this.now(), grants: this.grants });
+      decision = decideChain(await chainOf(), req, { now: this.now(), grants: this.grants });
       if (decision.verdict !== 'allow') return refuse(decision.verdict, decision.why, req);
       approvedBy = 'owner';
     }
@@ -65,6 +76,6 @@ export class AccessGuard {
       const used = this.grants.filter((g) => g.scope === 'once' && g.capability === req.capability && g.kind === req.kind && g.target === req.target && chain.some((p) => p.workerId === g.workerId));
       for (const g of used) this.grants = consumeGrant(this.grants, g.id, this.now());
     }
-    return { ok: true, done: (failed, note) => this.record({ tool, label: req.label, ...(req.target ? { target: req.target } : {}), ...(taskId ? { taskId } : {}), verdict: 'allow', why: decision.why, approvedBy, outcome: failed ? 'failed' : 'done', ...(note ? { note: note.slice(0, 200) } : {}) }) };
+    return { ok: true, done: (failed, note) => this.record({ tool, label: req.label, ...(req.target ? { target: req.target } : {}), ...(taskId ? { taskId } : {}), verdict: 'allow', why: decision.why, approvedBy, outcome: failed ? 'failed' : 'done', ...(this.useVia(req) ? { via: this.d.via!.worker.name } : {}), ...(note ? { note: note.slice(0, 200) } : {}) }) };
   }
 }

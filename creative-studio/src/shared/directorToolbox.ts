@@ -27,6 +27,8 @@ export interface Toolbox {
   works: boolean;
   /** Plain words: what this director does with their tools. Shown to the owner and used to brief the AI. */
   does: string;
+  /** Anything that uses AI goes through this director: their access, spending cap, on/off switch and log govern it. Set on every director who has an AI tool except that director. */
+  aiVia?: DirectorKey;
 }
 
 const LOOK = ['get_status', 'look_at_document', 'list_files', 'planner_packages', 'planner_get_package'] as const;
@@ -47,13 +49,13 @@ export const TOOLBOXES: Record<DirectorKey, Toolbox> = {
   'creative-director': {
     tools: [...LOOK, ...SUGGEST, ...REPORT, 'open_file', 'apply_edit', 'undo', 'save_version', 'new_document', 'photocraft_command', 'app_commands', 'app_command', 'export_file', 'list_export_formats',
       'list_image_models', 'generate_image'],
-    ceiling: { ...READ, 'edit-project': 'allow', 'native-apps': 'allow', 'generate-media': 'allow' }, preset: 'balanced', works: true,
+    ceiling: { ...READ, 'edit-project': 'allow', 'native-apps': 'allow', 'generate-media': 'allow' }, preset: 'balanced', works: true, aiVia: 'ai-director',
     does: 'Makes and edits pictures and artwork with PhotoCraft, VectorCraft and AI image generation, then reports what it made.',
   },
   'ai-director': {
-    tools: [...LOOK, ...SUGGEST, 'list_image_models', 'list_video_models', 'local_video_status', 'workflow_catalog'],
-    ceiling: { ...READ, 'generate-media': 'read' }, preset: 'supervised', works: false,
-    does: 'Knows which AI makers can run right now and advises on which fits, with cost and quality. Looks; does not run paid models.',
+    tools: [...LOOK, ...SUGGEST, ...REPORT, 'list_image_models', 'list_video_models', 'local_video_status', 'workflow_catalog', 'generate_image'],
+    ceiling: { ...READ, 'generate-media': 'allow' }, preset: 'supervised', works: true,
+    does: 'Owns everything that uses AI: knows which AI makers can run right now, picks the one that fits, and makes pictures with it. Every other director\'s AI work goes through this director, so its access, spending cap and on/off switch govern all of it. Asks before each paid run.',
   },
   'software-director': {
     tools: [...LOOK, ...SUGGEST, ...REPORT, 'external_apps', 'external_run', 'external_job', 'open_file', 'export_file', 'list_export_formats'],

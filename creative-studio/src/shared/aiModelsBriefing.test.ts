@@ -17,6 +17,10 @@ describe('what the directors are told about the AI makers', () => {
     expect(t).not.toContain('No paid AI maker has a key saved');
   });
   it('is honest when nothing is set up', () => { expect(aiModelsLines({}).join('\n')).toContain('No paid AI maker has a key saved yet'); });
+  it('tells everyone AI work goes through the AI Director, and tells the AI Director it owns it', () => {
+    expect(aiModelsLines({}, 'creative-director').join('\n')).toContain('Anything that uses AI goes through the AI Director');
+    expect(aiModelsLines({}, 'ai-director').join('\n')).toContain('Everything that uses AI goes through you');
+  });
   it('is for the AI Director and Creative Director only', () => {
     expect(wantsAiModels('ai-director') && wantsAiModels('creative-director')).toBe(true);
     expect(wantsAiModels('quality-director') || wantsAiModels(undefined)).toBe(false);

@@ -97,6 +97,28 @@ describe('the guard at the point of execution', () => {
     expect((await guard.before('get_status', {})).ok).toBe(true);
     expect((await guard.before('apply_edit', {})).ok).toBe(false);
   });
+  it('decides AI work by the AI Director\'s access, names the route, and stops when they are switched off', async () => {
+    const own = bal(); const ai: { p: AccessPolicy } = { p: { ...bal().p, workerId: 'director:ai-director', preset: 'independent', spendCapCents: 500 } };
+    const asked: Array<string | undefined> = [];
+    const aiWorker = { id: 'director:ai-director', name: 'AI Director', kind: 'director' as const };
+    const { guard, log } = make(own, { via: { worker: aiWorker, chain: () => [ai.p] }, approve: async ({ via }) => { asked.push(via?.name); return 'once'; } });
+    // inside the AI Director's cap, an Independent AI Director allows it on its own, even though the requester would ask
+    expect((await guard.before('generate_image', {})).ok).toBe(true);
+    expect(asked).toEqual([]);
+    ai.p = { ...ai.p, preset: 'supervised' };
+    const g2 = await guard.before('generate_image', {}); expect(g2.ok).toBe(true); if (g2.ok) g2.done(false);
+    expect(asked).toEqual(['AI Director']);
+    expect(log.at(-1)).toMatchObject({ via: 'AI Director' });
+    ai.p = { ...ai.p, revoked: true };
+    const r = await guard.before('generate_image', {});
+    expect(r.ok).toBe(false); expect(r.ok === false && r.text).toContain('AI Director is switched off');
+    // other work is still decided by the requester's own access
+    expect((await guard.before('apply_edit', {})).ok).toBe(true);
+    // and a switched-off requester cannot use the AI Director either
+    own.p = { ...own.p, revoked: true };
+    ai.p = { ...ai.p, revoked: false, preset: 'independent' };
+    expect((await guard.before('generate_image', {})).ok).toBe(false);
+  });
   it('never lets a log problem decide an action', async () => {
     const guard = new AccessGuard({ worker, chain: () => [bal().p], taskId: () => 't1', log: () => { throw new Error('disk full'); } });
     const g = await guard.before('get_status', {}); expect(g.ok).toBe(true); if (g.ok) g.done(false);

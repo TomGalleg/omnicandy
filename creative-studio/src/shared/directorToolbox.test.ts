@@ -51,6 +51,15 @@ describe('every director starts well set up', () => {
     expect(TOOLBOXES['creative-director'].preset).toBe('balanced');
   });
 
+  it('sends all AI work through the AI Director: only they hold AI tools without a route to them', () => {
+    const AI = ['generate_image', 'generate_video', 'make_local_video', 'make_motion_video', 'request_model_download'];
+    for (const [key, box] of Object.entries(TOOLBOXES)) {
+      const has = box.tools.some((t) => AI.includes(t));
+      if (key === 'ai-director') { expect(box.aiVia, key).toBeUndefined(); expect(has, key).toBe(true); continue; }
+      if (has) expect(box.aiVia, `${key} has an AI tool but does not go through the AI Director`).toBe('ai-director');
+    }
+  });
+
   it('gives the director who uses other programs that access and nobody else', () => {
     const who = Object.entries(TOOLBOXES).filter(([, b]) => b.ceiling['outside-apps'] === 'allow').map(([k]) => k);
     expect(who).toEqual(['software-director']);
