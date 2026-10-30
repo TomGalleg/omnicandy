@@ -55,7 +55,7 @@ describe('displayStatus', () => {
     const t = mid.tasks.find((x) => x.claim)!;
     expect(displayStatus(t, mid, new Date(t.claim!.claimedAt)).label).toBe('In Progress');
     const sup = load('superseded');
-    expect(displayStatus(sup.tasks.find((x) => x.packageId)!, sup, NOW)).toMatchObject({ label: 'In Progress', chip: 'Sent to AI, waiting for a result' });
+    expect(displayStatus(sup.tasks.find((x) => x.packageId)!, sup, NOW)).toMatchObject({ label: 'In Progress', chip: 'Instructions ready, waiting for an AI to take it' });
     const out = load('outdated-report');
     const rep = out.tasks.find((x) => x.status === 'reported')!;
     expect(displayStatus(rep, out, NOW)).toMatchObject({ label: 'Needs Review', planChanged: true });

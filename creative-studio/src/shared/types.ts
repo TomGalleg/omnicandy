@@ -62,6 +62,8 @@ export interface ProjectManifest {
   objective?: string;
   /** Where the user left off, restored when the project is opened. */
   view?: { workspace: WorkspaceId; assetId?: string };
+  /** The Planner tab the owner last used in this project, so it opens there again. Kept with the project, never in the plan. */
+  plannerTab?: string;
 }
 
 export interface ProjectSummary {

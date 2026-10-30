@@ -178,3 +178,32 @@ describe('ProjectStore', () => {
     expect(await s.exportsDir()).toBe(path.join(root, 'exports'));
   });
 });
+
+describe('remembering the Planner tab', () => {
+  it('keeps the tab with the project through a close and reopen, without counting as an edit', async () => {
+    const dir = path.join(tmp, 'proj');
+    const a = await newStore();
+    const before = (await a.loadManifest()).updatedAt;
+    await a.setMeta({ plannerTab: 'handoffs' });
+    const b = new ProjectStore(dir);
+    const m = await b.loadManifest();
+    expect(m.plannerTab).toBe('handoffs');
+    expect(m.updatedAt).toBe(before); // remembering where the owner was is not an edit
+    await b.setMeta({ view: { workspace: 'planner' } }); // the app also saves the workspace; that must not erase the tab
+    expect((await new ProjectStore(dir).loadManifest()).plannerTab).toBe('handoffs');
+  });
+
+  it('opens a project that has no saved tab, or an odd one, without trouble', async () => {
+    const dir = path.join(tmp, 'proj');
+    const a = await newStore();
+    expect((await a.loadManifest()).plannerTab).toBeUndefined();
+    const file = path.join(dir, 'project.json');
+    const raw = JSON.parse(await fs.readFile(file, 'utf8')) as Record<string, unknown>;
+    raw.plannerTab = 'something-from-a-later-version';
+    await fs.writeFile(file, JSON.stringify(raw));
+    expect((await new ProjectStore(dir).loadManifest()).plannerTab).toBe('something-from-a-later-version');
+    raw.plannerTab = { not: 'a string' };
+    await fs.writeFile(file, JSON.stringify(raw));
+    expect((await new ProjectStore(dir).loadManifest()).plannerTab).toBeUndefined(); // the project still opens
+  });
+});

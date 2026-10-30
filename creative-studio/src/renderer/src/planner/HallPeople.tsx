@@ -18,7 +18,7 @@ export const SEATS: ReadonlyArray<{ x: number; y: number; w: number }> = [
 ];
 
 /** The words as a person would say them: no formatting marks, and short enough to read at a glance. */
-const plain = (t: string) => { const s = t.replace(/[*_`#]/g, '').replace(/\s+/g, ' ').trim(); return s.length > 1600 ? `${s.slice(0, 1597).trimEnd()}…` : s; };
+export const plain = (t: string) => { const s = t.replace(/[*_`#]/g, '').replace(/\s+/g, ' ').trim(); return s.length > 1600 ? `${s.slice(0, 1597).trimEnd()}…` : s; };
 
 /** Bubbles are drawn in their own layer so the edge of the room never cuts them: each is a fixed share of the room's width, kept inside it, and its tail still points at the person. */
 const BUBBLE_W = 36;

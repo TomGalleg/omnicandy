@@ -3,15 +3,20 @@
 import { useEffect, useMemo, useState } from 'react';
 import { isClaimLive, type ExecPackage, type PlannerProject } from '@shared/planner';
 import { brainstormText, buildContext } from '@shared/plannerContext';
-import { DESTINATIONS, lastActive, listPaths, sendText, type DestinationId } from '@shared/plannerSend';
+import { claudeReadyToWork, DESTINATIONS, lastActive, listPaths, sendText, type DestinationId } from '@shared/plannerSend';
 import { copyText, CopyButton, errMsg, ErrorLine, Section, useAction, when } from './plannerUi';
 
 const api = () => window.studio.planner;
 const TOOL_KINDS = ['claude-code', 'gemini', 'cowork'];
+const DEST_KEY = 'cs-planner-send-dest';
+const storedDest = (): DestinationId | null => { try { const v = window.localStorage.getItem(DEST_KEY); return v === 'createcraft' || v === 'tools' || v === 'chat' ? v : null; } catch { return null; } };
 
 /** `only`: the one task being worked on (no list to tick). */
 export function SendPanel({ p, reload, sel, setSel, only }: { p: PlannerProject; reload: () => Promise<void>; sel: string[]; setSel: (ids: string[]) => void; only?: string }) {
-  const [dest, setDest] = useState<DestinationId>('chat');
+  // OmniCandy's own Claude is offered first. The owner's last choice is remembered; with no choice yet and Claude not ready to work, "any chat" is offered instead.
+  const [dest, setDestRaw] = useState<DestinationId>(() => storedDest() ?? 'createcraft');
+  const setDest = (d: DestinationId) => { setDestRaw(d); try { window.localStorage.setItem(DEST_KEY, d); } catch { /* storage unavailable */ } };
+  useEffect(() => { if (storedDest()) return; void window.studio.claude.state().then((st) => { if (!claudeReadyToWork(st)) setDestRaw('chat'); }).catch(() => {}); }, []);
   const [objective, setObjective] = useState('');
   const [sent, setSent] = useState<{ pkg: ExecPackage; reused: boolean; replaced: number[]; dest: DestinationId } | null>(null);
   const [redact, setRedact] = useState(true);
@@ -35,9 +40,10 @@ export function SendPanel({ p, reload, sel, setSel, only }: { p: PlannerProject;
   const ctx = useMemo(() => (chosen.length ? buildContext(p, { purpose: 'execute', taskIds: chosen, destination: dest, forceInclude: force }) : null), [p, chosen, dest, force]);
   useEffect(() => { setRedact(dest === 'chat'); }, [dest]);
 
-  const prepare = () => a.run(async () => {
+  const prepare = (thenConfirm = false) => a.run(async () => {
     const r = await api().prepareSend(p.id, { taskIds: chosen, objective: objective.trim() || undefined, destination: dest, forceInclude: force });
     setSent({ pkg: r.package, reused: r.reused, replaced: r.replaced, dest });
+    if (thenConfirm) setConfirming(true);
     // One click: the instructions are on the clipboard as soon as they are ready (the text is also shown below).
     if (dest !== 'createcraft') setCopied(await copyText(sendText(r.package, p.title, dest, { redact: dest === 'chat' })));
   });
@@ -46,7 +52,7 @@ export function SendPanel({ p, reload, sel, setSel, only }: { p: PlannerProject;
   const waits = (id: string) => (p.tasks.find((t) => t.id === id)?.dependsOn ?? []).map((d) => p.tasks.find((x) => x.id === d)).filter((x) => x && !['accepted', 'cancelled'].includes(x.status) && !chosen.includes(x.id));
 
   return (
-    <Section title={only ? 'Do this task' : 'Send to AI'} hint={only ? 'Pick who does it. This only prepares instructions for you to copy; nothing starts by itself.' : 'Pick what the AI should do and who gets it. This only prepares text for you to send. Nothing starts by itself.'}>
+    <Section title={only ? 'Do this task' : 'Send to AI'} hint={only ? (dest === 'createcraft' ? 'OmniCandy Claude does it after you confirm. Nothing starts until you press Start.' : 'Pick who does it. This only prepares instructions for you to copy; nothing starts by itself.') : 'Pick what the AI should do and who gets it. This only prepares text for you to send. Nothing starts by itself.'}>
       {!ready.length && <p className="pl-hint">{only ? 'This task is already with an AI, waiting for a result, or finished. Bring the result back below.' : 'No task is ready to send. A task is ready when it is To Do and nobody is working on it.'}</p>}
       {!only && ready.map((t) => (
         <label key={t.id} className="pl-check">
@@ -58,12 +64,16 @@ export function SendPanel({ p, reload, sel, setSel, only }: { p: PlannerProject;
       ))}
       {ready.length > 0 && (
         <fieldset className="pl-dests"><legend>Who does it?</legend>
-          {DESTINATIONS.map((d) => (
-            <label key={d.id} className="pl-check pl-dest">
-              <input type="radio" name={`dest-${p.id}`} checked={dest === d.id} onChange={() => setDest(d.id)} />
-              <span><strong>{d.label}</strong><br /><small className="pl-hint">{d.blurb}{d.id === 'tools' && seen ? ` Last seen: ${seen.name}, ${when(seen.at)}.` : ''}</small></span>
-            </label>
-          ))}
+          {(() => {
+            const row = (d: (typeof DESTINATIONS)[number]) => (
+              <label key={d.id} className="pl-check pl-dest">
+                <input type="radio" name={`dest-${p.id}`} checked={dest === d.id} onChange={() => setDest(d.id)} />
+                <span><strong>{d.label}</strong><br /><small className="pl-hint">{d.blurb}{d.id === 'tools' && seen ? ` Last seen: ${seen.name}, ${when(seen.at)}.` : ''}</small></span>
+              </label>
+            );
+            const first = DESTINATIONS.find((d) => d.id === 'createcraft')!;
+            return <>{row(first)}<details open={dest !== 'createcraft'}><summary>Use another AI instead</summary>{DESTINATIONS.filter((d) => d.id !== 'createcraft').map(row)}</details></>;
+          })()}
         </fieldset>
       )}
       {ctx && ctx.rules.length > 0 && (
@@ -78,7 +88,7 @@ export function SendPanel({ p, reload, sel, setSel, only }: { p: PlannerProject;
       )}
       {ctx && ctx.rules.length === 0 && ctx.upstream.length > 0 && <p className="pl-hint">It also gets the finished results of: {ctx.upstream.map((u) => u.title).join(', ')}.</p>}
       {ready.length > 0 && <details><summary>More options</summary><label>What should it aim for? (optional)<input value={objective} onChange={(e) => setObjective(e.target.value)} placeholder="Leave empty to use the task names" /></label></details>}
-      {ready.length > 0 && <div><button className="btn primary" disabled={a.busy || !chosen.length} onClick={() => void prepare()}>{dest === 'createcraft' ? 'Get it ready' : 'Copy the instructions'}</button></div>}
+      {ready.length > 0 && <div><button className="btn primary" disabled={a.busy || !chosen.length} onClick={() => void prepare(dest === 'createcraft')}>{dest === 'createcraft' ? 'Do this now' : 'Copy the instructions'}</button></div>}
       <ErrorLine error={a.error} />
       {sent && (
         <div className="pl-sent" role="status">
@@ -91,11 +101,17 @@ export function SendPanel({ p, reload, sel, setSel, only }: { p: PlannerProject;
             </div>
           )}
           <div className="pl-actions">
-            <CopyButton text={text} label={sent.dest === 'chat' ? 'Copy for the chat' : sent.dest === 'tools' ? 'Copy the line to paste' : 'Copy the message'} />
+            {sent.dest !== 'createcraft' && <CopyButton text={text} label={sent.dest === 'chat' ? 'Copy for the chat' : 'Copy the line to paste'} />}
             {sent.dest === 'createcraft' && !started && !confirming && <button className="btn primary" onClick={() => setConfirming(true)}>Do this now</button>}
-            {sent.dest === 'createcraft' && !started && <button className="btn small" onClick={() => { window.dispatchEvent(new CustomEvent('createcraft:claude-prefill', { detail: { text } })); setFilled(true); }}>Put it in the Claude panel instead</button>}
-            <button className="btn small ghost" disabled={a.busy} title="Cancel this brief; its tasks go back to To Do" onClick={() => void a.run(async () => { await api().cancelPackage(p.id, sent.pkg.id); setSent(null); })}>Unsend</button>
+            <button className="btn small ghost" disabled={a.busy} title="Cancel this brief; its tasks go back to To Do" onClick={() => void a.run(async () => { await api().cancelPackage(p.id, sent.pkg.id); setSent(null); })}>Undo</button>
           </div>
+          {sent.dest === 'createcraft' && !started && (
+            <details><summary>Other ways to give this to Claude</summary>
+              <div className="pl-actions"><CopyButton text={text} label="Copy the message" />
+              <button className="btn small" onClick={() => { window.dispatchEvent(new CustomEvent('createcraft:claude-prefill', { detail: { text } })); setFilled(true); }}>Put it in the Claude panel instead</button>
+              </div>
+            </details>
+          )}
           {copied && sent.dest !== 'createcraft' && <p className="pl-hint" role="status">Copied. Paste it into {sent.dest === 'chat' ? 'ChatGPT, Gemini or Claude' : 'your tool'}.</p>}
           {sent.dest === 'createcraft' && confirming && !started && (
             <div className="pl-warn" role="alertdialog" aria-label="Start this work">
@@ -111,8 +127,8 @@ export function SendPanel({ p, reload, sel, setSel, only }: { p: PlannerProject;
           <ErrorLine error={runError} />
           {sent.dest === 'createcraft' && chosen.some((id) => !p.tasks.find((t) => t.id === id)?.assignee) && <p className="pl-hint">Tip: choose who handles {chosen.length === 1 ? 'this task' : 'these tasks'} (Handled by, on the card in the Studio) so their badge shows in the town.</p>}
           {filled && <p className="pl-hint">It is in the Claude panel's box. Read it, then press Send there. If the panel is closed, use Copy and paste it in.</p>}
-          <p className="pl-hint">When the AI answers, paste the answer under <strong>Paste back</strong> below. It will wait for your review.</p>
-          <pre className="pl-raw">{text}</pre>
+          {sent.dest !== 'createcraft' && <p className="pl-hint">When the AI answers, paste the answer under <strong>Paste back</strong> below. It will wait for your review.</p>}
+          {sent.dest !== 'createcraft' && <pre className="pl-raw">{text}</pre>}
         </div>
       )}
     </Section>

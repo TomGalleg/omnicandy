@@ -86,6 +86,7 @@ import { MAX_VIDEO_PROMPT } from '@shared/video';
 import type { SettingsStore } from './settingsStore';
 import { AdapterPackages, createIntegrationManager } from './integrations';
 import { ConnectService } from './integrations/connect';
+import { PLANNER_TABS } from '@shared/plannerTabs';
 import { createPlanner, registerPlannerIpc } from './planner/ipc';
 import { McpSession } from './planner/mcp';
 import { BuilderService } from './integrations/builder/service';
@@ -1594,6 +1595,7 @@ export function registerIpc(d: IpcDeps): void {
   handle(IPC.setProjectMeta, z.tuple([z.object({
     objective: z.string().max(600).optional(),
     view: z.object({ workspace: z.enum(['home', 'media', 'edit', 'generate', 'workflow', 'effects', 'color', 'audio', 'deliver', 'planner', 'software']), assetId: z.string().max(128).optional() }).optional(),
+    plannerTab: z.enum(PLANNER_TABS).optional(),
   })]), async (patch) => (await d.project()).setMeta(patch));
   handle(IPC.claudeStop, none, () => claude().stop());
   handle(IPC.claudeReset, none, () => { claude().reset(); return claude().state(); });

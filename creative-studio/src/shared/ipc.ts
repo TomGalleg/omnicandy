@@ -8,7 +8,7 @@ import type { ProjectPlan } from './projectPlan';
 import type { BuildImage, BuildState, PlanUsage } from './buildSession';
 
 export type ProjectMeta = Pick<ProjectManifest, 'kind' | 'brief' | 'objective'>;
-export type ProjectMetaPatch = Pick<ProjectManifest, 'objective' | 'view'>;
+export type ProjectMetaPatch = Pick<ProjectManifest, 'objective' | 'view' | 'plannerTab'>;
 import type { CostEstimate, ImageJob, ProviderId } from './generation';
 import type { StudioJob } from './aiStudio';
 import type { RecraftJob } from './recraft';

@@ -271,11 +271,11 @@ export class ProjectStore implements AssetRepository {
   }
 
   /** Saves project-level details (category, brief, Claude's objective, where the user left off). */
-  async setMeta(patch: Partial<Pick<ProjectManifest, 'kind' | 'brief' | 'objective' | 'view'>>): Promise<void> {
+  async setMeta(patch: Partial<Pick<ProjectManifest, 'kind' | 'brief' | 'objective' | 'view' | 'plannerTab'>>): Promise<void> {
     await this.loadManifest();
     Object.assign(this.manifest!, patch);
-    // Remembering where the user left off is not an edit: it doesn't change "last edited".
-    await this.persist(Object.keys(patch).some((k) => k !== 'view'));
+    // Remembering where the user left off (the workspace, the Planner tab) is not an edit: it doesn't change "last edited".
+    await this.persist(Object.keys(patch).some((k) => k !== 'view' && k !== 'plannerTab'));
   }
 
   async rename(name: string): Promise<void> {

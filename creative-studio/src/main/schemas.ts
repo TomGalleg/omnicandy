@@ -72,6 +72,8 @@ export const manifestSchema = z.object({
     workspace: z.enum(['home', 'media', 'edit', 'generate', 'workflow', 'effects', 'color', 'audio', 'deliver', 'planner', 'software']),
     assetId: id.optional(),
   }).optional(),
+  /** The Planner tab last used. Anything that is not a string reads as "none", and the value is checked where it is used, so an odd value can never stop a project from opening. */
+  plannerTab: z.string().optional().catch(undefined),
 });
 
 export function parseManifest(raw: unknown): ProjectManifest {

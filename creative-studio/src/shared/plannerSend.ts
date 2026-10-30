@@ -59,3 +59,13 @@ export function lastActive(activity: ActivityEntry[], kinds: string[]): { name: 
   }
   return null;
 }
+
+/**
+ * Whether OmniCandy's own Claude can start work right now: installed, and signed in (or holding an API key when that is how it is billed). When it cannot, the
+ * Work tab leads with "any chat" instead, so the first thing offered is something that works. Reads the same facts the Claude panel shows.
+ */
+export function claudeReadyToWork(st: { installed?: boolean | null; signedIn?: boolean | null; status?: string; billing?: { mode?: string; keyReady?: boolean } } | null | undefined): boolean {
+  if (!st) return false;
+  if (st.billing?.mode === 'api-key') return !!st.billing.keyReady;
+  return st.installed !== false && st.signedIn !== false && st.status !== 'signed-out';
+}

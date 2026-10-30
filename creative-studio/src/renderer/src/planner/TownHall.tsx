@@ -1,18 +1,14 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import type { ChatProviderInfo } from '@shared/plannerApi';
-import { chunkPlan, type ChatProviderId } from '@shared/plannerChat';
+import { chunkPlan } from '@shared/plannerChat';
 import { coordinatorOf, directorTitle, type TownAgent, type TownState } from '@shared/town';
 import type { PlanTask } from '@shared/planner';
 import { chimePickPrompt, chimePrompt, costText, isPass, parsePick, parseTaskLines, replyPrompt, summaryPrompt } from '@shared/townMeeting';
 import hallInside from '../assets/offices/town-hall.jpg';
 import { HallPeople, meetingPeople } from './HallPeople';
+import { AiPicker, put, readSetting, useAiSettings, useTaskAdder } from './meetingKit';
 import { errMsg, ErrorLine } from './plannerUi';
 
 const api = () => window.studio.planner;
-const store = (() => { try { return window.localStorage; } catch { return undefined; } })();
-const get = (k: string) => { try { return store?.getItem(k) ?? null; } catch { return null; } };
-const put = (k: string, v: string) => { try { store?.setItem(k, v); } catch { /* storage unavailable */ } };
-
 /** What the General Manager says when the owner walks into the Town Hall to start a meeting. A fixed line: it costs nothing. */
 export const GREETING = 'How can we help you, boss?';
 const OWNER = 'You';
@@ -34,8 +30,6 @@ export function TownHall({ town, planId, tasks, setTown, reload, onBack, aside }
   const current = people.find((a) => a.id === currentId) ?? chair;
   const [bubble, setBubble] = useState<{ id: string; text: string; tasks?: string[] } | null>(null);
   const [chime, setChime] = useState<{ id: string; text: string; tasks?: string[] } | null>(null);
-  /** Titles of tasks the owner added from a bubble in this visit (so the button turns into "Added"). */
-  const [added, setAdded] = useState<ReadonlySet<string>>(new Set());
   const [speaking, setSpeaking] = useState<string | null>(null);
 
   const [draft, setDraft] = useState('');
@@ -49,19 +43,9 @@ export function TownHall({ town, planId, tasks, setTown, reload, onBack, aside }
 
   // How it asks: the AI, the model, and whether the others may speak up. Under the chat, closed unless wanted.
   const [showSettings, setShowSettings] = useState(false);
-  const [providers, setProviders] = useState<ChatProviderInfo[] | null>(null);
-  const [provider, setProvider] = useState<ChatProviderId>(() => (['claude', 'openai', 'gemini'].includes(get('cs-planner-chat-provider') ?? '') ? (get('cs-planner-chat-provider') as ChatProviderId) : 'claude'));
-  const [models, setModels] = useState<string[] | null>(null);
-  const [model, setModel] = useState('');
-  const [chimeOn, setChimeOn] = useState(() => get('cs-hall-chime') !== '0');
-  useEffect(() => { void api().chatProviders().then(setProviders).catch((e) => setError(errMsg(e))); }, []);
-  const info = providers?.find((x) => x.id === provider);
-  useEffect(() => {
-    if (!info?.ready) { setModels(null); return; }
-    let live = true;
-    void api().chatModels(provider).then((m) => { if (!live) return; setModels(m); const saved = get(`cs-planner-chat-model-${provider}`); setModel(saved && m.includes(saved) ? saved : m[0] ?? ''); }).catch((e) => { if (live) setError(errMsg(e)); });
-    return () => { live = false; };
-  }, [provider, info?.ready]);
+  const ai = useAiSettings(setError);
+  const { provider, model, info } = ai;
+  const [chimeOn, setChimeOn] = useState(() => readSetting('cs-hall-chime') !== '0');
 
   const ask = async (agentId: string, text: string) => (await api().chat({ projectId: planId, provider, model, agentId, messages: [{ role: 'user', text }] })).text.trim();
   const notesOf = (t: TownState, id: string) => t.meetings.find((m) => m.id === id)?.notes ?? [];
@@ -89,7 +73,7 @@ export function TownHall({ town, planId, tasks, setTown, reload, onBack, aside }
 
   /** The owner says something to the person they are talking with. They answer; then the others get a chance to speak up. */
   const go = async (text: string) => {
-    if (!info?.ready || !model) { setShowSettings(true); setError(info && !info.ready ? info.note : 'Still choosing the AI. Try again in a moment.'); setDraft(text); return; }
+    if (!ai.ready) { setShowSettings(true); setError(info && !info.ready ? info.note : 'Still choosing the AI. Try again in a moment.'); setDraft(text); return; }
     const r = ++round.current;
     stop.current = false; setBusy(true); setError(null); setBubble(null); setProgress('');
     try {
@@ -122,7 +106,7 @@ export function TownHall({ town, planId, tasks, setTown, reload, onBack, aside }
   /** The General Manager turns what was said into tasks: at most ONE suggestion, which waits on the Studio canvas. */
   const makeTasks = async () => {
     if (!meeting || !chair) return;
-    if (!info?.ready || !model) { setShowSettings(true); setError(info && !info.ready ? info.note : 'Still choosing the AI. Try again in a moment.'); return; }
+    if (!ai.ready) { setShowSettings(true); setError(info && !info.ready ? info.note : 'Still choosing the AI. Try again in a moment.'); return; }
     const r = ++round.current;
     stop.current = false; setBusy(true); setError(null); setSpeaking(chair.id); setProgress(`${chair.name} is turning it into tasks…`);
     try {
@@ -156,33 +140,15 @@ export function TownHall({ town, planId, tasks, setTown, reload, onBack, aside }
     } else setBubble(null);
   };
 
-  /**
-   * The owner pressed Add task under someone's bubble: it joins the plan now (that press is the owner's approval), owned by the person who recommended it,
-   * and shows in the list beside the room. A task the plan already has is not added a second time.
-   */
-  const addTask = (id: string, title: string) => {
-    const who = people.find((a) => a.id === id); if (!who) return;
-    void (async () => {
-      try {
-        setError(null);
-        if (!tasks.some((t) => t.status !== 'cancelled' && t.title.trim().toLowerCase() === title.trim().toLowerCase())) {
-          const pr = await api().importSuggestions(planId, {
-            proposer: { kind: 'other', name: who.name }, note: `Task from ${who.name} in the meeting`, rawText: title,
-            changes: [{ op: 'add_task', title: title.slice(0, 200), description: `Recommended by ${who.name} in a meeting.`, priority: 'normal', dependsOn: [], completionChecks: [], assignee: who.director ?? null }],
-          });
-          await api().decideProposal(planId, pr.id, true, [0]);
-          await reload();
-        }
-        setAdded((s) => new Set(s).add(title));
-      } catch (e) { setError(errMsg(e)); }
-    })();
-  };
+  const taskAdder = useTaskAdder(planId, tasks, reload, setError);
+  const added = taskAdder.added;
+  const addTask = (id: string, title: string) => { const who = people.find((a) => a.id === id); if (who) taskAdder.add(who, title); };
 
   const send = () => { const t = draft.trim(); if (!t || busy) return; setDraft(''); void go(t); };
   const end = () => {
     round.current++;
     // End every open meeting, not just the latest: one left open from before would otherwise take its place and it would look as if nothing ended.
-    void (async () => { try { let t = town; for (const m of town.meetings.filter((x) => !x.endedAt)) t = await api().meetingEnd(planId, m.id); setTown(t); setBubble(null); setChime(null); setCurrentId(null); setProgress(''); setAdded(new Set()); onBack(); /* the meeting is over: leave the Town Hall */ } catch (e) { setError(errMsg(e)); } })();
+    void (async () => { try { let t = town; for (const m of town.meetings.filter((x) => !x.endedAt)) t = await api().meetingEnd(planId, m.id); setTown(t); setBubble(null); setChime(null); setCurrentId(null); setProgress(''); taskAdder.reset(); onBack(); /* the meeting is over: leave the Town Hall */ } catch (e) { setError(errMsg(e)); } })();
   };
 
   const fromMeeting = useMemo(() => (meeting ? tasks.filter((t) => t.status !== 'cancelled' && t.createdAt >= meeting.startedAt) : []), [tasks, meeting]);
@@ -203,21 +169,8 @@ export function TownHall({ town, planId, tasks, setTown, reload, onBack, aside }
   <details className="tw-hall-settings" open={showSettings} onToggle={(e) => setShowSettings((e.currentTarget as HTMLDetailsElement).open)}>
     <summary>Meeting settings</summary>
     <div className="tw-hall-settings-body">
-      <div className="pl-two">
-        <label>AI
-          <select value={provider} onChange={(e) => { setProvider(e.target.value as ChatProviderId); put('cs-planner-chat-provider', e.target.value); setError(null); }}>
-            {(providers ?? []).map((x) => <option key={x.id} value={x.id}>{x.label}{x.ready ? '' : ' (needs a key)'}</option>)}
-          </select>
-        </label>
-        <label>Model
-          <select value={model} disabled={!models?.length} onChange={(e) => { setModel(e.target.value); put(`cs-planner-chat-model-${provider}`, e.target.value); }}>
-            {(models ?? []).map((m) => <option key={m} value={m}>{m}</option>)}
-            {!models?.length && <option value="">{info && !info.ready ? '-' : 'loading…'}</option>}
-          </select>
-        </label>
-      </div>
+      <AiPicker s={ai} />
       <label className="pl-check"><input type="checkbox" checked={chimeOn} onChange={(e) => { setChimeOn(e.target.checked); put('cs-hall-chime', e.target.checked ? '1' : '0'); }} /> Let the others speak up when they have something important</label>
-      {info && !info.ready && <p className="pl-warn">{info.note}</p>}
       {info?.ready && model && <p className="pl-hint">{costText(chimeOn, info.label, model)} {info.cost}</p>}
     </div>
   </details>

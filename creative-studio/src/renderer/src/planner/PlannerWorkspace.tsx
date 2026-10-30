@@ -11,14 +11,19 @@ import { AskPanel } from './PlannerSend';
 import { needsYou } from '@shared/plannerView';
 import { shouldRefresh } from '@shared/plannerEvents';
 import type { NavMode } from '@shared/navigation';
+import { isPlannerTab, resolvePlannerTab } from '@shared/plannerTabs';
+import { nextAction } from '@shared/plannerNext';
+import { buildProjectView } from '@shared/projectView';
 import { ErrorLine, errMsg, PlainWords, Section, useAction, when, type TabId, type TabProps } from './plannerUi';
 
 const api = () => window.studio.planner;
 // One simple flow: Idea (think it through with an AI), Plan (break it into tasks you can edit), Work (do one task at a time, review it, approve it).
 // Tab ids are the original ones (plan, tasks, handoffs) so every existing go('handoffs') still lands in the right place.
-const TABS: Array<[TabId, string]> = [['studio', 'Studio'], ['plan', 'Idea'], ['tasks', 'Plan'], ['handoffs', 'Work'], ['town', 'OmniTown']];
-/** Simplified: the plan you talk through (Studio), doing a task (Work), and your town (OmniTown, which opens first). Advanced adds the step-by-step Idea and Plan screens. */
+const TABS: Array<[TabId, string]> = [['town', 'OmniTown'], ['studio', 'Studio'], ['plan', 'Idea'], ['tasks', 'Plan'], ['handoffs', 'Work']];
+/** Simplified: your town (OmniTown), the plan you talk through (Studio) and doing a task (Work). Advanced adds the step-by-step Idea and Plan screens. */
 const SIMPLE_TABS: readonly TabId[] = ['town', 'studio', 'handoffs'];
+/** The tab each project was left on during this session. The copy kept with the project is read once when the project opens; this one is always current. */
+const tabMemory = new Map<string, TabId>();
 
 const ago = (iso: string) => {
   const ms = Date.now() - Date.parse(iso);
@@ -42,7 +47,12 @@ export function PlannerWorkspace({ manifest, projectKey, navMode }: { manifest: 
   const [sendSel, setSendSel] = useState<string[]>([]);
   const [focusTaskId, setFocusTaskId] = useState<string | null>(null);
   const [pickUpDismissed, setPickUpDismissed] = useState<string | null>(null);
-  const [tab, setTab] = useState<TabId>('town');
+  /** The tab last chosen for this project (it can be an Advanced-only tab; what is shown follows the mode, and this value is left alone). */
+  const [savedTab, setSavedTab] = useState<TabId>('studio');
+  const advanced = navMode === 'advanced';
+  const tab = resolvePlannerTab(savedTab, advanced) as TabId;
+  /** Which project this window is showing: its manifest id, so a half-switched project never lends its saved tab to another. */
+  const pid = manifest?.id ?? projectKey ?? null;
   /** Something opened from the ⋯ menu: the change history, or how to connect an AI tool. */
   const [panel, setPanel] = useState<'history' | 'connect' | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -53,8 +63,7 @@ export function PlannerWorkspace({ manifest, projectKey, navMode }: { manifest: 
   /** Which project's plan this window already started on its own (a project opens straight into the Studio; nothing to choose first). */
   const autoStarted = useRef<string | null>(null);
   const [startError, setStartError] = useState<string | null>(null);
-  /** Which project this window already chose a first tab for: a project with no tasks yet opens on the General Manager's chat, any other on the town. */
-  const firstTab = useRef<string | null>(null);
+  const restoredFor = useRef<string | null>(null);
   const keyRef = useRef(projectKey);
   keyRef.current = projectKey;
 
@@ -70,14 +79,20 @@ export function PlannerWorkspace({ manifest, projectKey, navMode }: { manifest: 
     } catch (e) { setError(errMsg(e)); }
   }, []);
   // A different project: nothing of the previous one stays on screen.
-  useEffect(() => { setState(null); setProject(null); setOlderId(null); setFocusTaskId(null); setPickUpDismissed(null); setPanel(null); setTab('town'); firstTab.current = null; sessionStart.current = Date.now(); void refresh(); }, [projectKey, refresh]);
+  useEffect(() => { setState(null); setProject(null); setOlderId(null); setFocusTaskId(null); setPickUpDismissed(null); setPanel(null); sessionStart.current = Date.now(); void refresh(); }, [projectKey, refresh]);
+  // A project opens on the tab it was last left on (a new one, or one that never chose, opens on Studio). Read once per project; nothing here touches the plan.
   useEffect(() => {
-    if (!project || olderId || firstTab.current === projectKey) return;
-    firstTab.current = projectKey;
-    setTab(project.tasks.some((t) => t.status !== 'cancelled') ? 'town' : 'studio');
-  }, [project, olderId, projectKey]);
+    if (!pid || !manifest || restoredFor.current === pid) return;
+    restoredFor.current = pid;
+    const mine = tabMemory.get(pid);
+    setSavedTab(mine ?? (isPlannerTab(manifest.plannerTab) ? (manifest.plannerTab as TabId) : 'studio'));
+  }, [pid, manifest]);
+  /** Choosing a tab remembers it for this project. It is project data, not plan data: no plan revision, no package, no AI call. */
+  const setTab = useCallback((t: TabId) => {
+    setSavedTab(t);
+    if (pid) { tabMemory.set(pid, t); void window.studio.setProjectMeta({ plannerTab: t }).catch(() => {}); }
+  }, [pid]);
   useEffect(() => { void refresh(); }, [olderId, refresh]);
-  useEffect(() => { if (navMode !== 'advanced' && !SIMPLE_TABS.includes(tab)) setTab('town'); }, [navMode, tab]);
   // Changes made here or by a connected tool arrive as events (no polling). Looking again on focus and on a slow timer covers a lost event
   // and the older plans, which live outside the open project's folder and so are not watched.
   const projectRef = useRef(project);
@@ -116,11 +131,13 @@ export function PlannerWorkspace({ manifest, projectKey, navMode }: { manifest: 
     manifest, p: project, reload: async () => { setProject(await api().get(project.id)); void api().forProject().then(setState).catch(() => {}); }, go: setTab, sendSel, setSendSel, projectKey, projectName: manifest?.name,
     focusTaskId, setFocusTaskId: (id) => { setFocusTaskId(id); if (id) void api().touchTask(project.id, id, 'opened').then(() => api().get(project.id).then(setProject)).catch(() => {}); },
   };
-  const shownTabs = navMode === 'advanced' ? TABS : TABS.filter(([t]) => SIMPLE_TABS.includes(t));
+  const shownTabs = advanced ? TABS : TABS.filter(([t]) => SIMPLE_TABS.includes(t));
   const need = needsYou(project);
   const pr = progressOf(project.tasks.filter((t) => t.status !== 'cancelled'));
   const la = project.lastActive;
   const lastTask = la ? project.tasks.find((t) => t.id === la.taskId && t.status !== 'accepted' && t.status !== 'cancelled') : undefined;
+  // The one line that says what to do next, the same on every tab (worked out from the plan, no AI).
+  const next = olderId ? null : nextAction(buildProjectView(project, { now: new Date() }));
   const showPickUp = !olderId && !!la && !!lastTask && Date.parse(la.at) < sessionStart.current && pickUpDismissed !== `${project.id}:${la.at}`;
   return (
     <PlainWords.Provider value>
@@ -138,6 +155,11 @@ export function PlannerWorkspace({ manifest, projectKey, navMode }: { manifest: 
           <button className="btn primary" onClick={() => { setPickUpDismissed(`${project.id}:${la.at}`); props.setFocusTaskId?.(la.taskId); setTab('handoffs'); }}>Pick up</button>
           <button className="btn small ghost" onClick={() => setPickUpDismissed(`${project.id}:${la.at}`)}>Not now</button>
         </div>
+      )}
+      {next && !showPickUp && (
+        <p className="pc-next pl-nextstrip" role="status"><strong>Next:</strong> {next.text}{' '}
+          <button className="btn small primary" onClick={() => { const id = next.button.taskId; if (id) { setSendSel([id]); props.setFocusTaskId?.(id); } setTab(next.button.tab as TabId); }}>{next.button.label}</button>
+        </p>
       )}
       {panel === 'history' && <HistoryPanel p={project} onClose={() => setPanel(null)} />}
       {panel === 'connect' && <div className="pl-panel"><Section title="Connect an AI tool" hint="Optional. Lets a tool such as Claude Code read this plan and report back, without copy and paste." actions={<button className="btn small" onClick={() => setPanel(null)}>Close</button>}><ConnectPanel /></Section></div>}

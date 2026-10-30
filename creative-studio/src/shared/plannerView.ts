@@ -54,7 +54,7 @@ export function displayStatus(t: PlanTask, p: PlannerProject, now: Date = new Da
       return out('In Progress', { chip: 'Stalled: no result arrived', stalled: true });
     }
     case 'todo': default: {
-      if (pkg?.state === 'open') return out('In Progress', { chip: 'Sent to AI, waiting for a result' });
+      if (pkg?.state === 'open') return out('In Progress', { chip: 'Instructions ready, waiting for an AI to take it' });
       const waits = unmetDependencies(p, t);
       return out('To Do', waits.length ? { chip: `Waiting for ${waits[0]?.title}${waits.length > 1 ? ` and ${waits.length - 1} more` : ''}` } : {});
     }

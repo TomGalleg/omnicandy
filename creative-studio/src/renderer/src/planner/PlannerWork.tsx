@@ -412,7 +412,9 @@ export function WorkTab(props: TabProps) {
       <ReviewInbox p={p} reload={reload} hideEmpty />
       <CurrentChunk {...props} />
       {cur && <SendPanel p={p} reload={reload} sel={sendSel ?? []} setSel={setSendSel ?? (() => {})} only={cur.id} />}
-      <Section title="Bring the result back" hint="Paste what the AI answered. You see what it says first, and nothing changes until you press a button."><PastePanel p={p} reload={reload} /></Section>
+      <details className="pl-fold"><summary>Bring an answer back from another AI</summary>
+        <div className="pl-fold-body"><Section title="Bring the result back" hint="Paste what the AI answered. You see what it says first, and nothing changes until you press a button."><PastePanel p={p} reload={reload} /></Section></div>
+      </details>
     </div>
   );
 }

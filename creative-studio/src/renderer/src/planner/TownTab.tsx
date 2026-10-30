@@ -14,6 +14,8 @@ import { TownWalker, type WalkerBadge } from './TownWalker';
 import { ACTIVITY_LABEL, directorActivity, type DirectorActivity } from '@shared/townActivity';
 import { directorIntents, intentFor, type Intent } from '@shared/townIntent';
 import { TownHall } from './TownHall';
+import { OfficeChat } from './OfficeChat';
+import type { ChatMessage } from '@shared/plannerChat';
 import { requestIntents } from '@shared/townRequests';
 import { CAST, type CastMember } from './townCast';
 import puffUrl from '../assets/characters/smoke-puff.png';
@@ -86,6 +88,8 @@ export function TownTab(props: TabProps) {
   const [busy, setBusy] = useState(false);
   const [pick, setPick] = useState<string | null>(null);
   const [talk, setTalk] = useState<string | null>(null);
+  /** What was said in the open office, for the list beside it. */
+  const [officeMsgs, setOfficeMsgs] = useState<ChatMessage[]>([]);
   /** The main worker whose office is open (full screen), or null for the map. */
   const [office, setOffice] = useState<string | null>(null);
   /** Inside the Town Hall (full screen), where meetings are held. */
@@ -112,8 +116,13 @@ export function TownTab(props: TabProps) {
         <h3>Your town</h3>
         <span className="spacer" />
         <button className="btn small primary" title="Talk through your idea with the General Manager and see the plan take shape" onClick={() => go('studio')}>Talk to the General Manager</button>
-        <button className="btn small" disabled={busy} title="Suggests a studio and a specialist helper for each application your tasks name. Nothing is added until you say so." onClick={() => void run(async () => { setTown(await api().townSuggestFromPlan(p.id)); })}>Suggest helpers</button>
-        <AddBusiness busy={busy} onAdd={(name) => apply([{ op: 'add_business', name, trade: '' }])} />
+        <details className="tw-team-options"><summary>Team options{helpers ? <span className="pl-count">{helpers}</span> : null}</summary>
+          <div className="tw-team-options-body">
+          <button className="btn small" disabled={busy} title="Suggests a studio and a specialist helper for each application your tasks name. Nothing is added until you say so." onClick={() => void run(async () => { setTown(await api().townSuggestFromPlan(p.id)); })}>Suggest helpers</button>
+    <AddBusiness busy={busy} onAdd={(name) => apply([{ op: 'add_business', name, trade: '' }])} />
+            <AddWorker town={town} busy={busy} onAdd={(changes) => apply(changes)} />
+          </div>
+        </details>
       </div>
 
       {pending.map((s) => (
@@ -137,10 +146,16 @@ export function TownTab(props: TabProps) {
               {/* The desk, drawn again on top of him, so he sits behind it instead of being cut off. */}
               <img className="tw-desk-front" src={INTERIORS[inOffice.director]} alt="" aria-hidden style={{ clipPath: CAST[inOffice.director]!.desk }} />
             </>}
-            <button className="btn small tw-back" onClick={() => { setOffice(null); setPick(null); }}>← Back to the town</button>
+            <button className="btn small tw-back" onClick={() => { setOffice(null); setPick(null); setOfficeMsgs([]); }}>← Back to the town</button>
+            {inOffice.director && <OfficeChat key={inOffice.id} agent={inOffice} seat={CAST[inOffice.director]?.seat ?? { left: 50, top: 30, width: 5 }} planId={p.id} tasks={p.tasks} reload={reload} onMessages={setOfficeMsgs} />}
           </section>
           <aside className="tw-side">
-            <WorkerCard town={town} a={inOffice} activity={inOffice.director ? activity[inOffice.director] : undefined} busy={busy} onApply={apply} onTalk={() => setTalk(inOffice.id)} onClose={() => { setOffice(null); setPick(null); }} />
+            <WorkerCard hideTalk town={town} a={inOffice} activity={inOffice.director ? activity[inOffice.director] : undefined} busy={busy} onApply={apply} onTalk={() => setTalk(inOffice.id)} onClose={() => { setOffice(null); setPick(null); }} />
+            {officeMsgs.length > 0 && (
+              <details className="pl-fold" open><summary>What was said<span className="pl-count">{officeMsgs.length}</span></summary>
+                <ul className="tw-notes tw-hall-notes">{officeMsgs.map((m, i) => <li key={i}><strong>{m.role === 'user' ? 'You' : inOffice.name}</strong> {m.text}</li>)}</ul>
+              </details>
+            )}
           </aside>
         </div>
       ) : (
@@ -149,9 +164,6 @@ export function TownTab(props: TabProps) {
           <aside className="tw-side">
             {selected ? <WorkerCard town={town} a={selected} activity={selected.director ? activity[selected.director] : undefined} busy={busy} onApply={apply} onTalk={() => setTalk(selected.id)} onClose={() => setPick(null)} />
               : <p className="pl-hint">Click an office on the map to go inside and meet the person who works there. The Town Hall in the middle is where meetings happen.</p>}
-            <details className="pl-fold"><summary>Hire a helper{helpers ? <span className="pl-count">{helpers}</span> : null}</summary>
-              <div className="pl-fold-body"><AddWorker town={town} busy={busy} onAdd={(changes) => apply(changes)} /></div>
-            </details>
           </aside>
         </div>
       )}
@@ -268,7 +280,7 @@ const doorOf = (i: Intent): string | undefined => (i.kind === 'work-visit' ? CAS
 /** The badge over a director: one line saying what it means, made only from what the plan holds. */
 const badgeFor = (a: DirectorActivity | undefined): WalkerBadge | undefined => (a ? { state: a.state, label: `${ACTIVITY_LABEL[a.state]}: ${a.tasks.map((t) => t.title).slice(0, 3).join('; ')}${a.tasks.length > 3 ? ` and ${a.tasks.length - 3} more` : ''}` } : undefined);
 
-function WorkerCard({ town, a, activity, busy, onApply, onTalk, onClose }: { town: TownState; a: TownAgent; activity?: DirectorActivity; busy: boolean; onApply: (c: TeamChange[]) => void; onTalk: () => void; onClose: () => void }) {
+function WorkerCard({ town, a, activity, busy, onApply, onTalk, onClose, hideTalk }: { hideTalk?: boolean; town: TownState; a: TownAgent; activity?: DirectorActivity; busy: boolean; onApply: (c: TeamChange[]) => void; onTalk: () => void; onClose: () => void }) {
   const biz = town.businesses.find((b) => b.id === a.businessId);
   const others = town.businesses.filter((b) => b.id !== a.businessId && !town.workplaces.some((w) => w.kind === 'town-hall' && w.businessId === b.id));
   const [editing, setEditing] = useState(false);
@@ -277,7 +289,7 @@ function WorkerCard({ town, a, activity, busy, onApply, onTalk, onClose }: { tow
     <section className="tw-card" aria-label={a.name}>
       <header><Portrait a={a} /><div><strong>{a.name}</strong><br /><small className="pl-hint">{a.role === 'coordinator' ? 'Project coordinator' : a.director ? 'Main worker' : 'Helper'} · {biz?.name}</small></div><button className="btn small ghost" onClick={onClose} aria-label="Close">×</button></header>
       {activity && <p className={`tw-activity ${activity.state}`} role="status"><strong>{ACTIVITY_LABEL[activity.state]}:</strong> {activity.tasks.map((t) => t.title).join('; ')}</p>}
-      <button className="btn small primary" onClick={onTalk}>Talk to {a.name}</button>
+      {!hideTalk && <button className="btn small primary" onClick={onTalk}>Talk to {a.name}</button>}
       {editing ? (
         <>
           <textarea aria-label="Job" rows={4} value={job} maxLength={1200} onChange={(e) => setJob(e.target.value)} />

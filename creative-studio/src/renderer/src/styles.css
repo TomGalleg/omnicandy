@@ -1017,6 +1017,9 @@ span.tw-portrait { display: grid; place-items: center; }
 .tw-main.tw-inoffice .tw-room { align-self: flex-start; }
 .tw-main.tw-inoffice .tw-side { max-height: 82vh; overflow: auto; }
 .tw-bubble-task .btn { white-space: nowrap; }
+.tw-bubble.side { transform: none; animation: tw-fade .2s ease-out; }
+.tw-bubble.side::after { left: -14px; top: 16px; margin: 0; border-color: transparent; border-right-color: #fff; }
+@keyframes tw-fade { from { opacity: 0; } to { opacity: 1; } }
 .tw-hall-notes { max-height: 360px; overflow: auto; padding-left: 18px; }
 @media (prefers-reduced-motion: reduce) { .tw-hall-alert { animation: none; } }
 .tw-hall-name { display: none; }
@@ -1041,3 +1044,8 @@ span.tw-portrait { display: grid; place-items: center; }
 @keyframes tw-appear { from { opacity: 0; } to { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .tw-room .tw-puff-room { display: none; } .tw-room .tw-seated.tw-appear { animation: none; } }
 
+
+.tw-team-options { position: relative; font-size: 13px; }
+.tw-team-options > summary { cursor: pointer; padding: 3px 10px; border-radius: var(--radius); border: 1px solid var(--border); background: var(--surface); list-style: none; }
+.tw-team-options > summary::-webkit-details-marker { display: none; }
+.tw-team-options-body { position: absolute; right: 0; top: calc(100% + 6px); z-index: 20; width: min(420px, 80vw); padding: 12px; border-radius: 12px; background: var(--surface); border: 1px solid var(--border); box-shadow: 0 6px 20px rgba(0, 0, 0, .35); display: grid; gap: 10px; }

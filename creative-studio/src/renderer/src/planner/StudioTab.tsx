@@ -3,7 +3,7 @@ import { Group, Panel, Separator } from 'react-resizable-panels';
 import { PlannerChat } from './PlannerChat';
 import { CardDetails, ProjectCanvas } from './ProjectCanvas';
 import { errMsg, ErrorLine, type TabProps } from './plannerUi';
-import { nextStepsOf, type ViewNode } from '@shared/projectView';
+import type { ViewNode } from '@shared/projectView';
 import { useCanvas } from './useCanvas';
 
 const api = () => window.studio.planner;
@@ -35,7 +35,8 @@ export function StudioTab(props: TabProps) {
       await reload();
     })().catch((e) => setError(errMsg(e))).finally(() => setLooking(false));
   };
-  const next = nextStepsOf(c.view)[0];
+  /** Nothing to draw yet: the canvas, its toolbar, counters and minimap stay out of the way until there is something to show. */
+  const empty = c.view.nodes.length <= 1 && c.view.pendingProposals.length === 0;
   const node = selected ? c.view.nodes.find((n) => n.id === selected) ?? null : null;
 
   /** Suggested cards left out of what gets added. The service applies or rejects a suggestion as a whole, so "leave out" is a choice made here. */
@@ -72,7 +73,6 @@ export function StudioTab(props: TabProps) {
         <Separator className="sep" />
         <Panel id="studio-canvas" defaultSize="64" minSize="30">
           <div className="studio-plan">
-            {next && <p className="pc-next" role="status"><strong>Next:</strong> {next.text} {next.kind === 'continue-current' && next.taskId && <button className="btn small primary" onClick={() => work(next.taskId!)}>Work on this</button>}</p>}
             {c.note && <p className="pl-warn" role="status">{c.note} <button className="btn small ghost" onClick={c.clearNote}>Dismiss</button></p>}
             <ErrorLine error={error} />
             {c.view.pendingProposals.map((pr) => {
@@ -87,13 +87,11 @@ export function StudioTab(props: TabProps) {
                 </div>
               );
             })}
-            {c.view.nodes.length <= 1 && c.view.pendingProposals.length === 0 && (
-              <p className="pl-hint studio-empty">Your plan will take shape here as you talk. Cards you can move, group and connect appear as soon as there is something to show.</p>
-            )}
-            <div className="studio-main">
+            {empty && <p className="pl-hint studio-empty">Your plan will take shape here as you talk. Cards you can move, group and connect appear as soon as there is something to show.</p>}
+            {!empty && <div className="studio-main">
               <ProjectCanvas view={c.view} layout={c.layout} positions={c.positions} selectedId={selected} onSelect={setSelected} onPatch={c.patch} onArrange={c.arrange} excluded={left} onToggle={toggle} />
               <CardDetails node={node} onWork={work} onClose={() => setSelected(null)} onAssign={assign} />
-            </div>
+            </div>}
           </div>
         </Panel>
       </Group>

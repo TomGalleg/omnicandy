@@ -20,7 +20,7 @@ export const isPass = (text: string): boolean => {
 
 /** A task a person recommends is a line of its own: `Task: <short title>`. At most this many are read from one reply. */
 export const MAX_TASK_LINES = 2;
-const TASK_NOTE = ' If a task is clearly needed, you may end with up to two lines, each exactly: Task: <short title>. Only suggest a task when it really helps; the owner decides whether it is added.';
+export const TASK_NOTE = ' If a task is clearly needed, you may end with up to two lines, each exactly: Task: <short title>. Only suggest a task when it really helps; the owner decides whether it is added.';
 
 /** The words without the Task lines, and the titles those lines recommend (empty titles and repeats dropped). */
 export function parseTaskLines(text: string): { text: string; tasks: string[] } {
