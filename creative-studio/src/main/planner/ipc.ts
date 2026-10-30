@@ -19,6 +19,7 @@ import { RoutedPlannerStore } from './routedStore';
 import { PlannerService, userCtx } from './service';
 import { agentSystemPrompt } from '@shared/town';
 import { generalManagerPrompt } from '@shared/generalManager';
+import { aiModelsLines, wantsAiModels, type ProviderReady } from '@shared/aiModelsBriefing';
 import { recentChangeLines } from '@shared/townNews';
 import { createTownMethods } from './townMethods';
 import { createViewMethods } from './viewMethods';
@@ -174,6 +175,12 @@ export function registerPlannerIpc(d: Deps): void {
       } else {
         system = [agentSystemPrompt(town, agent, plan), ...(context?.length ? ['', 'What the project already contains (names and counts only):', ...context] : [])].join(String.fromCharCode(10));
         if (apps.length) system = [system, '', ...connectedAppsLine(apps)].join(String.fromCharCode(10));
+        // The AI Director and Creative Director are told which AI makers exist and which have a key saved right now (read live, never guessed).
+        if (wantsAiModels(agent.director) && d.chat) {
+          const ready: ProviderReady = {};
+          for (const id of ['openai', 'gemini', 'runway', 'recraft', 'higgsfield'] as const) ready[id] = (await d.chat.vault.status(id).catch(() => ({ configured: false }))).configured;
+          system = [system, '', ...aiModelsLines(ready)].join(String.fromCharCode(10));
+        }
       }
       return needChat().reply({ system, provider: r.provider, model: r.model, messages: r.messages });
     },

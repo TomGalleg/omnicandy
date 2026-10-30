@@ -92,6 +92,11 @@ describe('the guard at the point of execution', () => {
     director.p = { ...director.p, revoked: true };
     expect((await g.before('apply_edit', {})).ok).toBe(false);
   });
+  it('refuses a tool outside the worker toolbox even when their level would allow it', async () => {
+    const guard = new AccessGuard({ worker, chain: () => [bal().p], taskId: () => 't1', tools: ['get_status'] });
+    expect((await guard.before('get_status', {})).ok).toBe(true);
+    expect((await guard.before('apply_edit', {})).ok).toBe(false);
+  });
   it('never lets a log problem decide an action', async () => {
     const guard = new AccessGuard({ worker, chain: () => [bal().p], taskId: () => 't1', log: () => { throw new Error('disk full'); } });
     const g = await guard.before('get_status', {}); expect(g.ok).toBe(true); if (g.ok) g.done(false);

@@ -10,6 +10,8 @@ export interface GuardDeps {
   /** The worker's policy and every policy above them (a hired expert's director), read fresh on each call. */
   chain: () => readonly AccessPolicy[] | Promise<readonly AccessPolicy[]>;
   taskId?: () => string | undefined;
+  /** The tools this worker's toolbox lists. Anything else is refused, even if their access level would allow it. */
+  tools?: readonly string[];
   now?: () => Date;
   /** Shows the owner what is about to happen and returns their answer. With none, anything that needs approval is refused. */
   approve?: (info: { worker: WorkerRef; request: AccessRequest; why: string; offer: ApprovalOffer[] }) => Promise<ApprovalOffer | 'deny'>;
@@ -39,6 +41,7 @@ export class AccessGuard {
       return { ok: false, text: `Error: Not allowed. ${why}` };
     };
     if (!req) return refuse('deny', 'This tool has not been cleared for AI workers.');
+    if (this.d.tools && !this.d.tools.includes(tool)) return refuse('deny', 'This tool is not in this worker\'s toolbox.', req);
     const chain = await this.d.chain();
     let decision: Decision = decideChain(chain, req, { now: this.now(), grants: this.grants });
     if (decision.verdict === 'deny') {

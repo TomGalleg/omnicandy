@@ -23,7 +23,7 @@ export function DirectorWork({ p, director, name, reload }: Pick<TabProps, 'p' |
   const provider = chosenProvider();
   const refreshLog = () => { void api().director.activity().then((l) => setLog(l.slice(-6).reverse())).catch(() => undefined); };
   useEffect(refreshLog, [running]);
-  if (!TOOLBOXES[director]) return null;
+  if (!TOOLBOXES[director].works) return null;
 
   const todo = p.tasks.filter((t) => t.status === 'todo' && !t.claim && (t.assignee ?? 'general-manager') === director);
   const start = async (taskId: string) => {
@@ -34,7 +34,7 @@ export function DirectorWork({ p, director, name, reload }: Pick<TabProps, 'p' |
   return (
     <section className="pl-card tw-director-work" aria-label={`Let ${name} do a task`}>
       <h4>Let {name} do a task</h4>
-      <p className="pl-hint">{TOOLBOXES[director]?.does} It works with {PROVIDER_LABEL[provider]}. It asks you before anything risky or anything that costs money, and you can stop it at any time.</p>
+      <p className="pl-hint">{TOOLBOXES[director].does} It works with {PROVIDER_LABEL[provider]}. It asks you before anything risky or anything that costs money, and you can stop it at any time.</p>
       {todo.length === 0 && <p className="pl-hint">No open tasks for {name} yet.</p>}
       <ul className="pl-list">
         {todo.slice(0, 6).map((t) => (

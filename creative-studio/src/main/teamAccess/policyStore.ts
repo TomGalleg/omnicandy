@@ -3,7 +3,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { z } from 'zod';
-import { ACCESS_LEVELS, CAPABILITIES, PRESETS, defaultPolicy, type AccessLevel, type AccessPolicy, type Capability } from '../../shared/teamAccess';
+import { ACCESS_LEVELS, CAPABILITIES, PRESETS, defaultPolicy, type AccessLevel, type AccessPolicy, type Capability, type Preset } from '../../shared/teamAccess';
 import { writeJsonAtomic } from '../projectStore';
 
 export const POLICY_FILE = 'team-access.json';
@@ -23,9 +23,9 @@ export class PolicyStore {
     try { const f = fileSchema.safeParse(JSON.parse(await fs.readFile(path.join(this.dir, POLICY_FILE), 'utf8'))); return f.success ? f.data.workers : {}; } catch { return {}; }
   }
   /** The worker's saved policy, or the safe default. The toolbox ceiling is always applied on top, so a saved file can never grant more than the job needs. */
-  async get(workerId: string, ceiling?: Partial<Record<Capability, AccessLevel>>): Promise<AccessPolicy> {
+  async get(workerId: string, ceiling?: Partial<Record<Capability, AccessLevel>>, preset?: Preset): Promise<AccessPolicy> {
     const saved = policySchema.safeParse((await this.all())[workerId]);
-    const base = saved.success ? (saved.data as AccessPolicy) : defaultPolicy(workerId);
+    const base = saved.success ? (saved.data as AccessPolicy) : { ...defaultPolicy(workerId), ...(preset ? { preset } : {}) };
     return ceiling ? { ...base, workerId, ceiling } : { ...base, workerId };
   }
   async save(p: AccessPolicy): Promise<void> {

@@ -1,7 +1,7 @@
 // What each director's job needs, and which AI runs it. A toolbox is a short declaration, not an engine: it names the tool families the director may use and
 // the most access they can ever have (their ceiling). Adding a director or a tool is adding an entry here, and a tool must also be classified in
 // teamToolAccess.ts before any worker can call it. Having a toolbox is not permission: the owner's access settings still decide every call.
-import type { AccessLevel, Capability } from './teamAccess';
+import type { AccessLevel, Capability, Preset } from './teamAccess';
 import type { DirectorKey } from './town';
 
 export interface MadeFile { name: string; exists: boolean; bytes: number }
@@ -17,29 +17,77 @@ export interface DirectorOutcome {
 export interface DirectorRunRequest { director: DirectorKey; taskId: string; provider: 'claude' | 'openai' | 'gemini' }
 
 export interface Toolbox {
-  /** Tool names this director is shown (the rest are never offered). */
+  /** Tool names this director may call (the rest are refused at the guard, whatever the AI tries). */
   tools: readonly string[];
   /** The most access the job can need. Owner settings can only go lower. */
   ceiling: Partial<Record<Capability, AccessLevel>>;
+  /** How careful this director starts. The owner can change it. */
+  preset: Preset;
+  /** True when the director makes or changes files, so "Let them do this" is offered and the result is checked against the project's files. Advisers advise in conversation. */
+  works: boolean;
   /** Plain words: what this director does with their tools. Shown to the owner and used to brief the AI. */
   does: string;
 }
 
 const LOOK = ['get_status', 'look_at_document', 'list_files', 'planner_packages', 'planner_get_package'] as const;
 const REPORT = ['planner_claim', 'planner_report'] as const;
+const SUGGEST = ['planner_propose'] as const;
+const READ: Partial<Record<Capability, AccessLevel>> = { 'read-project': 'allow', 'propose-plan': 'allow' };
 
-export const TOOLBOXES: Partial<Record<DirectorKey, Toolbox>> = {
+/**
+ * Each director starts with only what their job needs. Advisers (coordinate, plan, test, advise) can look and suggest plan changes, and cannot change anything.
+ * Hands-on directors can also make or change files, but only through the tools listed and never above their ceiling. Nothing here is a permission by itself.
+ */
+export const TOOLBOXES: Record<DirectorKey, Toolbox> = {
+  'general-manager': {
+    tools: [...LOOK, ...SUGGEST, 'external_apps', 'workflow_catalog', 'workflow_status'],
+    ceiling: { ...READ, 'outside-apps': 'read' }, preset: 'balanced', works: false,
+    does: 'Looks at the whole project, the plan and the connected programs, and suggests next steps and who should do what. Coordinates; does not make files.',
+  },
   'creative-director': {
-    tools: [...LOOK, 'open_file', 'apply_edit', 'undo', 'save_version', 'new_document', 'photocraft_command', 'app_commands', 'app_command', 'export_file', 'list_export_formats',
-      'list_image_models', 'generate_image', ...REPORT],
-    ceiling: { 'read-project': 'allow', 'edit-project': 'allow', 'native-apps': 'allow', 'generate-media': 'allow', 'propose-plan': 'allow' },
+    tools: [...LOOK, ...SUGGEST, ...REPORT, 'open_file', 'apply_edit', 'undo', 'save_version', 'new_document', 'photocraft_command', 'app_commands', 'app_command', 'export_file', 'list_export_formats',
+      'list_image_models', 'generate_image'],
+    ceiling: { ...READ, 'edit-project': 'allow', 'native-apps': 'allow', 'generate-media': 'allow' }, preset: 'balanced', works: true,
     does: 'Makes and edits pictures and artwork with PhotoCraft, VectorCraft and AI image generation, then reports what it made.',
+  },
+  'ai-director': {
+    tools: [...LOOK, ...SUGGEST, 'list_image_models', 'list_video_models', 'local_video_status', 'workflow_catalog'],
+    ceiling: { ...READ, 'generate-media': 'read' }, preset: 'supervised', works: false,
+    does: 'Knows which AI makers can run right now and advises on which fits, with cost and quality. Looks; does not run paid models.',
+  },
+  'software-director': {
+    tools: [...LOOK, ...SUGGEST, ...REPORT, 'external_apps', 'external_run', 'external_job', 'open_file', 'export_file', 'list_export_formats'],
+    ceiling: { ...READ, 'outside-apps': 'allow', 'edit-project': 'allow' }, preset: 'supervised', works: true,
+    does: 'Uses the connected programs (Blender, Unreal, DaVinci Resolve and others) to do work, and brings the results into the project. Asks before each run in another program.',
+  },
+  'production-director': {
+    tools: [...LOOK, ...SUGGEST, 'workflow_catalog', 'workflow_status', 'list_workflow_versions'],
+    ceiling: READ, preset: 'balanced', works: false,
+    does: 'Reads the plan and the workflows, orders the work, spots what blocks what, and suggests plan changes for you to decide.',
+  },
+  'technical-director': {
+    tools: [...LOOK, ...SUGGEST, 'external_apps'],
+    ceiling: { ...READ, 'outside-apps': 'read' }, preset: 'supervised', works: false,
+    does: 'Reviews the technical side (formats, pipelines, connected programs) and flags risks. Has no tools that change anything yet.',
+  },
+  'quality-director': {
+    tools: [...LOOK, ...SUGGEST, 'app_commands', 'workflow_status', 'list_workflow_versions'],
+    ceiling: READ, preset: 'supervised', works: false,
+    does: 'Looks at the work and checks it against what done means. Says only what was really checked; never changes the work.',
+  },
+  'research-director': {
+    tools: [...LOOK, ...SUGGEST, ...REPORT, 'open_file', 'new_document', 'apply_edit', 'app_commands', 'app_command', 'save_version', 'undo'],
+    ceiling: { ...READ, 'edit-project': 'allow', 'native-apps': 'allow' }, preset: 'balanced', works: true,
+    does: 'Writes research notes, how-tos and decision records as documents in the project, and says what is known and what is not.',
+  },
+  'media-manager': {
+    tools: [...LOOK, ...SUGGEST, ...REPORT, 'open_file', 'save_version', 'export_file', 'list_export_formats'],
+    ceiling: { ...READ, 'edit-project': 'allow' }, preset: 'supervised', works: true,
+    does: 'Looks after the library: saves versions and exports finished files. Never deletes anything, and asks before each change.',
   },
 };
 
-/** A director with no toolbox yet can look and report, nothing more. */
-export const LOOK_ONLY: Toolbox = { tools: [...LOOK, ...REPORT], ceiling: { 'read-project': 'allow', 'propose-plan': 'allow' }, does: 'Looks at the project and reports.' };
-export const toolboxFor = (key: DirectorKey): Toolbox => TOOLBOXES[key] ?? LOOK_ONLY;
+export const toolboxFor = (key: DirectorKey): Toolbox => TOOLBOXES[key];
 
 // ---------------------------------------------------------------------------------------------------------------------------------------------
 export type EngineChoice = { engine: 'claude' } | { engine: 'harness'; provider: 'openai' | 'gemini' | 'local' };

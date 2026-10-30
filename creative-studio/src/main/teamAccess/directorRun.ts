@@ -34,6 +34,7 @@ export function briefing(key: DirectorKey, task: DirectorTask): string {
     `You are the ${d.title} in the owner's OmniTown. ${d.job}`,
     `Your tools: ${tb.does}`,
     `Your task: ${task.title}${task.detail ? `\n${task.detail}` : ''}`,
+    'To make pictures, first call list_image_models to see which AI makers can run right now, choose from that list, and tell the owner which one you chose and why.',
     'Work only on this task. Some actions ask the owner first; if they say no, accept it and say so. If a tool is refused, do not look for a way round it.',
     'Say only what you really did. Do not say something is made unless a tool confirmed it. The owner decides whether it is accepted.',
   ].join('\n\n');
@@ -42,9 +43,10 @@ export function briefing(key: DirectorKey, task: DirectorTask): string {
 export async function runDirector(deps: DirectorRunDeps, key: DirectorKey, task: DirectorTask, stop: AbortSignal = new AbortController().signal): Promise<DirectorOutcome> {
   const workerId = directorWorkerId(key);
   const d = DIRECTORS.find((x) => x.key === key)!;
-  const ceiling = toolboxFor(key).ceiling;
+  const box = toolboxFor(key);
+  const ceiling = box.ceiling;
   // Read the saved policy fresh on every call, so switching the worker off stops the very next action.
-  const chain = async () => bindTask(await deps.store.get(workerId, ceiling), task.id);
+  const chain = async () => bindTask(await deps.store.get(workerId, ceiling, box.preset), task.id);
   const first = await chain();
   if (first.revoked) return { status: 'stopped', summary: `${d.title}'s access is switched off, so nothing was started.`, files: [], said: '' };
 
@@ -56,6 +58,7 @@ export async function runDirector(deps: DirectorRunDeps, key: DirectorKey, task:
     worker: { id: workerId, name: d.title, kind: 'director', director: key },
     chain: async () => [await chain()],
     taskId: () => task.id,
+    tools: box.tools,
     ...(deps.now ? { now: deps.now } : {}),
     ...(deps.approve ? { approve: deps.approve } : {}),
     ...(deps.log ? { log: deps.log } : {}),
