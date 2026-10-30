@@ -37,7 +37,7 @@ import { recoveryIpcState } from './agentHarness/recoveryIpcState';
 import { agentBudgetSchema } from './agentHarness/executionBudget';
 import { agentProviderSchema, sumUsage, withAgentProvider } from './agentHarness/providerFactory';
 import { addExportTools } from './agentHarness/exportTools';
-import { DEFAULT_AGENT_PROVIDER, validateProviderSelection } from '@shared/agentProvider';
+import { AGENT_PROVIDERS, DEFAULT_AGENT_PROVIDER, validateProviderSelection } from '@shared/agentProvider';
 import type { PausedAgent } from './agentHarness/recoveryIpcState';
 import { AgentJobLedger } from './agentHarness/jobLedger';
 import { SHARED_CLAUDE_TOOL_NAMES } from './agentHarness/sharedClaudeTools';
@@ -89,6 +89,14 @@ import { ConnectService } from './integrations/connect';
 import { PLANNER_TABS } from '@shared/plannerTabs';
 import { createPlanner, registerPlannerIpc } from './planner/ipc';
 import { McpSession } from './planner/mcp';
+import { userCtx } from './planner/service';
+import { AccessGuard } from './teamAccess/guard';
+import { activityLogger, readActivity } from './teamAccess/activityLog';
+import { PolicyStore } from './teamAccess/policyStore';
+import { nativeApprover } from './teamAccess/approval';
+import { runDirector, type MadeFile } from './teamAccess/directorRun';
+import { chooseEngine, type DirectorRunRequest } from '@shared/directorToolbox';
+import { DIRECTORS } from '@shared/town';
 import { BuilderService } from './integrations/builder/service';
 import { ClaudeAuthor, ScriptedAuthor } from './integrations/builder/author';
 import { parseBlueprint } from './integrations/builder/blueprint';
@@ -1343,7 +1351,7 @@ export function registerIpc(d: IpcDeps): void {
   let interruptNote = '';
   const cancelAgentJobs = (): string[] => { const ids = jobLedger.cancelRunning(); if (ids.length) interruptNote = ` Background job${ids.length > 1 ? 's' : ''} ${ids.join(', ')} ${ids.length > 1 ? 'were' : 'was'} cancelled.`; return ids; };
   const takeInterruptNote = (): string => { const n = interruptNote; interruptNote = ''; return n; };
-  const buildAgentRegistry = async (ctl: Awaited<ReturnType<typeof live>>, provider: { supportsVision: boolean }, resumeMessages?: import('./agentHarness/types').Message[], claudeStyle = false) => {
+  const buildAgentRegistry = async (ctl: Awaited<ReturnType<typeof live>>, provider: { supportsVision: boolean }, resumeMessages?: import('./agentHarness/types').Message[], claudeStyle = false, guard?: AccessGuard) => {
     const store = await d.project();
     jobLedger.reconcile();
     const registry = addExternalTools(nativeToolRegistry(ctl, store, { supportsVision: provider.supportsVision, createBlank: createAgentBlank }), external, {
@@ -1357,6 +1365,8 @@ export function registerIpc(d: IpcDeps): void {
     // Timeline, workflow, planner, generation and PhotoCraft tools are Claude's own handlers (approvals and path rules included).
     // Planner / workflow / generation / local-media tools are advertised on request (enable_tools); a resumed task gets back the ones it used.
     registerSharedTools(registry, await claude().agentToolDefs(SHARED_CLAUDE_TOOL_NAMES), familiesUsedIn(resumeMessages));
+    // A director at work: every call below is checked against their current access first (see teamAccess/guard.ts).
+    if (guard) registry.setGuard(guard);
     return registry;
   };
   let agentState: AgentUiState = { status: 'idle', model: 'gpt-4.1-mini', goal: '', result: '', events: [] };
@@ -1413,7 +1423,7 @@ export function registerIpc(d: IpcDeps): void {
   const onAgentEvent = (event: AgentUiEvent) => { agentState = { ...agentState, events: [...agentState.events, event].slice(-100), chat: appendChat(agentState.chat, chatItemFromEvent(event)) }; publishAgent(); };
   type AgentBudgetIn = z.infer<typeof agentBudgetSchema>;
   type AgentProviderIn = z.infer<typeof agentProviderSchema>;
-  const runAgentTask = async (goal: string, model: string, budget: AgentBudgetIn, selection: AgentProviderIn): Promise<AgentUiState> => {
+  const runAgentTask = async (goal: string, model: string, budget: AgentBudgetIn, selection: AgentProviderIn, guard?: AccessGuard): Promise<AgentUiState> => {
     const ctl = await live();
     // Every rejection happens BEFORE anything is reset: a refused Run must never delete or replace the saved task or its checkpoint.
     await prepareNewTask({
@@ -1436,7 +1446,7 @@ export function registerIpc(d: IpcDeps): void {
         // crash in the first run must not strand the write-ahead journal alone.
         const seedSaved = await (await taskStore()).save({goal,model,status:'limit',messages:[{role:'user',content:goal}],provider:selection,budget});
         if (!seedSaved) throw new Error('Secure task checkpoint unavailable. Editing was not started.');
-        return runAgent({ goal, provider, registry: await buildAgentRegistry(ctl, provider, undefined, !budget.strictVerification), ctl, signal: abort.signal, ...budget, relaxed: !budget.strictVerification, onInterrupted: () => { cancelAgentJobs(); },
+        return runAgent({ goal, provider, registry: await buildAgentRegistry(ctl, provider, undefined, !budget.strictVerification, guard), ctl, signal: abort.signal, ...budget, relaxed: !budget.strictVerification, onInterrupted: () => { cancelAgentJobs(); },
           ...journalHooks,
           onPlan: (plan) => { agentState = { ...agentState, plan }; publishAgent(); },
           onEvent: onAgentEvent });
@@ -1455,7 +1465,7 @@ export function registerIpc(d: IpcDeps): void {
       return agentState;
     } finally { if (agentAbort === abort) agentAbort = null; }
   };
-  handle(IPC.agentRun, z.tuple([z.string().min(1).max(4000), z.string().min(1).max(80), agentBudgetSchema.default({}), agentProviderSchema.default(DEFAULT_AGENT_PROVIDER)]), runAgentTask);
+  handle(IPC.agentRun, z.tuple([z.string().min(1).max(4000), z.string().min(1).max(80), agentBudgetSchema.default({}), agentProviderSchema.default(DEFAULT_AGENT_PROVIDER)]), (goal, model, budget, selection) => runAgentTask(goal, model, budget, selection));
 
   /** Continue Task (no text) or a chat follow-up (text): the same conversation, the same safety checks, the same journal. */
   const resumeAgentTask = async (followUp?: string): Promise<AgentUiState> => {
@@ -1598,6 +1608,77 @@ export function registerIpc(d: IpcDeps): void {
     plannerTab: z.enum(PLANNER_TABS).optional(),
   })]), async (patch) => (await d.project()).setMeta(patch));
   handle(IPC.claudeStop, none, () => claude().stop());
+
+  // ---- Directors at work: one director, one task, under the team access rules, on Claude (the base) or the provider the owner chose ----
+  let directorAbort: AbortController | null = null;
+  handle(IPC.directorActivity, none, async () => readActivity((await d.project()).root));
+  handle(IPC.directorStop, none, async () => { directorAbort?.abort(); agentAbort?.abort(); });
+  handle(IPC.directorRun, z.tuple([z.object({ director: z.enum(DIRECTORS.map((x) => x.key) as [string, ...string[]]), taskId: z.string().min(1).max(60), provider: z.enum(['claude', 'openai', 'gemini']) }).strict()]), async (req) => {
+    const request = req as DirectorRunRequest;
+    if (directorAbort) throw new Error('A director is already working. They work one at a time: wait, or press Stop.');
+    if (agentAbort || agentState.status === 'working' || partner?.state().status === 'working') throw new Error('The AI is busy with something else. Wait for it, or press Stop.');
+    const store = await d.project();
+    const plan = await planner.store.projectPlan();
+    if (!plan) throw new Error('This project has no plan yet, so there is nothing to give a director.');
+    const found = (await planner.service.getProject(userCtx(), plan.id)).tasks.find((t) => t.id === request.taskId);
+    if (!found) throw new Error('That task is not in the plan any more.');
+    await claude().ready();
+    const configured = async (id: 'openai' | 'gemini') => (await vault.status(id)).configured;
+    const route = chooseEngine({ chosen: request.provider, claudeReady: claude().state().signedIn === true, harnessProviders: [...((await configured('openai')) ? ['openai' as const] : []), ...((await configured('gemini')) ? ['gemini' as const] : [])] });
+    if (!route.choice) throw new Error(route.why);
+
+    const abort = new AbortController(); directorAbort = abort;
+    const session = new McpSession(planner.service, ['read', 'execute'], { kind: 'createcraft', name: DIRECTORS.find((x) => x.key === request.director)?.title ?? 'Director' });
+    const rpc = async (tool: string, args: Record<string, unknown>) => {
+      const out = await session.handle({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: tool, arguments: args } });
+      const r = out?.result as { isError?: boolean; content?: Array<{ text?: string }> } | undefined;
+      const text = r?.content?.[0]?.text ?? out?.error?.message ?? '';
+      if (r?.isError || out?.error) throw new Error(text || 'The plan refused.');
+      return JSON.parse(text) as Record<string, unknown>;
+    };
+    let claim: { packageId: string; token: string } | null = null;
+    const engine = route.choice.engine === 'claude'
+      ? { run: async ({ prompt, guard, stop }: { prompt: string; guard: AccessGuard; stop: AbortSignal }) => {
+          const c = claude(); c.setAccessGuard(guard);
+          const onStop = () => c.stop(); stop.addEventListener('abort', onStop);
+          try { await c.send(prompt, { maxTurns: 60 }); } finally { c.setAccessGuard(null); stop.removeEventListener('abort', onStop); }
+          return { text: [...c.state().items].reverse().find((i) => i.role === 'claude')?.text ?? '' };
+        } }
+      : { run: async ({ prompt, guard, stop }: { prompt: string; guard: AccessGuard; stop: AbortSignal }) => {
+          const provider = route.choice && route.choice.engine === 'harness' ? route.choice.provider : 'openai';
+          const onStop = () => agentAbort?.abort(); stop.addEventListener('abort', onStop);
+          try {
+            const state = await runAgentTask(prompt, AGENT_PROVIDERS[provider].models[0] as string, agentBudgetSchema.parse({}), { provider }, guard);
+            return { text: state.result };
+          } finally { stop.removeEventListener('abort', onStop); }
+        } };
+    try {
+      return await runDirector({
+        store: new PolicyStore(store.root), engine,
+        approve: nativeApprover((o) => { const w = d.window(); return w && !w.isDestroyed() ? dialog.showMessageBox(w, o) : dialog.showMessageBox(o); }),
+        log: activityLogger(store.root),
+        library: async (): Promise<MadeFile[]> => {
+          const m = await store.loadManifest();
+          return Promise.all(m.assets.map(async (a) => { try { return { name: a.name, exists: true, bytes: (await fs.stat(await store.resolveAssetPath(a.id))).size }; } catch { return { name: a.name, exists: false, bytes: 0 }; } }));
+        },
+        begin: async (task) => {
+          const pkg = await planner.service.createPackage(userCtx(), plan.id, { taskIds: [task.id], objective: task.title });
+          const got = await rpc('claim_task', { projectId: plan.id, packageId: pkg.id, taskId: task.id, note: 'Started from OmniTown' });
+          claim = { packageId: pkg.id, token: String(got.claimToken) };
+        },
+        handOver: async (task, o) => {
+          if (!claim) return;
+          // The report only says what was found. The owner reviews it and decides; nothing is accepted here.
+          const outcome = o.status === 'made' ? 'complete' : o.status === 'failed' ? 'failed' : 'blocked';
+          await rpc('submit_report', { projectId: plan.id, packageId: claim.packageId, taskId: task.id, claimToken: claim.token, report: {
+            outcome, workPerformed: `${o.summary}${o.said ? `\n\nWhat it said: ${o.said}` : ''}`.slice(0, 8000),
+            outputs: o.files.filter((f) => f.exists && f.bytes > 0).map((f) => ({ description: f.name })).slice(0, 50),
+            verification: [{ check: 'The files exist in the project and are not empty', result: o.status === 'made' ? 'pass' : 'fail', details: o.files.map((f) => `${f.name}: ${f.exists ? `${f.bytes} bytes` : 'missing'}`).join('; ').slice(0, 2000) || 'Nothing was made.' }],
+          } });
+        },
+      }, request.director, { id: found.id, title: found.title, ...(found.description ? { detail: found.description } : {}) }, abort.signal);
+    } finally { directorAbort = null; }
+  });
   handle(IPC.claudeReset, none, () => { claude().reset(); return claude().state(); });
   handle(IPC.claudeModel, z.tuple([z.string().max(64)]), (m) => { claude().setModel(m); return claude().state(); });
   handle(IPC.claudeAuth, none, () => claude().checkAuth());

@@ -1,10 +1,14 @@
 import { z } from 'zod';
+import type { AccessGuard } from '../teamAccess/guard';
 import type { ToolDef, ToolResult } from './types';
 
 /** Snapshot a tool collection for a model turn; execution always rechecks current access in the backend. */
 export class ToolRegistry {
   private readonly tools = new Map<string, ToolDef>();
   constructor(tools: ToolDef[] = []) { for (const t of tools) this.add(t); }
+  /** When an AI worker (a director, an expert) is acting, every call is checked against their current access first. Without one, nothing changes. */
+  private guard: AccessGuard | null = null;
+  setGuard(g: AccessGuard | null) { this.guard = g; }
   add(tool: ToolDef) {
     if (!/^[a-z][a-z0-9_]{0,63}$/.test(tool.name) || this.tools.has(tool.name)) throw new Error(`Invalid or duplicate tool: ${tool.name}`);
     this.tools.set(tool.name, tool);
@@ -25,14 +29,17 @@ export class ToolRegistry {
     const advertised = snapshot.find((t) => t.name === name);
     const current = this.tools.get(name);
     if (!advertised || !current || current !== advertised) return { text: `Error: Tool ${name} is unknown or no longer available.${this.hints.get(name) ? ` ${this.hints.get(name)}` : ''}`, isError: true };
+    const gate = this.guard ? await this.guard.before(name, args) : null;
+    if (gate && !gate.ok) return { text: gate.text, isError: true };
     try {
       // Every native tool also performs zod validation; execution backend enforces real permissions.
       const result = await current.execute(args);
+      gate?.done(result?.isError === true, result?.isError === true ? result.text : undefined);
       if (typeof result?.text !== 'string' || (result.imageDataUrl !== undefined && (!/^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(result.imageDataUrl) || result.imageDataUrl.length > 4_000_000)) || (result.isError !== undefined && typeof result.isError !== 'boolean')) {
         return { text: 'Error: Tool returned an invalid result.', isError: true };
       }
       return { ...result, text: result.text.slice(0, 8000), ...(result.trustedReadback === true && !result.isError ? { trustedReadback: true, readback: result.readback } : { trustedReadback: undefined, readback: undefined }) };
-    } catch (e) { return { text: `Error: ${e instanceof Error ? e.message : String(e)}`.slice(0, 8000), isError: true }; }
+    } catch (e) { gate?.done(true, e instanceof Error ? e.message : String(e)); return { text: `Error: ${e instanceof Error ? e.message : String(e)}`.slice(0, 8000), isError: true }; }
   }
 }
 export function validated<T extends z.ZodTypeAny>(schema: T, fn: (args: z.infer<T>) => Promise<string | ToolResult>): ToolDef['execute'] {

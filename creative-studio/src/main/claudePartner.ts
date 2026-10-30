@@ -31,6 +31,7 @@ import type { LiveTaskController } from './liveTask';
 import type { ProjectStore } from './projectStore';
 import type { ToolDef } from './agentHarness/types';
 import type { Requester } from './generation';
+import type { AccessGuard } from './teamAccess/guard';
 
 const SYSTEM_PROMPT = `You are Claude, the Creative Partner inside OmniCandy, a desktop app where the user edits media in ArtCraft apps: PhotoCraft (photos), VectorCraft (vector art), SoundCraft (audio), FilmCraft (video, on a timeline), DesignCraft (page layouts) WordCraft (word-processing documents, .docx), GridCraft (spreadsheets, .xlsx), DeckCraft (presentations, .deckcraft and .pptx), FigCraft (UI and UX design, .figcraft), CADCraft (2D CAD drawings, .dxf and .dwg) and PdfCraft (PDFs: text, pages, watermark) in the Edit tab, LightCraft (photo light and colour) in the Color tab, and EffectCraft (effects and titles on pictures and video) in the Effects tab. The file the user is working on is open in one of these apps, shown inside OmniCandy. get_status tells you which app, and the edits that app offers.
 
@@ -682,9 +683,23 @@ New files: ${names.join(', ') || '(none)'}`);
     ];
   }
 
+  /** When an AI worker (a director) is acting through the Claude panel, every tool call is checked against their current access first. Without one, nothing changes. */
+  private guard: AccessGuard | null = null;
+  setAccessGuard(g: AccessGuard | null) { this.guard = g; }
+
   private async tools() {
     const { createSdkMcpServer } = await import('@anthropic-ai/claude-agent-sdk');
-    return createSdkMcpServer({ name: 'createcraft', version: '0.1.0', tools: await this.toolDefinitions((t) => this.add('activity', t)) });
+    const defs = await this.toolDefinitions((t) => this.add('activity', t));
+    const guard = this.guard;
+    const guarded = !guard ? defs : (defs.map((def) => ({
+      ...def,
+      handler: (async (args: unknown, extra: unknown) => {
+        const gate = await guard.before(def.name, args);
+        if (!gate.ok) return { content: [{ type: 'text' as const, text: gate.text }], isError: true };
+        try { const r = await (def.handler as (a: unknown, e: unknown) => Promise<{ isError?: boolean }>)(args, extra); gate.done(r?.isError === true); return r; } catch (e) { gate.done(true, e instanceof Error ? e.message : String(e)); throw e; }
+      }) as typeof def.handler,
+    })) as unknown as typeof defs);
+    return createSdkMcpServer({ name: 'createcraft', version: '0.1.0', tools: guarded });
   }
 
   /**

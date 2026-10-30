@@ -107,6 +107,9 @@ export const IPC = {
   agentInterrupt: 'agent:interrupt',
   agentPlanUpdate: 'agent:plan-update',
   agentEvent: 'agent:event',
+  directorRun: 'director:run',
+  directorStop: 'director:stop',
+  directorActivity: 'director:activity',
   claudeState: 'claude:state',
   claudeSend: 'claude:send',
   claudePlanProject: 'claude:plan-project',
@@ -430,6 +433,12 @@ export interface StudioApi {
     /** Adds a library file as a clip or music, or moves/removes a clip (FilmCraft). */
     editTimeline(edit: TimelineEdit): Promise<LiveSnapshot>;
     onChange(cb: (s: LiveSnapshot) => void): () => void;
+  };
+  /** A director works on one task with their own tools, under the access rules. */
+  director: {
+    run(req: import('./directorToolbox').DirectorRunRequest): Promise<import('./directorToolbox').DirectorOutcome>;
+    stop(): Promise<void>;
+    activity(): Promise<import('./teamAccess').ActivityEntry[]>;
   };
   agent: {
     state(): Promise<AgentUiState>;

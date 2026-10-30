@@ -1,3 +1,4 @@
+import { DirectorWork } from './DirectorWork';
 import { useEffect, useMemo, useState } from 'react';
 import { PlannerChat } from './PlannerChat';
 import mapUrl from '../assets/omnitown-map.jpg';
@@ -104,6 +105,12 @@ export function TownTab(props: TabProps) {
   const [hallStart, setHallStart] = useState(false);
   // Opening a conversation brings it into view (it sits below the town).
   useEffect(() => { if (talk) document.getElementById('tw-talk')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, [talk]);
+  // Simplified mode has no other tabs: whatever asks to "go" to the plan or to a task lands here.
+  useEffect(() => {
+    const c = props.townCmd; if (!c || !town) return;
+    props.clearTownCmd?.();
+    if (c.kind === 'plan') { setShowPlan(true); setOffice(null); setInHall(false); } else openTask(c.id);
+  }, [props.townCmd, town]); // eslint-disable-line react-hooks/exhaustive-deps
   /** Nothing in the plan yet (removed tasks do not count): the project is waiting to be planned. */
   const noPlanYet = !p.tasks.some((t) => t.status !== 'cancelled');
   /** The General Manager, who can be talked to right on the map. */
@@ -188,6 +195,7 @@ export function TownTab(props: TabProps) {
           </section>
           <aside className="tw-side">
             <WorkerCard hideTalk town={town} a={inOffice} activity={inOffice.director ? activity[inOffice.director] : undefined} busy={busy} onApply={apply} onTalk={() => setTalk(inOffice.id)} onClose={() => { setOffice(null); setPick(null); }} />
+            {inOffice.director && <DirectorWork p={p} reload={reload} director={inOffice.director} name={inOffice.name} />}
             {officeMsgs.length > 0 && (
               <details className="pl-fold" open><summary>What was said<span className="pl-count">{officeMsgs.length}</span></summary>
                 <ul className="tw-notes tw-hall-notes">{officeMsgs.map((m, i) => <li key={i}><strong>{m.role === 'user' ? 'You' : inOffice.name}</strong> {m.text}</li>)}</ul>

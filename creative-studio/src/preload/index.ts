@@ -124,6 +124,11 @@ const api: StudioApi = {
     },
   },
   setProjectMeta: (patch) => ipcRenderer.invoke(IPC.setProjectMeta, patch),
+  director: {
+    run: (req) => ipcRenderer.invoke(IPC.directorRun, req),
+    stop: () => ipcRenderer.invoke(IPC.directorStop),
+    activity: () => ipcRenderer.invoke(IPC.directorActivity),
+  },
   agent: {
     state: () => ipcRenderer.invoke(IPC.agentState),
     run: (goal, model, budget, provider) => ipcRenderer.invoke(IPC.agentRun, goal, model, budget, provider),
