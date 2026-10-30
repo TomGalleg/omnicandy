@@ -18,7 +18,7 @@ export const SEATS: ReadonlyArray<{ x: number; y: number; w: number }> = [
 ];
 
 /** The words as a person would say them: no formatting marks, and short enough to read at a glance. */
-const plain = (t: string) => { const s = t.replace(/[*_`#]/g, '').replace(/\s+/g, ' ').trim(); return s.length > 340 ? `${s.slice(0, 337).trimEnd()}…` : s; };
+const plain = (t: string) => { const s = t.replace(/[*_`#]/g, '').replace(/\s+/g, ' ').trim(); return s.length > 1600 ? `${s.slice(0, 1597).trimEnd()}…` : s; };
 
 /** Bubbles are drawn in their own layer so the edge of the room never cuts them: each is a fixed share of the room's width, kept inside it, and its tail still points at the person. */
 const BUBBLE_W = 36;
@@ -43,7 +43,10 @@ export interface HallPeopleProps {
   waiting: ReadonlySet<string>;
   /** Who the owner is talking with now (lit up), and what they last said (shown over their head until the owner speaks again). */
   current: string | null;
-  open: { id: string; text: string } | null;
+  open: { id: string; text: string; tasks?: string[] } | null;
+  /** Tasks that person recommended (a box under their bubble offers to add each), and the ones already added. */
+  onAddTask: (id: string, title: string) => void;
+  added: ReadonlySet<string>;
   /** Someone pointed at: the ! one starts talking to the owner; anyone else becomes the one the owner talks with. */
   onPick: (id: string) => void;
   onCloseBubble: () => void;
@@ -51,9 +54,9 @@ export interface HallPeopleProps {
   greeting?: { id: string; text: string } | null;
 }
 
-export function HallPeople({ people, speaking, waiting, current, open, onPick, onCloseBubble, greeting }: HallPeopleProps) {
+export function HallPeople({ people, speaking, waiting, current, open, onAddTask, added, onPick, onCloseBubble, greeting }: HallPeopleProps) {
   const seated = people.slice(0, SEATS.length);
-  const shown = open ? { id: open.id, text: plain(open.text), closable: true } : greeting ? { id: greeting.id, text: greeting.text, closable: false } : null;
+  const shown = open ? { id: open.id, text: plain(open.text), closable: true, tasks: open.tasks ?? [] } : greeting ? { id: greeting.id, text: greeting.text, closable: false, tasks: [] as string[] } : null;
   return (
     <div className="tw-hall-people" aria-label="The people at the meeting">
       {seated.map((a, i) => {
@@ -85,7 +88,15 @@ export function HallPeople({ people, speaking, waiting, current, open, onPick, o
             onClick={thinking || !mine?.closable ? undefined : onCloseBubble}
             style={{ left: `${b.left}%`, width: `${thinking ? PILL_W : BUBBLE_W}%`, ...(b.above ? { bottom: `${b.at}%` } : { top: `${b.at}%` }), ['--tail' as string]: `${b.tail}%` }}>
             <strong>{a.name}</strong>
-            {thinking ? <span className="tw-dots" aria-label="is thinking"><i /><i /><i /></span> : <><span>{mine!.text}</span>{mine!.closable && <small className="tw-bubble-hint">Click to close</small>}</>}
+            {thinking ? <span className="tw-dots" aria-label="is thinking"><i /><i /><i /></span> : <><span className="tw-bubble-text">{mine!.text}</span>
+              {mine!.tasks.length > 0 && (
+                <div className="tw-bubble-tasks" onClick={(e) => e.stopPropagation()}>
+                  {mine!.tasks.map((t) => (
+                    <div key={t} className="tw-bubble-task"><span>{t}</span>{added.has(t) ? <em>Added to your plan</em> : <button type="button" className="btn small primary" onClick={() => onAddTask(a.id, t)}>Add task</button>}</div>
+                  ))}
+                </div>
+              )}
+              {mine!.closable && <small className="tw-bubble-hint">Click to close</small>}</>}
           </div>
         );
       })}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { chimePickPrompt, chimePrompt, costText, isPass, parsePick, replyPrompt, summaryPrompt } from './townMeeting';
+import { chimePickPrompt, chimePrompt, costText, isPass, MAX_TASK_LINES, parsePick, parseTaskLines, replyPrompt, summaryPrompt } from './townMeeting';
 
 const notes = Array.from({ length: 20 }, (_, i) => ({ by: i % 2 ? 'General Manager' : 'You', text: `said ${i}`, at: '' }));
 
@@ -50,6 +50,23 @@ describe('a meeting run one person at a time', () => {
     expect(p).toContain('between the owner and General Manager');
     expect(p).toContain('reply with exactly: PASS');
     expect(p.length).toBeLessThan(6000);
+  });
+
+  it('lets a person recommend up to two tasks on lines of their own, and takes those lines out of what they say', () => {
+    const r = parseTaskLines('Art comes first.\nTask: Pick a style for the dragon\n- **Task:** Sketch three dragon directions\nTask: Pick a style for the dragon\nTask: A third one');
+    expect(r.tasks).toEqual(['Pick a style for the dragon', 'Sketch three dragon directions']);
+    expect(r.tasks).toHaveLength(MAX_TASK_LINES);
+    expect(r.text).toBe('Art comes first.');
+    const plain = 'The next task is to decide the style. Tasks matter here.';
+    expect(parseTaskLines(plain)).toEqual({ text: plain, tasks: [] });
+    expect(parseTaskLines('Task:   \nhello').tasks).toEqual([]);
+    expect(parseTaskLines(`Task: ${'x'.repeat(500)}`).tasks[0]).toHaveLength(200);
+  });
+
+  it('tells people how to recommend a task, and that the owner decides', () => {
+    const a = replyPrompt({ topic: 'x', kind: 'other' }, { name: 'A' }, [], []);
+    const b = chimePrompt({ name: 'B' }, 'A', []);
+    for (const p of [a, b]) { expect(p).toContain('Task: <short title>'); expect(p).toContain('the owner decides whether it is added'); }
   });
 
   it('asks for the plan format at the end, and allows "nothing decided"', () => {

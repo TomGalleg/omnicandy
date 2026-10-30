@@ -980,12 +980,13 @@ span.tw-portrait { display: grid; place-items: center; }
 @media (prefers-reduced-motion: reduce) { .tw-walker[data-walking='1'] { animation: none; } }
 /* The puff of smoke when a director goes into or comes out of their office: 22 frames in one strip */
 .tw-puff { position: absolute; display: none; width: 10%; aspect-ratio: 1; transform: translate(-50%, -78%); background-size: 2200% 100%; background-repeat: no-repeat; pointer-events: none; z-index: 3; }
-.tw-hall-people { position: absolute; inset: 0; pointer-events: none; z-index: 2; }
+.tw-hall-people { position: absolute; inset: 0; pointer-events: none; z-index: 8; }
 .tw-hall-person { position: absolute; transform: translate(-50%, -100%); display: grid; justify-items: center; }
 .tw-room img.tw-hall-figure { display: block; width: 100%; height: auto; aspect-ratio: auto; object-fit: contain; filter: drop-shadow(0 3px 3px rgba(0, 0, 0, .35)); }
 .tw-room .tw-hall-person .tw-hall-puff { left: 50%; top: 60%; width: 220%; }
 .tw-hall-person { pointer-events: auto; }
-.tw-hall-person:not(:hover) .tw-bubble.open { pointer-events: auto; cursor: pointer; z-index: 9; }
+.tw-bubble.open { pointer-events: auto; cursor: pointer; z-index: 9; }
+.tw-bubble-text { display: block; max-height: 9.5em; overflow-y: auto; padding-right: 4px; white-space: pre-wrap; }
 .tw-bubble-hint { display: block; margin-top: 4px; font-size: 10px; color: #8a7aa8; }
 .tw-hall-hit { all: unset; display: block; width: 100%; cursor: default; }
 .tw-hall-hit.on { cursor: pointer; }
@@ -1003,6 +1004,16 @@ span.tw-portrait { display: grid; place-items: center; }
 .tw-hall-settings > summary { cursor: pointer; padding: 3px 10px; border-radius: 999px; background: rgba(20, 10, 40, .72); color: #fff; list-style: none; }
 .tw-hall-settings > summary::-webkit-details-marker { display: none; }
 .tw-hall-settings .tw-hall-settings-body { position: absolute; bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%); width: min(560px, 90vw); padding: 12px 14px; border-radius: 14px; background: var(--surface); color: var(--text, inherit); border: 1px solid var(--border); box-shadow: 0 6px 20px rgba(0, 0, 0, .5); display: grid; gap: 8px; text-align: left; }
+.tw-bubble-tasks { margin-top: 8px; padding-top: 6px; border-top: 1px solid #e6def5; display: grid; gap: 6px; }
+.tw-bubble-task { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; }
+.tw-bubble-task > span { font-weight: 600; }
+.tw-bubble-task em { font-style: normal; color: #2f8f5b; font-size: 11px; white-space: nowrap; }
+.tw-hall-tasks { list-style: none; margin: 4px 0 0; padding: 0; display: grid; gap: 6px; }
+.tw-hall-tasks li { padding: 6px 8px; border-radius: 8px; background: color-mix(in srgb, var(--surface) 85%, #e8a317); font-size: 13px; }
+.tw-hall-tasks small { display: block; opacity: .75; }
+.tw-main.tw-inoffice .tw-room { align-self: flex-start; }
+.tw-main.tw-inoffice .tw-side { max-height: 82vh; overflow: auto; }
+.tw-bubble-task .btn { white-space: nowrap; }
 .tw-hall-notes { max-height: 360px; overflow: auto; padding-left: 18px; }
 @media (prefers-reduced-motion: reduce) { .tw-hall-alert { animation: none; } }
 .tw-hall-name { display: none; }

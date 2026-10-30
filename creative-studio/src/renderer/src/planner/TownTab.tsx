@@ -127,7 +127,7 @@ export function TownTab(props: TabProps) {
       ))}
 
       {inHall ? (
-        <TownHall town={town} planId={p.id} setTown={setTown} reload={reload} onBack={() => setInHall(false)} aside={<PastMeetings town={town} />} />
+        <TownHall town={town} planId={p.id} tasks={p.tasks} setTown={setTown} reload={reload} onBack={() => setInHall(false)} aside={<PastMeetings town={town} />} />
       ) : inOffice ? (
         <div className="tw-main tw-inoffice">
           <section className="tw-room" aria-label={`Inside ${inOffice.name}'s office`}>

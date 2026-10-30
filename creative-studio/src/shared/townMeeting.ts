@@ -18,6 +18,22 @@ export const isPass = (text: string): boolean => {
   return /^pass[\s.!"')\]*_]*$/i.test(t) || (t.length < 24 && /^pass\b/i.test(t));
 };
 
+/** A task a person recommends is a line of its own: `Task: <short title>`. At most this many are read from one reply. */
+export const MAX_TASK_LINES = 2;
+const TASK_NOTE = ' If a task is clearly needed, you may end with up to two lines, each exactly: Task: <short title>. Only suggest a task when it really helps; the owner decides whether it is added.';
+
+/** The words without the Task lines, and the titles those lines recommend (empty titles and repeats dropped). */
+export function parseTaskLines(text: string): { text: string; tasks: string[] } {
+  const keep: string[] = []; const tasks: string[] = [];
+  for (const raw of text.split(/\r?\n/)) {
+    const m = /^\s*(?:[-*]\s+)?\**task\**\s*:\s*\**\s*(.+?)\s*\**\s*$/i.exec(raw);
+    if (!m) { keep.push(raw); continue; }
+    const title = m[1]!.replace(/\*+/g, '').trim().slice(0, 200);
+    if (title && !tasks.some((t) => t.toLowerCase() === title.toLowerCase()) && tasks.length < MAX_TASK_LINES) tasks.push(title);
+  }
+  return { text: keep.join('\n').replace(/\n{3,}/g, '\n\n').trim(), tasks };
+}
+
 /** What the person the owner is talking with is asked: answer the owner directly, from their own job. */
 export function replyPrompt(meeting: Pick<TownMeeting, 'topic' | 'kind'>, speaker: Pick<TownAgent, 'name'>, others: readonly string[], notes: readonly MeetingNote[]): string {
   return [
@@ -25,7 +41,7 @@ export function replyPrompt(meeting: Pick<TownMeeting, 'topic' | 'kind'>, speake
     `The others at the table, listening: ${others.length ? others.join(', ') : 'nobody else'}.`,
     '',
     ...(notes.length ? ['What has been said so far (the owner is "You"):', ...said(notes), ''] : []),
-    `${speaker.name}, the owner is talking to you. Answer them directly in two to four short sentences, from your own job. Ask at most one short question if you need to. If something belongs to someone else at the table, say who. Do not do the work, and do not say anything is done.`,
+    `${speaker.name}, the owner is talking to you. Answer them directly in two to four short sentences, from your own job. Ask at most one short question if you need to. If something belongs to someone else at the table, say who. Do not do the work, and do not say anything is done.${TASK_NOTE}`,
   ].join('\n');
 }
 
@@ -53,7 +69,7 @@ export function chimePrompt(speaker: Pick<TownAgent, 'name'>, talkingWith: strin
     'What has been said so far (the owner is "You"):',
     ...said(notes),
     '',
-    'If you have something important the owner should hear now, from your own job, say it to them in one to three short sentences. Do not repeat what has been said, do not do the work, and do not say anything is done. If you have nothing important to add, reply with exactly: PASS',
+    'If you have something important the owner should hear now, from your own job, say it to them in one to three short sentences. Do not repeat what has been said, do not do the work, and do not say anything is done.' + TASK_NOTE + ' If you have nothing important to add, reply with exactly: PASS',
   ].join('\n');
 }
 

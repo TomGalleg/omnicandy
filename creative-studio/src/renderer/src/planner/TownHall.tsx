@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { ChatProviderInfo } from '@shared/plannerApi';
 import { chunkPlan, type ChatProviderId } from '@shared/plannerChat';
-import { coordinatorOf, type TownAgent, type TownState } from '@shared/town';
-import { chimePickPrompt, chimePrompt, costText, isPass, parsePick, replyPrompt, summaryPrompt } from '@shared/townMeeting';
+import { coordinatorOf, directorTitle, type TownAgent, type TownState } from '@shared/town';
+import type { PlanTask } from '@shared/planner';
+import { chimePickPrompt, chimePrompt, costText, isPass, parsePick, parseTaskLines, replyPrompt, summaryPrompt } from '@shared/townMeeting';
 import hallInside from '../assets/offices/town-hall.jpg';
 import { HallPeople, meetingPeople } from './HallPeople';
 import { errMsg, ErrorLine } from './plannerUi';
@@ -22,7 +23,7 @@ const OWNER = 'You';
  * over their head, and when the owner clicks it they start talking until someone else has something more important. The owner can also click anyone to talk to
  * them. Nothing joins the plan: tasks only appear on the Studio canvas. How it asks (the AI, the model) is under the chat, closed unless wanted.
  */
-export function TownHall({ town, planId, setTown, reload, onBack, aside }: { town: TownState; planId: string; setTown: (t: TownState) => void; reload: () => Promise<void>; onBack: () => void; aside?: ReactNode }) {
+export function TownHall({ town, planId, tasks, setTown, reload, onBack, aside }: { town: TownState; planId: string; /** The plan's tasks, to list the ones added during this meeting. */ tasks: readonly PlanTask[]; setTown: (t: TownState) => void; reload: () => Promise<void>; onBack: () => void; aside?: ReactNode }) {
   const meeting = town.meetings.filter((m) => !m.endedAt).at(-1) ?? null;
   const people = useMemo(() => meetingPeople(town, meeting), [town, meeting]);
   const chair = coordinatorOf(town) ?? people[0] ?? null;
@@ -31,8 +32,10 @@ export function TownHall({ town, planId, setTown, reload, onBack, aside }: { tow
   // Who the owner is talking with, what they last said, and who (at most one) has something important to say.
   const [currentId, setCurrentId] = useState<string | null>(null);
   const current = people.find((a) => a.id === currentId) ?? chair;
-  const [bubble, setBubble] = useState<{ id: string; text: string } | null>(null);
-  const [chime, setChime] = useState<{ id: string; text: string } | null>(null);
+  const [bubble, setBubble] = useState<{ id: string; text: string; tasks?: string[] } | null>(null);
+  const [chime, setChime] = useState<{ id: string; text: string; tasks?: string[] } | null>(null);
+  /** Titles of tasks the owner added from a bubble in this visit (so the button turns into "Added"). */
+  const [added, setAdded] = useState<ReadonlySet<string>>(new Set());
   const [speaking, setSpeaking] = useState<string | null>(null);
 
   const [draft, setDraft] = useState('');
@@ -79,7 +82,8 @@ export function TownHall({ town, planId, setTown, reload, onBack, aside }: { tow
       if (!who || stale(r)) return;
       const remark = await ask(who.id, chimePrompt(who, talkingWith.name, mine));
       if (stale(r) || isPass(remark)) return;
-      setChime({ id: who.id, text: remark }); setProgress(`${who.name} has something important to tell you.`);
+      const parsed = parseTaskLines(remark);
+      setChime({ id: who.id, text: parsed.text, tasks: parsed.tasks }); setProgress(`${who.name} has something important to tell you.`);
     } catch { /* the owner's own message already worked; a failed look-out just means nobody speaks up */ }
   };
 
@@ -103,8 +107,9 @@ export function TownHall({ town, planId, setTown, reload, onBack, aside }: { tow
       const said = await ask(who.id, replyPrompt(m, who, sitting.filter((a) => a.id !== who.id).map((a) => a.name), notesOf(t, m.id)));
       setSpeaking(null);
       if (stale(r)) { if (alive.current) setProgress('Stopped. What was said is kept.'); return; }
-      t = await api().meetingNote(planId, m.id, { by: who.name, text: said.slice(0, 2000) || '(no reply)' }); setTown(t);
-      setBubble({ id: who.id, text: said }); setProgress('');
+      const parsed = parseTaskLines(said);
+      t = await api().meetingNote(planId, m.id, { by: who.name, text: parsed.text.slice(0, 2000) || '(no reply)' }); setTown(t);
+      setBubble({ id: who.id, text: parsed.text, tasks: parsed.tasks }); setProgress('');
       setBusy(false);
       if (chimeOn && !chime) await checkChime(r, t, m.id, who);
     } catch (e) {
@@ -146,17 +151,41 @@ export function TownHall({ town, planId, setTown, reload, onBack, aside }: { tow
     round.current++; // anything still being looked up for the last exchange is out of date now
     setSpeaking(null); setCurrentId(id); setProgress('');
     if (chime && chime.id === id) {
-      const said = chime.text; setChime(null); setBubble({ id, text: said });
+      const said = chime.text; const recommended = chime.tasks; setChime(null); setBubble({ id, text: said, tasks: recommended });
       if (meeting) void api().meetingNote(planId, meeting.id, { by: who.name, text: said.slice(0, 2000) }).then(setTown).catch((e) => setError(errMsg(e)));
     } else setBubble(null);
+  };
+
+  /**
+   * The owner pressed Add task under someone's bubble: it joins the plan now (that press is the owner's approval), owned by the person who recommended it,
+   * and shows in the list beside the room. A task the plan already has is not added a second time.
+   */
+  const addTask = (id: string, title: string) => {
+    const who = people.find((a) => a.id === id); if (!who) return;
+    void (async () => {
+      try {
+        setError(null);
+        if (!tasks.some((t) => t.status !== 'cancelled' && t.title.trim().toLowerCase() === title.trim().toLowerCase())) {
+          const pr = await api().importSuggestions(planId, {
+            proposer: { kind: 'other', name: who.name }, note: `Task from ${who.name} in the meeting`, rawText: title,
+            changes: [{ op: 'add_task', title: title.slice(0, 200), description: `Recommended by ${who.name} in a meeting.`, priority: 'normal', dependsOn: [], completionChecks: [], assignee: who.director ?? null }],
+          });
+          await api().decideProposal(planId, pr.id, true, [0]);
+          await reload();
+        }
+        setAdded((s) => new Set(s).add(title));
+      } catch (e) { setError(errMsg(e)); }
+    })();
   };
 
   const send = () => { const t = draft.trim(); if (!t || busy) return; setDraft(''); void go(t); };
   const end = () => {
     round.current++;
-    void (async () => { try { if (meeting) setTown(await api().meetingEnd(planId, meeting.id)); setBubble(null); setChime(null); setCurrentId(null); setProgress(''); } catch (e) { setError(errMsg(e)); } })();
+    // End every open meeting, not just the latest: one left open from before would otherwise take its place and it would look as if nothing ended.
+    void (async () => { try { let t = town; for (const m of town.meetings.filter((x) => !x.endedAt)) t = await api().meetingEnd(planId, m.id); setTown(t); setBubble(null); setChime(null); setCurrentId(null); setProgress(''); setAdded(new Set()); } catch (e) { setError(errMsg(e)); } })();
   };
 
+  const fromMeeting = useMemo(() => (meeting ? tasks.filter((t) => t.status !== 'cancelled' && t.createdAt >= meeting.startedAt) : []), [tasks, meeting]);
   const greeting = !meeting && chair && !bubble ? { id: chair.id, text: GREETING } : null;
   const waiting = useMemo(() => new Set(chime ? [chime.id] : []), [chime]);
 
@@ -164,7 +193,7 @@ export function TownHall({ town, planId, setTown, reload, onBack, aside }: { tow
     <div className="tw-main tw-inoffice">
       <section className="tw-room" aria-label="Inside the Town Hall">
         <img src={hallInside} alt="Inside the Town Hall" />
-        <HallPeople people={people} speaking={speaking} waiting={waiting} current={meeting ? current?.id ?? null : null} open={bubble} onPick={pick} onCloseBubble={() => setBubble(null)} greeting={greeting} />
+        <HallPeople people={people} speaking={speaking} waiting={waiting} current={meeting ? current?.id ?? null : null} open={bubble} added={added} onAddTask={addTask} onPick={pick} onCloseBubble={() => setBubble(null)} greeting={greeting} />
         <button className="btn small tw-back" onClick={onBack}>← Back to the town</button>
 
         <div className="tw-hall-bar">
@@ -206,6 +235,13 @@ export function TownHall({ town, planId, setTown, reload, onBack, aside }: { tow
       </section>
       <aside className="tw-side">
         <p className="pl-hint"><strong>The Town Hall.</strong> {meeting ? 'You are talking with one person at a time. When someone else has something important to tell you, a ! appears over their head: click it to hear them. Click anyone to talk to them instead.' : 'This is where your team meets. Type below to start a meeting.'}</p>
+        {meeting && (
+          <details className="pl-fold" open><summary>Tasks from this meeting<span className="pl-count">{fromMeeting.length}</span></summary>
+            {fromMeeting.length === 0 ? <p className="pl-hint">When someone recommends a task, press Add task under what they say and it lands here.</p> : (
+              <ul className="tw-hall-tasks">{fromMeeting.map((t) => <li key={t.id}><strong>{t.title}</strong><small>{t.assignee ? `${directorTitle(t.assignee) ?? t.assignee}` : 'No one yet'} · {t.status === 'accepted' ? 'Done' : 'To do'}</small></li>)}</ul>
+            )}
+          </details>
+        )}
         {meeting && (
           <details className="pl-fold" open><summary>What was said<span className="pl-count">{notes.length}</span></summary>
             <ul className="tw-notes tw-hall-notes">{notes.map((n, i) => <li key={i}><strong>{n.by}</strong> {n.text}</li>)}</ul>
