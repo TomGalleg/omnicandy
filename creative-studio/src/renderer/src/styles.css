@@ -986,7 +986,9 @@ span.tw-portrait { display: grid; place-items: center; }
 .tw-room .tw-hall-person .tw-hall-puff { left: 50%; top: 60%; width: 220%; }
 .tw-hall-person { pointer-events: auto; }
 .tw-bubble.open { pointer-events: auto; cursor: pointer; z-index: 9; }
-.tw-bubble-text { display: block; max-height: 9.5em; overflow-y: auto; padding-right: 4px; white-space: pre-wrap; }
+.tw-bubble-text { display: block; flex: 0 1 auto; min-height: 3.4em; max-height: 9.5em; overflow-y: auto; padding-right: 4px; white-space: pre-wrap; }
+.tw-bubble { display: flex; flex-direction: column; }
+.tw-bubble-tasks, .tw-bubble > strong, .tw-bubble-hint { flex: none; }
 .tw-bubble-hint { display: block; margin-top: 4px; font-size: 10px; color: #8a7aa8; }
 .tw-hall-hit { all: unset; display: block; width: 100%; cursor: default; }
 .tw-hall-hit.on { cursor: pointer; }
@@ -997,13 +999,14 @@ span.tw-portrait { display: grid; place-items: center; }
 .tw-hall-status { margin: 0; justify-self: center; padding: 4px 12px; border-radius: 999px; background: rgba(20, 10, 40, .82); color: #fff; font-size: 12px; }
 .tw-hall-input { display: flex; gap: 8px; align-items: stretch; padding: 7px; border-radius: 14px; background: rgba(255, 255, 255, .96); box-shadow: 0 4px 14px rgba(0, 0, 0, .45); }
 .tw-hall-input textarea { flex: 1; resize: none; height: 46px; min-height: 0; border: 0; outline: 0; background: transparent; color: #1d1530; font: inherit; font-size: 14px; padding: 4px 6px; }
-.tw-hall-actions { margin: 0; display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; }
+.tw-hall-top { position: absolute; top: 8px; right: 8px; z-index: 9; display: flex; gap: 6px; align-items: flex-start; flex-wrap: wrap; justify-content: flex-end; max-width: 70%; }
+.tw-hall-actions { margin: 0; display: flex; gap: 6px; }
 .tw-hall-setup { position: absolute; left: 50%; bottom: 22%; transform: translateX(-50%); width: min(560px, 70%); z-index: 8; padding: 12px 14px; border-radius: 14px; background: var(--surface); color: var(--text, inherit); border: 1px solid var(--border); box-shadow: 0 6px 20px rgba(0, 0, 0, .5); }
 .tw-hall-hit.current .tw-hall-figure { filter: drop-shadow(0 0 10px #ffe9a8) drop-shadow(0 0 3px #fff) drop-shadow(0 3px 3px rgba(0, 0, 0, .35)); }
-.tw-hall-settings { position: relative; justify-self: center; font-size: 12px; }
+.tw-hall-settings { position: relative; font-size: 12px; }
 .tw-hall-settings > summary { cursor: pointer; padding: 3px 10px; border-radius: 999px; background: rgba(20, 10, 40, .72); color: #fff; list-style: none; }
 .tw-hall-settings > summary::-webkit-details-marker { display: none; }
-.tw-hall-settings .tw-hall-settings-body { position: absolute; bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%); width: min(560px, 90vw); padding: 12px 14px; border-radius: 14px; background: var(--surface); color: var(--text, inherit); border: 1px solid var(--border); box-shadow: 0 6px 20px rgba(0, 0, 0, .5); display: grid; gap: 8px; text-align: left; }
+.tw-hall-settings .tw-hall-settings-body { position: absolute; top: calc(100% + 6px); right: 0; width: min(560px, 80vw); padding: 12px 14px; border-radius: 14px; background: var(--surface); color: var(--text, inherit); border: 1px solid var(--border); box-shadow: 0 6px 20px rgba(0, 0, 0, .5); display: grid; gap: 8px; text-align: left; }
 .tw-bubble-tasks { margin-top: 8px; padding-top: 6px; border-top: 1px solid #e6def5; display: grid; gap: 6px; }
 .tw-bubble-task { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; }
 .tw-bubble-task > span { font-weight: 600; }

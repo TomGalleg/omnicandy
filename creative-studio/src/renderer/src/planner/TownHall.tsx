@@ -195,6 +195,33 @@ export function TownHall({ town, planId, tasks, setTown, reload, onBack, aside }
         <img src={hallInside} alt="Inside the Town Hall" />
         <HallPeople people={people} speaking={speaking} waiting={waiting} current={meeting ? current?.id ?? null : null} open={bubble} added={added} onAddTask={addTask} onPick={pick} onCloseBubble={() => setBubble(null)} greeting={greeting} />
         <button className="btn small tw-back" onClick={onBack}>← Back to the town</button>
+        <div className="tw-hall-top">
+  <p className="tw-hall-actions">
+    {meeting && !busy && <button className="btn small" onClick={() => void makeTasks()} disabled={notes.length < 3} title="The General Manager turns what was said into tasks. They wait on the Studio canvas for you.">Make tasks from this</button>}
+    {meeting && !busy && <button className="btn small" onClick={end}>End the meeting</button>}
+  </p>
+  <details className="tw-hall-settings" open={showSettings} onToggle={(e) => setShowSettings((e.currentTarget as HTMLDetailsElement).open)}>
+    <summary>Meeting settings</summary>
+    <div className="tw-hall-settings-body">
+      <div className="pl-two">
+        <label>AI
+          <select value={provider} onChange={(e) => { setProvider(e.target.value as ChatProviderId); put('cs-planner-chat-provider', e.target.value); setError(null); }}>
+            {(providers ?? []).map((x) => <option key={x.id} value={x.id}>{x.label}{x.ready ? '' : ' (needs a key)'}</option>)}
+          </select>
+        </label>
+        <label>Model
+          <select value={model} disabled={!models?.length} onChange={(e) => { setModel(e.target.value); put(`cs-planner-chat-model-${provider}`, e.target.value); }}>
+            {(models ?? []).map((m) => <option key={m} value={m}>{m}</option>)}
+            {!models?.length && <option value="">{info && !info.ready ? '-' : 'loading…'}</option>}
+          </select>
+        </label>
+      </div>
+      <label className="pl-check"><input type="checkbox" checked={chimeOn} onChange={(e) => { setChimeOn(e.target.checked); put('cs-hall-chime', e.target.checked ? '1' : '0'); }} /> Let the others speak up when they have something important</label>
+      {info && !info.ready && <p className="pl-warn">{info.note}</p>}
+      {info?.ready && model && <p className="pl-hint">{costText(chimeOn, info.label, model)} {info.cost}</p>}
+    </div>
+  </details>
+        </div>
 
         <div className="tw-hall-bar">
           {progress && <p className="tw-hall-status" role="status">{progress}</p>}
@@ -206,31 +233,6 @@ export function TownHall({ town, planId, tasks, setTown, reload, onBack, aside }
               ? <button className="btn" onClick={() => { stop.current = true; setProgress('Stopping after the reply that is already on its way…'); }}>Stop</button>
               : <button className="btn primary" disabled={!draft.trim()} onClick={send}>Send</button>}
           </div>
-          <p className="tw-hall-actions">
-            {meeting && !busy && <button className="btn small" onClick={() => void makeTasks()} disabled={notes.length < 3} title="The General Manager turns what was said into tasks. They wait on the Studio canvas for you.">Make tasks from this</button>}
-            {meeting && !busy && <button className="btn small" onClick={end}>End the meeting</button>}
-          </p>
-          <details className="tw-hall-settings" open={showSettings} onToggle={(e) => setShowSettings((e.currentTarget as HTMLDetailsElement).open)}>
-            <summary>Meeting settings</summary>
-            <div className="tw-hall-settings-body">
-              <div className="pl-two">
-                <label>AI
-                  <select value={provider} onChange={(e) => { setProvider(e.target.value as ChatProviderId); put('cs-planner-chat-provider', e.target.value); setError(null); }}>
-                    {(providers ?? []).map((x) => <option key={x.id} value={x.id}>{x.label}{x.ready ? '' : ' (needs a key)'}</option>)}
-                  </select>
-                </label>
-                <label>Model
-                  <select value={model} disabled={!models?.length} onChange={(e) => { setModel(e.target.value); put(`cs-planner-chat-model-${provider}`, e.target.value); }}>
-                    {(models ?? []).map((m) => <option key={m} value={m}>{m}</option>)}
-                    {!models?.length && <option value="">{info && !info.ready ? '-' : 'loading…'}</option>}
-                  </select>
-                </label>
-              </div>
-              <label className="pl-check"><input type="checkbox" checked={chimeOn} onChange={(e) => { setChimeOn(e.target.checked); put('cs-hall-chime', e.target.checked ? '1' : '0'); }} /> Let the others speak up when they have something important</label>
-              {info && !info.ready && <p className="pl-warn">{info.note}</p>}
-              {info?.ready && model && <p className="pl-hint">{costText(chimeOn, info.label, model)} {info.cost}</p>}
-            </div>
-          </details>
         </div>
       </section>
       <aside className="tw-side">

@@ -24,6 +24,8 @@ const plain = (t: string) => { const s = t.replace(/[*_`#]/g, '').replace(/\s+/g
 const BUBBLE_W = 36;
 /** The small bubble with three dots over whoever is being asked: narrow, and drawn in front, so it hides as little as possible. */
 const PILL_W = 15;
+/** Room kept free at the bottom for the typing box, so a bubble that opens downwards stops above it and scrolls instead of covering it. */
+const TYPING_BOX = 118;
 /** A figure's height as a share of the room's height, from its width (the pictures are about 1.55 times taller than wide; the room is 1672 by 941). */
 const figureH = (w: number) => w * 1.55 * (1672 / 941);
 function bubbleSpot(seat: { x: number; y: number; w: number }, width: number) {
@@ -86,7 +88,7 @@ export function HallPeople({ people, speaking, waiting, current, open, onAddTask
         return (
           <div key={`say-${a.id}`} className={`tw-bubble${b.above ? '' : ' below'}${thinking ? ' pill' : mine?.closable ? ' open' : ''}`} role="status" aria-label={`${a.name} says`}
             onClick={thinking || !mine?.closable ? undefined : onCloseBubble}
-            style={{ left: `${b.left}%`, width: `${thinking ? PILL_W : BUBBLE_W}%`, ...(b.above ? { bottom: `${b.at}%` } : { top: `${b.at}%` }), ['--tail' as string]: `${b.tail}%` }}>
+            style={{ left: `${b.left}%`, width: `${thinking ? PILL_W : BUBBLE_W}%`, ...(b.above ? { bottom: `${b.at}%`, maxHeight: `calc(${100 - b.at}% - 8px)` } : { top: `${b.at}%`, maxHeight: `calc(${100 - b.at}% - ${TYPING_BOX}px)` }), ['--tail' as string]: `${b.tail}%` }}>
             <strong>{a.name}</strong>
             {thinking ? <span className="tw-dots" aria-label="is thinking"><i /><i /><i /></span> : <><span className="tw-bubble-text">{mine!.text}</span>
               {mine!.tasks.length > 0 && (
