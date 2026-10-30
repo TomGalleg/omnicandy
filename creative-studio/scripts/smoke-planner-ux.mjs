@@ -41,13 +41,21 @@ try {
   // ---- the next-step line on every tab
   const strips = {};
   for (const t of ['OmniTown', 'Studio', 'Work']) { await tab(win, t); strips[t] = await win.locator('.pl-nextstrip').count(); }
-  check('One "Next:" line on each of the three tabs', Object.values(strips).every((n) => n === 1), JSON.stringify(strips));
+  check('A "Next:" line on Studio and Work (the town map has its own chat box and Plan new project instead)', strips.Studio === 1 && strips.Work === 1 && strips.OmniTown === 0, JSON.stringify(strips));
   await tab(win, 'Studio');
   const line = await win.locator('.pl-nextstrip').innerText();
   check('A new project is told to talk to the General Manager', /General Manager/.test(line), line.replace(/\s+/g, ' '));
 
-  // ---- OmniTown: team controls folded away
+  // ---- OmniTown: no talk buttons; Plan new project while there is no plan; a chat box with the manager on the map
   await tab(win, 'OmniTown');
+  check('The map has no "Talk to the General Manager" button', (await win.getByRole('button', { name: 'Talk to the General Manager' }).count()) === 0);
+  check('A project with no plan offers "Plan new project"', (await win.getByRole('button', { name: 'Plan new project' }).count()) === 1);
+  check('There is a box to talk with the General Manager right on the map', (await win.getByLabel('Say something to General Manager').count()) === 1);
+  await win.getByRole('button', { name: 'Plan new project' }).click(); await win.waitForTimeout(1800);
+  check('Plan new project brings everyone to the Town Hall, ready to be told what to make', (await win.locator('.tw-hall-person').count()) === 9 && /what you want to make/.test((await win.getByLabel('Say something to the team').getAttribute('placeholder')) ?? ''));
+  check('...and the General Manager greets the owner', /How can we help you, boss/.test(await win.locator('.tw-bubble').first().innerText()));
+  await win.getByRole('button', { name: 'Back to the town' }).click(); await win.waitForTimeout(600);
+  check('Back on the map, the button is still there until a plan exists', (await win.getByRole('button', { name: 'Plan new project' }).count()) === 1);
   check('OmniTown shows one button, and keeps the team controls under "Team options"', (await win.getByRole('button', { name: 'Suggest helpers' }).count()) === 0 && (await win.locator('.tw-team-options summary').count()) === 1);
   await win.locator('.tw-team-options summary').click();
   check('"Team options" opens the helper controls', (await win.getByRole('button', { name: 'Suggest helpers' }).count()) === 1);
@@ -55,6 +63,10 @@ try {
 
   // ---- the Work tab
   await win.evaluate(async (id) => { const api = window.studio.planner; const pr = await api.importSuggestions(id, { proposer: { kind: 'other', name: 'Smoke test' }, note: 'x', changes: [{ op: 'add_task', title: 'Write the brief', description: '', priority: 'normal', dependsOn: [], completionChecks: ['It fits on a page'] }], rawText: 'x' }); await api.decideProposal(id, pr.id, true, [0]); }, id);
+  await tab(win, 'OmniTown');
+  check('Once the plan has a task, "Plan new project" is gone', (await win.getByRole('button', { name: 'Plan new project' }).count()) === 0);
+  check('...and the manager box and the Plan button remain', (await win.getByLabel('Say something to General Manager').count()) === 1 && (await win.getByRole('button', { name: 'Plan', exact: true }).count()) === 1);
+  check('The Next line comes back on the town map once there is something to do', (await win.locator('.pl-nextstrip').count()) === 1);
   await tab(win, 'Work');
   const ready = await win.evaluate(async () => { const st = await window.studio.claude.state(); return st.billing?.mode === 'api-key' ? !!st.billing.keyReady : st.installed !== false && st.signedIn !== false && st.status !== 'signed-out'; });
   const first = await win.locator('input[type=radio]:checked').evaluateAll((els) => els.map((e) => e.closest('label')?.innerText ?? ''));

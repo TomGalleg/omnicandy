@@ -84,7 +84,7 @@ export interface PlannerApi {
   chatProviders(): Promise<ChatProviderInfo[]>;
   chatModels(provider: 'claude' | 'openai' | 'gemini'): Promise<string[]>;
   /** `mode`: "talk" (default) understands the idea; "chunks" breaks the project into tasks once the owner said yes. */
-  chat(req: { projectId: string; provider: 'claude' | 'openai' | 'gemini'; model: string; messages: Array<{ role: 'user' | 'assistant'; text: string }>; mode?: 'talk' | 'chunks'; /** Talk to this worker (they are told their own job). */ agentId?: string }): Promise<{ text: string }>;
+  chat(req: { projectId: string; provider: 'claude' | 'openai' | 'gemini'; model: string; messages: Array<{ role: 'user' | 'assistant'; text: string }>; mode?: 'talk' | 'chunks'; /** `meeting`: the Town Hall (one voice among several, short answers). */ setting?: 'planning' | 'meeting'; /** Talk to this worker (they are told their own job). */ agentId?: string }): Promise<{ text: string }>;
   /** The conversation kept with the plan (restored when the project is opened again). */
   chatLoad(id: string): Promise<{ messages: Array<{ role: 'user' | 'assistant'; text: string }>; provider?: string; model?: string; savedAt?: string }>;
   chatSave(id: string, chat: { messages: Array<{ role: 'user' | 'assistant'; text: string }>; provider?: string; model?: string }): Promise<void>;

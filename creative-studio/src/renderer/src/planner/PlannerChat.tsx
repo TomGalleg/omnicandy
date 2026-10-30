@@ -17,7 +17,7 @@ const put = (k: string, v: string) => { try { store?.setItem(k, v); } catch { /*
 const PROVIDER_KEY = 'cs-planner-chat-provider';
 
 /** An answer that breaks the project into chunks: shown as a plain numbered list instead of raw text. */
-function ChunkList({ p, reload, text, go, onChange, preview, by }: { p: PlannerProject; reload: () => Promise<void>; text: string; go: (t: TabId) => void; onChange: () => void; preview?: boolean; /** The worker who wrote the tasks, when it is not the General Manager. */ by?: string }) {
+export function ChunkList({ p, reload, text, go, onChange, preview, by }: { p: PlannerProject; reload: () => Promise<void>; text: string; go: (t: TabId) => void; onChange: () => void; preview?: boolean; /** The worker who wrote the tasks, when it is not the General Manager. */ by?: string }) {
   const plan = useMemo(() => chunkPlan(text), [text]);
   const [skip, setSkip] = useState<number[]>([]);
   const [done, setDone] = useState<number | null>(null);

@@ -10,14 +10,15 @@ import type { PlanAsset } from '@shared/planner';
 import { IPC } from '@shared/ipc';
 import type { PackageView, PlannerConnectionInfo } from '@shared/plannerApi';
 import { defaultPlannerDir } from './dir';
-import { chatSystemPrompt, CHAT_PROVIDER_IDS, connectedAppsLine, MAX_CHAT_MESSAGE_CHARS, MAX_CHAT_MESSAGES } from '@shared/plannerChat';
+import { CHAT_PROVIDER_IDS, connectedAppsLine, MAX_CHAT_MESSAGE_CHARS, MAX_CHAT_MESSAGES } from '@shared/plannerChat';
 import { type ChatDeps, PlannerChat } from './chat';
 import { ProjectPlanner, type OpenProject } from './projectPlanner';
 import { ProjectCoordinator } from './coordinator';
 import { PlannerEventHub } from './events';
 import { RoutedPlannerStore } from './routedStore';
 import { PlannerService, userCtx } from './service';
-import { agentSystemPrompt, generalManagerIntro } from '@shared/town';
+import { agentSystemPrompt } from '@shared/town';
+import { generalManagerPrompt } from '@shared/generalManager';
 import { recentChangeLines } from '@shared/townNews';
 import { createTownMethods } from './townMethods';
 import { createViewMethods } from './viewMethods';
@@ -79,6 +80,8 @@ export function registerPlannerIpc(d: Deps): void {
     projectId: z.string().max(60), provider, model: z.string().min(1).max(80),
     messages: z.array(z.object({ role: z.enum(['user', 'assistant']), text: z.string().min(1).max(MAX_CHAT_MESSAGE_CHARS) })).min(1).max(MAX_CHAT_MESSAGES),
     mode: z.enum(['talk', 'chunks']).optional(),
+    /** `meeting`: the Town Hall (one voice among several, short answers). Otherwise a one to one conversation. */
+    setting: z.enum(['planning', 'meeting']).optional(),
     /** Talk to this worker instead of the coordinator: they are told their own job (see agentSystemPrompt). */
     agentId: z.string().regex(/^agent_[a-z0-9]{4,24}$/).optional(),
   });
@@ -159,21 +162,19 @@ export function registerPlannerIpc(d: Deps): void {
       // What the project already contains (names and counts only) is part of what the AI is told, when this is the open project's plan.
       const apps = d.apps ? await d.apps().catch(() => []) : [];
       const context = await pp.chatContext(plan);
-      let system = chatSystemPrompt(plan, context, r.mode ?? 'talk');
-      if (!r.agentId) {
-        // The Studio's conversation is the General Manager's: they know who is on the team.
-        const intro = await d.store.readTown(plan.id).then(({ town }) => generalManagerIntro(town)).catch(() => []);
-        // ... and what has changed in the plan lately, including work the owner started with someone else.
+      const { town } = await d.store.readTown(plan.id);
+      const agent = r.agentId ? town.agents.find((a) => a.id === r.agentId && !a.retired) : undefined;
+      if (r.agentId && !agent) throw new Error('That worker is not on the team any more.');
+      let system: string;
+      if (!agent || agent.director === 'general-manager') {
+        // The General Manager is one person behind every door (the Studio, their office, the map card, the Town Hall): same team, same knowledge of the project
+        // and of what changed lately, same way of working. Only how they speak differs (see shared/generalManager.ts).
         const news = recentChangeLines(await s.activity(u, plan.id).catch(() => []), new Date());
-        system = [...intro, system, ...(news.length ? ['', ...news] : [])].join(String.fromCharCode(10));
-      }
-      if (r.agentId) {
-        const { town } = await d.store.readTown(plan.id);
-        const agent = town.agents.find((a) => a.id === r.agentId && !a.retired);
-        if (!agent) throw new Error('That worker is not on the team any more.');
+        system = generalManagerPrompt({ town, plan, context: context ?? [], news, apps, mode: r.mode ?? 'talk', setting: r.setting === 'meeting' ? 'meeting' : 'planning' });
+      } else {
         system = [agentSystemPrompt(town, agent, plan), ...(context?.length ? ['', 'What the project already contains (names and counts only):', ...context] : [])].join(String.fromCharCode(10));
+        if (apps.length) system = [system, '', ...connectedAppsLine(apps)].join(String.fromCharCode(10));
       }
-      if (apps.length) system = [system, '', ...connectedAppsLine(apps)].join(String.fromCharCode(10));
       return needChat().reply({ system, provider: r.provider, model: r.model, messages: r.messages });
     },
     connectionInfo: async () => { await sync(); return connectionInfo(d.store.projectRoot ?? d.dir); },

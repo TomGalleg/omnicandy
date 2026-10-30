@@ -19,7 +19,7 @@ const OWNER = 'You';
  * over their head, and when the owner clicks it they start talking until someone else has something more important. The owner can also click anyone to talk to
  * them. Nothing joins the plan: tasks only appear on the Studio canvas. How it asks (the AI, the model) is under the chat, closed unless wanted.
  */
-export function TownHall({ town, planId, tasks, setTown, reload, onBack, aside }: { town: TownState; planId: string; /** The plan's tasks, to list the ones added during this meeting. */ tasks: readonly PlanTask[]; setTown: (t: TownState) => void; reload: () => Promise<void>; onBack: () => void; aside?: ReactNode }) {
+export function TownHall({ town, planId, tasks, setTown, reload, onBack, aside, startPrompt }: { /** What the empty box says before a meeting has started. */ startPrompt?: string; town: TownState; planId: string; /** The plan's tasks, to list the ones added during this meeting. */ tasks: readonly PlanTask[]; setTown: (t: TownState) => void; reload: () => Promise<void>; onBack: () => void; aside?: ReactNode }) {
   const meeting = town.meetings.filter((m) => !m.endedAt).at(-1) ?? null;
   const people = useMemo(() => meetingPeople(town, meeting), [town, meeting]);
   const chair = coordinatorOf(town) ?? people[0] ?? null;
@@ -47,7 +47,7 @@ export function TownHall({ town, planId, tasks, setTown, reload, onBack, aside }
   const { provider, model, info } = ai;
   const [chimeOn, setChimeOn] = useState(() => readSetting('cs-hall-chime') !== '0');
 
-  const ask = async (agentId: string, text: string) => (await api().chat({ projectId: planId, provider, model, agentId, messages: [{ role: 'user', text }] })).text.trim();
+  const ask = async (agentId: string, text: string) => (await api().chat({ projectId: planId, provider, model, agentId, setting: 'meeting', messages: [{ role: 'user', text }] })).text.trim();
   const notesOf = (t: TownState, id: string) => t.meetings.find((m) => m.id === id)?.notes ?? [];
 
   /**
@@ -180,7 +180,7 @@ export function TownHall({ town, planId, tasks, setTown, reload, onBack, aside }
           {progress && <p className="tw-hall-status" role="status">{progress}</p>}
           <ErrorLine error={error} />
           <div className="tw-hall-input">
-            <textarea aria-label="Say something to the team" rows={2} value={draft} placeholder={meeting && current ? `Say something to ${current.name}…` : 'What should we work out? Type here to start the meeting…'} disabled={busy}
+            <textarea aria-label="Say something to the team" rows={2} value={draft} placeholder={meeting && current ? `Say something to ${current.name}…` : startPrompt ?? 'What should we work out? Type here to start the meeting…'} disabled={busy}
               onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } }} />
             {busy
               ? <button className="btn" onClick={() => { stop.current = true; setProgress('Stopping after the reply that is already on its way…'); }}>Stop</button>

@@ -100,8 +100,14 @@ export function TownTab(props: TabProps) {
   const [office, setOffice] = useState<string | null>(null);
   /** Inside the Town Hall (full screen), where meetings are held. */
   const [inHall, setInHall] = useState(false);
+  /** The Town Hall was opened by "Plan new project": its box asks what to make, instead of what to work out. */
+  const [hallStart, setHallStart] = useState(false);
   // Opening a conversation brings it into view (it sits below the town).
   useEffect(() => { if (talk) document.getElementById('tw-talk')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, [talk]);
+  /** Nothing in the plan yet (removed tasks do not count): the project is waiting to be planned. */
+  const noPlanYet = !p.tasks.some((t) => t.status !== 'cancelled');
+  /** The General Manager, who can be talked to right on the map. */
+  const manager = town?.agents.find((a) => a.director === 'general-manager' && !a.retired) ?? null;
   /** A director's open tasks (an unowned task falls to the General Manager), and how many of them have a result waiting for the owner. */
   const officeTasks = (a: TownAgent) => p.tasks.filter((t) => t.status !== 'accepted' && t.status !== 'cancelled' && taskIsFor(t, a.director));
   const officeWaiting = (a: TownAgent) => p.reports.filter((r) => r.status === 'submitted' && p.tasks.some((t) => t.id === r.taskId && taskIsFor(t, a.director))).length;
@@ -133,7 +139,7 @@ export function TownTab(props: TabProps) {
         <h3>Your town</h3>
         <span className="spacer" />
         <button className="btn small" title="See the plan as cards you can move and connect" onClick={() => { setShowPlan(true); setOffice(null); setInHall(false); }}>Plan</button>
-        <button className="btn small primary" title="Talk through your idea with the General Manager and see the plan take shape" onClick={() => go('studio')}>Talk to the General Manager</button>
+        {noPlanYet && <button className="btn small primary" title="Bring the whole team to the Town Hall and work out what you want to make" onClick={() => { setHallStart(true); setInHall(true); setPick(null); setOffice(null); setShowPlan(false); }}>Plan new project</button>}
         <details className="tw-team-options"><summary>Team options{helpers ? <span className="pl-count">{helpers}</span> : null}</summary>
           <div className="tw-team-options-body">
           <button className="btn small" disabled={busy} title="Suggests a studio and a specialist helper for each application your tasks name. Nothing is added until you say so." onClick={() => void run(async () => { setTown(await api().townSuggestFromPlan(p.id)); })}>Suggest helpers</button>
@@ -161,7 +167,7 @@ export function TownTab(props: TabProps) {
           </section>
         </div>
       ) : inHall ? (
-        <TownHall town={town} planId={p.id} tasks={p.tasks} setTown={setTown} reload={reload} onBack={() => setInHall(false)} aside={<PastMeetings town={town} />} />
+        <TownHall town={town} planId={p.id} tasks={p.tasks} setTown={setTown} reload={reload} onBack={() => { setInHall(false); setHallStart(false); }} startPrompt={hallStart ? 'Tell the team what you want to make…' : undefined} aside={<PastMeetings town={town} />} />
       ) : inOffice ? (
         <div className="tw-main tw-inoffice">
           <section className="tw-room" aria-label={`Inside ${inOffice.name}'s office`}>
@@ -172,7 +178,7 @@ export function TownTab(props: TabProps) {
               <img className="tw-desk-front" src={INTERIORS[inOffice.director]} alt="" aria-hidden style={{ clipPath: CAST[inOffice.director]!.desk }} />
             </>}
             <button className="btn small tw-back" onClick={() => { setOffice(null); setPick(null); setOfficeMsgs([]); setTasksFor(null); }}>← Back to the town</button>
-            {inOffice.director && <OfficeChat key={inOffice.id} agent={inOffice} seat={CAST[inOffice.director]?.seat ?? { left: 50, top: 30, width: 5 }} planId={p.id} tasks={p.tasks} reload={reload} onMessages={setOfficeMsgs} taskCount={officeTasks(inOffice).length} waitingCount={officeWaiting(inOffice)} onTasks={() => setTasksFor((cur) => (cur === inOffice.id ? null : inOffice.id))} />}
+            {inOffice.director && <OfficeChat key={inOffice.id} agent={inOffice} seat={CAST[inOffice.director]?.seat ?? { left: 50, top: 30, width: 5 }} p={p} reload={reload} onOpenPlan={() => { setShowPlan(true); setOffice(null); setInHall(false); }} onMessages={setOfficeMsgs} taskCount={officeTasks(inOffice).length} waitingCount={officeWaiting(inOffice)} onTasks={() => setTasksFor((cur) => (cur === inOffice.id ? null : inOffice.id))} />}
             {inOffice.director && tasksFor === inOffice.id && (
               <div className="tw-office-tasks" role="dialog" aria-label={`${inOffice.name}'s tasks`}>
                 <header><strong>{inOffice.name}'s tasks</strong><button className="btn small" onClick={() => setTasksFor(null)}>Close</button></header>
@@ -195,6 +201,7 @@ export function TownTab(props: TabProps) {
           <aside className="tw-side">
             {selected ? <WorkerCard town={town} a={selected} activity={selected.director ? activity[selected.director] : undefined} busy={busy} onApply={apply} onTalk={() => setTalk(selected.id)} onClose={() => setPick(null)} />
               : <p className="pl-hint">Click an office on the map to go inside and meet the person who works there. The Town Hall in the middle is where meetings happen.</p>}
+            {manager && <OfficeChat key={manager.id} variant="panel" agent={manager} p={p} reload={reload} onMessages={() => {}} onOpenPlan={() => setShowPlan(true)} />}
           </aside>
         </div>
       )}

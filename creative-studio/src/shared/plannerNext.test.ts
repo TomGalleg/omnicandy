@@ -16,7 +16,7 @@ const act = (p: PlannerProject) => nextAction(buildProjectView(p, { now: NOW }))
 
 describe('the one line that says what to do next', () => {
   it('asks a new project to start with the General Manager', () => {
-    expect(act(bare())).toEqual({ text: expect.stringContaining('Tell the General Manager what you want to make'), button: { label: 'Talk to the General Manager', tab: 'studio' } });
+    expect(act(bare())).toEqual({ text: expect.stringContaining('Tell the General Manager what you want to make'), talksToManager: true, button: { label: 'Talk to the General Manager', tab: 'studio' } });
   });
 
   it('points at the task to work on next, with that task brought to the front', () => {
@@ -24,6 +24,7 @@ describe('the one line that says what to do next', () => {
     const a = act(p)!;
     expect(a.text).toContain('Sketch it');
     expect(a.button).toEqual({ label: 'Work on this', tab: 'handoffs', taskId: 'task_a' });
+    expect(a.talksToManager).toBeUndefined(); // a button that does something else stays everywhere
   });
 
   it('puts a suggestion that is waiting for the owner first', () => {
@@ -36,6 +37,7 @@ describe('the one line that says what to do next', () => {
     const done = { ...bare(), tasks: [task('task_a', { status: 'accepted' })] };
     expect(act(done)!.text).toContain('Every task is done');
     expect(act(done)!.button.tab).toBe('studio');
+    expect(act(done)!.talksToManager).toBe(true);
   });
 
   it('never gives a button that opens an Advanced-only tab', () => {

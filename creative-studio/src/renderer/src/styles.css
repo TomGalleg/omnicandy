@@ -1054,3 +1054,18 @@ span.tw-portrait { display: grid; place-items: center; }
 .tw-plan { flex: 1 1 auto; min-width: 0; height: min(76vh, 760px); display: flex; flex-direction: column; border-radius: 16px; overflow: hidden; border: 1px solid var(--border); background: var(--surface); }
 .tw-plan > header { display: flex; gap: 12px; align-items: center; padding: 8px 12px; border-bottom: 1px solid var(--border); }
 .tw-plan .studio-plan { flex: 1; min-height: 0; }
+.tw-bubble.side:has(.tw-bubble-plan) { left: auto !important; right: 1.5%; }
+.tw-bubble-text.tw-bubble-plan { max-height: min(54vh, 420px); white-space: normal; }
+.tw-bubble-plan .pl-chunks ol { margin: 6px 0; padding-left: 20px; }
+.tw-bubble-plan .pl-chunks li { margin: 0 0 6px; font-size: 12px; }
+.tw-bubble-plan .pl-checks { display: none; }
+.tw-mchat { display: grid; gap: 8px; padding: 10px; border-radius: 12px; border: 1px solid var(--border); background: var(--surface); }
+.tw-mchat > header { display: grid; gap: 2px; }
+.tw-mchat-reply { min-height: 3.2em; max-height: 38vh; overflow: auto; font-size: 13px; line-height: 1.4; display: grid; gap: 6px; align-content: start; }
+.tw-mchat-reply .tw-bubble-text { max-height: none; overflow: visible; }
+.tw-mchat-reply .tw-bubble-plan { font-size: 12px; }
+.tw-mchat-reply .tw-bubble-tasks { margin-top: 4px; }
+.tw-mchat-input { display: grid; gap: 6px; }
+.tw-mchat-input textarea { width: 100%; resize: vertical; min-height: 54px; font: inherit; font-size: 13px; padding: 6px 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg, transparent); color: inherit; }
+.tw-mchat .tw-hall-settings > summary { background: transparent; color: inherit; border: 1px solid var(--border); }
+.tw-mchat .tw-hall-settings .tw-hall-settings-body { position: static; transform: none; width: auto; margin-top: 6px; box-shadow: none; }

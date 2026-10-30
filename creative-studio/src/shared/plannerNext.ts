@@ -5,6 +5,8 @@ import type { PlannerTab } from './plannerTabs';
 
 export interface NextAction {
   text: string;
+  /** The button only says "talk to the General Manager" (the town map has its own box for that, so it leaves this button out). */
+  talksToManager?: boolean;
   /** The one button: what it says, which tab it opens, and which task it brings to the front there. */
   button: { label: string; tab: PlannerTab; taskId?: string };
 }
@@ -14,7 +16,7 @@ export function nextAction(v: ProjectView): NextAction | null {
   const step = nextStepsOf(v)[0];
   if (step) {
     switch (step.kind) {
-      case 'add-first-chunk': return { text: step.text, button: { label: 'Talk to the General Manager', tab: 'studio' } };
+      case 'add-first-chunk': return { text: step.text, talksToManager: true, button: { label: 'Talk to the General Manager', tab: 'studio' } };
       case 'continue-current': return { text: step.text, button: { label: 'Work on this', tab: 'handoffs', taskId: step.taskId } };
       case 'review-report': return { text: step.text, button: { label: 'Review the result', tab: 'handoffs', taskId: step.taskId } };
       case 'review-proposal': return { text: step.text, button: { label: 'Look at the suggestion', tab: 'studio' } };
@@ -22,6 +24,6 @@ export function nextAction(v: ProjectView): NextAction | null {
     }
   }
   const real = v.nodes.filter((n) => (n.kind === 'chunk' || n.kind === 'task') && !n.flags.removed);
-  if (real.length > 0) return { text: 'Every task is done. Tell the General Manager if there is more to make.', button: { label: 'Talk to the General Manager', tab: 'studio' } };
+  if (real.length > 0) return { text: 'Every task is done. Tell the General Manager if there is more to make.', talksToManager: true, button: { label: 'Talk to the General Manager', tab: 'studio' } };
   return null;
 }

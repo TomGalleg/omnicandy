@@ -156,7 +156,7 @@ export function PlannerWorkspace({ manifest, projectKey, navMode }: { manifest: 
           <button className="btn small ghost" onClick={() => setPickUpDismissed(`${project.id}:${la.at}`)}>Not now</button>
         </div>
       )}
-      {next && !showPickUp && (
+      {next && !showPickUp && !(tab === 'town' && next.talksToManager) && (
         <p className="pc-next pl-nextstrip" role="status"><strong>Next:</strong> {next.text}{' '}
           <button className="btn small primary" onClick={() => { const id = next.button.taskId; if (id) { setSendSel([id]); props.setFocusTaskId?.(id); } setTab(next.button.tab as TabId); }}>{next.button.label}</button>
         </p>
