@@ -182,7 +182,7 @@ export function TownHall({ town, planId, tasks, setTown, reload, onBack, aside }
   const end = () => {
     round.current++;
     // End every open meeting, not just the latest: one left open from before would otherwise take its place and it would look as if nothing ended.
-    void (async () => { try { let t = town; for (const m of town.meetings.filter((x) => !x.endedAt)) t = await api().meetingEnd(planId, m.id); setTown(t); setBubble(null); setChime(null); setCurrentId(null); setProgress(''); setAdded(new Set()); } catch (e) { setError(errMsg(e)); } })();
+    void (async () => { try { let t = town; for (const m of town.meetings.filter((x) => !x.endedAt)) t = await api().meetingEnd(planId, m.id); setTown(t); setBubble(null); setChime(null); setCurrentId(null); setProgress(''); setAdded(new Set()); onBack(); /* the meeting is over: leave the Town Hall */ } catch (e) { setError(errMsg(e)); } })();
   };
 
   const fromMeeting = useMemo(() => (meeting ? tasks.filter((t) => t.status !== 'cancelled' && t.createdAt >= meeting.startedAt) : []), [tasks, meeting]);
