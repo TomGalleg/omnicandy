@@ -1,19 +1,19 @@
 {
-  "generatedBy": "development",
+  "generatedBy": "release",
   "adapters": [
     {
       "file": "freecad-1.0.0.ccadapter",
       "id": "freecad",
       "version": "1.0.0",
-      "fingerprint": "E970 10FE 35FE 418C BDEB 5A19 79DC C0EC",
-      "keyKind": "development"
+      "fingerprint": "92E7 146E DC51 5A56 3FFF 6DE2 EA36 5223",
+      "keyKind": "release"
     },
     {
       "file": "autodesk.revit-1.0.0.ccadapter",
       "id": "autodesk.revit",
       "version": "1.0.0",
-      "fingerprint": "E970 10FE 35FE 418C BDEB 5A19 79DC C0EC",
-      "keyKind": "development"
+      "fingerprint": "92E7 146E DC51 5A56 3FFF 6DE2 EA36 5223",
+      "keyKind": "release"
     }
   ]
 }

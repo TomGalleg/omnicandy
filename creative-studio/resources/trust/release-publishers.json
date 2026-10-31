@@ -1,4 +1,6 @@
 {
-  "note": "Fingerprints of OFFICIAL CreateCraft release signing keys. Empty on purpose: no production key exists yet, and a development key must never be listed here. See docs/release-signing.md.",
-  "publishers": []
+  "note": "Fingerprints of OFFICIAL CreateCraft release signing keys. A development key must never be listed here. See docs/release-signing.md.",
+  "publishers": [
+    { "name": "OmniCandy Integrations", "fingerprint": "92E7 146E DC51 5A56 3FFF 6DE2 EA36 5223" }
+  ]
 }
