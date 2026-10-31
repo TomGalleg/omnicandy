@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Group, Panel, Separator, useDefaultLayout, usePanelRef, type PanelSize } from 'react-resizable-panels';
 import { EDITOR_APPS, type EditorAppId } from '@shared/appEditors';
 import type { IntegrationSnapshot } from '@shared/ipc';
-import { parseNavMode, routeWorkspace, shownWorkspace, type EditMode, type NavMode } from '@shared/navigation';
+import { routeWorkspace, shownWorkspace, type EditMode } from '@shared/navigation';
 import { PLANNER_BUSY_EVENT, plannerTabBadge } from '@shared/plannerView';
 import { shouldShowTimeline } from '@shared/timeline';
 import type { AppProbeResult, Asset, ProjectManifest, WorkspaceId } from '@shared/types';
@@ -126,8 +126,6 @@ export function App() {
     window.addEventListener(PLANNER_BUSY_EVENT, on);
     return () => window.removeEventListener(PLANNER_BUSY_EVENT, on);
   }, []);
-  const [navMode, setNavModeState] = useState<NavMode>(() => parseNavMode(read('cs-nav-mode')));
-  const setNavMode = useCallback((m: NavMode) => { write('cs-nav-mode', m); setNavModeState(m); }, []);
   const [manifest, setManifest] = useState<ProjectManifest | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [apps, setApps] = useState<AppProbeResult[]>([]);
@@ -272,8 +270,6 @@ export function App() {
         onProjectHome={() => setWorkspace('home')}
         workspace={workspace}
         onWorkspace={go}
-        navMode={navMode}
-        onNavMode={setNavMode}
         apps={apps}
         integrations={integrations}
         appearance={appearance}
@@ -318,7 +314,6 @@ export function App() {
                     liveApi={liveApi}
                     onSelectAsset={setSelectedId}
                     onOpenIn={openIn}
-                    navMode={navMode}
                     editMode={editModeFor.id === selectedId ? editModeFor.mode : 'edit'}
                     onEditMode={(mode) => setEditModeFor({ mode, id: selectedId })}
                     chosenApp={chosen && chosen.assetId === selectedId ? chosen.appId : null}

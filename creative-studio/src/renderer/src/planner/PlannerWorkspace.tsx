@@ -10,7 +10,6 @@ import { ConnectPanel, PastePanel, TasksTab, WorkTab } from './PlannerWork';
 import { AskPanel } from './PlannerSend';
 import { needsYou } from '@shared/plannerView';
 import { shouldRefresh } from '@shared/plannerEvents';
-import type { NavMode } from '@shared/navigation';
 import { isPlannerTab, resolvePlannerTab } from '@shared/plannerTabs';
 import { nextAction } from '@shared/plannerNext';
 import { buildProjectView } from '@shared/projectView';
@@ -39,7 +38,7 @@ const ago = (iso: string) => {
 };
 
 /** OmniTown (the planner) of the open project: its plan is kept inside the project and restored when the project is opened again. */
-export function PlannerWorkspace({ manifest, projectKey, navMode }: { manifest: ProjectManifest | null; projectKey: string | null; navMode: NavMode }) {
+export function PlannerWorkspace({ manifest, projectKey }: { manifest: ProjectManifest | null; projectKey: string | null }) {
   const [state, setState] = useState<ProjectPlannerState | null>(null);
   /** An older plan (from the shared planner folder) being looked at instead of this project's plan. */
   const [olderId, setOlderId] = useState<string | null>(null);
@@ -49,7 +48,8 @@ export function PlannerWorkspace({ manifest, projectKey, navMode }: { manifest: 
   const [pickUpDismissed, setPickUpDismissed] = useState<string | null>(null);
   /** The tab last chosen for this project (it can be an Advanced-only tab; what is shown follows the mode, and this value is left alone). */
   const [savedTab, setSavedTab] = useState<TabId>('studio');
-  const advanced = navMode === 'advanced';
+  /** There is one view (OmniTown). The five-tab layout is kept in the code but not shown. */
+  const advanced = false as boolean;
   const tab = resolvePlannerTab(savedTab, advanced) as TabId;
   /** Which project this window is showing: its manifest id, so a half-switched project never lends its saved tab to another. */
   const pid = manifest?.id ?? projectKey ?? null;
