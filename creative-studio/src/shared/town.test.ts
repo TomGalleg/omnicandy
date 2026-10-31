@@ -118,6 +118,20 @@ describe('a worker understands its job', () => {
   });
 });
 
+describe('a specialist for each program', () => {
+  it('uses the program\'s own name and gives the specialist a real job, and does not hire twice', () => {
+    const t = defaultTown(NOW, rnd);
+    const changes = suggestTeamFromPlan(t, [{ id: 'c:\\apps\\resolve.exe', note: '', label: 'DaVinci Resolve' }]);
+    expect(changes[0]).toMatchObject({ op: 'add_business', name: 'DaVinci Resolve Studio' });
+    expect(changes[1]).toMatchObject({ op: 'add_agent', name: 'DaVinci Resolve Specialist', businessId: '@last' });
+    expect((changes[1] as { job?: string }).job).toContain('Uses DaVinci Resolve to do the tasks that need it');
+    const withBlurb = suggestTeamFromPlan(t, [{ id: 'craft:photocraft', note: '', label: 'PhotoCraft', blurb: 'Photo and raster editing.' }]);
+    expect((withBlurb[1] as { job?: string }).job).toContain('Uses PhotoCraft (photo and raster editing) to do the tasks that need it');
+    const applied = applyTeamChanges(t, changes, NOW, rnd);
+    expect(suggestTeamFromPlan(applied, [{ id: 'resolve', note: '', label: 'DaVinci Resolve' }])).toEqual([]);
+  });
+});
+
 describe('suggestions from the coordinator', () => {
   it('proposes one studio and one specialist per kind of work named in the plan, for any application, and never twice', () => {
     const t = defaultTown(NOW, rnd);

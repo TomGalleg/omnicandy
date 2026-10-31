@@ -20,6 +20,8 @@ import { PlannerService, userCtx } from './service';
 import { agentSystemPrompt } from '@shared/town';
 import { generalManagerPrompt } from '@shared/generalManager';
 import { aiModelsLines, wantsAiModels, type ProviderReady } from '@shared/aiModelsBriefing';
+import { teamProgressLines } from '@shared/teamProgress';
+import { loadQueue } from '../teamAccess/buildRunner';
 import { recentChangeLines } from '@shared/townNews';
 import { createTownMethods } from './townMethods';
 import { createViewMethods } from './viewMethods';
@@ -182,6 +184,10 @@ export function registerPlannerIpc(d: Deps): void {
           system = [system, '', ...aiModelsLines(ready, agent.director)].join(String.fromCharCode(10));
         }
       }
+      // Everyone, the General Manager too, is told the order the work is being done in, who has which task, and what is finished (never guessed: from the plan and the build queue).
+      const root = (await d.project().catch(() => null))?.root;
+      const progress = teamProgressLines(plan, root ? await loadQueue(root).catch(() => null) : null);
+      if (progress.length) system = [system, '', ...progress].join(String.fromCharCode(10));
       return needChat().reply({ system, provider: r.provider, model: r.model, messages: r.messages });
     },
     connectionInfo: async () => { await sync(); return connectionInfo(d.store.projectRoot ?? d.dir); },

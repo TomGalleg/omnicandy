@@ -3,6 +3,7 @@ import type { DirectorOutcome } from '@shared/directorToolbox';
 import { TOOLBOXES } from '@shared/directorToolbox';
 import type { ActivityEntry } from '@shared/teamAccess';
 import type { DirectorKey } from '@shared/town';
+import { LIBRARY_CHANGED } from './DirectorPictures';
 import { errMsg, type TabProps } from './plannerUi';
 
 const api = () => window.studio;
@@ -28,7 +29,7 @@ export function DirectorWork({ p, director, name, reload }: Pick<TabProps, 'p' |
   const todo = p.tasks.filter((t) => t.status === 'todo' && !t.claim && (t.assignee ?? 'general-manager') === director);
   const start = async (taskId: string) => {
     setRunning(taskId); setError(null); setOutcome(null);
-    try { setOutcome(await api().director.run({ director, taskId, provider })); await reload(); } catch (e) { setError(errMsg(e)); } finally { setRunning(null); }
+    try { setOutcome(await api().director.run({ director, taskId, provider })); await reload(); } catch (e) { setError(errMsg(e)); } finally { setRunning(null); window.dispatchEvent(new Event(LIBRARY_CHANGED)); }
   };
 
   return (

@@ -1,5 +1,10 @@
 import { BuildStrip } from './BuildStrip';
+import { DirectorPictures } from './DirectorPictures';
 import { DirectorWork } from './DirectorWork';
+import type { Asset } from '@shared/types';
+import { suggestTeamFromPlan } from '@shared/town';
+import { EDITOR_APPS } from '@shared/appEditors';
+import { wantsAiModels } from '@shared/aiModelsBriefing';
 import { TeamAccess } from './TeamAccess';
 import { useEffect, useMemo, useState } from 'react';
 import { PlannerChat } from './PlannerChat';
@@ -100,10 +105,27 @@ export function TownTab(props: TabProps) {
   const [tasksFor, setTasksFor] = useState<string | null>(null);
   /** The office whose Team access window is open (what the director may do, and the button to let them do a task). */
   const [accessFor, setAccessFor] = useState<string | null>(null);
+  /** The office whose AI pictures window is open, and the picture the owner chose to talk about (kept until they clear it). */
+  const [picturesFor, setPicturesFor] = useState<string | null>(null);
+  const [talkPicture, setTalkPicture] = useState<Asset | null>(null);
   /** What was said in the open office, for the list beside it. */
   const [officeMsgs, setOfficeMsgs] = useState<ChatMessage[]>([]);
   /** The main worker whose office is open (full screen), or null for the map. */
   const [office, setOffice] = useState<string | null>(null);
+  /** Programs installed on this computer, found when the Software Director's office opens (a local look, no AI). */
+  const [installed, setInstalled] = useState<Array<{ key: string; name: string }>>([]);
+  // OmniCandy's own Craft apps are always there; the programs found on this computer come after. A specialist is offered for every one, by the program's own name.
+  const programs = useMemo(() => {
+    const craft = Object.values(EDITOR_APPS).map((a) => ({ key: `craft:${a.id}`, name: a.name, blurb: a.blurb }));
+    return [...craft, ...installed.filter((x) => !craft.some((c) => c.name.toLowerCase() === x.name.toLowerCase())).map((x) => ({ ...x, blurb: '' }))];
+  }, [installed]);
+  const inSoftware = !!office && town?.agents.find((a) => a.id === office)?.director === 'software-director';
+  useEffect(() => {
+    if (!inSoftware) return;
+    let live = true;
+    void window.studio.external.list().then(async (l) => (l.length ? l : (await window.studio.external.scan()).apps)).then((apps) => { if (live) setInstalled(apps.filter((a) => a.status === 'connected' || a.status === 'available').map((a) => ({ key: a.key, name: a.name }))); }).catch(() => undefined);
+    return () => { live = false; };
+  }, [inSoftware]);
   /** Inside the Town Hall (full screen), where meetings are held. */
   const [inHall, setInHall] = useState(false);
   /** The Town Hall was opened by "Plan new project": its box asks what to make, instead of what to work out. */
@@ -158,6 +180,17 @@ export function TownTab(props: TabProps) {
     const names = q.order.map((id) => p.tasks.find((t) => t.id === id)?.title).filter(Boolean);
     await reload();
     return `Right, we are on it. ${production ? 'The Production Director' : 'I'} put it in this order: ${names.map((n, i) => `${i + 1}. ${n}`).join('; ')}. ${why} Each director takes their task in turn, and I will flag you if anyone needs you.`;
+  };
+  /** The programs on this computer that have no specialist yet: the Software Director offers to hire one for each. */
+  const unstaffed = town ? suggestTeamFromPlan(town, programs.map((p) => ({ id: p.key, note: '', label: p.name, blurb: p.blurb }))).filter((c) => c.op === 'add_agent').map((c) => (c as { name: string }).name.replace(/ Specialist$/, '')) : [];
+  /** Hires a specialist (with a studio of their own) for each of those programs, because the owner said yes. */
+  const hireSpecialists = async (names: string[]): Promise<string> => {
+    if (!town) return 'The team is not ready yet. Try again in a moment.';
+    const changes = suggestTeamFromPlan(town, programs.filter((p) => names.includes(p.name)).map((p) => ({ id: p.key, note: '', label: p.name, blurb: p.blurb })));
+    if (changes.length === 0) return 'Every program I can see already has a specialist.';
+    setTown(await api().townApply(p.id, changes));
+    const hired = changes.filter((c) => c.op === 'add_agent').map((c) => (c as { name: string }).name);
+    return `Done. I hired ${hired.length === 1 ? hired[0] : `${hired.length} specialists: ${hired.join(', ')}`}. ${hired.length === 1 ? 'They have' : 'Each has'} a studio on the map and will do the tasks that use their program.`;
   };
   const run = async <T,>(fn: () => Promise<T>): Promise<T | undefined> => {
     setBusy(true); setError(null);
@@ -218,9 +251,16 @@ export function TownTab(props: TabProps) {
               {/* The desk, drawn again on top of him, so he sits behind it instead of being cut off. */}
               <img className="tw-desk-front" src={INTERIORS[inOffice.director]} alt="" aria-hidden style={{ clipPath: CAST[inOffice.director]!.desk }} />
             </>}
-            <button className="btn small tw-back" onClick={() => { setOffice(null); setPick(null); setOfficeMsgs([]); setTasksFor(null); setAccessFor(null); }}>← Back to the town</button>
-            {inOffice.director && <button className="btn small tw-access-btn" aria-expanded={accessFor === inOffice.id} onClick={() => { setAccessFor((cur) => (cur === inOffice.id ? null : inOffice.id)); setTasksFor(null); }}>Team access</button>}
-            {inOffice.director && <OfficeChat key={inOffice.id} agent={inOffice} seat={CAST[inOffice.director]?.seat ?? { left: 50, top: 30, width: 5 }} p={p} reload={reload} onOpenPlan={() => { setShowPlan(true); setOffice(null); setInHall(false); }} onBuild={startBuild} onMessages={setOfficeMsgs} taskCount={officeTasks(inOffice).length} waitingCount={officeWaiting(inOffice)} onTasks={() => setTasksFor((cur) => (cur === inOffice.id ? null : inOffice.id))} />}
+            <button className="btn small tw-back" onClick={() => { setOffice(null); setPick(null); setOfficeMsgs([]); setTasksFor(null); setAccessFor(null); setPicturesFor(null); }}>← Back to the town</button>
+            {inOffice.director && wantsAiModels(inOffice.director) && <button className="btn small tw-pictures-btn" aria-expanded={picturesFor === inOffice.id} onClick={() => { setPicturesFor((cur) => (cur === inOffice.id ? null : inOffice.id)); setAccessFor(null); setTasksFor(null); }}>AI pictures</button>}
+            {inOffice.director && <button className="btn small tw-access-btn" aria-expanded={accessFor === inOffice.id} onClick={() => { setAccessFor((cur) => (cur === inOffice.id ? null : inOffice.id)); setTasksFor(null); setPicturesFor(null); }}>Team access</button>}
+            {inOffice.director && <OfficeChat key={inOffice.id} agent={inOffice} seat={CAST[inOffice.director]?.seat ?? { left: 50, top: 30, width: 5 }} p={p} reload={reload} onOpenPlan={() => { setShowPlan(true); setOffice(null); setInHall(false); }} onBuild={startBuild} hireOffer={inOffice.director === 'software-director' ? { programs: unstaffed } : undefined} onHire={hireSpecialists} picture={wantsAiModels(inOffice.director) ? talkPicture : null} onClearPicture={() => setTalkPicture(null)} onMessages={setOfficeMsgs} taskCount={officeTasks(inOffice).length} waitingCount={officeWaiting(inOffice)} onTasks={() => setTasksFor((cur) => (cur === inOffice.id ? null : inOffice.id))} />}
+            {inOffice.director && picturesFor === inOffice.id && (
+              <div className="tw-office-tasks" role="dialog" aria-label={`${inOffice.name}'s AI pictures`}>
+                <header><strong>AI pictures</strong><button className="btn small" onClick={() => setPicturesFor(null)}>Close</button></header>
+                <DirectorPictures name={inOffice.name} onTalk={(a) => { setTalkPicture(a); setPicturesFor(null); }} />
+              </div>
+            )}
             {inOffice.director && accessFor === inOffice.id && (
               <div className="tw-office-tasks" role="dialog" aria-label={`${inOffice.name}'s team access`}>
                 <header><strong>{inOffice.name}: what they may do</strong><button className="btn small" onClick={() => setAccessFor(null)}>Close</button></header>

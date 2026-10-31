@@ -291,7 +291,7 @@ export function applyTeamChanges(state: TownState, changesIn: TeamChange[], now:
 }
 
 /** One worker per distinct kind of work named in the plan (an application id on a task), without naming any application here. */
-export function suggestTeamFromPlan(town: TownState, resourceHints: ReadonlyArray<{ id: string; note: string }>): TeamChange[] {
+export function suggestTeamFromPlan(town: TownState, resourceHints: ReadonlyArray<{ id: string; note: string; /** The name to use, when the id would not read well ("DaVinci Resolve"). */ label?: string; /** What the program is for, in a few words ("Photo and raster editing"). Goes into the specialist's job. */ blurb?: string }>): TeamChange[] {
   const taken = new Set(town.businesses.map((b) => b.name.toLowerCase()));
   const seen = new Set<string>();
   const out: TeamChange[] = [];
@@ -299,11 +299,11 @@ export function suggestTeamFromPlan(town: TownState, resourceHints: ReadonlyArra
     const key = h.id.trim().toLowerCase();
     if (!key || seen.has(key)) continue;
     seen.add(key);
-    const label = key.split(/[.:/\\ _-]+/).filter(Boolean).map((w) => w[0]!.toUpperCase() + w.slice(1)).join(' ') || key;
+    const label = h.label?.trim() || key.split(/[.:/\\ _-]+/).filter(Boolean).map((w) => w[0]!.toUpperCase() + w.slice(1)).join(' ') || key;
     const biz = `${label} Studio`.slice(0, TOWN_LIMITS.name);
     if (taken.has(biz.toLowerCase())) continue;
     out.push({ op: 'add_business', name: biz, trade: `Work that uses ${label}` });
-    out.push({ op: 'add_agent', name: `${label} Specialist`.slice(0, TOWN_LIMITS.name), specialty: `Does the tasks that use ${label}`, businessId: '@last' });
+    out.push({ op: 'add_agent', name: `${label} Specialist`.slice(0, TOWN_LIMITS.name), specialty: `Does the tasks that use ${label}`, job: `Uses ${label}${h.blurb ? ` (${h.blurb.trim().replace(/\.$/, '').toLowerCase()})` : ''} to do the tasks that need it. Knows what ${label} can do and what it needs, and says plainly what was really made or changed.`.slice(0, 400), businessId: '@last' });
   }
   return out;
 }

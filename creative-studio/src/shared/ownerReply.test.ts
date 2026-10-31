@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isNo, isYes, wantsBuild } from './ownerReply';
+import { isNo, isYes, wantsBuild, wantsHire } from './ownerReply';
 
 describe('a plain yes', () => {
   it('is recognised in the ways people say it', () => {
@@ -14,6 +14,13 @@ describe('a plain no', () => {
   it('is recognised, and a yes is not a no', () => {
     for (const t of ['no', 'nope', 'no thanks', 'not now', 'skip', 'nah', 'never mind']) expect(isNo(t), t).toBe(true);
     for (const t of ['yes', 'no, make it red instead please do', 'what?', 'not sure about that one']) expect(isNo(t), t).toBe(false);
+  });
+});
+
+describe('hiring specialists', () => {
+  it('is recognised in a few words, and not in a question or a long message', () => {
+    for (const t of ['hire a specialist for each', 'Hire specialists', 'please hire a specialist for each program', 'get a specialist for every program']) expect(wantsHire(t), t).toBe(true);
+    for (const t of ['should I hire a specialist?', 'what does a specialist do', 'yes', 'hire the best specialist you can find for the whole of this entire large project please now']) expect(wantsHire(t), t).toBe(false);
   });
 });
 

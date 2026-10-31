@@ -99,6 +99,7 @@ import { chooseEngine, toolboxFor, type DirectorOutcome, type DirectorRunRequest
 import { defaultOrder, isOpen, respectDependencies, type BuildQueue } from '@shared/buildQueue';
 import { BuildRunner, loadQueue, saveQueue } from './teamAccess/buildRunner';
 import { applyChange, buildView } from '@shared/teamAccessView';
+import { teamProgressLines } from '@shared/teamProgress';
 import { directorWorkerId } from './teamAccess/directorRun';
 import { DIRECTORS } from '@shared/town';
 import { BuilderService } from './integrations/builder/service';
@@ -1686,6 +1687,7 @@ export function registerIpc(d: IpcDeps): void {
           const m = await store.loadManifest();
           return Promise.all(m.assets.map(async (a) => { try { return { name: a.name, exists: true, bytes: (await fs.stat(await store.resolveAssetPath(a.id))).size }; } catch { return { name: a.name, exists: false, bytes: 0 }; } }));
         },
+        progress: async () => teamProgressLines(await planner.service.getProject(userCtx(), plan.id), await loadQueue(store.root)),
         begin: async (task) => {
           const pkg = await planner.service.createPackage(userCtx(), plan.id, { taskIds: [task.id], objective: task.title });
           const got = await rpc('claim_task', { projectId: plan.id, packageId: pkg.id, taskId: task.id, note: 'Started from OmniTown' });

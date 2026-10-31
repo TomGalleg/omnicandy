@@ -24,6 +24,15 @@ export function isNo(text: string): boolean {
   return w.every((x) => NO.has(x)) && w.some((x) => ['no', 'nope', 'nah', 'skip', 'never', 'later'].includes(x) || (w.includes('not') && w.includes('now')));
 }
 
+/** True when the owner asks, in a few words, for a specialist per program ("hire a specialist for each", "hire specialists"). */
+export function wantsHire(text: string): boolean {
+  if (text.includes('?')) return false;
+  const w = words(text);
+  if (w.length === 0 || w.length > 12) return false;
+  const t = w.join(' ');
+  return /\b(hire|get|add|bring in)\b.*\bspecialists?\b/.test(t);
+}
+
 const BUILD = [
   /^(lets|let's|ok|okay|alright|right|now|so|please)?\s*(lets|let's)?\s*(build|start|begin|make)\s+(this|it|everything|the project|the whole thing)$/,
   /^(lets|let's|ok|okay|alright|now|please)?\s*(start|begin)\s+(building|working|the build)$/,

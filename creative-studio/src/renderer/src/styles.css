@@ -1073,3 +1073,12 @@ span.tw-portrait { display: grid; place-items: center; }
 .tw-build { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 12px; padding: 8px 12px; margin: 6px 0; border-radius: 10px; border: 1px solid var(--border); background: var(--surface); }
 .tw-build-waiting { border-color: #d9a441; background: color-mix(in srgb, #d9a441 14%, var(--surface)); }
 .tw-build-done { border-color: #4caf7a; }
+.tw-pictures-btn { position: absolute; left: 280px; top: 12px; }
+.tw-pic-main { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 12px; align-items: start; }
+.tw-pic-main img { width: 100%; max-height: 32vh; object-fit: contain; border-radius: 8px; background: color-mix(in srgb, var(--text, #000) 8%, transparent); }
+.tw-pic-info { display: grid; gap: 6px; }
+.tw-pic-strip { display: flex; gap: 6px; flex-wrap: wrap; list-style: none; padding: 0; margin: 10px 0 0; }
+.tw-pic-strip button { padding: 0; border: 2px solid transparent; border-radius: 6px; background: none; cursor: pointer; }
+.tw-pic-strip button.on { border-color: var(--accent, #6b5bd2); }
+.tw-pic-strip img { width: 64px; height: 64px; object-fit: cover; border-radius: 4px; display: block; }
+.tw-talking-about { margin: 0 0 4px; font-size: 12px; display: flex; align-items: center; gap: 6px; }

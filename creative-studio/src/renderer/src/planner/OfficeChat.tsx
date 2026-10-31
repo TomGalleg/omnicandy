@@ -2,7 +2,9 @@ import { useEffect, useRef, useState } from 'react';
 import type { PlannerProject } from '@shared/planner';
 import { chunkPlan, isReady, MAKE_PLAN_REQUEST, withoutMarker, type ChatMessage, type ChatMode } from '@shared/plannerChat';
 import type { TownAgent } from '@shared/town';
-import { isNo, isYes, wantsBuild } from '@shared/ownerReply';
+import { pictureContext } from '@shared/aiModelsBriefing';
+import { isNo, isYes, wantsBuild, wantsHire } from '@shared/ownerReply';
+import type { Asset } from '@shared/types';
 import { parseTaskLines, TASK_NOTE } from '@shared/townMeeting';
 import { plain } from './HallPeople';
 import { AiPicker, useAiSettings, useTaskAdder } from './meetingKit';
@@ -20,8 +22,11 @@ const api = () => window.studio.planner;
  * The General Manager's office does everything the Studio chat does: they talk the idea through, say when they understand ("Ready to start building?"), and
  * on "Yes, make the plan" give the tasks as a list to show on the canvas. Every other director recommends a task or two with an Add task button.
  */
-export function OfficeChat({ agent, seat, p, reload, onMessages, taskCount = 0, waitingCount = 0, onTasks, onOpenPlan, onBuild, variant = 'room' }: { agent: TownAgent; seat?: CastMember['seat']; p: PlannerProject; reload: () => Promise<void>; onMessages: (m: ChatMessage[]) => void; /** This director's open tasks, and how many have a result waiting for the owner. */ taskCount?: number; waitingCount?: number; onTasks?: () => void; onOpenPlan: () => void;
+export function OfficeChat({ agent, seat, p, reload, onMessages, taskCount = 0, waitingCount = 0, onTasks, onOpenPlan, onBuild, picture, onClearPicture, hireOffer, onHire, variant = 'room' }: { agent: TownAgent; seat?: CastMember['seat']; p: PlannerProject; reload: () => Promise<void>; onMessages: (m: ChatMessage[]) => void; /** This director's open tasks, and how many have a result waiting for the owner. */ taskCount?: number; waitingCount?: number; onTasks?: () => void; onOpenPlan: () => void;
   /** "Let's build this": starts the build and answers in the director's voice. `ai` is the AI chosen under the chat, or null when none is ready. */ onBuild?: (ai: { provider: 'claude' | 'openai' | 'gemini'; model: string } | null) => Promise<string>;
+  /** The AI picture the owner is looking at and wants to talk about: the director is told how it was made with each message, until it is cleared. */ picture?: Asset | null; onClearPicture?: () => void;
+  /** Programs installed on this computer that have no specialist yet (the Software Director offers to hire one for each), and the way to do it once the owner says yes. */
+  hireOffer?: { programs: string[] }; onHire?: (programs: string[]) => Promise<string>;
   /** `room`: laid over the picture of the office. `panel`: a compact box in the side panel beside the town map, for talking with the General Manager without going anywhere. */ variant?: 'room' | 'panel' }) {
   const planId = p.id;
   const isGm = agent.director === 'general-manager';
@@ -31,6 +36,9 @@ export function OfficeChat({ agent, seat, p, reload, onMessages, taskCount = 0, 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showSettings, setShowSettings] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+  /** Programs the director has offered to hire a specialist for; a plain yes does it. */
+  const [pendingHire, setPendingHire] = useState<string[] | null>(null);
   const stop = useRef(false); const alive = useRef(true); const round = useRef(0);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const ai = useAiSettings(setError);
@@ -45,9 +53,18 @@ export function OfficeChat({ agent, seat, p, reload, onMessages, taskCount = 0, 
       setMessages(c.messages); onMessages(c.messages);
       const last = [...c.messages].reverse().find((m) => m.role === 'assistant');
       if (last) setBubble({ text: last.text, tasks: [] });
-    }).catch(() => {});
+      setLoaded(true);
+    }).catch(() => { if (live) setLoaded(true); });
     return () => { live = false; };
   }, [planId, agent.id, isGm]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // The Software Director knows what is installed: with programs that have no specialist yet, they offer to hire one for each (free: no AI is asked), and a yes does it.
+  const hireKey = hireOffer?.programs.join('|') ?? '';
+  useEffect(() => {
+    if (!loaded || !hireOffer?.programs.length) { setPendingHire(null); return; }
+    setPendingHire(hireOffer.programs);
+    setBubble({ text: `${hireOffer.programs.length === 1 ? 'One program' : `${hireOffer.programs.length} programs`} here ${hireOffer.programs.length === 1 ? 'has' : 'have'} no specialist yet: ${hireOffer.programs.join(', ')}. Want me to hire one specialist for ${hireOffer.programs.length === 1 ? 'it' : 'each'}? Just say yes.`, tasks: [] });
+  }, [loaded, hireKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /** An answer the director gives without asking an AI (a plain yes, or the build starting): kept in the conversation like any other. */
   const answerLocally = (said: string, replyText: string, tasks: string[] = []) => {
@@ -70,7 +87,7 @@ export function OfficeChat({ agent, seat, p, reload, onMessages, taskCount = 0, 
     void api().chatAppend(planId, { messages: [mine], provider: ai.provider, model: ai.model, ...who }).catch(() => {});
     try {
       // The task hint goes with this request only, and not to the General Manager (they plan with the whole list instead); it is not kept in the conversation.
-      const asked = [...messages.slice(-22), { role: 'user' as const, text: (isGm ? mine.text : `${mine.text}\n\n${TASK_NOTE.trim()}`).slice(0, 6000) }];
+      const asked = [...messages.slice(-22), { role: 'user' as const, text: (`${mine.text}${picture ? `\n\n${pictureContext(picture)}` : ''}${isGm ? '' : `\n\n${TASK_NOTE.trim()}`}`).slice(0, 6000) }];
       const reply = (await api().chat({ projectId: planId, provider: ai.provider, model: ai.model, agentId: agent.id, messages: asked, ...(mode === 'chunks' ? { mode } : {}) })).text.trim();
       if (!alive.current || stop.current || r !== round.current) return;
       const parsed = isGm ? { text: reply, tasks: [] as string[] } : parseTaskLines(reply);
@@ -82,6 +99,13 @@ export function OfficeChat({ agent, seat, p, reload, onMessages, taskCount = 0, 
   };
   const send = () => {
     const t = draft.trim(); if (!t || busy) return;
+    // Hiring a specialist for each installed program: a plain yes to the offer (or asking for it) does it, and a no leaves the team as it is.
+    if (pendingHire && onHire && (isYes(t) || wantsHire(t))) {
+      setDraft(''); setBusy(true); setError(null);
+      void onHire(pendingHire).then((said) => { if (alive.current) { setPendingHire(null); answerLocally(t, said); } }).catch((e) => { if (alive.current) setError(errMsg(e)); }).finally(() => { if (alive.current) setBusy(false); });
+      return;
+    }
+    if (pendingHire && isNo(t)) { setDraft(''); setPendingHire(null); answerLocally(t, 'Okay, I will leave the team as it is. Tell me if you want specialists later.'); return; }
     // A plain yes to something just offered needs no AI: the offered tasks go on this director's list, and they carry on.
     const offered = bubble?.tasks.filter((x) => !adder.added.has(x)) ?? [];
     if (offered.length && isYes(t)) {
@@ -145,6 +169,7 @@ export function OfficeChat({ agent, seat, p, reload, onMessages, taskCount = 0, 
   );
   const input = (
     <div className={variant === 'panel' ? 'tw-mchat-input' : 'tw-hall-input'}>
+      {picture && <p className="tw-talking-about" role="status">Talking about <strong>{picture.name}</strong>{onClearPicture && <button className="btn small ghost" onClick={onClearPicture} aria-label="Stop talking about this picture">✕</button>}</p>}
       <textarea ref={inputRef} aria-label={`Say something to ${agent.name}`} rows={2} value={draft} placeholder={`Say something to ${agent.name}…`} disabled={busy}
         onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } }} />
       {busy

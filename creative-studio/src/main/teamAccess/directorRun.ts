@@ -17,6 +17,8 @@ export interface DirectorRunDeps {
   log?: (e: ActivityEntry) => void | Promise<void>;
   /** Names of the files in the project library right now, and whether each exists (read from the project itself, not from the AI). */
   library: () => Promise<MadeFile[]>;
+  /** What the rest of the team has done and the order of the work, as lines for the briefing. */
+  progress?: () => Promise<string[]>;
   /** Before anything starts: takes the task in the plan, so nobody else does it. If this throws, nothing runs. */
   begin?: (task: DirectorTask) => Promise<void>;
   /** Puts the outcome in the plan as a report that needs review. */
@@ -27,13 +29,14 @@ export interface DirectorRunDeps {
 export const directorWorkerId = (key: DirectorKey) => `director:${key}`;
 
 /** What the AI is told: its job, the task, and the rules it works under. Plain words; the rules are enforced by the guard whatever this says. */
-export function briefing(key: DirectorKey, task: DirectorTask): string {
+export function briefing(key: DirectorKey, task: DirectorTask, progress: readonly string[] = []): string {
   const d = DIRECTORS.find((x) => x.key === key)!;
   const tb = toolboxFor(key);
   return [
     `You are the ${d.title} in the owner's OmniTown. ${d.job}`,
     `Your tools: ${tb.does}`,
     `Your task: ${task.title}${task.detail ? `\n${task.detail}` : ''}`,
+    ...(progress.length ? [progress.join('\n')] : []),
     'To make pictures, first call list_image_models to see which AI makers can run right now, choose from that list, and tell the owner which one you chose and why.',
     ...(tb.aiVia ? [`Anything that uses AI goes through the ${DIRECTORS.find((x) => x.key === tb.aiVia)?.title ?? 'AI Director'}: it is approved, limited and recorded under their access, and if they are switched off no AI work can run.`] : []),
     'Work only on this task. Some actions ask the owner first; if they say no, accept it and say so. If a tool is refused, do not look for a way round it.',
@@ -68,7 +71,7 @@ export async function runDirector(deps: DirectorRunDeps, key: DirectorKey, task:
   });
 
   let said = ''; let failed: string | null = null;
-  try { said = (await deps.engine.run({ prompt: briefing(key, task), guard, stop: abort.signal })).text; }
+  try { said = (await deps.engine.run({ prompt: briefing(key, task, deps.progress ? await deps.progress().catch(() => []) : []), guard, stop: abort.signal })).text; }
   catch (e) { failed = e instanceof Error ? e.message : String(e); }
   finally { stop.removeEventListener('abort', onStop); }
 
