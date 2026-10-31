@@ -1,0 +1,62 @@
+# Builds the Windows installer (OmniCandy-Setup-<version>.exe) and attaches it, with its SHA-256, to a DRAFT GitHub release.
+#
+#   Release:  git tag v0.1.0 && git push origin v0.1.0     (or run "Release Windows installer" from the Actions tab)
+#   Test run: Actions tab > Release Windows installer > Run workflow  (builds and uploads the file as a build artifact only)
+#
+# No secrets are needed: the bundled connectors are committed already signed with the release key, and `npm run dist` only
+# verifies them (scripts/release-check.mjs). The installer itself is not code-signed (see docs/release-signing.md).
+name: Release Windows installer
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: creative-studio
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: creative-studio/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build the installer (includes the release check)
+        run: npm run dist
+
+      - name: Checksum
+        run: |
+          cd release
+          sha256sum OmniCandy-Setup-*.exe | tee SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: OmniCandy-Windows
+          path: |
+            creative-studio/release/OmniCandy-Setup-*.exe
+            creative-studio/release/SHA256SUMS.txt
+          if-no-files-found: error
+
+      - name: Create draft release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ github.ref_name }}" \
+            release/OmniCandy-Setup-*.exe release/SHA256SUMS.txt \
+            --draft --prerelease \
+            --title "OmniCandy ${{ github.ref_name }}" \
+            --notes "Windows installer. The installer is not code-signed, so Windows SmartScreen will warn: choose More info, then Run anyway. Verify the download against SHA256SUMS.txt. The Craft apps are separate downloads."
