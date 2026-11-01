@@ -40,12 +40,13 @@ describe('bundled resources', () => {
     expect(inst.publishersFile).toBe(path.join('C:\\Program Files\\OmniCandy\\resources', 'trust', 'release-publishers.json'));
   });
 
-  it('reads only well-formed fingerprints from the release list; the shipped list is empty', async () => {
+  it('reads only well-formed fingerprints from the release list; the shipped list is the official release key only', async () => {
     const f = path.join(tmp, 'pub.json');
     await fs.writeFile(f, JSON.stringify({ publishers: [{ fingerprint: 'e970 10fe 35fe 418c bdeb 5a19 79dc c0ec' }, { fingerprint: 'not a fingerprint' }, { name: 'x' }] }));
     expect(loadBundledPublishers(f)).toEqual(['E970 10FE 35FE 418C BDEB 5A19 79DC C0EC']);
     expect(loadBundledPublishers(path.join(tmp, 'missing.json'))).toEqual([]);
-    expect(loadBundledPublishers(path.resolve(__dirname, '../../../resources/trust/release-publishers.json'))).toEqual([]);
+    // The shipped list holds the official release key only, never the development key.
+    expect(loadBundledPublishers(path.resolve(__dirname, '../../../resources/trust/release-publishers.json'))).toEqual(['92E7 146E DC51 5A56 3FFF 6DE2 EA36 5223']);
   });
 
   it('the connector committed under resources/adapters is built from source, signed, and verifies', async () => {

@@ -89,6 +89,24 @@ export function SoftwareWorkspace({ apps }: { apps: AppProbeResult[] }) {
       {msg && <div className={`wf-msg${msg.error ? ' error' : ''}`} role={msg.error ? 'alert' : 'status'}>{msg.text}</div>}
 
       <div className="field">
+        <span className="menu-label">AI assistants · open them yourself, no API key needed</span>
+        <ul className="software-list">
+          {([
+            { id: 'claude', name: 'Claude Cowork', blurb: 'Starts the Claude app installed on this PC. Choose the Cowork tab in it.', button: 'Open Claude app' },
+            { id: 'chatgpt', name: 'ChatGPT', blurb: 'Opens chatgpt.com in your browser.', button: 'Open ChatGPT' },
+            { id: 'gemini', name: 'Google Gemini', blurb: 'Opens gemini.google.com in your browser.', button: 'Open Gemini' },
+          ] as const).map((t) => (
+            <li key={t.id} className="software-row" aria-label={t.name}>
+              <div className="software-info"><strong>{t.name}</strong><small>{t.blurb}</small></div>
+              <div className="software-actions">
+                <button className="btn small primary" onClick={() => { setMsg(null); void window.studio.openAiTool(t.id).then((text) => setMsg({ text })).catch((e: unknown) => setMsg({ text: plain(e), error: true })); }}>{t.button}</button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      <div className="field">
         <span className="menu-label">ArtCraft apps · {installed} of {Object.keys(EDITOR_APPS).length} installed</span>
         <ul className="software-list">
           {Object.values(EDITOR_APPS).slice().sort((x, y) => Number(!!probe(y.id)?.installed) - Number(!!probe(x.id)?.installed)).map((app) => {

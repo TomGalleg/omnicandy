@@ -246,6 +246,7 @@ export const IPC = {
   deliverEvent: 'deliver:event',
   probeApps: 'apps:probe',
   launchApp: 'apps:launch',
+  openAiTool: 'apps:open-ai-tool',
   integrationStatus: 'integrations:status',
 } as const;
 
@@ -671,6 +672,8 @@ export interface StudioApi {
   /** Starts an installed ArtCraft app on its own (no file). */
   /** Starts an installed ArtCraft app. With inOmniCandy its window is docked into the Software tab (Windows); otherwise it opens by itself. */
   launchApp(appId: string, inOmniCandy?: boolean): Promise<void>;
+  /** Software tab shortcuts: starts the installed Claude desktop app, or opens ChatGPT / Gemini in the browser (no API key). Returns a short message. */
+  openAiTool(tool: 'claude' | 'chatgpt' | 'gemini'): Promise<string>;
   integrationStatus(): Promise<IntegrationSnapshot>;
   /** URL the renderer can use in <img src>, served read-only by main from the project root. */
   assetUrl(assetId: string): string;

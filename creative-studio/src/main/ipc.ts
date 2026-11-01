@@ -1,6 +1,6 @@
 // Narrow IPC surface. Every handler validates its arguments and checks the sender frame.
 
-import { spawn } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -1911,6 +1911,21 @@ export function registerIpc(d: IpcDeps): void {
     const child = spawn(file, [], { detached: true, stdio: 'ignore' });
     child.on('error', () => undefined);
     child.unref();
+  /** Software tab shortcuts to other AI tools. ChatGPT and Gemini are plain web links; Claude is the installed desktop app, found in the Start menu list. */
+  handle(IPC.openAiTool, z.tuple([z.enum(['claude', 'chatgpt', 'gemini'])]), async (tool) => {
+    if (tool === 'chatgpt') { await shell.openExternal('https://chatgpt.com/'); return 'Opening ChatGPT in your browser…'; }
+    if (tool === 'gemini') { await shell.openExternal('https://gemini.google.com/'); return 'Opening Gemini in your browser…'; }
+    if (process.platform !== 'win32') throw new Error('Opening the Claude desktop app from here is only set up on Windows.');
+    const appId = await new Promise<string>((resolve) => {
+      execFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', "(Get-StartApps | Where-Object { $_.Name -eq 'Claude' } | Select-Object -First 1).AppID"],
+        { windowsHide: true, timeout: 15_000 }, (_err, out) => resolve(String(out ?? '').trim()));
+    });
+    if (!/^[\w.-]+![\w.-]+$/.test(appId)) throw new Error('The Claude desktop app is not installed on this PC. Install it from claude.ai/download, then try again.');
+    const child = spawn('explorer.exe', [`shell:AppsFolder\\${appId}`], { detached: true, stdio: 'ignore' });
+    child.on('error', () => undefined);
+    child.unref();
+    return 'Opening the Claude app… choose the Cowork tab in it.';
+  });
     // "Open in OmniCandy": dock the new window into the Software tab, the same way a program opened for Claude is.
     const pid = child.pid;
     if (inOmniCandy && pid) {
