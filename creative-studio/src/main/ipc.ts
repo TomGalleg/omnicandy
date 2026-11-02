@@ -1044,7 +1044,7 @@ export function registerIpc(d: IpcDeps): void {
         return new ScriptedAuthor({ blueprint: read(process.env.CS_BUILDER_BLUEPRINT), note: 'blueprint supplied by a smoke script', ...(repairFile ? { repair: () => ({ blueprint: read(repairFile), changes: ['Applied the supplied corrected blueprint.'] }) } : {}) });
       }
       if (claude().state().signedIn === false) return { error: 'Claude is not signed in. Open the Claude panel, click "Sign in to Claude", then try again.' };
-      return new ClaudeAuthor({ model: claude().state().model, cwd: builderRoot, web: true, env: () => claudeAuth.env() });
+      return new ClaudeAuthor({ model: claude().state().model, cwd: builderRoot, web: true, env: () => claudeAuth.env(), cliPath: () => claude().findCli() });
     },
     skipDocs: !!(process.env.CS_BUILDER_BLUEPRINT && process.env.CS_USER_DATA_DIR), // smoke scripts do not download documentation
     confirm: async (title, detail, ok) => (await ask({ type: 'question', title, message: title, detail, buttons: ['Cancel', ok], defaultId: 0, cancelId: 0, noLink: true })) === 1,

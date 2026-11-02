@@ -33,7 +33,7 @@ process.on('unhandledRejection', (e) => { console.error('Unhandled rejection:', 
 // An installed copy hands over to the person's edited copy (Build panel) when it was asked for and came up last time; if the
 // edited copy does not come up, the original starts again.
 const editedDir = path.join(app.getPath('home'), 'OmniCandy Source');
-const editedProgram = app.isPackaged && !process.env.CS_USER_DATA_DIR ? editedCopyToStart(editedDir) : null;
+const editedProgram = app.isPackaged && !process.env.CS_USER_DATA_DIR ? editedCopyToStart(editedDir, app.getVersion()) : null;
 if (editedProgram) void startWithFallback(editedDir, editedProgram, { cmd: process.execPath, args: [] }).then(() => app.exit(0));
 else if (!app.requestSingleInstanceLock()) app.exit(0);
 

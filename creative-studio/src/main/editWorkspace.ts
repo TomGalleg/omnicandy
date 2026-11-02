@@ -4,7 +4,7 @@
 //   installs its dependencies. "Rebuild and restart" builds that copy and relaunches into it; if the edited copy never comes up,
 //   the original starts instead. "Restore original" puts the shipped source back.
 import { spawn } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { EMPTY_WORKSPACE, type WorkspaceState } from '@shared/buildSession';
@@ -201,10 +201,28 @@ export class EditWorkspace {
   }
 }
 
-/** At the start of an installed copy: the person's edited copy's program, if it should be started instead (it was asked for and came up last time). */
-export function editedCopyToStart(workspaceDir: string): string | null {
+/** True when version `a` is lower than `b` ("0.1.5" < "0.1.10"); an unreadable version counts as not older. */
+export function isOlderVersion(a: string, b: string): boolean {
+  const n = (v: string) => v.split('-')[0]!.split('.').map((x) => Number.parseInt(x, 10));
+  const [x, y] = [n(a), n(b)];
+  if ([...x, ...y].some(Number.isNaN)) return false;
+  for (let i = 0; i < Math.max(x.length, y.length); i++) { const d = (x[i] ?? 0) - (y[i] ?? 0); if (d) return d < 0; }
+  return false;
+}
+
+/**
+ * At the start of an installed copy: the person's edited copy's program, if it should be started instead (it was asked for and came up last time).
+ * An edited copy made from an older version is skipped once a newer one is installed: otherwise it hides every update.
+ */
+export function editedCopyToStart(workspaceDir: string, installedVersion?: string): string | null {
   const has = (...p: string[]) => existsSync(path.join(workspaceDir, ...p));
   if (!has(USE_EDITED) || !has(STARTED_OK) || !has('out', 'main', 'index.js')) return null;
+  if (installedVersion) {
+    try {
+      const v = (JSON.parse(readFileSync(path.join(workspaceDir, 'package.json'), 'utf8')) as { version?: unknown }).version;
+      if (typeof v === 'string' && isOlderVersion(v, installedVersion)) return null;
+    } catch { /* no readable version: keep the old behaviour */ }
+  }
   const electron = path.join(workspaceDir, 'node_modules', 'electron', 'dist', process.platform === 'win32' ? 'electron.exe' : 'electron');
   return existsSync(electron) ? electron : null;
 }

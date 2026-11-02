@@ -174,11 +174,13 @@ export interface ClaudeAuthorOptions {
   web?: boolean;
   /** The environment for the Claude session (the credentials chosen in Settings). Default: the Claude sign-in, with no inherited API key. */
   env?: () => Promise<Record<string, string>>;
+  /** The Claude program to start (the SDK cannot launch its own copy from inside app.asar). */
+  cliPath?: () => Promise<string | null>;
   log?: (line: string) => void;
 }
 
 /** The exact SDK request configuration (pure, so a test can check it without calling Claude). */
-export function buildQueryOptions(model: string, cwd: string, system: string, opts: { tools: string[]; maxTurns: number; schema?: Record<string, unknown> }, abort: AbortController, env: Record<string, string> = signInEnv(process.env)) {
+export function buildQueryOptions(model: string, cwd: string, system: string, opts: { tools: string[]; maxTurns: number; schema?: Record<string, unknown> }, abort: AbortController, env: Record<string, string> = signInEnv(process.env), cliPath?: string | null) {
   return {
     model, systemPrompt: system,
     // Only the listed built-in tools exist for this call (web research for the research step, none for generation); no user settings,
@@ -187,6 +189,7 @@ export function buildQueryOptions(model: string, cwd: string, system: string, op
     maxTurns: opts.maxTurns, cwd, abortController: abort,
     ...(opts.schema ? { outputFormat: { type: 'json_schema' as const, schema: opts.schema } } : {}),
     env,
+    ...(cliPath ? { pathToClaudeCodeExecutable: cliPath } : {}),
   };
 }
 
@@ -201,7 +204,7 @@ export class ClaudeAuthor implements AdapterAuthor {
     const { query } = await import('@anthropic-ai/claude-agent-sdk');
     const abort = new AbortController();
     opts.signal?.addEventListener('abort', () => abort.abort(), { once: true });
-    const q = query({ prompt, options: buildQueryOptions(this.o.model, this.o.cwd, system, opts, abort, this.o.env ? await this.o.env() : undefined) });
+    const q = query({ prompt, options: buildQueryOptions(this.o.model, this.o.cwd, system, opts, abort, this.o.env ? await this.o.env() : undefined, this.o.cliPath ? await this.o.cliPath() : undefined) });
     let text = '';
     let cost = 0;
     for await (const m of q) {

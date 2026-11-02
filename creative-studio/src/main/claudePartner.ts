@@ -244,6 +244,12 @@ export class ClaudePartner {
     return found;
   }
 
+  /** Tells the SDK which Claude program to start. Without it a packaged build looks for its own copy inside app.asar, which cannot be launched. */
+  private async cliOption(): Promise<{ pathToClaudeCodeExecutable?: string }> {
+    const cli = await this.findCli();
+    return cli ? { pathToClaudeCodeExecutable: cli } : {};
+  }
+
   private billingInfo: ClaudeState['billing'] = { mode: 'sign-in', keyReady: false, keyUnreadable: false, keyIgnored: false };
 
   /** Re-reads which credentials are in use (after the Settings card changes them) and tells the panel. */
@@ -790,7 +796,7 @@ Available AI image models: ${models.length ? models.join('; ') : 'none set up'}.
         options: {
           model: this.model, systemPrompt: PLAN_PROMPT, tools: [], allowedTools: [], permissionMode: 'dontAsk',
           settingSources: [], maxTurns: 1, cwd: await this.d.workDir(), abortController: abort,
-          env: await this.d.auth.env(),
+          env: await this.d.auth.env(), ...(await this.cliOption()),
         },
       });
       for await (const m of q) {
@@ -832,7 +838,7 @@ Available AI image models: ${models.length ? models.join('; ') : 'none set up'}.
         options: {
           model: (model as ClaudeModelId | undefined) ?? this.model, systemPrompt: system, tools: [], allowedTools: [], permissionMode: 'dontAsk',
           settingSources: [], maxTurns: 1, cwd: await this.d.workDir(), abortController: abort,
-          env: await this.d.auth.env(),
+          env: await this.d.auth.env(), ...(await this.cliOption()),
         },
       });
       let said = '';
@@ -887,7 +893,7 @@ Available AI image models: ${models.length ? models.join('; ') : 'none set up'}.
           cwd: await this.d.workDir(),
           abortController: abort,
           ...(this.sessionId ? { resume: this.sessionId } : {}),
-          env: await this.d.auth.env(),
+          env: await this.d.auth.env(), ...(await this.cliOption()),
         },
       });
       for await (const m of q) {
