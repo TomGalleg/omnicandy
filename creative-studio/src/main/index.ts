@@ -25,6 +25,10 @@ app.setName('OmniCandy');
 { const store = passwordStoreSwitch(currentOs(), process.env, process.argv); if (store) app.commandLine.appendSwitch('password-store', store); }
 app.setPath('userData', process.env.CS_USER_DATA_DIR ? path.resolve(process.env.CS_USER_DATA_DIR) : path.join(app.getPath('appData'), 'creative-studio'));
 
+// A stray error in the background (a program that would not start, a closed connection) is logged, not shown as a crash dialog.
+process.on('uncaughtException', (e) => { console.error('Uncaught exception:', e); });
+process.on('unhandledRejection', (e) => { console.error('Unhandled rejection:', e); });
+
 // One instance per profile: two processes seeding/writing the same project would race.
 // An installed copy hands over to the person's edited copy (Build panel) when it was asked for and came up last time; if the
 // edited copy does not come up, the original starts again.

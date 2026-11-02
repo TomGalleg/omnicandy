@@ -9,7 +9,7 @@ describe('Craft app locations', () => {
   it('Windows: uses the first location that really holds the app (x86, per-user), else the standard one', () => {
     const PF = 'C:\\Program Files', X86 = 'C:\\Program Files (x86)', USR = 'C:\\Users\\a\\AppData\\Local\\Programs';
     const env = { ProgramFiles: PF, 'ProgramFiles(x86)': X86, LOCALAPPDATA: 'C:\\Users\\a\\AppData\\Local' };
-    expect(craftInstallRoots('win32', env)).toEqual([PF, X86, USR]);
+    expect(craftInstallRoots('win32', env)).toEqual([PF, X86, USR, PF + '\\ArtCraft', X86 + '\\ArtCraft', USR + '\\ArtCraft']);
     expect(craftInstallDir('PhotoCraft', 'win32', env, (p) => p === X86 + '\\PhotoCraft')).toBe(X86 + '\\PhotoCraft');
     expect(craftInstallDir('PhotoCraft', 'win32', env, (p) => p === USR + '\\PhotoCraft')).toBe(USR + '\\PhotoCraft');
     expect(craftInstallDir('PhotoCraft', 'win32', env, () => false)).toBe(PF + '\\PhotoCraft');
@@ -23,7 +23,7 @@ describe('Craft app locations', () => {
     expect(craftInstallDir('PhotoCraft', 'win32', { ProgramFiles: 'C:\\Program Files' }, (p) => p === 'D:\\Apps\\PhotoCraft')).toBe('D:\\Apps\\PhotoCraft');
     saveCraftUserRoot(file, '');
     loadCraftUserRoot(file);
-    expect(craftInstallRoots('win32', { ProgramFiles: 'C:\\Program Files' })).toEqual(['C:\\Program Files']);
+    expect(craftInstallRoots('win32', { ProgramFiles: 'C:\\Program Files' })).toEqual(['C:\\Program Files', 'C:\\Program Files\\ArtCraft']);
     fs.rmSync(file, { force: true });
   });
   it('finds an app wherever Windows says it was installed, or on any drive, and survives a failing registry', async () => {
@@ -42,7 +42,17 @@ describe('Craft app locations', () => {
     expect(craftInstallDir('FilmCraft', 'win32', env, (p) => real.has(p))).toBe('C:\\Program Files\\FilmCraft');
     expect(craftSearchedPlaces('PhotoCraft', 'win32', env)).toContain('E:\\Tools\\PhotoCraft');
     await discoverCraftDirs(['PhotoCraft'], { os: 'win32', run: async () => { throw new Error('reg failed'); }, exists: async () => false, drives: [] });
-    expect(craftSearchedPlaces('PhotoCraft', 'win32', env)).toEqual(['C:\\Program Files\\PhotoCraft']);
+    expect(craftSearchedPlaces('PhotoCraft', 'win32', env)).toEqual(['C:\\Program Files\\PhotoCraft', 'C:\\Program Files\\ArtCraft\\PhotoCraft']);
+  });
+  it('finds apps installed under Program Files\\ArtCraft, even when the registry names only one of them', async () => {
+    const AC = 'C:\\Program Files\\ArtCraft';
+    const reg = `HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Craft.designcraft\r\n    InstallLocation    REG_SZ    ${AC}\\DesignCraft\\\r\n    DisplayIcon    REG_SZ    "${AC}\\DesignCraft\\designcraft.exe",0`;
+    const real = new Set(['DesignCraft', 'PhotoCraft', 'WordCraft'].map((f) => `${AC}\\${f}`));
+    const env = { ProgramFiles: 'C:\\Program Files' };
+    expect(craftInstallDir('PhotoCraft', 'win32', env, (p) => real.has(p))).toBe(`${AC}\\PhotoCraft`);
+    await discoverCraftDirs(['DesignCraft', 'PhotoCraft'], { os: 'win32', run: async () => reg, exists: async (p) => real.has(p), drives: [] });
+    expect(craftInstallDir('DesignCraft', 'win32', env, (p) => real.has(p))).toBe(`${AC}\\DesignCraft`);
+    expect(craftSearchedPlaces('PhotoCraft', 'win32', env)).toContain(`${AC}\\PhotoCraft`);
   });
   it('Windows: Program Files, honouring the environment', () => {
     expect(craftInstallRoot('win32', { ProgramFiles: 'D:\\Apps' })).toBe('D:\\Apps');

@@ -17,6 +17,7 @@ import type { AppOperation } from '@shared/contracts';
 import type { TimelineDto, TimelineEdit } from '@shared/live';
 import { McpClient } from './mcpClient';
 import { binName } from '@shared/platform';
+import { requireProgram } from './platform/craftApps';
 import { formatDiscoveredCommands, parsePlainCommandCatalog } from './commandDiscovery';
 import { commandTier } from '@shared/photocraftOps';
 
@@ -146,7 +147,9 @@ export class LivePhotoCraft implements LiveDoc {
     await fs.writeFile(tokenFile, randomBytes(32).toString('hex'), { mode: 0o600 });
     const port = await freePort();
 
-    const gui = spawn(path.join(this.o.installDir, binName('photocraft')), ['--control', String(port)], {
+    const guiExe = path.join(this.o.installDir, binName('photocraft'));
+    await requireProgram(guiExe, 'PhotoCraft');
+    const gui = spawn(guiExe, ['--control', String(port)], {
       env: {
         ...process.env,
         PHOTOCRAFT_CONTROL_TOKEN_FILE: tokenFile,
@@ -157,6 +160,7 @@ export class LivePhotoCraft implements LiveDoc {
       windowsHide: false,
     });
     this.gui = gui;
+    gui.on('error', () => undefined); // a failed start is reported by the wait below, never as an uncaught error
     if (gui.pid) this.o.onSpawn?.(gui.pid);
     gui.on('exit', () => { if (this.gui === gui) { this.gui = null; this.mcp?.close(); this.mcp = null; } });
 

@@ -18,6 +18,7 @@ import { McpClient } from './mcpClient';
 import { freePort, waitForPort, type LiveDoc } from './photocraftLive';
 import { binName } from '@shared/platform';
 import { formatDiscoveredCommands, parsePlainCommandCatalog } from './commandDiscovery';
+import { requireProgram } from './platform/craftApps';
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -72,11 +73,14 @@ abstract class LiveAppBase implements LiveDoc {
       return;
     }
     const port = await freePort();
-    const gui = spawn(path.join(this.o.installDir, binName(this.exeName)), this.guiArgs(port), {
+    const guiExe = path.join(this.o.installDir, binName(this.exeName));
+    await requireProgram(guiExe, this.appId);
+    const gui = spawn(guiExe, this.guiArgs(port), {
       env: { ...process.env, ...this.guiEnv(port) }, stdio: 'ignore', windowsHide: false,
     });
     this.gui = gui;
     if (gui.pid) this.o.onSpawn?.(gui.pid);
+    gui.on('error', () => undefined); // a failed start is reported by the wait below, never as an uncaught error
     gui.on('exit', () => { if (this.gui === gui) { this.gui = null; this.mcp?.close(); this.mcp = null; } });
     await waitForPort(port, 30_000, () => gui.exitCode !== null);
     this.mcp = await McpClient.start(path.join(this.o.installDir, binName(`${this.exeName}-cli`)), this.bridgeArgs(port));
@@ -851,7 +855,9 @@ export class LivePdfCraft extends LiveAppBase {
     if (this.o.headless) return;
     const ctlFile = path.join(this.o.writeRoot, 'pdfcraft-control.json');
     await fs.rm(ctlFile, { force: true });
-    const gui = spawn(path.join(this.o.installDir, binName('pdfcraft')), ['--control', ctlFile], { stdio: 'ignore', windowsHide: false });
+    const guiExe = path.join(this.o.installDir, binName('pdfcraft'));
+    await requireProgram(guiExe, 'PdfCraft');
+    const gui = spawn(guiExe, ['--control', ctlFile], { stdio: 'ignore', windowsHide: false });
     this.gui = gui;
     if (gui.pid) this.o.onSpawn?.(gui.pid);
     gui.on('exit', () => { if (this.gui === gui) { this.gui = null; this.mcp?.close(); this.mcp = null; this.control = null; } });
@@ -860,6 +866,7 @@ export class LivePdfCraft extends LiveAppBase {
       if (gui.exitCode !== null) throw new Error('PdfCraft closed before it was ready.');
       try {
         const c = JSON.parse(await fs.readFile(ctlFile, 'utf8')) as { port?: number; token?: string };
+    gui.on('error', () => undefined);
         if (c.port && c.token) { this.control = { port: c.port, token: c.token }; break; }
       } catch { /* not written yet */ }
       if (Date.now() > end) throw new Error('PdfCraft did not open its control port in time.');

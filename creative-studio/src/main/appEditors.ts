@@ -53,7 +53,7 @@ export class AppEditors {
   private readonly external = new Map<string, ExternalEdit>();
 
   /** `launch` opens the app window on a working copy (tests pass a stand-in so no window opens). */
-  constructor(private readonly store: ProjectStore, private readonly launch = (exePath: string, file: string) => { spawn(exePath, [file], { detached: true, stdio: 'ignore', windowsHide: false }).unref(); }) {}
+  constructor(private readonly store: ProjectStore, private readonly launch = (exePath: string, file: string) => { spawn(exePath, [file], { detached: true, stdio: 'ignore', windowsHide: false }).on('error', () => undefined).unref(); }) {}
 
   private async asset(id: string): Promise<Asset> {
     const a = (await this.store.loadManifest()).assets.find((x) => x.id === id);

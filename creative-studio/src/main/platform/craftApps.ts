@@ -39,7 +39,9 @@ export function saveCraftUserRoot(file: string, root: string): void {
 /** Folders a Craft app installer may have used, most common first. Windows only; elsewhere there are none. */
 export function craftInstallRoots(os: OsId = currentOs(), env: NodeJS.ProcessEnv = process.env): string[] {
   if (os !== 'win32') return [];
-  const roots = [userRoot, env.CRAFT_APPS_DIR, env.ProgramFiles ?? 'C:\\Program Files', env.ProgramW6432, env['ProgramFiles(x86)'], env.LOCALAPPDATA && path.win32.join(env.LOCALAPPDATA, 'Programs')];
+  const bases = [env.ProgramFiles ?? 'C:\\Program Files', env.ProgramW6432, env['ProgramFiles(x86)'], env.LOCALAPPDATA && path.win32.join(env.LOCALAPPDATA, 'Programs')].filter((r): r is string => !!r);
+  // Newer installers put every app under <Program Files>\ArtCraft\<App>; older ones directly under <Program Files>\<App>.
+  const roots = [userRoot, env.CRAFT_APPS_DIR, ...bases, ...bases.map((b) => path.win32.join(b, 'ArtCraft'))];
   return [...new Set(roots.filter((r): r is string => !!r))];
 }
 
@@ -93,10 +95,13 @@ export async function discoverCraftDirs(folders: string[], o: { os?: OsId; run?:
     const exists = o.exists ?? existsSoon;
     const text = (await Promise.all(REG_KEYS.map((k) => run(k).catch(() => '')))).join('\n');
     const found = parseRegistryDirs(text, folders);
+    // One app's folder shows where the others are: its parent folder is a candidate for every app.
+    const parents = [...new Set([...found.values()].flat().map((dir) => path.win32.dirname(dir)))];
     const drives = o.drives ?? 'CDEFGHIJKLMNOPQRSTUVWXYZ'.split('').map((l) => `${l}:\\`);
     const next = new Map<string, string[]>();
     await Promise.all(folders.map(async (f) => {
-      const cands = [...(found.get(f.toLowerCase()) ?? []), ...drives.flatMap((d) => [path.win32.join(d, 'Program Files', f), path.win32.join(d, 'Program Files (x86)', f), path.win32.join(d, f)])];
+      const onDrive = (d: string) => ['Program Files', 'Program Files (x86)'].flatMap((pf) => [path.win32.join(d, pf, f), path.win32.join(d, pf, 'ArtCraft', f)]).concat(path.win32.join(d, 'ArtCraft', f), path.win32.join(d, f));
+      const cands = [...(found.get(f.toLowerCase()) ?? []), ...parents.map((r) => path.win32.join(r, f)), ...drives.flatMap(onDrive)];
       const ok: string[] = [];
       for (const c of [...new Set(cands)]) if (await exists(c)) ok.push(c);
       if (ok.length) next.set(f.toLowerCase(), ok);
@@ -107,3 +112,10 @@ export async function discoverCraftDirs(folders: string[], o: { os?: OsId; run?:
 
 /** Full path of a program inside an install folder: `craftBin(dir, 'photocraft-cli')`. */
 export const craftBin = (dir: string, base: string, os: OsId = currentOs()): string => path.join(dir, binName(base, os));
+
+/** Stops with a readable message when a program is missing, instead of letting the failed start crash the app as an uncaught error. */
+export async function requireProgram(file: string, label: string): Promise<void> {
+  try { await fsp.access(file); } catch {
+    throw new Error(`${label} was not found at ${file}. See Settings > Diagnostics > ArtCraft detection for where OmniCandy looked, or use "Choose apps folder…" in the Software tab.`);
+  }
+}
