@@ -1,7 +1,7 @@
 {
   "name": "creative-studio",
   "productName": "OmniCandy",
-  "version": "0.1.0",
+  "version": "0.1.2",
   "private": true,
   "description": "OmniCandy: Windows-first creative desktop app with Claude as Creative Partner for ArtCraft apps",
   "main": "out/main/index.js",
