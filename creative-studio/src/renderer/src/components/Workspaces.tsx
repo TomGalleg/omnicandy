@@ -21,6 +21,7 @@ interface Props {
   manifest: ProjectManifest | null;
   selected: Asset | null;
   apps: AppProbeResult[];
+  onAppsChanged: (apps: AppProbeResult[]) => void;
   integrations: IntegrationSnapshot | null;
   resolvedTheme: 'dark' | 'light';
   log: (source: string, msg: string) => void;
@@ -49,7 +50,7 @@ export function WorkspaceView(p: Props) {
       return <EditWorkspace mode={p.editMode} onMode={p.onEditMode} onOpenIn={p.onOpenIn} manifest={p.manifest} selected={p.selected} liveApi={p.liveApi} onProjectChanged={p.onProjectChanged} onSelectAsset={p.onSelectAsset} chosenApp={p.chosenApp} log={p.log} onGoto={p.onGoto} />;
     case 'generate': return <GenerateHub manifest={p.manifest} selected={p.selected} onGoto={p.onGoto} log={p.log} onProjectChanged={p.onProjectChanged} />;
     case 'workflow': return <WorkflowEditor manifest={p.manifest} integrations={p.integrations} colorMode={p.resolvedTheme} log={p.log} onProjectChanged={p.onProjectChanged} />;
-    case 'software': return <SoftwareWorkspace apps={p.apps} />;
+    case 'software': return <SoftwareWorkspace apps={p.apps} onAppsChanged={p.onAppsChanged} />;
     case 'planner': return <PlannerWorkspace manifest={p.manifest} projectKey={p.projectKey} />;
     case 'deliver': return <DeliverWorkspace manifest={p.manifest} selected={p.selected} liveApi={p.liveApi} onSelectAsset={p.onSelectAsset} log={p.log} />;
   }

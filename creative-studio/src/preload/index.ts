@@ -324,6 +324,7 @@ const api: StudioApi = {
     },
   } as unknown as StudioApi['planner'],
   probeApps: () => ipcRenderer.invoke(IPC.probeApps),
+  chooseCraftFolder: () => ipcRenderer.invoke(IPC.chooseCraftFolder),
   launchApp: (appId: string, inOmniCandy?: boolean) => ipcRenderer.invoke(IPC.launchApp, appId, inOmniCandy === true),
   openAiTool: (tool: 'claude' | 'chatgpt' | 'gemini') => ipcRenderer.invoke(IPC.openAiTool, tool),
   integrationStatus: () => ipcRenderer.invoke(IPC.integrationStatus),

@@ -7,7 +7,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import type { AppProbeResult } from '@shared/types';
 import { currentOs, exeSuffix, OS_LABEL } from '@shared/platform';
-import { craftInstallRoot } from './platform/craftApps';
+import { craftInstallDir, craftInstallRoot } from './platform/craftApps';
 
 export interface ArtCraftAppDef {
   id: string;
@@ -77,5 +77,5 @@ export async function probeAllArtCraftApps(programFiles: string | null = craftIn
   if (!programFiles) {
     return ARTCRAFT_APPS.map((d) => ({ appId: d.id, displayName: d.displayName, installed: false, connected: false, version: null, capabilities: [], notes: [`No ${OS_LABEL[currentOs()]} version of ${d.displayName} is known to OmniCandy (unverified, not available).`] }));
   }
-  return Promise.all(ARTCRAFT_APPS.map((d) => probeArtCraftApp(d, programFiles)));
+  return Promise.all(ARTCRAFT_APPS.map((d) => probeArtCraftApp(d, path.dirname(craftInstallDir(d.folder)))));
 }

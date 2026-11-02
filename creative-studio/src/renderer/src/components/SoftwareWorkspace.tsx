@@ -42,13 +42,15 @@ function LiveStage({ live, onList }: { live: ExternalLiveState; onList: () => vo
 }
 
 /** Every program connected to OmniCandy: the ArtCraft apps (with what each one opens) and third-party software. */
-export function SoftwareWorkspace({ apps }: { apps: AppProbeResult[] }) {
+export function SoftwareWorkspace({ apps, onAppsChanged }: { apps: AppProbeResult[]; onAppsChanged: (apps: AppProbeResult[]) => void }) {
   const installed = apps.filter((a) => a.installed).length;
   const [msg, setMsg] = useState<{ text: string; error?: boolean } | null>(null);
   const launch = async (id: string, name: string, inOmniCandy: boolean) => {
     setMsg(null);
     try { await window.studio.launchApp(id, inOmniCandy); setMsg({ text: inOmniCandy ? `Opening ${name} inside OmniCandy… its window appears here in a few seconds.` : `Opening ${name} in its own window…` }); } catch (e) { setMsg({ text: (e instanceof Error ? e.message : String(e)).replace(/^Error invoking remote method '[^']+': (Error: )?/, ''), error: true }); }
   };
+  const rescanApps = () => { void window.studio.probeApps().then((r) => { onAppsChanged(r); setMsg({ text: `Looked again: ${r.filter((a) => a.installed).length} ArtCraft apps found.` }); }).catch((e: unknown) => setMsg({ text: plain(e), error: true })); };
+  useEffect(() => { void window.studio.probeApps().then(onAppsChanged).catch(() => undefined); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const probe = (id: string) => apps.find((a) => a.appId === id);
   const [scan, setScan] = useState<ExternalScan | null>(null);
   const rows = useMemo(() => groupInstalls(scan?.apps ?? []), [scan]);
@@ -108,6 +110,10 @@ export function SoftwareWorkspace({ apps }: { apps: AppProbeResult[] }) {
 
       <div className="field">
         <span className="menu-label">ArtCraft apps · {installed} of {Object.keys(EDITOR_APPS).length} installed</span>
+        <div className="btn-row">
+          <button className="btn small" onClick={rescanApps}>Rescan apps</button>
+          <button className="btn small ghost" title="Use this if your ArtCraft apps are installed somewhere other than Program Files" onClick={() => { setMsg(null); void window.studio.chooseCraftFolder().then((r) => { if (r) { onAppsChanged(r); setMsg({ text: `Looked in that folder: ${r.filter((a) => a.installed).length} ArtCraft apps found.` }); } }).catch((e: unknown) => setMsg({ text: plain(e), error: true })); }}>Choose apps folder…</button>
+        </div>
         <ul className="software-list">
           {Object.values(EDITOR_APPS).slice().sort((x, y) => Number(!!probe(y.id)?.installed) - Number(!!probe(x.id)?.installed)).map((app) => {
             const p = probe(app.id);

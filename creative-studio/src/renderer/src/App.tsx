@@ -307,6 +307,7 @@ export function App() {
                     manifest={manifest}
                     selected={selected}
                     apps={apps}
+                    onAppsChanged={setApps}
                     integrations={integrations}
                     resolvedTheme={appearance.resolved}
                     log={addLog}

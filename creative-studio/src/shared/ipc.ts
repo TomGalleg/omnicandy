@@ -245,6 +245,7 @@ export const IPC = {
   deliverOpenFolder: 'deliver:open-folder',
   deliverEvent: 'deliver:event',
   probeApps: 'apps:probe',
+  chooseCraftFolder: 'apps:choose-folder',
   launchApp: 'apps:launch',
   openAiTool: 'apps:open-ai-tool',
   integrationStatus: 'integrations:status',
@@ -669,6 +670,8 @@ export interface StudioApi {
   /** Project Planner: plans, execution packages, reports and the connection details for AI clients. */
   planner: PlannerApi;
   probeApps(): Promise<AppProbeResult[]>;
+  /** Lets the user pick the folder their ArtCraft apps are installed in; remembered. Resolves to the new detection result, or null when cancelled. */
+  chooseCraftFolder(): Promise<AppProbeResult[] | null>;
   /** Starts an installed ArtCraft app on its own (no file). */
   /** Starts an installed ArtCraft app. With inOmniCandy its window is docked into the Software tab (Windows); otherwise it opens by itself. */
   launchApp(appId: string, inOmniCandy?: boolean): Promise<void>;

@@ -112,7 +112,7 @@ import { bundledPaths, loadBundledPublishers } from './integrations/bundled';
 import { approvalDetail, INSTALL_CANCELLED_MESSAGE, integrationLines, type BrowseResult, type ConnectOutcome, type ConnectOverview, type ForgetResult } from '@shared/connect';
 import { ExternalState } from './integrations/state';
 import { PERMISSION_LABEL, type ApprovalAnswer, type ExternalAppInfo, type PackageApproval, type PackageListing, type Permission } from '@shared/integrations';
-import { craftBin, craftInstallDir } from './platform/craftApps';
+import { craftBin, craftInstallDir, craftRootFromPick, loadCraftUserRoot, saveCraftUserRoot } from './platform/craftApps';
 import { runBounded } from './shutdown';
 
 export interface IpcDeps {
@@ -1902,15 +1902,18 @@ export function registerIpc(d: IpcDeps): void {
     await d.projects.open(key);
   });
 
+  const craftFolderFile = path.join(path.dirname(d.secretsDir), 'craft-apps-folder.json');
+  loadCraftUserRoot(craftFolderFile);
   handle(IPC.probeApps, none, () => probeAllArtCraftApps());
-  /** Opens an installed ArtCraft app by itself. Only the known apps' own executables from their install folders can start. */
-  handle(IPC.launchApp, z.tuple([z.enum(Object.keys(EDITOR_APPS) as [EditorAppId, ...EditorAppId[]]), z.boolean()]), async (appId, inOmniCandy) => {
-    const folder = EDITOR_APPS[appId].name;
-    const file = craftBin(craftInstallDir(folder), folder.toLowerCase());
-    try { await fs.access(file); } catch { throw new Error(`${folder} is not installed on this PC.`); }
-    const child = spawn(file, [], { detached: true, stdio: 'ignore' });
-    child.on('error', () => undefined);
-    child.unref();
+  handle(IPC.chooseCraftFolder, none, async () => {
+    const win = d.window();
+    const o: Electron.OpenDialogOptions = { title: 'Choose the folder your ArtCraft apps are installed in (the one that holds PhotoCraft, WordCraft, …)', properties: ['openDirectory'] };
+    const r = await (win ? dialog.showOpenDialog(win, o) : dialog.showOpenDialog(o));
+    const picked = r.canceled ? null : r.filePaths[0];
+    if (!picked) return null;
+    saveCraftUserRoot(craftFolderFile, craftRootFromPick(picked));
+    return probeAllArtCraftApps();
+  });
   /** Software tab shortcuts to other AI tools. ChatGPT and Gemini are plain web links; Claude is the installed desktop app, found in the Start menu list. */
   handle(IPC.openAiTool, z.tuple([z.enum(['claude', 'chatgpt', 'gemini'])]), async (tool) => {
     if (tool === 'chatgpt') { await shell.openExternal('https://chatgpt.com/'); return 'Opening ChatGPT in your browser…'; }
@@ -1926,6 +1929,14 @@ export function registerIpc(d: IpcDeps): void {
     child.unref();
     return 'Opening the Claude app… choose the Cowork tab in it.';
   });
+  /** Opens an installed ArtCraft app by itself. Only the known apps' own executables from their install folders can start. */
+  handle(IPC.launchApp, z.tuple([z.enum(Object.keys(EDITOR_APPS) as [EditorAppId, ...EditorAppId[]]), z.boolean()]), async (appId, inOmniCandy) => {
+    const folder = EDITOR_APPS[appId].name;
+    const file = craftBin(craftInstallDir(folder), folder.toLowerCase());
+    try { await fs.access(file); } catch { throw new Error(`${folder} is not installed on this PC.`); }
+    const child = spawn(file, [], { detached: true, stdio: 'ignore' });
+    child.on('error', () => undefined);
+    child.unref();
     // "Open in OmniCandy": dock the new window into the Software tab, the same way a program opened for Claude is.
     const pid = child.pid;
     if (inOmniCandy && pid) {
