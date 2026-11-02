@@ -24,7 +24,11 @@ export function craftInstallRoot(os: OsId = currentOs(), env: NodeJS.ProcessEnv 
 let userRoot: string | null = null;
 
 /** The picked folder may be the one holding the apps (D:\Apps) or one app's own folder (D:\Apps\PhotoCraft): keep the former. */
-export const craftRootFromPick = (picked: string): string => (/craft$/i.test(path.win32.basename(picked)) ? path.win32.dirname(picked) : picked);
+export const craftRootFromPick = (picked: string): string => {
+  const name = path.win32.basename(picked);
+  // "ArtCraft" is the folder that holds the apps, not an app: it must be kept as chosen.
+  return /craft$/i.test(name) && !/^artcraft$/i.test(name) ? path.win32.dirname(picked) : picked;
+};
 
 export function loadCraftUserRoot(file: string): void {
   try { const r = (JSON.parse(fs.readFileSync(file, 'utf8')) as { root?: unknown }).root; userRoot = typeof r === 'string' && r ? r : null; } catch { userRoot = null; }

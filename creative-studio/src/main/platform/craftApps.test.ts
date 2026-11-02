@@ -18,6 +18,8 @@ describe('Craft app locations', () => {
   it('a chosen folder is remembered and searched first; picking one app\'s own folder uses its parent', () => {
     expect(craftRootFromPick('D:\\Apps')).toBe('D:\\Apps');
     expect(craftRootFromPick('D:\\Apps\\PhotoCraft')).toBe('D:\\Apps');
+    expect(craftRootFromPick('C:\\Program Files\\ArtCraft')).toBe('C:\\Program Files\\ArtCraft');
+    expect(craftRootFromPick('C:\\Program Files\\artcraft')).toBe('C:\\Program Files\\artcraft');
     const file = path.join(os.tmpdir(), `craft-root-${process.pid}.json`);
     saveCraftUserRoot(file, 'D:\\Apps');
     expect(craftInstallDir('PhotoCraft', 'win32', { ProgramFiles: 'C:\\Program Files' }, (p) => p === 'D:\\Apps\\PhotoCraft')).toBe('D:\\Apps\\PhotoCraft');
