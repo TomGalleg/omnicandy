@@ -2,7 +2,9 @@
 // Windows: <Program Files>\<App>\<app>.exe and <app>-cli.exe (verified on this PC). Linux: no Linux builds are known, so no path
 // is guessed and the apps are reported as unavailable instead of failing in odd ways. (No Wine, no invented locations.)
 
+import { execFile } from 'node:child_process';
 import fs from 'node:fs';
+import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { binName, currentOs, OS_LABEL, type OsId } from '@shared/platform';
 
@@ -45,8 +47,62 @@ export function craftInstallRoots(os: OsId = currentOs(), env: NodeJS.ProcessEnv
 export function craftInstallDir(folder: string, os: OsId = currentOs(), env: NodeJS.ProcessEnv = process.env, exists: (p: string) => boolean = fs.existsSync): string {
   const root = craftInstallRoot(os, env);
   if (!root) throw new CraftAppUnavailableError(folder, os);
-  const dirs = craftInstallRoots(os, env).map((r) => path.win32.join(r, folder));
+  const dirs = [...craftInstallRoots(os, env).map((r) => path.win32.join(r, folder)), ...(discovered.get(folder.toLowerCase()) ?? [])];
   return dirs.find((d) => exists(d)) ?? path.win32.join(root, folder);
+}
+
+/** Every place checked for one app, for the "not found" note. */
+export const craftSearchedPlaces = (folder: string, os: OsId = currentOs(), env: NodeJS.ProcessEnv = process.env): string[] =>
+  [...craftInstallRoots(os, env).map((r) => path.win32.join(r, folder)), ...(discovered.get(folder.toLowerCase()) ?? [])];
+
+/** Install folders found by asking Windows (installed-programs registry) and by looking on every drive; lower-case app folder name to folders. */
+let discovered = new Map<string, string[]>();
+
+/** Registry text (`reg query ... /s`) to the folders it names for each app: an install location, an icon or an uninstall command inside `...\<App>`. */
+export function parseRegistryDirs(text: string, folders: string[]): Map<string, string[]> {
+  const out = new Map<string, string[]>();
+  for (const f of folders) {
+    const re = new RegExp(`([A-Za-z]:\\\\[^"\\r\\n,]*?\\\\${f.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})(?=[\\\\",\\s]|$)`, 'gi');
+    const hits = new Set<string>();
+    for (const m of text.matchAll(re)) hits.add(m[1]!);
+    if (hits.size) out.set(f.toLowerCase(), [...hits]);
+  }
+  return out;
+}
+
+const REG_KEYS = [
+  'HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall',
+  'HKLM\\SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall',
+  'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall',
+  'HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths',
+  'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\App Paths',
+];
+
+const realRun = (key: string): Promise<string> => new Promise((resolve) => {
+  execFile('reg', ['query', key, '/s', '/f', 'Craft', '/d'], { timeout: 15000, windowsHide: true, maxBuffer: 32 * 1024 * 1024 }, (_e, stdout) => resolve(stdout ?? ''));
+});
+
+/** One check that cannot hang on an unreachable network drive. */
+const existsSoon = (p: string): Promise<boolean> => Promise.race([fsp.access(p).then(() => true, () => false), new Promise<boolean>((r) => setTimeout(() => r(false), 1500))]);
+
+/** Finds where each app is installed, wherever that is, and remembers it for craftInstallDir. Windows only; never throws. */
+export async function discoverCraftDirs(folders: string[], o: { os?: OsId; run?: (key: string) => Promise<string>; exists?: (p: string) => Promise<boolean>; drives?: string[] } = {}): Promise<void> {
+  if ((o.os ?? currentOs()) !== 'win32') return;
+  try {
+    const run = o.run ?? realRun;
+    const exists = o.exists ?? existsSoon;
+    const text = (await Promise.all(REG_KEYS.map((k) => run(k).catch(() => '')))).join('\n');
+    const found = parseRegistryDirs(text, folders);
+    const drives = o.drives ?? 'CDEFGHIJKLMNOPQRSTUVWXYZ'.split('').map((l) => `${l}:\\`);
+    const next = new Map<string, string[]>();
+    await Promise.all(folders.map(async (f) => {
+      const cands = [...(found.get(f.toLowerCase()) ?? []), ...drives.flatMap((d) => [path.win32.join(d, 'Program Files', f), path.win32.join(d, 'Program Files (x86)', f), path.win32.join(d, f)])];
+      const ok: string[] = [];
+      for (const c of [...new Set(cands)]) if (await exists(c)) ok.push(c);
+      if (ok.length) next.set(f.toLowerCase(), ok);
+    }));
+    discovered = next;
+  } catch { /* detection falls back to the standard folders */ }
 }
 
 /** Full path of a program inside an install folder: `craftBin(dir, 'photocraft-cli')`. */

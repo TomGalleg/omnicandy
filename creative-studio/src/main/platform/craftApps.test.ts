@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { probeAllArtCraftApps } from '../artcraftProbe';
-import { CraftAppUnavailableError, craftBin, craftInstallDir, craftInstallRoot, craftInstallRoots, craftRootFromPick, loadCraftUserRoot, saveCraftUserRoot } from './craftApps';
+import { CraftAppUnavailableError, craftBin, craftInstallDir, craftInstallRoot, craftInstallRoots, craftRootFromPick, craftSearchedPlaces, discoverCraftDirs, loadCraftUserRoot, parseRegistryDirs, saveCraftUserRoot } from './craftApps';
 
 describe('Craft app locations', () => {
   it('Windows: uses the first location that really holds the app (x86, per-user), else the standard one', () => {
@@ -25,6 +25,24 @@ describe('Craft app locations', () => {
     loadCraftUserRoot(file);
     expect(craftInstallRoots('win32', { ProgramFiles: 'C:\\Program Files' })).toEqual(['C:\\Program Files']);
     fs.rmSync(file, { force: true });
+  });
+  it('finds an app wherever Windows says it was installed, or on any drive, and survives a failing registry', async () => {
+    const reg = [
+      'HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\PhotoCraft',
+      '    InstallLocation    REG_SZ    E:\\Tools\\PhotoCraft',
+      '    DisplayIcon    REG_SZ    "G:\\My Apps\\WordCraft\\wordcraft.exe",0',
+    ].join('\r\n');
+    expect(parseRegistryDirs(reg, ['PhotoCraft', 'WordCraft', 'PdfCraft'])).toEqual(new Map([['photocraft', ['E:\\Tools\\PhotoCraft']], ['wordcraft', ['G:\\My Apps\\WordCraft']]]));
+    const real = new Set(['E:\\Tools\\PhotoCraft', 'G:\\My Apps\\WordCraft', 'D:\\Program Files\\PdfCraft']);
+    await discoverCraftDirs(['PhotoCraft', 'WordCraft', 'PdfCraft', 'FilmCraft'], { os: 'win32', run: async () => reg, exists: async (p) => real.has(p), drives: ['C:\\', 'D:\\'] });
+    const env = { ProgramFiles: 'C:\\Program Files' };
+    expect(craftInstallDir('PhotoCraft', 'win32', env, (p) => real.has(p))).toBe('E:\\Tools\\PhotoCraft');
+    expect(craftInstallDir('WordCraft', 'win32', env, (p) => real.has(p))).toBe('G:\\My Apps\\WordCraft');
+    expect(craftInstallDir('PdfCraft', 'win32', env, (p) => real.has(p))).toBe('D:\\Program Files\\PdfCraft');
+    expect(craftInstallDir('FilmCraft', 'win32', env, (p) => real.has(p))).toBe('C:\\Program Files\\FilmCraft');
+    expect(craftSearchedPlaces('PhotoCraft', 'win32', env)).toContain('E:\\Tools\\PhotoCraft');
+    await discoverCraftDirs(['PhotoCraft'], { os: 'win32', run: async () => { throw new Error('reg failed'); }, exists: async () => false, drives: [] });
+    expect(craftSearchedPlaces('PhotoCraft', 'win32', env)).toEqual(['C:\\Program Files\\PhotoCraft']);
   });
   it('Windows: Program Files, honouring the environment', () => {
     expect(craftInstallRoot('win32', { ProgramFiles: 'D:\\Apps' })).toBe('D:\\Apps');

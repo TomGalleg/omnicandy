@@ -7,7 +7,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import type { AppProbeResult } from '@shared/types';
 import { currentOs, exeSuffix, OS_LABEL } from '@shared/platform';
-import { craftInstallDir, craftInstallRoot } from './platform/craftApps';
+import { craftInstallDir, craftInstallRoot, craftSearchedPlaces, discoverCraftDirs } from './platform/craftApps';
 
 export interface ArtCraftAppDef {
   id: string;
@@ -48,13 +48,17 @@ function runVersion(exe: string): Promise<string | null> {
 
 export async function probeArtCraftApp(def: ArtCraftAppDef, programFiles: string): Promise<AppProbeResult> {
   const exe = path.join(programFiles, def.folder, def.cli.replace(/\.exe$/, exeSuffix()));
-  const installed = await fs.access(exe).then(() => true, () => false);
+  const gui = path.join(programFiles, def.folder, `${def.folder.toLowerCase()}${exeSuffix()}`);
+  const has = (f: string) => fs.access(f).then(() => true, () => false);
+  const hasCli = await has(exe);
+  // Either program proves the app is installed: a command line tool that won't answer --version must not hide it.
+  const installed = hasCli || (await has(gui));
   if (!installed) {
-    return { appId: def.id, displayName: def.displayName, installed: false, connected: false, version: null, capabilities: [], notes: ['Not installed.'] };
+    return { appId: def.id, displayName: def.displayName, installed: false, connected: false, version: null, capabilities: [], notes: [`Not found. Looked for ${def.cli} and ${def.folder.toLowerCase()}${exeSuffix()} in: ${craftSearchedPlaces(def.folder).join(' | ')}`] };
   }
-  const version = await runVersion(exe);
+  const version = hasCli ? await runVersion(exe) : null;
   const tested = def.testedVersion;
-  const found = version ? /(d+.d+).d+/.exec(version)?.[1] : undefined;
+  const found = version ? /(\d+\.\d+)\.\d+/.exec(version)?.[1] : undefined;
   const mismatch = tested && found && found !== tested ? [`Version ${found} is newer or older than the ${tested} this integration was tested with; some controls may differ.`] : [];
   return {
     appId: def.id,
@@ -77,5 +81,6 @@ export async function probeAllArtCraftApps(programFiles: string | null = craftIn
   if (!programFiles) {
     return ARTCRAFT_APPS.map((d) => ({ appId: d.id, displayName: d.displayName, installed: false, connected: false, version: null, capabilities: [], notes: [`No ${OS_LABEL[currentOs()]} version of ${d.displayName} is known to OmniCandy (unverified, not available).`] }));
   }
+  await discoverCraftDirs(ARTCRAFT_APPS.map((d) => d.folder));
   return Promise.all(ARTCRAFT_APPS.map((d) => probeArtCraftApp(d, path.dirname(craftInstallDir(d.folder)))));
 }
