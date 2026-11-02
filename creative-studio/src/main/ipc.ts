@@ -819,7 +819,10 @@ export function registerIpc(d: IpcDeps): void {
       const canSession = r.destructive && !r.untrusted && !r.command.confirmEveryTime && r.needed.length === 0;
       const buttons = canSession ? ['Cancel', 'Allow once', 'Allow for this session'] : r.destructive || r.untrusted ? ['Cancel', 'Allow once'] : ['Cancel', 'Allow once', `Always allow for ${r.app.adapterName ?? r.app.name}`];
       const options: Electron.MessageBoxOptions = { type: 'question', title: 'External application', message: `Run "${r.command.label}" in ${r.app.adapterName ?? r.app.name}?`, detail: approvalDetail(r), buttons, defaultId: 0, cancelId: 0, noLink: true };
-      const res = win && !win.isDestroyed() ? await dialog.showMessageBox(win, options) : await dialog.showMessageBox(options);
+      const resume = d.embedded.suspend(); // the docked program would cover this dialog
+      let res: Electron.MessageBoxReturnValue;
+      try { res = win && !win.isDestroyed() ? await dialog.showMessageBox(win, options) : await dialog.showMessageBox(options); }
+      finally { resume(); }
       return res.response === 1 ? 'once' : res.response === 2 ? (canSession ? 'session' : 'always') : 'deny';
     },
   });
@@ -1682,7 +1685,12 @@ export function registerIpc(d: IpcDeps): void {
     try {
       return await runDirector({
         store: new PolicyStore(store.root), engine,
-        approve: nativeApprover((o) => { const w = d.window(); return w && !w.isDestroyed() ? dialog.showMessageBox(w, o) : dialog.showMessageBox(o); }),
+        approve: nativeApprover(async (o) => {
+          const w = d.window();
+          const resume = d.embedded.suspend(); // the docked program would cover this dialog
+          try { return await (w && !w.isDestroyed() ? dialog.showMessageBox(w, o) : dialog.showMessageBox(o)); }
+          finally { resume(); }
+        }),
         log: activityLogger(store.root),
         library: async (): Promise<MadeFile[]> => {
           const m = await store.loadManifest();
@@ -1906,14 +1914,6 @@ export function registerIpc(d: IpcDeps): void {
   const craftFolderFile = path.join(path.dirname(d.secretsDir), 'craft-apps-folder.json');
   loadCraftUserRoot(craftFolderFile);
   handle(IPC.probeApps, none, () => probeAllArtCraftApps());
-  handle(IPC.chooseCraftFolder, none, async () => {
-    const win = d.window();
-    const o: Electron.OpenDialogOptions = { title: 'Choose the folder your ArtCraft apps are installed in (the one that holds PhotoCraft, WordCraft, …)', properties: ['openDirectory'] };
-    const r = await (win ? dialog.showOpenDialog(win, o) : dialog.showOpenDialog(o));
-    const picked = r.canceled ? null : r.filePaths[0];
-    if (!picked) return null;
-    saveCraftUserRoot(craftFolderFile, craftRootFromPick(picked));
-    return probeAllArtCraftApps();
   handle(IPC.appVersion, none, async () => app.getVersion());
   handle(IPC.saveDebugReport, none, async () => {
     const text = buildDebugReport({ version: app.getVersion(), apps: await probeAllArtCraftApps(), dataDir: path.dirname(d.secretsDir), chosenFile: craftFolderFile, resourcesPath: process.resourcesPath, execPath: process.execPath });
@@ -1922,6 +1922,14 @@ export function registerIpc(d: IpcDeps): void {
     shell.showItemInFolder(file);
     return file;
   });
+  handle(IPC.chooseCraftFolder, none, async () => {
+    const win = d.window();
+    const o: Electron.OpenDialogOptions = { title: 'Choose the folder your ArtCraft apps are installed in (the one that holds PhotoCraft, WordCraft, …)', properties: ['openDirectory'] };
+    const r = await (win ? dialog.showOpenDialog(win, o) : dialog.showOpenDialog(o));
+    const picked = r.canceled ? null : r.filePaths[0];
+    if (!picked) return null;
+    saveCraftUserRoot(craftFolderFile, craftRootFromPick(picked));
+    return probeAllArtCraftApps();
   });
   /** Software tab shortcuts to other AI tools. ChatGPT and Gemini are plain web links; Claude is the installed desktop app, found in the Start menu list. */
   handle(IPC.openAiTool, z.tuple([z.enum(['claude', 'chatgpt', 'gemini'])]), async (tool) => {

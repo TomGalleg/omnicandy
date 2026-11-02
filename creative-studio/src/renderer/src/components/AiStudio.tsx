@@ -9,6 +9,7 @@ import { findModels, STUDIO_PROVIDERS, type StudioModel, type StudioProviderId }
 import { isShown, parseFavs, toggleFav } from '@shared/studioCatalog';
 import { CreateWorkspace, type CreateSeed, type RunFn } from './CreateWorkspace';
 import { ModelGallery } from './ModelGallery';
+import { AiDirectorChat } from './AiDirectorChat';
 import { importDropped, isFileDrag, LIBRARY_CHANGED, uploadWithPicker } from '../importFiles';
 import { PROVIDERS_CHANGED } from './ProvidersCard';
 import './aiStudio.css';
@@ -227,6 +228,8 @@ export function AiStudio({ manifest, selected, onGoto, log, onProjectChanged }: 
           {finished && <button className="btn small ghost" onClick={() => saveJobs(jobs.filter((j) => j.state === 'running'))}>Clear finished (this list only; Higgsfield records stay in the project)</button>}
         </div>
       )}
+
+      <AiDirectorChat projectKey={manifest?.id ?? null} />
     </div>
   );
 }

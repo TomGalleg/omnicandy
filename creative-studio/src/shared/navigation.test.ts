@@ -4,9 +4,9 @@ import { shouldShowTimeline } from './timeline';
 
 describe('navigation', () => {
   it('has one toolbar with Media on it directly, and no More menu or Advanced mode', () => {
-    expect(NAV.map((n) => n.label)).toEqual(['Project', 'Media', 'Edit', 'AI Generate', 'Software', 'Planner', 'Deliver']);
-    expect(NAV.map((n) => n.id)).toEqual(['home', 'media', 'edit', 'generate', 'software', 'planner', 'deliver']);
-    expect(NAV.slice(-3).map((n) => n.id)).toEqual(['software', 'planner', 'deliver']);
+    expect(NAV.map((n) => n.label)).toEqual(['Project', 'Media', 'Edit', 'AI Generate', 'Planner', 'Deliver', 'Software']);
+    expect(NAV.map((n) => n.id)).toEqual(['home', 'media', 'edit', 'generate', 'planner', 'deliver', 'software']);
+    expect(NAV.slice(-3).map((n) => n.id)).toEqual(['planner', 'deliver', 'software']);
   });
   it('sends the old Effects, Color and Audio tabs into Edit modes', () => {
     expect(routeWorkspace('color')).toEqual({ workspace: 'edit', mode: 'color' });

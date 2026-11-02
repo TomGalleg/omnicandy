@@ -8,6 +8,7 @@
 // project. Only commands from src/shared/appEditors.ts are ever sent; nothing free-form.
 
 import { execFile, spawn, type ChildProcess } from 'node:child_process';
+import { randomBytes } from 'node:crypto';
 import fs from 'node:fs/promises';
 import net from 'node:net';
 import path from 'node:path';
@@ -17,8 +18,8 @@ import type { AppOperation } from '@shared/contracts';
 import { McpClient } from './mcpClient';
 import { freePort, waitForPort, type LiveDoc } from './photocraftLive';
 import { binName } from '@shared/platform';
-import { formatDiscoveredCommands, parsePlainCommandCatalog } from './commandDiscovery';
 import { requireProgram } from './platform/craftApps';
+import { formatDiscoveredCommands, parsePlainCommandCatalog } from './commandDiscovery';
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -79,12 +80,15 @@ abstract class LiveAppBase implements LiveDoc {
       env: { ...process.env, ...this.guiEnv(port) }, stdio: 'ignore', windowsHide: false,
     });
     this.gui = gui;
-    if (gui.pid) this.o.onSpawn?.(gui.pid);
     gui.on('error', () => undefined); // a failed start is reported by the wait below, never as an uncaught error
+    if (gui.pid) this.o.onSpawn?.(gui.pid);
     gui.on('exit', () => { if (this.gui === gui) { this.gui = null; this.mcp?.close(); this.mcp = null; } });
     await waitForPort(port, 30_000, () => gui.exitCode !== null);
-    this.mcp = await McpClient.start(path.join(this.o.installDir, binName(`${this.exeName}-cli`)), this.bridgeArgs(port));
+    this.mcp = await McpClient.start(path.join(this.o.installDir, binName(`${this.exeName}-cli`)), this.bridgeArgs(port), 'creative-studio', this.bridgeEnv());
   }
+
+  /** Environment for the CLI bridge (apps that protect their control port with a token). */
+  protected bridgeEnv(): NodeJS.ProcessEnv | undefined { return undefined; }
 
   protected client(): McpClient {
     if (!this.connected || !this.mcp) throw new Error(this.o.headless ? `The ${this.appId} engine stopped.` : `The ${this.appId} window is not running (was it closed?).`);
@@ -350,7 +354,10 @@ export class LiveFilmCraft extends LiveAppBase {
   private opened = false;
 
   protected guiArgs(port: number) { return ['--control', String(port), '--empty', '--no-recover', '--data-dir', path.join(this.o.writeRoot, 'filmcraft-data')]; }
-  protected guiEnv() { return {}; }
+  /** FilmCraft 0.13+ only opens its control port when given a 64-hex-character token; the CLI bridge reads the same variable. */
+  private readonly token = randomBytes(32).toString('hex');
+  protected guiEnv() { return { FILMCRAFT_CONTROL_TOKEN: this.token }; }
+  protected bridgeEnv() { return { FILMCRAFT_CONTROL_TOKEN: this.token }; }
   protected bridgeArgs(port: number) { return ['mcp', '--bridge', `127.0.0.1:${port}`]; }
   protected headlessArgs() { return ['--data-dir', path.join(this.o.writeRoot, 'filmcraft-data'), 'mcp']; }
 
@@ -859,6 +866,7 @@ export class LivePdfCraft extends LiveAppBase {
     await requireProgram(guiExe, 'PdfCraft');
     const gui = spawn(guiExe, ['--control', ctlFile], { stdio: 'ignore', windowsHide: false });
     this.gui = gui;
+    gui.on('error', () => undefined);
     if (gui.pid) this.o.onSpawn?.(gui.pid);
     gui.on('exit', () => { if (this.gui === gui) { this.gui = null; this.mcp?.close(); this.mcp = null; this.control = null; } });
     const end = Date.now() + 30_000;
@@ -866,7 +874,6 @@ export class LivePdfCraft extends LiveAppBase {
       if (gui.exitCode !== null) throw new Error('PdfCraft closed before it was ready.');
       try {
         const c = JSON.parse(await fs.readFile(ctlFile, 'utf8')) as { port?: number; token?: string };
-    gui.on('error', () => undefined);
         if (c.port && c.token) { this.control = { port: c.port, token: c.token }; break; }
       } catch { /* not written yet */ }
       if (Date.now() > end) throw new Error('PdfCraft did not open its control port in time.');

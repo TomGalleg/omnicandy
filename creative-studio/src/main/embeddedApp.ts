@@ -122,6 +122,19 @@ export class EmbeddedApp {
     this.apply();
   }
 
+  /**
+   * Keeps the app window out of sight while one of our own dialogs is open. The app window is owned by
+   * OmniCandy and sits above it, so a dialog opened over OmniCandy would otherwise be hidden behind
+   * the app while it blocks OmniCandy (which then looks frozen).
+   */
+  private suspended = 0;
+  suspend(): () => void {
+    this.suspended++;
+    this.apply();
+    let done = false;
+    return () => { if (done) return; done = true; this.suspended--; this.apply(); };
+  }
+
   /** Re-applies placement (call on host move/resize). */
   apply() {
     const t = this.tracker;
@@ -130,6 +143,11 @@ export class EmbeddedApp {
     const hwnd = this.hostHandle();
     if (!host || !hwnd) return;
     const v = this.viewport;
+    if (this.suspended > 0) {
+      this.want = null;
+      if (!this.unplaced) t.hide();
+      return;
+    }
     if (!v || !v.visible || v.width < 40 || v.height < 40 || host.isMinimized()) {
       this.want = null;
       if (!this.unplaced) t.hide();

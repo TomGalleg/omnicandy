@@ -113,9 +113,17 @@ public static class CsWindowTracker {
         }
       }
 
+      // Dragging OmniCandy queues a move for every pixel; a busy program (Fusion) answers each resize slowly, so the
+      // backlog made its window trail behind and chase OmniCandy. Take what is queued and run only the newest move.
+      var batch = new System.Collections.Generic.List<string>();
       string cmd;
-      while (cmds.TryDequeue(out cmd)) {
+      while (cmds.TryDequeue(out cmd)) batch.Add(cmd);
+      int lastMove = -1;
+      for (int i = 0; i < batch.Count; i++) if (batch[i].StartsWith("move ")) lastMove = i;
+      for (int i = 0; i < batch.Count; i++) {
+        cmd = batch[i];
         if (cmd == "__eof") return;
+        if (cmd.StartsWith("move ") && i != lastMove) continue;
         var a = cmd.Split(' ');
         if (target == IntPtr.Zero) continue;
         if (a[0] == "own") { SetWindowLongPtr(new IntPtr(panel), -8, target); owned = true; }
@@ -147,7 +155,7 @@ public static class CsWindowTracker {
         else if (a[0] == "move" && a.Length == 5) {
           offscreen = false;
           if (IsZoomed(target) || IsIconic(target)) ShowWindow(target, 9); // SW_RESTORE
-          SetWindowPos(target, IntPtr.Zero, int.Parse(a[1]), int.Parse(a[2]), int.Parse(a[3]), int.Parse(a[4]), 0x0014); // NOZORDER|NOACTIVATE
+          SetWindowPos(target, IntPtr.Zero, int.Parse(a[1]), int.Parse(a[2]), int.Parse(a[3]), int.Parse(a[4]), 0x4014); // NOZORDER|NOACTIVATE|ASYNCWINDOWPOS (don't wait for a busy program to repaint)
         }
       }
 
@@ -161,7 +169,7 @@ public static class CsWindowTracker {
           + ",\"visible\":" + (IsWindowVisible(target) ? "true" : "false") + ",\"cloaked\":" + (IsCloaked(target) ? "true" : "false") + "}";
       }
       if (state != last) { Console.WriteLine(state); Console.Out.Flush(); last = state; }
-      Thread.Sleep(target == IntPtr.Zero ? 10 : 60); // poll fast until the window appears
+      Thread.Sleep(target == IntPtr.Zero ? 10 : (batch.Count > 0 ? 16 : 60)); // poll fast until the window appears, and while it is being moved
     }
   }
 }

@@ -33,8 +33,8 @@ export class McpClient {
     proc.on('error', () => { this.exited = true; });
   }
 
-  static async start(exe: string, args: string[], clientName = 'creative-studio'): Promise<McpClient> {
-    const c = new McpClient(spawn(exe, args, { windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] }), `${path.basename(exe)} ${args.join(' ')}`.slice(0, 120));
+  static async start(exe: string, args: string[], clientName = 'creative-studio', env?: NodeJS.ProcessEnv): Promise<McpClient> {
+    const c = new McpClient(spawn(exe, args, { windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'], ...(env ? { env: { ...process.env, ...env } } : {}) }), `${path.basename(exe)} ${args.join(' ')}`.slice(0, 120));
     await c.request('initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: clientName, version: '0.1.0' } });
     c.proc.stdin.write(JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }) + '\n');
     return c;

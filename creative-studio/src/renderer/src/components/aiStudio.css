@@ -34,3 +34,9 @@
 .as-spin { display: inline-block; width: 12px; height: 12px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: as-spin 0.9s linear infinite; margin-right: 6px; vertical-align: -2px; }
 @keyframes as-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .as-spin { animation: none; } .as-card { transition: none; } }
+
+/* Chat with the AI Director, under the studio */
+.adc { margin-top: 16px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); }
+.adc > summary { cursor: pointer; }
+.adc .adc-body { margin-top: 8px; }
+.adc .pl-chat { max-height: 320px; }

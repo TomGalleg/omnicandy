@@ -14,9 +14,9 @@ export const NAV: NavItem[] = [
   { id: 'media', label: 'Media' },
   { id: 'edit', label: 'Edit' },
   { id: 'generate', label: 'AI Generate' },
-  { id: 'software', label: 'Software' },
   { id: 'planner', label: 'Planner' },
   { id: 'deliver', label: 'Deliver' },
+  { id: 'software', label: 'Software' },
 ];
 
 /** How the Edit tab works on the selected file: the file's own editor, LightCraft (color) or EffectCraft (effects). */

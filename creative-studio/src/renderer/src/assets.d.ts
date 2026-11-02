@@ -16,4 +16,6 @@ declare module '*.mp4' {
 /** Only the Vite flag the renderer reads (tsconfig.web.json deliberately loads no ambient types). */
 interface ImportMeta {
   readonly env: { readonly DEV: boolean };
+  /** Vite's folder import, as used for the bundled example pictures. */
+  glob(pattern: string, options: { eager: true; query: string; import: string }): Record<string, unknown>;
 }
