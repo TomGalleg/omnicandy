@@ -17,7 +17,7 @@ afterEach(async () => {
   await fs.rm(tmp, { recursive: true, force: true });
 });
 
-const partner = (cliPath: string) => new ClaudePartner({ cliPath, auth: { billing: async () => ({ mode: 'sign-in', keyReady: false, keyUnreadable: false, keyIgnored: false }), mode: async () => 'sign-in' }, emit: () => undefined, history: { load: async () => [], save: async () => undefined } } as unknown as ClaudePartnerDeps);
+const partner = (cliPath: string, bundledCli: () => string | null = () => null) => new ClaudePartner({ cliPath, bundledCli, auth: { billing: async () => ({ mode: 'sign-in', keyReady: false, keyUnreadable: false, keyIgnored: false }), mode: async () => 'sign-in' }, emit: () => undefined, history: { load: async () => [], save: async () => undefined } } as unknown as ClaudePartnerDeps);
 
 describe('Claude Code install detection', () => {
   it('reports not installed, with plain guidance, when the command is nowhere', async () => {
@@ -47,5 +47,19 @@ describe('Claude Code install detection', () => {
     process.env.PATH = dir;
     const p = partner(path.join(tmp, 'nowhere', 'claude'));
     expect((await p.findCli())?.toLowerCase()).toBe(path.join(dir, name).toLowerCase());
+  });
+
+  it('falls back to the copy inside OmniCandy when nothing is installed, and skips npm .cmd wrappers', async () => {
+    const bundled = path.join(tmp, 'app', 'claude');
+    expect(await partner(path.join(tmp, 'nowhere', 'claude'), () => bundled).findCli()).toBe(bundled);
+    if (process.platform === 'win32') {
+      const dir = path.join(tmp, 'npm');
+      await fs.mkdir(dir, { recursive: true });
+      await fs.writeFile(path.join(dir, 'claude.cmd'), 'x');
+      process.env.PATH = dir;
+      const p = partner(path.join(tmp, 'nowhere', 'claude'), () => bundled);
+      expect(await p.findCli()).toBe(bundled);
+      expect(p.state().installed).toBe(true);
+    }
   });
 });

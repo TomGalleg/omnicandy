@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { claudeLoginLaunch, defaultClaudeCliPath, findOnPath, parsePsNames, processNames, pythonCandidates } from './exec';
+import { bundledClaudeCliPath, claudeLoginLaunch, defaultClaudeCliPath, findOnPath, isDirectlyRunnable, parsePsNames, processNames, pythonCandidates } from './exec';
 
 const has = (...files: string[]) => async (p: string) => files.includes(p);
 
@@ -17,6 +17,13 @@ describe('per-OS execution helpers', () => {
   it('locates the Claude Code command where the installer puts it', () => {
     expect(defaultClaudeCliPath('linux', { HOME: '/home/ada' })).toBe('/home/ada/.local/bin/claude');
     expect(defaultClaudeCliPath('win32', { USERPROFILE: 'C:\\Users\\ada' })).toBe('C:\\Users\\ada\\.local\\bin\\claude.exe');
+  });
+  it('finds the Claude Code copy that ships inside the app, and refuses npm .cmd wrappers it cannot start', () => {
+    expect(bundledClaudeCliPath('C:\\App\\resources\\app.asar.unpacked', 'win32', 'x64')).toBe('C:\\App\\resources\\app.asar.unpacked\\node_modules\\@anthropic-ai\\claude-agent-sdk-win32-x64\\claude.exe');
+    expect(bundledClaudeCliPath('/opt/app/resources/app.asar.unpacked', 'linux', 'x64')).toBe('/opt/app/resources/app.asar.unpacked/node_modules/@anthropic-ai/claude-agent-sdk-linux-x64/claude');
+    expect(isDirectlyRunnable('C:\\Users\\ada\\AppData\\Roaming\\npm\\claude.cmd', 'win32')).toBe(false);
+    expect(isDirectlyRunnable('C:\\Users\\ada\\.local\\bin\\claude.exe', 'win32')).toBe(true);
+    expect(isDirectlyRunnable('/usr/local/bin/claude', 'linux')).toBe(true);
   });
   it('opens the sign-in in a terminal: cmd on Windows, the first installed terminal on Linux, null when none', async () => {
     const w = await claudeLoginLaunch('C:\\Users\\ada\\.local\\bin\\claude.exe', { os: 'win32' });

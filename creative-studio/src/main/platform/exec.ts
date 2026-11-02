@@ -35,6 +35,15 @@ export function defaultClaudeCliPath(os: OsId = currentOs(), env: NodeJS.Process
   return path.posix.join(env.HOME ?? '', '.local', 'bin', 'claude');
 }
 
+/** The Claude Code program that ships inside OmniCandy (the Agent SDK's own copy), so nothing has to be installed. `root` is the folder holding `node_modules` (the unpacked app folder in an installed build). */
+export function bundledClaudeCliPath(root: string, os: OsId = currentOs(), arch: string = process.arch): string {
+  const p = pathMod(os);
+  return p.join(root, 'node_modules', '@anthropic-ai', `claude-agent-sdk-${os}-${arch}`, os === 'win32' ? 'claude.exe' : 'claude');
+}
+
+/** A program OmniCandy can start directly. On Windows that excludes the .cmd/.bat wrappers that npm creates, which cannot be run without a shell. */
+export const isDirectlyRunnable = (file: string, os: OsId = currentOs()): boolean => os !== 'win32' || /\.exe$/i.test(file);
+
 /** Terminal programs tried (in this order) to show Claude Code's sign-in on Linux. Each runs the command after its separator. */
 export const LINUX_TERMINALS: Array<{ cmd: string; sep: string[] }> = [
   { cmd: 'x-terminal-emulator', sep: ['-e'] }, { cmd: 'gnome-terminal', sep: ['--'] }, { cmd: 'konsole', sep: ['-e'] },

@@ -10,6 +10,7 @@
 import { execFile, spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
+import path from 'node:path';
 import { z } from 'zod';
 import { changeSchema } from '@shared/planner';
 import { CLAUDE_MODELS, type ClaudeChatItem, type ClaudeModelId, type ClaudeState } from '@shared/claude';
@@ -25,7 +26,7 @@ import { buildResumeContext } from '@shared/claudeHistory';
 import { clampSendTurns } from '@shared/agentBudget';
 import { builtinTemplates, templateCatalogForClaude } from '@shared/templates';
 import { signInEnv, type ClaudeAuth } from './claudeAuth';
-import { claudeLoginLaunch, defaultClaudeCliPath, findOnPath } from './platform/exec';
+import { bundledClaudeCliPath, claudeLoginLaunch, defaultClaudeCliPath, findOnPath, isDirectlyRunnable } from './platform/exec';
 import { parseProjectPlan, PROJECT_KINDS, type ProjectPlan } from '@shared/projectPlan';
 import type { LiveTaskController } from './liveTask';
 import type { ProjectStore } from './projectStore';
@@ -67,7 +68,14 @@ export const PLAN_PROMPT = `You are Claude, the Creative Partner inside OmniCand
 Do not start any work and do not mention software internals, node graphs or file formats unless the user did. Write in the user's language.`;
 
 /** Shown when the Claude Code command cannot be found. */
-export const CLAUDE_CODE_MISSING = 'Claude Code is not installed on this PC (or OmniCandy cannot find it). Install it, then press Check again.';
+/** The Claude Code program inside OmniCandy itself, or null if this build does not have one for this system. In an installed build it sits next to app.asar, never inside it. */
+function bundledClaudeCli(): string | null {
+  const root = path.resolve(__dirname, '..', '..').replace(/app\.asar$/, 'app.asar.unpacked');
+  const file = bundledClaudeCliPath(root);
+  return fs.existsSync(file) ? file : null;
+}
+
+export const CLAUDE_CODE_MISSING ='Claude Code is not installed on this PC (or OmniCandy cannot find it). Install it, then press Check again.';
 
 /** Plain settings are limited to 512 characters by the integration manager; a structured (JSON) setting of a built-in adapter, such as the Blender scene spec, may be an object or longer JSON text. */
 export const externalRunSettings = z.record(z.string(), z.union([z.string().max(64000), z.number(), z.boolean(), z.record(z.string(), z.unknown()), z.array(z.unknown())]));
@@ -97,6 +105,8 @@ export interface ClaudePartnerDeps {
   emit: (s: ClaudeState) => void;
   /** Claude Code CLI on this PC, used only for `auth status` / `auth login`. */
   cliPath: string;
+  /** The Claude Code copy inside OmniCandy, used when none is installed (replaceable in tests). */
+  bundledCli?: () => string | null;
   /** Which credentials every Claude session uses (the Claude sign-in, or the Anthropic API key chosen in Settings). */
   auth: ClaudeAuth;
   workDir: () => Promise<string>;
@@ -222,9 +232,14 @@ export class ClaudePartner {
     this.persist(true);
   }
 
-  /** The Claude Code command: the official install location first, then anywhere on PATH. Looked up each time, so installing it later is noticed. */
+  /**
+   * The Claude Code command: the official install location first, then a runnable one on PATH, then the copy that ships inside OmniCandy,
+   * so a PC with no Claude Code installed still works (the sign-in is shared through the user's Claude account). Looked up each time.
+   */
   async findCli(): Promise<string | null> {
-    const found = fs.existsSync(this.d.cliPath) ? this.d.cliPath : await findOnPath('claude').catch(() => null);
+    if (fs.existsSync(this.d.cliPath)) { this.installed = true; return this.d.cliPath; }
+    const onPath = await findOnPath('claude').catch(() => null);
+    const found = onPath && isDirectlyRunnable(onPath) ? onPath : (this.d.bundledCli ?? bundledClaudeCli)();
     this.installed = !!found;
     return found;
   }
