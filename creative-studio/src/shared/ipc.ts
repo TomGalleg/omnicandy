@@ -246,6 +246,8 @@ export const IPC = {
   deliverEvent: 'deliver:event',
   probeApps: 'apps:probe',
   chooseCraftFolder: 'apps:choose-folder',
+  appVersion: 'app:version',
+  saveDebugReport: 'app:save-debug-report',
   launchApp: 'apps:launch',
   openAiTool: 'apps:open-ai-tool',
   integrationStatus: 'integrations:status',
@@ -672,6 +674,9 @@ export interface StudioApi {
   probeApps(): Promise<AppProbeResult[]>;
   /** Lets the user pick the folder their ArtCraft apps are installed in; remembered. Resolves to the new detection result, or null when cancelled. */
   chooseCraftFolder(): Promise<AppProbeResult[] | null>;
+  appVersion(): Promise<string>;
+  /** Writes OmniCandy-debug-report.txt to the Desktop and returns where. */
+  saveDebugReport(): Promise<string>;
   /** Starts an installed ArtCraft app on its own (no file). */
   /** Starts an installed ArtCraft app. With inOmniCandy its window is docked into the Software tab (Windows); otherwise it opens by itself. */
   launchApp(appId: string, inOmniCandy?: boolean): Promise<void>;

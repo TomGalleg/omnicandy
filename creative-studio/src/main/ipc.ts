@@ -17,6 +17,7 @@ import { affectedNodes, reusableOutputs, RunMonitor, sameAsRun, templateGraph, t
 import { changeStep, type StepChange, type WorkflowPlan } from '@shared/workflowPlan';
 import { exportPresetsOf, importAssetIds, WorkflowRunner, type RunnerDeps } from '@shared/workflowRunner';
 import { probeAllArtCraftApps } from './artcraftProbe';
+import { buildDebugReport } from './debugReport';
 import { IMPORTABLE_EXTENSIONS, kindForExtension } from './media';
 import { AppEditors } from './appEditors';
 import { BuildSession } from './devSession';
@@ -1913,6 +1914,14 @@ export function registerIpc(d: IpcDeps): void {
     if (!picked) return null;
     saveCraftUserRoot(craftFolderFile, craftRootFromPick(picked));
     return probeAllArtCraftApps();
+  handle(IPC.appVersion, none, async () => app.getVersion());
+  handle(IPC.saveDebugReport, none, async () => {
+    const text = buildDebugReport({ version: app.getVersion(), apps: await probeAllArtCraftApps(), dataDir: path.dirname(d.secretsDir), chosenFile: craftFolderFile, resourcesPath: process.resourcesPath, execPath: process.execPath });
+    const file = path.join(app.getPath('desktop'), 'OmniCandy-debug-report.txt');
+    await fsp.writeFile(file, text, 'utf8');
+    shell.showItemInFolder(file);
+    return file;
+  });
   });
   /** Software tab shortcuts to other AI tools. ChatGPT and Gemini are plain web links; Claude is the installed desktop app, found in the Start menu list. */
   handle(IPC.openAiTool, z.tuple([z.enum(['claude', 'chatgpt', 'gemini'])]), async (tool) => {

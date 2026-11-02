@@ -211,6 +211,9 @@ function IntegrationSettings({ apps, onClose }: { apps: AppProbeResult[]; onClos
 function Diagnostics({ apps, integrations }: { apps: AppProbeResult[]; integrations: IntegrationSnapshot | null }) {
   const yes = (b: boolean | undefined) => (b ? 'yes' : 'no');
   const claude = useClaudeState();
+  const [version, setVersion] = useState<string | null>(null);
+  const [report, setReport] = useState<string | null>(null);
+  useEffect(() => { void window.studio.appVersion().then(setVersion).catch(() => undefined); }, []);
   return (
     <>
       <div className="field">
@@ -229,6 +232,14 @@ function Diagnostics({ apps, integrations }: { apps: AppProbeResult[]; integrati
         <dl className="kv">
           {apps.map((a) => <Fragment key={a.appId}><dt>{a.displayName}</dt><dd>installed {yes(a.installed)}{a.version ? ` (${a.version})` : ''} · live {yes(a.connected)}{a.notes.length ? ` · ${a.notes.join('; ')}` : ''}</dd></Fragment>)}
         </dl>
+      </div>
+      <div className="field">
+        <span className="menu-label">Report a problem</span>
+        <dl className="kv"><dt>OmniCandy version</dt><dd>{version ?? '…'}</dd></dl>
+        <div className="row">
+          <button className="btn small" onClick={() => { setReport('Saving…'); void window.studio.saveDebugReport().then((f) => setReport(`Saved to ${f}. Send that file to whoever is helping you.`)).catch((e: unknown) => setReport(`Could not save the report: ${e instanceof Error ? e.message : String(e)}`)); }}>Save debug report</button>
+        </div>
+        {report && <small className="asset-meta">{report}</small>}
       </div>
       <small className="asset-meta">The detailed activity log is in the Activity panel under the workspace.</small>
     </>

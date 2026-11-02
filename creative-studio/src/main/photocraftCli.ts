@@ -13,6 +13,7 @@ import type { AppAdapter, AppOperation } from '@shared/contracts';
 import { checkPhotoCraftOp, presetLabel } from '@shared/photocraftOps';
 import type { AppProbeResult, Asset } from '@shared/types';
 import { ARTCRAFT_APPS, probeArtCraftApp } from './artcraftProbe';
+import { craftInstallDir } from './platform/craftApps';
 import type { ProjectStore } from './projectStore';
 
 /** Formats PhotoCraft opens as layered/raster documents directly. Anything else is flattened first. */
@@ -48,9 +49,12 @@ export class PhotoCraftCliAdapter implements AppAdapter {
 
   constructor(private readonly exe: string, private readonly store: ProjectStore) {}
 
-  static async create(store: ProjectStore, programFiles = process.env.ProgramFiles ?? 'C:\\Program Files'): Promise<PhotoCraftCliAdapter | null> {
+  static async create(store: ProjectStore, installDir?: string): Promise<PhotoCraftCliAdapter | null> {
     const def = ARTCRAFT_APPS.find((a) => a.id === 'photocraft')!;
-    const exe = path.join(programFiles, def.folder, def.cli);
+    // Same lookup as detection and the launcher: the chosen folder, Program Files, Program Files\ArtCraft, the registry.
+    let dir = installDir;
+    if (!dir) { try { dir = craftInstallDir(def.folder); } catch { return null; } }
+    const exe = path.join(dir, def.cli);
     const ok = await fs.access(exe).then(() => true, () => false);
     if (!ok) return null;
     const a = new PhotoCraftCliAdapter(exe, store);
